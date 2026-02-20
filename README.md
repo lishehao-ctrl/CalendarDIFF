@@ -49,29 +49,6 @@ uvicorn app.main:app --reload
 ```bash
 python -m pytest -q
 ```
-
-## Troubleshooting
-
-If you see `ModuleNotFoundError` after installation (for example `apscheduler`), it usually means
-`pip` and `pytest` are using different Python interpreters.
-
-Use these commands to verify:
-
-```bash
-which python
-which pip
-which pytest
-python -m pip show APScheduler
-python -c "import sys, apscheduler; print(sys.executable, apscheduler.__version__)"
-```
-
-If needed, reinstall using the active interpreter:
-
-```bash
-python -m pip install -r requirements.txt
-python -m pytest -q
-```
-
 ## Structured Output From ICS
 
 You can generate structured JSON from a local ICS file in two ways.
