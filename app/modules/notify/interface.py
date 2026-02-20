@@ -15,6 +15,7 @@ class ChangeDigestItem:
     after_start_at_utc: str | None
     delta_seconds: int | None
     detected_at: datetime
+    evidence_path: str | None
 
 
 @dataclass(frozen=True)

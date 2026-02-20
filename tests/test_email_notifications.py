@@ -85,6 +85,7 @@ def test_notification_rows_marked_sent_on_success() -> None:
         assert len(rows) == 1
         assert rows[0].status == NotificationStatus.SENT
         assert rows[0].sent_at is not None
+        assert rows[0].idempotency_key == f"email:change:{change.id}"
 
 
 def test_notification_rows_marked_failed_on_error() -> None:
@@ -140,6 +141,64 @@ def test_notification_rows_marked_failed_on_error() -> None:
         assert len(rows) == 1
         assert rows[0].status == NotificationStatus.FAILED
         assert rows[0].error == "smtp down"
+        assert rows[0].idempotency_key == f"email:change:{change.id}"
+
+
+def test_notification_dispatch_is_idempotent_for_same_change() -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as db:
+        user = User(email="owner@example.com")
+        db.add(user)
+        db.flush()
+
+        source = Source(
+            user_id=user.id,
+            type=SourceType.ICS,
+            name="Course Deadlines",
+            encrypted_url="encrypted",
+            interval_minutes=15,
+            is_active=True,
+        )
+        db.add(source)
+        db.flush()
+
+        snapshot = Snapshot(
+            source_id=source.id,
+            content_hash="abc123",
+            event_count=1,
+            raw_evidence_key={"kind": "ics", "store": "fs", "path": "evidence/ics/source_1/file.ics"},
+        )
+        db.add(snapshot)
+        db.flush()
+
+        change = Change(
+            source_id=source.id,
+            event_uid="uid-1",
+            change_type=ChangeType.TITLE_CHANGED,
+            detected_at=datetime.now(timezone.utc),
+            before_json={"title": "Old", "course_label": "Unknown"},
+            after_json={"title": "New", "course_label": "Unknown"},
+            delta_seconds=None,
+            after_snapshot_id=snapshot.id,
+        )
+        db.add(change)
+        db.flush()
+
+        notifier = StubNotifier(success=True)
+        first = dispatch_notifications_for_changes(db, source, [change], notifier=notifier)
+        second = dispatch_notifications_for_changes(db, source, [change], notifier=notifier)
+        db.commit()
+
+        assert first.email_sent is True
+        assert second.email_sent is False
+        assert len(notifier.calls) == 1
+
+        rows = db.scalars(select(Notification).where(Notification.change_id == change.id)).all()
+        assert len(rows) == 1
+        assert rows[0].status == NotificationStatus.SENT
+        assert rows[0].idempotency_key == f"email:change:{change.id}"
 
 
 def test_smtp_notifier_uses_smtp_transport(monkeypatch) -> None:
@@ -188,6 +247,7 @@ def test_smtp_notifier_uses_smtp_transport(monkeypatch) -> None:
                 after_start_at_utc="2026-02-21T13:00:00+00:00",
                 delta_seconds=3600,
                 detected_at=datetime.now(timezone.utc),
+                evidence_path="evidence/ics/source_123/sample.ics",
             )
         ],
     )

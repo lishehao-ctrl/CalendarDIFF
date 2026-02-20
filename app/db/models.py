@@ -181,6 +181,7 @@ class Change(Base):
 
 class Notification(Base):
     __tablename__ = "notifications"
+    __table_args__ = (UniqueConstraint("idempotency_key", name="uq_notifications_idempotency_key"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     change_id: Mapped[int] = mapped_column(ForeignKey("changes.id", ondelete="CASCADE"), nullable=False)
@@ -198,5 +199,6 @@ class Notification(Base):
     )
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
 
     change: Mapped[Change] = relationship(back_populates="notifications")

@@ -19,7 +19,7 @@ class SMTPEmailNotifier(Notifier):
     ) -> SendResult:
         settings = get_settings()
 
-        subject = f"[Deadline Diff] {source_name} - {len(items)} changes detected"
+        subject = f"[Deadline Diff] {source_name} - {len(items)} changes"
         body = _build_email_body(source_id=source_id, source_name=source_name, items=items)
 
         message = EmailMessage()
@@ -65,6 +65,7 @@ def _build_email_body(source_id: int, source_name: str, items: list[ChangeDigest
             lines.append(f"  delta: {delta_text}")
             lines.append(f"  detected_at: {item.detected_at.isoformat()}")
             lines.append(f"  change_type: {item.change_type}")
+            lines.append(f"  evidence: {item.evidence_path or 'n/a'}")
         lines.append("")
 
     lines.append(f"View changes: {link}")

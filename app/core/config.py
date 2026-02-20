@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/deadline_diff"
     evidence_dir: str = "./evidence"
-    enable_notifications: bool = False
+    enable_notifications: bool = True
 
     default_sync_interval_minutes: int = 15
     scheduler_tick_seconds: int = 60
@@ -27,12 +27,16 @@ class Settings(BaseSettings):
 
     smtp_host: str = "localhost"
     smtp_port: int = 25
-    smtp_username: str | None = None
-    smtp_password: str | None = None
+    smtp_username: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_USERNAME", "SMTP_USER"))
+    smtp_password: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_PASSWORD", "SMTP_PASS"))
     smtp_use_tls: bool = False
-    smtp_from_email: str = "no-reply@example.com"
+    smtp_from_email: str = Field(
+        default="no-reply@example.com", validation_alias=AliasChoices("SMTP_FROM_EMAIL", "SMTP_FROM")
+    )
 
-    default_notify_email: str | None = None
+    default_notify_email: str | None = Field(
+        default=None, validation_alias=AliasChoices("DEFAULT_NOTIFY_EMAIL", "SMTP_TO")
+    )
     app_base_url: str | None = None
 
     global_scheduler_lock_key: int = Field(default=947123)

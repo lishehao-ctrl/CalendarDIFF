@@ -103,6 +103,7 @@ Course inference behavior:
 - Summary fallback is enabled with blacklist protection.
 - Description text is only used for section-tag extraction, not free-form course matching.
 - If nothing matches, `course_label` is `Unknown`.
+- `ddl_type` for `exam/quiz` uses: SUMMARY-first, same-priority by keyword position, then DESCRIPTION fallback.
 
 ## ICS Audit Trail (MVP)
 
@@ -114,10 +115,16 @@ Course inference behavior:
   - `evidence_keys` containing `before` and `after` evidence metadata.
 - API returns evidence metadata only (path/hash/timestamp), never raw ICS payload or source URL.
 
-By default notifications are disabled in this ICS-only phase:
+Email notifications are enabled when sync detects changes. Configure SMTP via env:
 
 ```bash
-ENABLE_NOTIFICATIONS=false
+ENABLE_NOTIFICATIONS=true
+SMTP_HOST=localhost
+SMTP_PORT=1025
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=no-reply@example.com
+SMTP_TO=notify@example.com
 ```
 
 ## API Endpoints
