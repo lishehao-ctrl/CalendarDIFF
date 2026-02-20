@@ -55,7 +55,12 @@ Core behavior:
 - Sends grouped email digest when run contains changes.
 - Persists per-change notification status (`pending`, `sent`, `failed`).
 
-7. Persistence Layer (`SQLAlchemy 2.0` + Alembic)
+7. Evidence Store (Filesystem, ICS-only)
+- Stores the exact raw ICS payload fetched for each successful sync.
+- Generates a structured `raw_evidence_key` object (`kind`, `store`, `path`, `sha256`, `retrieved_at`) and persists it on snapshots.
+- Uses atomic file writes (temp file + rename) so evidence artifacts are never partially written.
+
+8. Persistence Layer (`SQLAlchemy 2.0` + Alembic)
 - Stores sources, canonical events, snapshots, snapshot events, changes, and notifications.
 
 ## 3) Data Flow
@@ -70,11 +75,12 @@ POST /v1/sources/ics
 Scheduler tick or POST /v1/sources/{id}/sync
   -> acquire advisory lock
   -> fetch ICS via httpx
+  -> store raw ICS evidence on local filesystem
   -> parse VEVENTs
   -> normalize to canonical events (UTC)
-  -> store snapshots + snapshot_events
+  -> store snapshots(raw_evidence_key) + snapshot_events
   -> diff against canonical events
-  -> insert changes rows
+  -> insert changes rows (before_snapshot_id, after_snapshot_id, evidence_keys)
   -> update canonical events table
   -> if changes > 0: send email digest
   -> insert/update notifications rows
@@ -112,7 +118,7 @@ fetch error
 
 ### `snapshots`
 - Purpose: metadata for each sync capture.
-- Columns: `id`, `source_id`, `retrieved_at`, `etag`, `content_hash`, `event_count`.
+- Columns: `id`, `source_id`, `retrieved_at`, `etag`, `content_hash`, `event_count`, `raw_evidence_key`.
 
 ### `snapshot_events`
 - Purpose: immutable event rows per snapshot.
@@ -120,7 +126,7 @@ fetch error
 
 ### `changes`
 - Purpose: audit log of detected differences.
-- Columns: `id`, `source_id`, `event_uid`, `change_type`, `detected_at`, `before_json`, `after_json`, `delta_seconds`.
+- Columns: `id`, `source_id`, `event_uid`, `change_type`, `detected_at`, `before_json`, `after_json`, `delta_seconds`, `before_snapshot_id`, `after_snapshot_id`, `evidence_keys`.
 - Index: (`source_id`, `detected_at` desc).
 
 ### `notifications`
@@ -181,6 +187,7 @@ fetch error
 - API key header `X-API-Key` required for protected endpoints.
 - ICS URL is encrypted at rest via Fernet key (`APP_SECRET_KEY`).
 - ICS URL is excluded from API responses and redacted from logs.
+- APIs expose evidence metadata (`raw_evidence_key` path and hashes), never raw ICS content or source URL.
 - Use environment variables for SMTP and app secrets.
 
 ## 9) Observability

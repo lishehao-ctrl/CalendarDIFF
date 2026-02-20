@@ -10,6 +10,7 @@ from app.db.session import get_session_factory
 from app.modules.changes.router import router as changes_router
 from app.modules.health.router import router as health_router
 from app.modules.scheduler.runner import SchedulerRunner
+from app.modules.snapshots.router import router as snapshots_router
 from app.modules.sources.router import router as sources_router
 from app.state import SchedulerStatus
 
@@ -37,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(sources_router)
     app.include_router(changes_router)
+    app.include_router(snapshots_router)
     return app
 
 

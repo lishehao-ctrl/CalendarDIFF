@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.base import Base
-from app.db.models import Change, ChangeType, Notification, NotificationStatus, Source, SourceType, User
+from app.db.models import Change, ChangeType, Notification, NotificationStatus, Snapshot, Source, SourceType, User
 from app.modules.notify.email import SMTPEmailNotifier
 from app.modules.notify.interface import ChangeDigestItem, SendResult
 from app.modules.notify.service import dispatch_notifications_for_changes
@@ -51,6 +51,15 @@ def test_notification_rows_marked_sent_on_success() -> None:
         db.add(source)
         db.flush()
 
+        snapshot = Snapshot(
+            source_id=source.id,
+            content_hash="abc123",
+            event_count=1,
+            raw_evidence_key={"kind": "ics", "store": "fs", "path": "evidence/ics/source_1/file.ics"},
+        )
+        db.add(snapshot)
+        db.flush()
+
         change = Change(
             source_id=source.id,
             event_uid="uid-1",
@@ -59,6 +68,7 @@ def test_notification_rows_marked_sent_on_success() -> None:
             before_json={"title": "A", "start_at_utc": "2026-02-20T10:00:00+00:00", "course_label": "CSE 151A"},
             after_json={"title": "A", "start_at_utc": "2026-02-20T11:00:00+00:00", "course_label": "CSE 151A"},
             delta_seconds=3600,
+            after_snapshot_id=snapshot.id,
         )
         db.add(change)
         db.flush()
@@ -97,6 +107,15 @@ def test_notification_rows_marked_failed_on_error() -> None:
         db.add(source)
         db.flush()
 
+        snapshot = Snapshot(
+            source_id=source.id,
+            content_hash="abc123",
+            event_count=1,
+            raw_evidence_key={"kind": "ics", "store": "fs", "path": "evidence/ics/source_1/file.ics"},
+        )
+        db.add(snapshot)
+        db.flush()
+
         change = Change(
             source_id=source.id,
             event_uid="uid-1",
@@ -105,6 +124,7 @@ def test_notification_rows_marked_failed_on_error() -> None:
             before_json={"title": "Old", "course_label": "Unknown"},
             after_json={"title": "New", "course_label": "Unknown"},
             delta_seconds=None,
+            after_snapshot_id=snapshot.id,
         )
         db.add(change)
         db.flush()

@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     app_secret_key: str = "7J2Btjj4GW8jIP5MErM81QOZeK4c7xYknVxKsgKMnmk="
 
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/deadline_diff"
+    evidence_dir: str = "./evidence"
+    enable_notifications: bool = False
 
     default_sync_interval_minutes: int = 15
     scheduler_tick_seconds: int = 60

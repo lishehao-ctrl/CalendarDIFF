@@ -10,6 +10,7 @@ FastAPI + Postgres backend for monitoring ICS feeds and sending email alerts whe
 - ICS parsing + canonical event normalization.
 - Diff engine with debounced removals (3 consecutive snapshots).
 - Audit log (`changes`) and email notifications.
+- ICS evidence trail: every successful sync stores raw ICS to local filesystem and links it via snapshot/change metadata.
 - API key authentication for protected endpoints.
 
 ## Quick Start (Docker)
@@ -103,6 +104,22 @@ Course inference behavior:
 - Description text is only used for section-tag extraction, not free-form course matching.
 - If nothing matches, `course_label` is `Unknown`.
 
+## ICS Audit Trail (MVP)
+
+- Every successful ICS fetch is stored atomically under `EVIDENCE_DIR` (default `./evidence`).
+- Each `snapshots` row stores `raw_evidence_key` with `kind/store/path/sha256/retrieved_at`.
+- Each `changes` row stores snapshot references:
+  - `before_snapshot_id` (nullable)
+  - `after_snapshot_id` (required)
+  - `evidence_keys` containing `before` and `after` evidence metadata.
+- API returns evidence metadata only (path/hash/timestamp), never raw ICS payload or source URL.
+
+By default notifications are disabled in this ICS-only phase:
+
+```bash
+ENABLE_NOTIFICATIONS=false
+```
+
 ## API Endpoints
 
 - `GET /health`
@@ -111,6 +128,7 @@ Course inference behavior:
 - `POST /v1/sources/{id}/sync`
 - `GET /v1/sources/{id}/deadlines`
 - `GET /v1/changes`
+- `GET /v1/snapshots?source_id=<id>`
 
 Protected endpoints require `X-API-Key` matching `APP_API_KEY`.
 

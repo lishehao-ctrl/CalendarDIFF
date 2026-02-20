@@ -8,10 +8,12 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.logging import sanitize_log_message
 from app.core.security import decrypt_secret
 from app.db.models import Change, Event, Snapshot, SnapshotEvent, Source
 from app.modules.diff.engine import EventState, compute_diff
+from app.modules.evidence.store import save_ics
 from app.modules.notify.interface import Notifier
 from app.modules.notify.service import dispatch_notifications_for_changes
 from app.modules.sync.ics_client import ICSClient
@@ -54,6 +56,7 @@ def sync_source(
     ics_client: ICSClient | None = None,
     ics_parser: ICSParser | None = None,
 ) -> SyncRunResult:
+    settings = get_settings()
     run_started_at = datetime.now(timezone.utc)
     source.last_checked_at = run_started_at
     source.last_error = None
@@ -64,6 +67,7 @@ def sync_source(
     try:
         source_url = decrypt_secret(source.encrypted_url)
         fetched = client.fetch(source_url, source_id=source.id)
+        evidence_key = save_ics(source_id=source.id, content=fetched.content, retrieved_at=fetched.fetched_at_utc)
         raw_events = parser.parse(fetched.content)
         normalized_events = normalize_events(raw_events)
     except Exception as exc:
@@ -76,9 +80,12 @@ def sync_source(
             etag=fetched.etag,
             content_hash=hashlib.sha256(fetched.content).hexdigest(),
             event_count=len(normalized_events),
+            raw_evidence_key=evidence_key,
         )
         db.add(snapshot)
         db.flush()
+
+        previous_snapshot = _get_previous_snapshot(db, source_id=source.id, current_snapshot_id=snapshot.id)
 
         for event in normalized_events:
             db.add(
@@ -153,18 +160,29 @@ def sync_source(
                 before_json=payload.before_json,
                 after_json=payload.after_json,
                 delta_seconds=payload.delta_seconds,
+                before_snapshot_id=previous_snapshot.id if previous_snapshot is not None else None,
+                after_snapshot_id=snapshot.id,
+                evidence_keys={
+                    "before": previous_snapshot.raw_evidence_key if previous_snapshot is not None else None,
+                    "after": snapshot.raw_evidence_key,
+                },
             )
             db.add(change)
             change_rows.append(change)
 
         db.flush()
 
-        notify_result = dispatch_notifications_for_changes(
-            db=db,
-            source=source,
-            changes=change_rows,
-            notifier=notifier,
-        )
+        email_sent = False
+        notify_error: str | None = None
+        if settings.enable_notifications:
+            notify_result = dispatch_notifications_for_changes(
+                db=db,
+                source=source,
+                changes=change_rows,
+                notifier=notifier,
+            )
+            email_sent = notify_result.email_sent
+            notify_error = notify_result.error
 
         source.last_checked_at = datetime.now(timezone.utc)
         source.last_error = None
@@ -173,8 +191,8 @@ def sync_source(
         return SyncRunResult(
             source_id=source.id,
             changes_created=len(change_rows),
-            email_sent=notify_result.email_sent,
-            last_error=notify_result.error,
+            email_sent=email_sent,
+            last_error=notify_error,
         )
     except Exception as exc:
         return _handle_source_error(db, source, exc)
@@ -201,6 +219,19 @@ def _find_debounced_removed_uids(db: Session, source_id: int, candidate_uids: se
     present_uids = set(db.scalars(present_uid_stmt).all())
 
     return candidate_uids - present_uids
+
+
+def _get_previous_snapshot(db: Session, source_id: int, current_snapshot_id: int) -> Snapshot | None:
+    stmt = (
+        select(Snapshot)
+        .where(
+            Snapshot.source_id == source_id,
+            Snapshot.id < current_snapshot_id,
+        )
+        .order_by(Snapshot.id.desc())
+        .limit(1)
+    )
+    return db.scalar(stmt)
 
 
 def _handle_source_error(db: Session, source: Source, exc: Exception) -> SyncRunResult:

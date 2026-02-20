@@ -108,10 +108,21 @@ class Snapshot(Base):
     etag: Mapped[str | None] = mapped_column(String(255), nullable=True)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     event_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    raw_evidence_key: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     source: Mapped[Source] = relationship(back_populates="snapshots")
     snapshot_events: Mapped[list[SnapshotEvent]] = relationship(
         back_populates="snapshot", cascade="all, delete-orphan"
+    )
+    changes_as_before: Mapped[list[Change]] = relationship(
+        "Change",
+        foreign_keys="Change.before_snapshot_id",
+        back_populates="before_snapshot",
+    )
+    changes_as_after: Mapped[list[Change]] = relationship(
+        "Change",
+        foreign_keys="Change.after_snapshot_id",
+        back_populates="after_snapshot",
     )
 
 
@@ -144,8 +155,27 @@ class Change(Base):
     before_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     after_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     delta_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    before_snapshot_id: Mapped[int | None] = mapped_column(
+        ForeignKey("snapshots.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    after_snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("snapshots.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    evidence_keys: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     source: Mapped[Source] = relationship(back_populates="changes")
+    before_snapshot: Mapped[Snapshot | None] = relationship(
+        "Snapshot",
+        foreign_keys=[before_snapshot_id],
+        back_populates="changes_as_before",
+    )
+    after_snapshot: Mapped[Snapshot] = relationship(
+        "Snapshot",
+        foreign_keys=[after_snapshot_id],
+        back_populates="changes_as_after",
+    )
     notifications: Mapped[list[Notification]] = relationship(back_populates="change", cascade="all, delete-orphan")
 
 
