@@ -106,9 +106,9 @@ export function DiffSection({
                   value={feedTermScope}
                   onChange={(event) => onFeedTermScopeChange(event.target.value as "current" | "all" | "term")}
                 >
-                  <option value="current">Current + Global Email</option>
+                  <option value="current">Current Term + Global Email</option>
                   <option value="all">All Terms</option>
-                  <option value="term">Specific Term</option>
+                  <option value="term">Specific Term (advanced)</option>
                 </Select>
               </div>
 

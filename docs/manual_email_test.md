@@ -90,7 +90,7 @@ export BASE_URL="http://localhost:8000"
 export API_KEY="<APP_API_KEY>"
 ```
 
-### 4.2 完成 onboarding register（必填 notify_email + first term + ICS URL）
+### 4.2 完成 onboarding register（必填 notify_email + ICS URL）
 
 首次运行或 reset DB 后，调用一体化注册接口并直接获得 `input_id`：
 
@@ -101,12 +101,6 @@ REGISTER_RESPONSE=$(
     -H "Content-Type: application/json" \
     -d '{
       "notify_email": "notify@example.com",
-      "term": {
-        "code": "WI26",
-        "label": "Winter 2026",
-        "starts_on": "2026-01-06",
-        "ends_on": "2026-03-21"
-      },
       "ics": {
         "url": "http://127.0.0.1:18080/test.ics"
       }

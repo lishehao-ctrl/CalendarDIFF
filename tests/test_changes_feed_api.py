@@ -284,3 +284,91 @@ def test_changes_feed_source_type_filter(client, db_session) -> None:
     assert rows[0]["input_type"] == "ics"
     assert rows[0]["change_summary"]["old"]["value_time"] is None
     assert rows[0]["change_summary"]["new"]["value_time"] is None
+
+
+def test_changes_feed_current_scope_falls_back_to_all_when_no_active_term(client, db_session) -> None:
+    now = datetime.now(timezone.utc)
+    user = User(
+        email="owner@example.com",
+        notify_email="student-a@example.com",
+        onboarding_completed_at=now,
+    )
+    db_session.add(user)
+    db_session.flush()
+
+    ics_source = Source(
+        user_id=user.id,
+        type=SourceType.ICS,
+        identity_key="calendar-input-current-fallback",
+        encrypted_url="encrypted-ics",
+        interval_minutes=15,
+        is_active=True,
+    )
+    email_source = Source(
+        user_id=user.id,
+        type=SourceType.EMAIL,
+        provider="gmail",
+        identity_key="email-input-current-fallback",
+        encrypted_url="encrypted-email",
+        interval_minutes=15,
+        is_active=True,
+    )
+    db_session.add_all([ics_source, email_source])
+    db_session.flush()
+
+    ics_snapshot = Snapshot(
+        input_id=ics_source.id,
+        retrieved_at=now,
+        etag=None,
+        content_hash="ics-current-fallback-hash",
+        event_count=1,
+        raw_evidence_key={"kind": "ics"},
+    )
+    email_snapshot = Snapshot(
+        input_id=email_source.id,
+        retrieved_at=now,
+        etag=None,
+        content_hash="email-current-fallback-hash",
+        event_count=1,
+        raw_evidence_key={"kind": "gmail"},
+    )
+    db_session.add_all([ics_snapshot, email_snapshot])
+    db_session.flush()
+
+    db_session.add_all(
+        [
+            Change(
+                input_id=ics_source.id,
+                user_term_id=None,
+                event_uid="ics-current-fallback",
+                change_type=ChangeType.DUE_CHANGED,
+                detected_at=now,
+                before_json={"title": "HW1"},
+                after_json={"title": "HW1 updated"},
+                delta_seconds=600,
+                before_snapshot_id=None,
+                after_snapshot_id=ics_snapshot.id,
+                evidence_keys={"after": {"kind": "ics"}},
+            ),
+            Change(
+                input_id=email_source.id,
+                user_term_id=None,
+                event_uid="email-current-fallback",
+                change_type=ChangeType.CREATED,
+                detected_at=now - timedelta(minutes=1),
+                before_json=None,
+                after_json={"subject": "Reminder"},
+                delta_seconds=None,
+                before_snapshot_id=None,
+                after_snapshot_id=email_snapshot.id,
+                evidence_keys={"after": {"kind": "gmail"}},
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = client.get("/v1/feed?term_scope=current", headers={"X-API-Key": "test-api-key"})
+    assert response.status_code == 200
+    rows = response.json()
+    assert len(rows) == 2
+    assert sorted(row["input_type"] for row in rows) == ["email", "ics"]

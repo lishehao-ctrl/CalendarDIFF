@@ -162,7 +162,7 @@ The input model is user-only (`user + inputs`):
 ### Onboarding + User APIs
 
 - `GET /v1/onboarding/status`
-- `POST /v1/onboarding/register` (required fields: `notify_email + first term + first ICS URL`)
+- `POST /v1/onboarding/register` (required fields: `notify_email + first ICS URL`)
 - `POST /v1/user` (create/initialize notify-only user row, mainly for compatibility/ops)
 - `GET /v1/user`
 - `PATCH /v1/user` (edit `notify_email`, `calendar_delay_seconds`)
@@ -178,11 +178,10 @@ Onboarding completion contract:
 1. A user is **registered** when `notify_email` is valid.
 2. A user is **onboarded** only when:
    - `notify_email` valid
-   - first term exists
    - first ICS input exists
    - first ICS baseline sync succeeds
 3. `/v1/onboarding/status` stages:
-   - `needs_user | needs_term | needs_ics | needs_baseline | ready`
+   - `needs_user | needs_ics | needs_baseline | ready`
 4. `POST /v1/onboarding/register` writes `users.onboarding_completed_at` only after successful baseline sync.
 5. Gate errors:
    - `user_not_initialized` (not registered)
@@ -204,6 +203,7 @@ Onboarding completion contract:
 3. Input-level `interval_minutes` is fixed at `15` minutes (DB-enforced).
 4. Input create payloads reject legacy fields (`interval_minutes`, `notify_email`) with `422`.
 5. Effective recipient is resolved at user level: `user.notify_email`.
+6. `user_terms` are optional advanced filters; onboarding does not require term setup.
 
 ### Feed API
 
@@ -216,7 +216,8 @@ Onboarding completion contract:
     - no longer derived from `inputs.user_term_id`
   - ICS change term attribution uses event start time in user timezone (`user_notification_prefs.timezone`, fallback `UTC`)
   - New-term first-run behavior:
-    - if `(input_id, term_id)` has no baseline record, first candidate change batch is silently baselined
+    - first-ever ICS sync is always baseline-first (no diff notification)
+    - if terms are configured and `(input_id, term_id)` has no baseline record, first candidate change batch in that term is silently baselined
     - baseline record stored in `input_term_baselines`
     - subsequent runs in same term emit normal diff/notify
   - Old/New summary times in UI are rendered in the viewer's local timezone.
@@ -227,7 +228,7 @@ Onboarding completion contract:
    - `GET /v1/onboarding/status` then route by stage
    - `stage=ready` -> `/ui/inputs`
    - otherwise -> `/ui/onboarding`
-2. `/ui/onboarding` -> submit `notify_email + term + ics.url` to `POST /v1/onboarding/register`.
+2. `/ui/onboarding` -> submit `notify_email + ics.url` to `POST /v1/onboarding/register`.
 3. `/ui/inputs` -> add input sources (Calendar/Gmail).
 4. `/ui/processing` -> health, manual sync, ICS rename management.
 5. `/ui/feed` -> aggregated change feed (EMAIL > Calendar ordering); onboarding-incomplete direct access redirects to onboarding.

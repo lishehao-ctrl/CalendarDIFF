@@ -99,9 +99,7 @@ def list_feed(
     if normalized_term_scope == "term" and term_id is not None:
         stmt = stmt.where(Change.user_term_id == term_id)
     elif normalized_term_scope == "current":
-        if current_term_id is None:
-            stmt = stmt.where((Input.type == InputType.EMAIL) & (Change.user_term_id.is_(None)))
-        else:
+        if current_term_id is not None:
             stmt = stmt.where(
                 ((Input.type == InputType.EMAIL) & (Change.user_term_id.is_(None)))
                 | ((Input.type == InputType.ICS) & (Change.user_term_id == current_term_id))

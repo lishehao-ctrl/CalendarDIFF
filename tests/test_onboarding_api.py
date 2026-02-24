@@ -6,12 +6,6 @@ from app.db.models import SyncRunStatus, SyncTriggerType
 
 REGISTER_PAYLOAD = {
     "notify_email": "student@example.com",
-    "term": {
-        "code": "WI26",
-        "label": "Winter 2026",
-        "starts_on": "2026-01-06",
-        "ends_on": "2026-03-21",
-    },
     "ics": {
         "url": "https://example.com/calendar.ics",
     },
@@ -24,6 +18,21 @@ def test_onboarding_status_needs_user_by_default(client) -> None:
     payload = response.json()
     assert payload["stage"] == "needs_user"
     assert payload["registered_user_id"] is None
+
+
+def test_onboarding_status_needs_ics_after_user_registration(client) -> None:
+    init = client.post(
+        "/v1/user",
+        headers={"X-API-Key": "test-api-key"},
+        json={"notify_email": "student@example.com"},
+    )
+    assert init.status_code in {200, 201}
+
+    response = client.get("/v1/onboarding/status", headers={"X-API-Key": "test-api-key"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["stage"] == "needs_ics"
+    assert payload["registered_user_id"] is not None
 
 
 def test_onboarding_register_success_marks_ready(client, monkeypatch) -> None:
@@ -49,6 +58,7 @@ def test_onboarding_register_success_marks_ready(client, monkeypatch) -> None:
     body = register.json()
     assert body["status"] == "ready"
     assert body["is_baseline_sync"] is True
+    assert "term_id" not in body
 
     status_response = client.get("/v1/onboarding/status", headers={"X-API-Key": "test-api-key"})
     assert status_response.status_code == 200

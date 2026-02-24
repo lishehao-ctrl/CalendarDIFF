@@ -58,7 +58,7 @@ export function InputSection({
               <CalendarDays className="h-4 w-4 text-accent" />
               Add Calendar Input
             </CardTitle>
-            <CardDescription>Paste an ICS URL and optionally attach it to one term.</CardDescription>
+            <CardDescription>Paste an ICS URL. Optional term binding is an advanced filter, not required for setup.</CardDescription>
           </CardHeader>
           <CardContent>
             <form className="space-y-4" onSubmit={onCreateCalendarInput}>
@@ -75,9 +75,9 @@ export function InputSection({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="source-term">Semester (optional)</Label>
+                <Label htmlFor="source-term">Term (advanced, optional)</Label>
                 <Select id="source-term" value={sourceTermId} onChange={(event) => onSourceTermIdChange(event.target.value)}>
-                  <option value="">Unassigned</option>
+                  <option value="">Primary (no term binding)</option>
                   {activeUserTerms.map((term) => (
                     <option key={term.id} value={String(term.id)}>
                       {term.label} ({term.code})

@@ -15,10 +15,6 @@ import { OnboardingStatus } from "@/lib/types";
 export default function OnboardingPage() {
   const config = useMemo(() => getRuntimeConfig(), []);
   const [notifyEmail, setNotifyEmail] = useState("");
-  const [termCode, setTermCode] = useState("WI26");
-  const [termLabel, setTermLabel] = useState("Winter 2026");
-  const [termStartsOn, setTermStartsOn] = useState("2026-01-06");
-  const [termEndsOn, setTermEndsOn] = useState("2026-03-21");
   const [icsUrl, setIcsUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -53,8 +49,8 @@ export default function OnboardingPage() {
     if (!config.apiKey || busy) {
       return;
     }
-    if (!notifyEmail.trim() || !termCode.trim() || !termLabel.trim() || !termStartsOn.trim() || !termEndsOn.trim() || !icsUrl.trim()) {
-      setError("notify_email, first term, and ICS URL are required.");
+    if (!notifyEmail.trim() || !icsUrl.trim()) {
+      setError("notify_email and ICS URL are required.");
       return;
     }
 
@@ -63,12 +59,6 @@ export default function OnboardingPage() {
     try {
       await registerOnboarding(config, {
         notify_email: notifyEmail.trim(),
-        term: {
-          code: termCode.trim(),
-          label: termLabel.trim(),
-          starts_on: termStartsOn.trim(),
-          ends_on: termEndsOn.trim(),
-        },
         ics: {
           url: icsUrl.trim(),
         },
@@ -91,7 +81,7 @@ export default function OnboardingPage() {
               Onboarding Required
             </CardTitle>
             <CardDescription>
-              Complete notify email + first term + first ICS baseline before entering Inputs workspace.
+              Bind notify email + first ICS URL, then run the initial baseline sync before entering Inputs workspace.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -112,39 +102,6 @@ export default function OnboardingPage() {
                     placeholder="student@example.com"
                     required
                   />
-                </div>
-                <div className="rounded-2xl border border-line bg-slate-50/70 p-4">
-                  <div className="mb-3 text-sm font-medium text-ink">First Term</div>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="onboarding-term-code">Term Code</Label>
-                      <Input id="onboarding-term-code" value={termCode} onChange={(event) => setTermCode(event.target.value)} required />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="onboarding-term-label">Term Label</Label>
-                      <Input id="onboarding-term-label" value={termLabel} onChange={(event) => setTermLabel(event.target.value)} required />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="onboarding-term-start">Starts On</Label>
-                      <Input
-                        id="onboarding-term-start"
-                        type="date"
-                        value={termStartsOn}
-                        onChange={(event) => setTermStartsOn(event.target.value)}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="onboarding-term-end">Ends On</Label>
-                      <Input
-                        id="onboarding-term-end"
-                        type="date"
-                        value={termEndsOn}
-                        onChange={(event) => setTermEndsOn(event.target.value)}
-                        required
-                      />
-                    </div>
-                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="onboarding-ics-url">ICS URL</Label>
@@ -171,7 +128,7 @@ export default function OnboardingPage() {
                 ) : null}
                 <Button type="submit" disabled={busy}>
                   {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Register and Run Baseline
+                  Register and Run Initial Baseline
                 </Button>
               </form>
             )}

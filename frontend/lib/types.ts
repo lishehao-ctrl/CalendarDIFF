@@ -229,7 +229,7 @@ export type DashboardUser = {
   terms: UserTerm[];
 };
 
-export type OnboardingStage = "needs_user" | "needs_term" | "needs_ics" | "needs_baseline" | "ready";
+export type OnboardingStage = "needs_user" | "needs_ics" | "needs_baseline" | "ready";
 
 export type OnboardingStatus = {
   stage: OnboardingStage;
@@ -241,12 +241,6 @@ export type OnboardingStatus = {
 
 export type OnboardingRegisterRequest = {
   notify_email: string;
-  term: {
-    code: string;
-    label: string;
-    starts_on: string;
-    ends_on: string;
-  };
   ics: {
     url: string;
   };
@@ -255,7 +249,6 @@ export type OnboardingRegisterRequest = {
 export type OnboardingRegisterResponse = {
   status: "ready";
   user_id: number;
-  term_id: number;
   input_id: number;
   is_baseline_sync: boolean;
   changes_created: number;

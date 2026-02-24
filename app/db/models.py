@@ -202,7 +202,7 @@ class Input(Base):
         if self.type == InputType.EMAIL:
             account = (self.gmail_account_email or "").strip()
             return f"Gmail · {account}" if account else f"Gmail · input-{self.id}"
-        term_label = self.user_term.label if self.user_term is not None else "Unassigned"
+        term_label = self.user_term.label if self.user_term is not None else "Primary"
         return f"Calendar · {term_label}"
 
     # Compatibility alias for still-migrating call sites/tests.

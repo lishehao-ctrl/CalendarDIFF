@@ -79,7 +79,7 @@ export function useDashboardData() {
   const [taskBusy, setTaskBusy] = useState(false);
 
   const [changeSourceTypeFilter, setChangeSourceTypeFilter] = useState<"all" | "email" | "ics">("all");
-  const [feedTermScope, setFeedTermScope] = useState<"current" | "all" | "term">("current");
+  const [feedTermScope, setFeedTermScope] = useState<"current" | "all" | "term">("all");
   const [feedTermId, setFeedTermId] = useState<number | null>(null);
 
   const [sourceUrl, setSourceUrl] = useState("");

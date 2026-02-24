@@ -70,10 +70,9 @@ Core tables:
 ### 4.1.1 Onboarding Contract
 
 1. `GET /v1/onboarding/status` returns:
-   - `needs_user | needs_term | needs_ics | needs_baseline | ready`
+   - `needs_user | needs_ics | needs_baseline | ready`
 2. `POST /v1/onboarding/register` performs in sequence:
    - register user (`notify_email`)
-   - upsert first `user_term`
    - upsert first ICS input
    - run immediate baseline sync
 3. `users.onboarding_completed_at` is written only when baseline sync succeeds.
@@ -95,7 +94,7 @@ ICS path:
 3. parse + diff against canonical events
 4. create `changes` and queue notifications
 5. for each ICS change, assign `changes.user_term_id` by event local date -> matching `user_terms` window
-6. first run in a newly active term uses auto-silent baseline:
+6. first successful ICS sync is baseline-first (no alert), and first run in a newly active term uses auto-silent baseline when terms exist:
    - if `(input_id, term_id)` has no baseline marker, suppress current term candidate changes
    - persist marker in `input_term_baselines`
    - subsequent runs in same term emit normal diff/notify
@@ -159,6 +158,7 @@ Within one user:
 1. Feed term fields (`term_id`, `term_code`, `term_label`, `term_scope`) are derived from `Change.user_term_id`.
 2. `Input.user_term_id` remains an input binding hint, not a historical attribution source.
 3. This prevents cross-term history drift when one ICS input is reused across terms.
+4. `term_scope=current` falls back to `all` behavior when there is no active term.
 
 ## 8) Structural Notes
 

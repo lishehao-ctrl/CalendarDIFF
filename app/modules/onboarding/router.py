@@ -33,10 +33,6 @@ def post_register(payload: OnboardingRegisterRequest, db: Session = Depends(get_
         result = register_onboarding(
             db,
             notify_email=payload.notify_email,
-            term_code=payload.term.code,
-            term_label=payload.term.label,
-            term_starts_on=payload.term.starts_on,
-            term_ends_on=payload.term.ends_on,
             ics_url=str(payload.ics.url),
         )
     except OnboardingRegisterError as exc:
@@ -46,7 +42,6 @@ def post_register(payload: OnboardingRegisterRequest, db: Session = Depends(get_
     return OnboardingRegisterResponse(
         status="ready",
         user_id=result.user_id,
-        term_id=result.term_id,
         input_id=result.input_id,
         is_baseline_sync=result.is_baseline_sync,
         changes_created=result.changes_created,
