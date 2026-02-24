@@ -46,8 +46,8 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 - `http://localhost:8000/ui`
 - root UI routing:
-  - uninitialized user -> `/ui/onboarding`
-  - initialized user -> `/ui/inputs`
+  - onboarding `stage != ready` -> `/ui/onboarding`
+  - onboarding `stage = ready` -> `/ui/inputs`
 
 Important:
 
@@ -155,22 +155,40 @@ The input model is user-only (`user + inputs`):
 3. Calendar notifications can be delayed by user-level window (`calendar_delay_seconds`, default `120`).
 4. No cross-input dedup is applied (email and calendar changes are both preserved for traceability).
 
-### User APIs
+### Onboarding + User APIs
 
-- `POST /v1/user` (create/initialize with required `notify_email`)
+- `GET /v1/onboarding/status`
+- `POST /v1/onboarding/register` (required fields: `notify_email + first term + first ICS URL`)
+- `POST /v1/user` (create/initialize notify-only user row, mainly for compatibility/ops)
 - `GET /v1/user`
 - `PATCH /v1/user` (edit `notify_email`, `calendar_delay_seconds`)
 - `POST /v1/user/terms`
 - `GET /v1/user/terms`
 - `PATCH /v1/user/terms/{term_id}`
 
-Initialization contract:
+Onboarding completion contract:
 
-1. `GET /v1/user` returns `404` with `detail.code=user_not_initialized` until user setup is completed.
-2. `POST /v1/user` accepts only:
-   - `{ "notify_email": "student@example.com" }`
-3. `PATCH /v1/user` rejects clearing `notify_email`.
-4. User-dependent endpoints return `409` with `detail.code=user_not_initialized` before setup.
+1. A user is **registered** when `notify_email` is valid.
+2. A user is **onboarded** only when:
+   - `notify_email` valid
+   - first term exists
+   - first ICS input exists
+   - first ICS baseline sync succeeds
+3. `/v1/onboarding/status` stages:
+   - `needs_user | needs_term | needs_ics | needs_baseline | ready`
+4. `POST /v1/onboarding/register` writes `users.onboarding_completed_at` only after successful baseline sync.
+5. Gate errors:
+   - `user_not_initialized` (not registered)
+   - `user_onboarding_incomplete` (registered, not onboarded)
+6. `PATCH /v1/user` rejects clearing `notify_email`.
+7. Protected endpoints return `409` before onboarding is ready:
+   - `/v1/feed`
+   - `/v1/inputs*`
+   - `/v1/inputs/email/gmail/oauth/start`
+   - `/v1/notification_prefs*`
+   - `/v1/notifications/send_digest_now`
+   - `/v1/dev/inject_notify`
+   - `/v1/user/terms*`
 
 ### Input Layer policy (fixed)
 
@@ -186,19 +204,28 @@ Initialization contract:
   - Query: `input_id?`, `view=all|unread`, `input_types=email,ics`, `term_scope=current|all|term`, `term_id?`, `limit`, `offset`
   - Ordered by: `priority_rank ASC (email first)`, then `detected_at DESC`, then `id DESC`
   - Extra fields: `input_type`, `term_id`, `term_code`, `term_label`, `term_scope`, `priority_rank`, `priority_label`, `notification_state`, `deliver_after`
+  - Term attribution is **change-level**:
+    - `term_*` comes from `changes.user_term_id -> user_terms`
+    - no longer derived from `inputs.user_term_id`
+  - ICS change term attribution uses event start time in user timezone (`user_notification_prefs.timezone`, fallback `UTC`)
+  - New-term first-run behavior:
+    - if `(input_id, term_id)` has no baseline record, first candidate change batch is silently baselined
+    - baseline record stored in `input_term_baselines`
+    - subsequent runs in same term emit normal diff/notify
   - Old/New summary times in UI are rendered in the viewer's local timezone.
 
 ### UI information architecture
 
 1. `/ui` -> onboarding gate:
-   - no initialized user: `/ui/onboarding`
-   - initialized user: `/ui/inputs`
-2. `/ui/onboarding` -> create user with one required field: `notify_email`.
+   - `GET /v1/onboarding/status` then route by stage
+   - `stage=ready` -> `/ui/inputs`
+   - otherwise -> `/ui/onboarding`
+2. `/ui/onboarding` -> submit `notify_email + term + ics.url` to `POST /v1/onboarding/register`.
 3. `/ui/inputs` -> add input sources (Calendar/Gmail).
 4. `/ui/processing` -> health, manual sync, ICS rename management.
-5. `/ui/feed` -> aggregated change feed (EMAIL > Calendar ordering); uninitialized direct access redirects to onboarding.
-6. `/ui/runs?input_id=<id>` -> input run timeline and refresh timestamp; uninitialized direct access redirects to onboarding.
-7. `/ui/dev` -> dev-only inject tool (enabled only when `APP_ENV=dev` and `ENABLE_DEV_ENDPOINTS=true`); uninitialized direct access redirects to onboarding.
+5. `/ui/feed` -> aggregated change feed (EMAIL > Calendar ordering); onboarding-incomplete direct access redirects to onboarding.
+6. `/ui/runs?input_id=<id>` -> input run timeline and refresh timestamp; onboarding-incomplete direct access redirects to onboarding.
+7. `/ui/dev` -> dev-only inject tool (enabled only when `APP_ENV=dev` and `ENABLE_DEV_ENDPOINTS=true`); onboarding-incomplete direct access redirects to onboarding.
 
 ## Notification Digest Schedule
 
@@ -301,9 +328,9 @@ Important:
     - `PATCH /v1/inputs/{input_id}/changes/{change_id}/viewed`
     - `GET /v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/download`
     - `GET /v1/inputs/{input_id}/snapshots`
-12. Before user onboarding, protected endpoints return:
+12. Before onboarding is ready, protected endpoints return:
     - status `409`
-    - `detail.code = "user_not_initialized"`
+    - `detail.code = "user_not_initialized"` or `"user_onboarding_incomplete"`
 
 ## More Docs
 

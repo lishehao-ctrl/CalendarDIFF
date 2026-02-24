@@ -81,7 +81,7 @@ python3 -m http.server 18080
 
 ---
 
-## 4) Configure User + Input and Run Baseline Sync (No Email Expected)
+## 4) Onboarding Register + Baseline Sync (No Email Expected)
 
 ### 4.1 设置请求变量
 
@@ -90,21 +90,40 @@ export BASE_URL="http://localhost:8000"
 export API_KEY="<APP_API_KEY>"
 ```
 
-### 4.2 设置 user 通知参数（可选）
+### 4.2 完成 onboarding register（必填 notify_email + first term + ICS URL）
 
-首次运行或 reset DB 后，先完成 user onboarding（必填 `notify_email`）：
+首次运行或 reset DB 后，调用一体化注册接口并直接获得 `input_id`：
 
 ```bash
-curl -sS -X POST "${BASE_URL}/v1/user" \
-  -H "X-API-Key: ${API_KEY}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "notify_email": "notify@example.com"
-  }' \
-  | python3 -m json.tool
+REGISTER_RESPONSE=$(
+  curl -sS -X POST "${BASE_URL}/v1/onboarding/register" \
+    -H "X-API-Key: ${API_KEY}" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "notify_email": "notify@example.com",
+      "term": {
+        "code": "WI26",
+        "label": "Winter 2026",
+        "starts_on": "2026-01-06",
+        "ends_on": "2026-03-21"
+      },
+      "ics": {
+        "url": "http://127.0.0.1:18080/test.ics"
+      }
+    }'
+)
+echo "${REGISTER_RESPONSE}" | python3 -m json.tool
+INPUT_ID=$(echo "${REGISTER_RESPONSE}" | python3 -c 'import sys,json; print(json.load(sys.stdin)["input_id"])')
+echo "INPUT_ID=${INPUT_ID}"
 ```
 
-然后按需更新其它 user 设置（可选）：
+期望：
+
+1. `status=ready`
+2. `is_baseline_sync=true`
+3. `changes_created=0`
+
+如需调整 user 资料（可选），继续使用 `PATCH /v1/user`：
 
 ```bash
 curl -sS -X PATCH "${BASE_URL}/v1/user" \
@@ -117,36 +136,21 @@ curl -sS -X PATCH "${BASE_URL}/v1/user" \
   | python3 -m json.tool
 ```
 
-### 4.3 创建 ICS input（不传 interval/notify）
+### 4.3 验证 onboarding status 为 ready
 
 ```bash
-INPUT_ID=$(
-  curl -sS -X POST "${BASE_URL}/v1/inputs/ics" \
-    -H "X-API-Key: ${API_KEY}" \
-    -H "Content-Type: application/json" \
-    -d '{
-      "url": "http://127.0.0.1:18080/test.ics"
-    }' \
-  | python3 -c 'import sys, json; print(json.load(sys.stdin)["id"])'
-)
-echo "INPUT_ID=${INPUT_ID}"
-```
-
-### 4.4 第一次手动 sync（baseline-first）
-
-```bash
-curl -sS -X POST "${BASE_URL}/v1/inputs/${INPUT_ID}/sync" \
+curl -sS "${BASE_URL}/v1/onboarding/status" \
   -H "X-API-Key: ${API_KEY}" \
   | python3 -m json.tool
 ```
 
 期望：
 
-1. `is_baseline_sync=true`
-2. `changes_created=0`
-3. `email_sent=false`
+1. `stage=ready`
+2. `registered_user_id` 非空
+3. `first_input_id` 为上一步返回的 `INPUT_ID`
 
-### 4.5 用 API 验证 baseline 无邮件
+### 4.4 用 API 验证 baseline 无邮件
 
 查看 `GET /v1/inputs`（重点看 `last_email_sent_at`）：
 
@@ -167,7 +171,7 @@ curl -sS "${BASE_URL}/v1/inputs/${INPUT_ID}/runs?limit=20" \
 期望：
 
 1. `last_email_sent_at` 仍为 `null`
-2. 最新 run `status=NO_CHANGE`
+2. 最新 run `status=NO_CHANGE`（来自 onboarding 触发的 baseline run）
 
 ---
 
