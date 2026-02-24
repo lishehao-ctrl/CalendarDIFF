@@ -17,7 +17,11 @@ def test_email_input_first_sync_is_baseline_without_notification(client, db_sess
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")
     get_settings.cache_clear()
 
-    user = User(email="owner@example.com", notify_email="student@example.com")
+    user = User(
+        email="owner@example.com",
+        notify_email="student@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
+    )
     db_session.add(user)
     db_session.flush()
 
@@ -62,7 +66,11 @@ def test_email_input_changed_sync_creates_changes_and_deduplicates(client, db_se
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")
     get_settings.cache_clear()
 
-    user = User(email="owner@example.com", notify_email="student@example.com")
+    user = User(
+        email="owner@example.com",
+        notify_email="student@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
+    )
     db_session.add(user)
     db_session.flush()
 
@@ -146,7 +154,11 @@ def test_email_input_history_expired_resets_cursor_without_notifying(client, db_
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")
     get_settings.cache_clear()
 
-    user = User(email="owner@example.com", notify_email="student@example.com")
+    user = User(
+        email="owner@example.com",
+        notify_email="student@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
+    )
     db_session.add(user)
     db_session.flush()
 

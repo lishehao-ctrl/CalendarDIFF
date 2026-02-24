@@ -15,7 +15,13 @@ from app.modules.inputs.service import (
     parse_gmail_oauth_state,
 )
 from app.modules.sync.gmail_client import GmailClient
-from app.modules.users.service import UserNotInitializedError, require_initialized_user, user_not_initialized_detail
+from app.modules.users.service import (
+    UserNotInitializedError,
+    UserOnboardingIncompleteError,
+    require_onboarded_user,
+    user_onboarding_incomplete_detail,
+    user_not_initialized_detail,
+)
 
 router = APIRouter(tags=["oauth"])
 
@@ -41,7 +47,7 @@ def gmail_oauth_callback(
 
     gmail_client = GmailClient()
     try:
-        user = require_initialized_user(db)
+        user = require_onboarded_user(db)
         tokens = gmail_client.exchange_code(code=code)
         profile = gmail_client.get_profile(access_token=tokens.access_token)
         result = create_gmail_input_from_oauth(
@@ -58,6 +64,8 @@ def gmail_oauth_callback(
         )
     except UserNotInitializedError:
         return _redirect_with_status("error", message=user_not_initialized_detail()["message"])
+    except UserOnboardingIncompleteError:
+        return _redirect_with_status("error", message=user_onboarding_incomplete_detail()["message"])
     except Exception as exc:
         db.rollback()
         return _redirect_with_status("error", message=sanitize_log_message(str(exc)))

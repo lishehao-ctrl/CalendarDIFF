@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import httpx
 from sqlalchemy import Select, case, func, or_, select
@@ -16,6 +17,7 @@ from app.db.models import (
     Change,
     ChangeType,
     Event,
+    InputTermBaseline,
     Snapshot,
     SnapshotEvent,
     Input,
@@ -23,6 +25,8 @@ from app.db.models import (
     SyncRun,
     SyncRunStatus,
     SyncTriggerType,
+    UserNotificationPrefs,
+    UserTerm,
 )
 from app.modules.diff.engine import EventState, compute_diff
 from app.modules.evidence.store import save_ics
@@ -55,6 +59,15 @@ class SyncRunResult:
     run_id: int | None = None
     trigger_type: SyncTriggerType = SyncTriggerType.SCHEDULER
     notification_state: str | None = None
+
+
+@dataclass(frozen=True)
+class UserTermContext:
+    timezone_name: str
+    timezone: ZoneInfo
+    local_today: date
+    terms: list[UserTerm]
+    active_term_ids: set[int]
 
 
 def list_due_sources(db: Session, now: datetime | None = None) -> list[Input]:
@@ -422,9 +435,47 @@ def sync_source(
 
         change_rows: list[Change] = []
         detected_at = datetime.now(timezone.utc)
-        for payload in diff_result.changes:
+        term_context = _build_user_term_context(db, user_id=input.user_id, now=detected_at)
+        payloads_with_terms = [
+            (payload, _resolve_change_user_term_id(payload, context=term_context))
+            for payload in diff_result.changes
+        ]
+        silent_term_ids = _resolve_silent_baseline_term_ids(
+            db,
+            input_id=input.id,
+            payloads_with_terms=payloads_with_terms,
+            context=term_context,
+        )
+        for term_id in sorted(silent_term_ids):
+            db.add(
+                InputTermBaseline(
+                    input_id=input.id,
+                    user_term_id=term_id,
+                    first_snapshot_id=snapshot.id,
+                    established_at=detected_at,
+                    mode="auto_silent",
+                )
+            )
+
+        suppressed_count = sum(
+            1
+            for _, attributed_term_id in payloads_with_terms
+            if attributed_term_id is not None and attributed_term_id in silent_term_ids
+        )
+        if suppressed_count > 0:
+            logger.info(
+                "applied silent term baseline input_id=%s term_ids=%s suppressed_changes=%s",
+                input.id,
+                ",".join(str(item) for item in sorted(silent_term_ids)),
+                suppressed_count,
+            )
+
+        for payload, attributed_term_id in payloads_with_terms:
+            if attributed_term_id is not None and attributed_term_id in silent_term_ids:
+                continue
             change = Change(
                 input_id=input.id,
+                user_term_id=attributed_term_id,
                 event_uid=payload.event_uid,
                 change_type=payload.change_type,
                 detected_at=detected_at,
@@ -990,6 +1041,125 @@ def _resolve_gmail_access_token(input: Input, gmail_client: GmailClient) -> str:
         input.encrypted_refresh_token = encrypt_secret(refreshed.refresh_token)
     input.access_token_expires_at = refreshed.expires_at
     return refreshed.access_token
+
+
+def _build_user_term_context(db: Session, *, user_id: int, now: datetime) -> UserTermContext:
+    timezone_name = db.scalar(
+        select(UserNotificationPrefs.timezone)
+        .where(UserNotificationPrefs.user_id == user_id)
+        .limit(1)
+    )
+    normalized_tz = timezone_name.strip() if isinstance(timezone_name, str) and timezone_name.strip() else "UTC"
+    timezone_obj = _resolve_timezone_or_utc(normalized_tz)
+    local_today = now.astimezone(timezone_obj).date()
+
+    terms = db.scalars(
+        select(UserTerm)
+        .where(UserTerm.user_id == user_id)
+        .order_by(UserTerm.starts_on.asc(), UserTerm.id.asc())
+    ).all()
+    active_term_ids = {
+        term.id
+        for term in terms
+        if term.is_active and term.starts_on <= local_today <= term.ends_on
+    }
+    return UserTermContext(
+        timezone_name=normalized_tz,
+        timezone=timezone_obj,
+        local_today=local_today,
+        terms=terms,
+        active_term_ids=active_term_ids,
+    )
+
+
+def _resolve_change_user_term_id(payload: object, *, context: UserTermContext) -> int | None:
+    event_start = _read_change_event_start_at_utc(payload)
+    if event_start is None:
+        return None
+    local_date = event_start.astimezone(context.timezone).date()
+    matched_terms = [
+        term for term in context.terms if term.starts_on <= local_date <= term.ends_on
+    ]
+    if not matched_terms:
+        return None
+    matched_terms.sort(key=lambda term: (term.starts_on, term.id))
+    if len(matched_terms) > 1:
+        logger.warning(
+            "multiple term matches for change event_uid=%s local_date=%s timezone=%s",
+            getattr(payload, "event_uid", "unknown"),
+            local_date.isoformat(),
+            context.timezone_name,
+        )
+    return matched_terms[0].id
+
+
+def _read_change_event_start_at_utc(payload: object) -> datetime | None:
+    change_type = getattr(payload, "change_type", None)
+    before_json = getattr(payload, "before_json", None)
+    after_json = getattr(payload, "after_json", None)
+
+    primary = before_json if change_type == ChangeType.REMOVED else after_json
+    secondary = after_json if change_type == ChangeType.REMOVED else before_json
+
+    for candidate in (primary, secondary):
+        if not isinstance(candidate, dict):
+            continue
+        parsed = _parse_iso_datetime(candidate.get("start_at_utc"))
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _resolve_silent_baseline_term_ids(
+    db: Session,
+    *,
+    input_id: int,
+    payloads_with_terms: list[tuple[object, int | None]],
+    context: UserTermContext,
+) -> set[int]:
+    if not context.active_term_ids:
+        return set()
+
+    candidate_term_ids = {
+        term_id
+        for _, term_id in payloads_with_terms
+        if term_id is not None and term_id in context.active_term_ids
+    }
+    if not candidate_term_ids:
+        return set()
+
+    existing_term_ids = set(
+        db.scalars(
+            select(InputTermBaseline.user_term_id).where(
+                InputTermBaseline.input_id == input_id,
+                InputTermBaseline.user_term_id.in_(candidate_term_ids),
+            )
+        ).all()
+    )
+    return {term_id for term_id in candidate_term_ids if term_id not in existing_term_ids}
+
+
+def _parse_iso_datetime(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return _as_utc(value)
+    if not isinstance(value, str):
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+    normalized = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    return _as_utc(parsed)
+
+
+def _resolve_timezone_or_utc(name: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(name)
+    except Exception:
+        return ZoneInfo("UTC")
 
 
 def _resolve_gmail_label_id(label_name: str, labels) -> str | None:

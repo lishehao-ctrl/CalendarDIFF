@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, case, select
@@ -17,10 +18,17 @@ from app.db.models import (
     NotificationChannel,
     NotificationStatus,
     UserTerm,
+    UserNotificationPrefs,
 )
 from app.db.session import get_db
 from app.modules.changes.schemas import ChangeFeedResponse, ChangeResponse, ChangeSummary, ChangeSummarySide
-from app.modules.users.service import UserNotInitializedError, require_initialized_user, user_not_initialized_detail
+from app.modules.users.service import (
+    UserNotInitializedError,
+    UserOnboardingIncompleteError,
+    require_onboarded_user,
+    user_onboarding_incomplete_detail,
+    user_not_initialized_detail,
+)
 
 router = APIRouter(prefix="/v1", tags=["changes"], dependencies=[Depends(require_api_key)])
 SUMMARY_TIME_FIELDS = ("start_at_utc", "internal_date", "due_at", "end_at_utc")
@@ -49,13 +57,19 @@ def list_feed(
         raise HTTPException(status_code=422, detail="term_id is required when term_scope=term")
 
     try:
-        current_user_id = require_initialized_user(db).id
+        current_user_id = require_onboarded_user(db).id
     except UserNotInitializedError as exc:
         raise HTTPException(status_code=409, detail=user_not_initialized_detail()) from exc
+    except UserOnboardingIncompleteError as exc:
+        raise HTTPException(status_code=409, detail=user_onboarding_incomplete_detail()) from exc
 
     current_term_id: int | None = None
     if normalized_term_scope == "current":
-        current_term = _resolve_current_user_term(db, user_id=current_user_id, today=date.today())
+        current_term = _resolve_current_user_term(
+            db,
+            user_id=current_user_id,
+            today=_resolve_user_local_today(db, user_id=current_user_id),
+        )
         if current_term is not None:
             current_term_id = current_term.id
 
@@ -65,7 +79,7 @@ def list_feed(
         select(Change, Input, UserTerm, Notification)
         .options(joinedload(Change.before_snapshot), joinedload(Change.after_snapshot))
         .join(Input, Change.input_id == Input.id)
-        .outerjoin(UserTerm, Input.user_term_id == UserTerm.id)
+        .outerjoin(UserTerm, Change.user_term_id == UserTerm.id)
         .outerjoin(
             Notification,
             and_(
@@ -83,12 +97,15 @@ def list_feed(
     if view == "unread":
         stmt = stmt.where(Change.viewed_at.is_(None))
     if normalized_term_scope == "term" and term_id is not None:
-        stmt = stmt.where(Input.user_term_id == term_id)
-    elif normalized_term_scope == "current" and current_term_id is not None:
-        stmt = stmt.where(
-            ((Input.type == InputType.EMAIL) & (Input.user_term_id.is_(None)))
-            | ((Input.type == InputType.ICS) & (Input.user_term_id == current_term_id))
-        )
+        stmt = stmt.where(Change.user_term_id == term_id)
+    elif normalized_term_scope == "current":
+        if current_term_id is None:
+            stmt = stmt.where((Input.type == InputType.EMAIL) & (Change.user_term_id.is_(None)))
+        else:
+            stmt = stmt.where(
+                ((Input.type == InputType.EMAIL) & (Change.user_term_id.is_(None)))
+                | ((Input.type == InputType.ICS) & (Change.user_term_id == current_term_id))
+            )
 
     stmt = stmt.order_by(priority_rank_expr.asc(), Change.detected_at.desc(), Change.id.desc()).offset(offset).limit(applied_limit)
     rows = db.execute(stmt).all()
@@ -104,10 +121,10 @@ def list_feed(
             ChangeFeedResponse(
                 **base.model_dump(),
                 input_type=input.type.value,
-                term_id=input.user_term_id,
+                term_id=change.user_term_id,
                 term_code=term.code if term is not None else None,
                 term_label=term.label if term is not None else None,
-                term_scope="term" if input.user_term_id is not None else "global",
+                term_scope="term" if change.user_term_id is not None else "global",
                 priority_rank=priority_rank,
                 priority_label=priority_label,
                 notification_state=notification_state,
@@ -259,3 +276,17 @@ def _resolve_current_user_term(db: Session, *, user_id: int, today: date) -> Use
         return past[0]
 
     return None
+
+
+def _resolve_user_local_today(db: Session, *, user_id: int) -> date:
+    timezone_name = db.scalar(
+        select(UserNotificationPrefs.timezone)
+        .where(UserNotificationPrefs.user_id == user_id)
+        .limit(1)
+    )
+    normalized = timezone_name.strip() if isinstance(timezone_name, str) and timezone_name.strip() else "UTC"
+    try:
+        zone = ZoneInfo(normalized)
+    except Exception:
+        zone = ZoneInfo("UTC")
+    return datetime.now(timezone.utc).astimezone(zone).date()

@@ -51,10 +51,30 @@ from app.modules.overrides.service import (
     upsert_course_override,
     upsert_task_override,
 )
-from app.modules.users.service import UserNotInitializedError, require_initialized_user, user_not_initialized_detail
+from app.modules.users.service import (
+    UserNotInitializedError,
+    UserOnboardingIncompleteError,
+    require_onboarded_user,
+    user_onboarding_incomplete_detail,
+    user_not_initialized_detail,
+)
 from app.modules.snapshots.schemas import SnapshotResponse
 
-router = APIRouter(prefix="/v1/inputs", tags=["inputs"], dependencies=[Depends(require_api_key)])
+
+def _require_onboarded_user_or_409(db: Session = Depends(get_db)) -> None:
+    try:
+        require_onboarded_user(db)
+    except UserNotInitializedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=user_not_initialized_detail()) from exc
+    except UserOnboardingIncompleteError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=user_onboarding_incomplete_detail()) from exc
+
+
+router = APIRouter(
+    prefix="/v1/inputs",
+    tags=["inputs"],
+    dependencies=[Depends(require_api_key), Depends(_require_onboarded_user_or_409)],
+)
 logger = logging.getLogger(__name__)
 
 
@@ -73,13 +93,11 @@ def create_input_from_ics(
     response: Response,
     db: Session = Depends(get_db),
 ) -> InputCreateResponse:
+    user = require_onboarded_user(db)
     try:
-        user = require_initialized_user(db)
         result = create_ics_input(db, user_id=user.id, payload=payload)
     except InputReplaceConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except UserNotInitializedError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=user_not_initialized_detail()) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
@@ -93,10 +111,7 @@ def start_input_gmail_oauth(
     payload: GmailOAuthStartRequest,
     db: Session = Depends(get_db),
 ) -> GmailOAuthStartResponse:
-    try:
-        require_initialized_user(db)
-    except UserNotInitializedError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=user_not_initialized_detail()) from exc
+    require_onboarded_user(db)
     try:
         result = build_gmail_oauth_start(
             label=payload.label,

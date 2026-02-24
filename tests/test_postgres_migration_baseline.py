@@ -95,6 +95,17 @@ def test_postgres_alembic_upgrade_head_bootstraps_current_schema(test_database_u
                         )
                     ).scalars()
                 )
+                users_cols = set(
+                    conn.execute(
+                        text(
+                            """
+                            SELECT column_name
+                            FROM information_schema.columns
+                            WHERE table_schema = 'public' AND table_name = 'users'
+                            """
+                        )
+                    ).scalars()
+                )
                 notifications_cols = set(
                     conn.execute(
                         text(
@@ -102,6 +113,17 @@ def test_postgres_alembic_upgrade_head_bootstraps_current_schema(test_database_u
                             SELECT column_name
                             FROM information_schema.columns
                             WHERE table_schema = 'public' AND table_name = 'notifications'
+                            """
+                        )
+                    ).scalars()
+                )
+                changes_cols = set(
+                    conn.execute(
+                        text(
+                            """
+                            SELECT column_name
+                            FROM information_schema.columns
+                            WHERE table_schema = 'public' AND table_name = 'changes'
                             """
                         )
                     ).scalars()
@@ -124,6 +146,17 @@ def test_postgres_alembic_upgrade_head_bootstraps_current_schema(test_database_u
                             SELECT indexname
                             FROM pg_indexes
                             WHERE schemaname = 'public' AND tablename = 'inputs'
+                            """
+                        )
+                    ).scalars()
+                )
+                changes_indexes = set(
+                    conn.execute(
+                        text(
+                            """
+                            SELECT indexname
+                            FROM pg_indexes
+                            WHERE schemaname = 'public' AND tablename = 'changes'
                             """
                         )
                     ).scalars()
@@ -182,11 +215,15 @@ def test_postgres_alembic_upgrade_head_bootstraps_current_schema(test_database_u
                 )
                 profiles_exists = conn.execute(text("SELECT to_regclass('public.profiles') IS NOT NULL")).scalar_one()
                 profile_terms_exists = conn.execute(text("SELECT to_regclass('public.profile_terms') IS NOT NULL")).scalar_one()
+                input_term_baselines_exists = conn.execute(
+                    text("SELECT to_regclass('public.input_term_baselines') IS NOT NULL")
+                ).scalar_one()
                 revision = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
         finally:
             engine.dispose()
 
         assert "notify_email" in inputs_cols
+        assert "onboarding_completed_at" in users_cols
         assert "identity_key" in inputs_cols
         assert "term_id" not in inputs_cols
         assert "user_term_id" in inputs_cols
@@ -213,12 +250,14 @@ def test_postgres_alembic_upgrade_head_bootstraps_current_schema(test_database_u
         assert "deliver_after" in notifications_cols
         assert "enqueue_reason" in notifications_cols
         assert "notified_at" in notifications_cols
+        assert "user_term_id" in changes_cols
         assert "status" in sync_runs_cols
         assert "changes_count" in sync_runs_cols
         assert "error_code" in sync_runs_cols
         assert "error_message" in sync_runs_cols
         assert "ix_inputs_due_lookup" in input_indexes
         assert "ix_inputs_user_term_id" in input_indexes
+        assert "ix_changes_user_term_id" in changes_indexes
         assert "ix_sync_runs_input_started_desc" in sync_run_indexes
         assert "ix_sync_runs_started_at" in sync_run_indexes
         assert "ix_sync_runs_status_started_at" in sync_run_indexes
@@ -226,9 +265,10 @@ def test_postgres_alembic_upgrade_head_bootstraps_current_schema(test_database_u
         assert any("interval_minutes" in definition and "= 15" in definition for definition in input_check_defs)
         assert profiles_exists is False
         assert profile_terms_exists is False
+        assert input_term_baselines_exists is True
         assert "uq_notifications_idempotency_key" in notification_constraints
         assert "uq_notifications_change_channel" in notification_constraints
-        assert revision == "0005_drop_profile_schema"
+        assert revision == "0006_onboarding_term_baselines"
     finally:
         _restore_runtime_env(runtime_env)
         _reset_runtime_state()
@@ -244,6 +284,7 @@ def test_source_api_works_after_postgres_migration(test_database_url: str) -> No
         _set_runtime_env(target_url)
         alembic_cfg = Config("alembic.ini")
         command.upgrade(alembic_cfg, "head")
+        engine = create_engine(target_url, future=True)
 
         app = create_app()
         with TestClient(app) as client:
@@ -254,6 +295,8 @@ def test_source_api_works_after_postgres_migration(test_database_url: str) -> No
                 json={"notify_email": "student@example.com"},
             )
             assert init_user_response.status_code == 201
+            with engine.begin() as conn:
+                conn.execute(text("UPDATE users SET onboarding_completed_at = now() WHERE id = 1"))
 
             create_response = client.post(
                 "/v1/inputs/ics",
@@ -272,6 +315,7 @@ def test_source_api_works_after_postgres_migration(test_database_url: str) -> No
             items = list_response.json()
             assert len(items) == 1
             assert items[0]["display_label"].startswith("Calendar")
+        engine.dispose()
     finally:
         _restore_runtime_env(runtime_env)
         _reset_runtime_state()

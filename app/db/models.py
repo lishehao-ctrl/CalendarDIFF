@@ -70,6 +70,7 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notify_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     calendar_delay_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=120, server_default="120")
+    onboarding_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     terms: Mapped[list[UserTerm]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -100,6 +101,11 @@ class UserTerm(Base):
 
     user: Mapped[User] = relationship(back_populates="terms")
     inputs: Mapped[list[Input]] = relationship(back_populates="user_term")
+    changes: Mapped[list[Change]] = relationship(back_populates="user_term")
+    input_baselines: Mapped[list[InputTermBaseline]] = relationship(
+        back_populates="user_term",
+        cascade="all, delete-orphan",
+    )
 
 
 class Input(Base):
@@ -155,6 +161,10 @@ class Input(Base):
     )
     task_overrides: Mapped[list[TaskOverride]] = relationship(back_populates="input", cascade="all, delete-orphan")
     sync_runs: Mapped[list[SyncRun]] = relationship(back_populates="input", cascade="all, delete-orphan")
+    term_baselines: Mapped[list[InputTermBaseline]] = relationship(
+        back_populates="input",
+        cascade="all, delete-orphan",
+    )
 
     # Keep constructor backward-compatible while removing persisted name fields.
     def __init__(self, **kwargs):  # type: ignore[no-untyped-def]
@@ -285,10 +295,14 @@ class SnapshotEvent(Base):
 
 class Change(Base):
     __tablename__ = "changes"
-    __table_args__ = (Index("ix_changes_input_detected_desc", "input_id", "detected_at"),)
+    __table_args__ = (
+        Index("ix_changes_input_detected_desc", "input_id", "detected_at"),
+        Index("ix_changes_user_term_id", "user_term_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     input_id: Mapped[int] = mapped_column(ForeignKey("inputs.id", ondelete="CASCADE"), nullable=False)
+    user_term_id: Mapped[int | None] = mapped_column(ForeignKey("user_terms.id", ondelete="SET NULL"), nullable=True)
     event_uid: Mapped[str] = mapped_column(String(255), nullable=False)
     change_type: Mapped[ChangeType] = mapped_column(
         SAEnum(ChangeType, name="change_type", native_enum=False),
@@ -311,6 +325,7 @@ class Change(Base):
     evidence_keys: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     input: Mapped[Input] = relationship(back_populates="changes")
+    user_term: Mapped[UserTerm | None] = relationship(back_populates="changes")
     before_snapshot: Mapped[Snapshot | None] = relationship(
         "Snapshot",
         foreign_keys=[before_snapshot_id],
@@ -322,6 +337,28 @@ class Change(Base):
         back_populates="changes_as_after",
     )
     notifications: Mapped[list[Notification]] = relationship(back_populates="change", cascade="all, delete-orphan")
+
+
+class InputTermBaseline(Base):
+    __tablename__ = "input_term_baselines"
+    __table_args__ = (
+        UniqueConstraint("input_id", "user_term_id", name="uq_input_term_baselines_input_term"),
+        Index("ix_input_term_baselines_input_term", "input_id", "user_term_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    input_id: Mapped[int] = mapped_column(ForeignKey("inputs.id", ondelete="CASCADE"), nullable=False)
+    user_term_id: Mapped[int] = mapped_column(ForeignKey("user_terms.id", ondelete="CASCADE"), nullable=False)
+    first_snapshot_id: Mapped[int | None] = mapped_column(
+        ForeignKey("snapshots.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    established_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    mode: Mapped[str] = mapped_column(String(32), nullable=False, default="auto_silent", server_default="auto_silent")
+
+    input: Mapped[Input] = relationship(back_populates="term_baselines")
+    user_term: Mapped[UserTerm] = relationship(back_populates="input_baselines")
+    first_snapshot: Mapped[Snapshot | None] = relationship("Snapshot")
 
 
 class SyncRun(Base):

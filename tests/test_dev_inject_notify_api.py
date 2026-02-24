@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from sqlalchemy import select
 
 from app.core.config import get_settings
-from app.db.models import Notification
+from app.db.models import Notification, User
 
 
 def test_dev_inject_notify_respects_gate(client, monkeypatch) -> None:
@@ -53,6 +55,10 @@ def test_dev_inject_notify_creates_digest_eligible_row(client, db_session, monke
         json={"notify_email": "student@example.com"},
     )
     assert init_user.status_code in {200, 201}
+    user = db_session.scalar(select(User).order_by(User.id.asc()).limit(1))
+    assert user is not None
+    user.onboarding_completed_at = datetime.now(timezone.utc)
+    db_session.commit()
 
     response = client.post(
         "/v1/dev/inject_notify",

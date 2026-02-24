@@ -1,20 +1,27 @@
 from __future__ import annotations
 
 import importlib
+from datetime import datetime, timezone
 
-from app.db.models import SyncRunStatus, SyncTriggerType
+from sqlalchemy import select
+
+from app.db.models import SyncRunStatus, SyncTriggerType, User
 from app.modules.sync.service import SyncRunResult
 
 inputs_router_module = importlib.import_module("app.modules.inputs.router")
 
 
-def _init_user(client) -> None:
+def _init_user(client, db_session) -> None:
     response = client.post(
         "/v1/user",
         headers={"X-API-Key": "test-api-key"},
         json={"notify_email": "student@example.com"},
     )
     assert response.status_code in {200, 201}
+    user = db_session.scalar(select(User).order_by(User.id.asc()).limit(1))
+    assert user is not None
+    user.onboarding_completed_at = datetime.now(timezone.utc)
+    db_session.commit()
 
 
 def test_inputs_require_initialized_user(client) -> None:
@@ -33,9 +40,9 @@ def test_inputs_require_initialized_user(client) -> None:
     assert feed_response.json()["detail"]["code"] == "user_not_initialized"
 
 
-def test_inputs_list_and_runs_endpoints(client) -> None:
+def test_inputs_list_and_runs_endpoints(client, db_session) -> None:
     headers = {"X-API-Key": "test-api-key"}
-    _init_user(client)
+    _init_user(client, db_session)
 
     create_response = client.post(
         "/v1/inputs/ics",
@@ -60,9 +67,9 @@ def test_inputs_list_and_runs_endpoints(client) -> None:
     assert isinstance(runs_response.json(), list)
 
 
-def test_input_sync_endpoint_uses_existing_manual_sync_flow(client, monkeypatch) -> None:
+def test_input_sync_endpoint_uses_existing_manual_sync_flow(client, db_session, monkeypatch) -> None:
     headers = {"X-API-Key": "test-api-key"}
-    _init_user(client)
+    _init_user(client, db_session)
 
     create_response = client.post(
         "/v1/inputs/ics",
@@ -107,9 +114,9 @@ def test_legacy_source_routes_are_removed(client) -> None:
     assert legacy_snapshots.status_code == 404
 
 
-def test_input_create_rejects_legacy_interval_or_notify_fields(client) -> None:
+def test_input_create_rejects_legacy_interval_or_notify_fields(client, db_session) -> None:
     headers = {"X-API-Key": "test-api-key"}
-    _init_user(client)
+    _init_user(client, db_session)
 
     with_interval = client.post(
         "/v1/inputs/ics",

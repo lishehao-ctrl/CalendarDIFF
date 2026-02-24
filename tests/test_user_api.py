@@ -89,15 +89,6 @@ def test_user_terms_require_initialized_user(client) -> None:
     )
     assert create_user.status_code == 201
 
-    create_term = client.post(
-        "/v1/user/terms",
-        headers=headers,
-        json={
-            "code": "WI26",
-            "label": "Winter 2026",
-            "starts_on": "2026-01-06",
-            "ends_on": "2026-03-21",
-            "is_active": True,
-        },
-    )
-    assert create_term.status_code == 201
+    list_after_register = client.get("/v1/user/terms", headers=headers)
+    assert list_after_register.status_code == 409
+    assert list_after_register.json()["detail"]["code"] == "user_onboarding_incomplete"

@@ -11,7 +11,13 @@ from app.db.session import get_db
 from app.modules.notify.digest_service import send_digest_for_slot
 from app.modules.notify.prefs_schemas import NotificationPrefsResponse, NotificationPrefsUpdateRequest
 from app.modules.notify.prefs_service import get_or_create_notification_prefs, update_notification_prefs
-from app.modules.users.service import UserNotInitializedError, require_initialized_user, user_not_initialized_detail
+from app.modules.users.service import (
+    UserNotInitializedError,
+    UserOnboardingIncompleteError,
+    require_onboarded_user,
+    user_onboarding_incomplete_detail,
+    user_not_initialized_detail,
+)
 
 router = APIRouter(prefix="/v1", tags=["notifications"], dependencies=[Depends(require_api_key)])
 
@@ -19,9 +25,11 @@ router = APIRouter(prefix="/v1", tags=["notifications"], dependencies=[Depends(r
 @router.get("/notification_prefs", response_model=NotificationPrefsResponse)
 def get_notification_prefs(db: Session = Depends(get_db)) -> NotificationPrefsResponse:
     try:
-        user = require_initialized_user(db)
+        user = require_onboarded_user(db)
     except UserNotInitializedError as exc:
         raise HTTPException(status_code=409, detail=user_not_initialized_detail()) from exc
+    except UserOnboardingIncompleteError as exc:
+        raise HTTPException(status_code=409, detail=user_onboarding_incomplete_detail()) from exc
     prefs = get_or_create_notification_prefs(db, user_id=user.id)
     return NotificationPrefsResponse(
         digest_enabled=prefs.digest_enabled,
@@ -33,9 +41,11 @@ def get_notification_prefs(db: Session = Depends(get_db)) -> NotificationPrefsRe
 @router.put("/notification_prefs", response_model=NotificationPrefsResponse)
 def put_notification_prefs(payload: NotificationPrefsUpdateRequest, db: Session = Depends(get_db)) -> NotificationPrefsResponse:
     try:
-        user = require_initialized_user(db)
+        user = require_onboarded_user(db)
     except UserNotInitializedError as exc:
         raise HTTPException(status_code=409, detail=user_not_initialized_detail()) from exc
+    except UserOnboardingIncompleteError as exc:
+        raise HTTPException(status_code=409, detail=user_onboarding_incomplete_detail()) from exc
     prefs = get_or_create_notification_prefs(db, user_id=user.id)
     try:
         updated = update_notification_prefs(
@@ -58,9 +68,11 @@ def put_notification_prefs(payload: NotificationPrefsUpdateRequest, db: Session 
 @router.post("/notifications/send_digest_now")
 def post_send_digest_now(db: Session = Depends(get_db)) -> dict[str, object]:
     try:
-        user = require_initialized_user(db)
+        user = require_onboarded_user(db)
     except UserNotInitializedError as exc:
         raise HTTPException(status_code=409, detail=user_not_initialized_detail()) from exc
+    except UserOnboardingIncompleteError as exc:
+        raise HTTPException(status_code=409, detail=user_onboarding_incomplete_detail()) from exc
     prefs = get_or_create_notification_prefs(db, user_id=user.id)
 
     current = datetime.now(timezone.utc)

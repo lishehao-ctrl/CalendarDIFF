@@ -92,7 +92,11 @@ def test_download_change_evidence_before_and_after_success(client, initialized_u
 
 
 def test_download_change_evidence_before_missing_returns_404(client, db_session: Session) -> None:
-    user = User(email="owner@example.com")
+    user = User(
+        email="owner@example.com",
+        notify_email="student@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
+    )
     db_session.add(user)
     db_session.flush()
 
@@ -138,7 +142,11 @@ def test_download_change_evidence_before_missing_returns_404(client, db_session:
 
 
 def test_download_change_evidence_missing_file_returns_404(client, db_session: Session) -> None:
-    user = User(email="owner@example.com")
+    user = User(
+        email="owner@example.com",
+        notify_email="student@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
+    )
     db_session.add(user)
     db_session.flush()
 
@@ -188,7 +196,11 @@ def test_download_change_evidence_path_traversal_returns_404(client, db_session:
     monkeypatch.setenv("EVIDENCE_DIR", "./evidence")
     get_settings.cache_clear()
 
-    user = User(email="owner@example.com")
+    user = User(
+        email="owner@example.com",
+        notify_email="student@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
+    )
     db_session.add(user)
     db_session.flush()
 

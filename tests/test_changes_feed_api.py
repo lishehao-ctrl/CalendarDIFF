@@ -12,6 +12,7 @@ from app.db.models import (
     Source,
     SourceType,
     User,
+    UserTerm,
 )
 
 
@@ -27,8 +28,23 @@ def _parse_utc(raw: str | None) -> datetime | None:
 def test_changes_feed_orders_email_before_calendar_and_exposes_notification_state(client, db_session) -> None:
     now = datetime.now(timezone.utc)
 
-    user = User(email="owner@example.com", notify_email="student-a@example.com", calendar_delay_seconds=120)
+    user = User(
+        email="owner@example.com",
+        notify_email="student-a@example.com",
+        calendar_delay_seconds=120,
+        onboarding_completed_at=now,
+    )
     db_session.add(user)
+    db_session.flush()
+    user_term = UserTerm(
+        user_id=user.id,
+        code="WI26",
+        label="Winter 2026",
+        starts_on=datetime(2026, 1, 1, tzinfo=timezone.utc).date(),
+        ends_on=datetime(2026, 12, 31, tzinfo=timezone.utc).date(),
+        is_active=True,
+    )
+    db_session.add(user_term)
     db_session.flush()
 
     ics_source = Source(
@@ -81,6 +97,7 @@ def test_changes_feed_orders_email_before_calendar_and_exposes_notification_stat
 
     calendar_change = Change(
         input_id=ics_source.id,
+        user_term_id=user_term.id,
         event_uid="calendar-change-1",
         change_type=ChangeType.DUE_CHANGED,
         detected_at=now,
@@ -174,8 +191,18 @@ def test_changes_feed_orders_email_before_calendar_and_exposes_notification_stat
 
 
 def test_changes_feed_source_type_filter(client, db_session) -> None:
-    user = User(email="owner@example.com", notify_email="student-a@example.com")
+    user = User(email="owner@example.com", notify_email="student-a@example.com", onboarding_completed_at=datetime.now(timezone.utc))
     db_session.add(user)
+    db_session.flush()
+    user_term = UserTerm(
+        user_id=user.id,
+        code="WI26",
+        label="Winter 2026",
+        starts_on=datetime(2026, 1, 1, tzinfo=timezone.utc).date(),
+        ends_on=datetime(2026, 12, 31, tzinfo=timezone.utc).date(),
+        is_active=True,
+    )
+    db_session.add(user_term)
     db_session.flush()
 
     ics_source = Source(
@@ -222,6 +249,7 @@ def test_changes_feed_source_type_filter(client, db_session) -> None:
         [
             Change(
                 input_id=ics_source.id,
+                user_term_id=user_term.id,
                 event_uid="ics-1",
                 change_type=ChangeType.DUE_CHANGED,
                 detected_at=now,

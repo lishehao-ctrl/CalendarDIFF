@@ -16,6 +16,7 @@ from app.modules.changes.router import router as changes_router
 from app.modules.health.router import router as health_router
 from app.modules.inputs.router import router as inputs_router
 from app.modules.notify.router import router as notify_router
+from app.modules.onboarding.router import router as onboarding_router
 from app.modules.oauth.router import router as oauth_router
 from app.modules.dev.router import router as dev_router
 from app.modules.users.router import router as users_router
@@ -105,6 +106,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(ProgrammingError, _database_exception_handler)
     app.include_router(health_router)
     app.include_router(users_router)
+    app.include_router(onboarding_router)
     app.include_router(changes_router)
     app.include_router(status_router)
     app.include_router(inputs_router)

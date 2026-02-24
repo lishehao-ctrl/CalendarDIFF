@@ -7,14 +7,16 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
+from app.db.models import User
 from app.db.session import reset_engine
 from app.main import create_app
+from datetime import datetime, timezone
 
 
 DEFAULT_TEST_DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/deadline_diff_test"
@@ -120,11 +122,15 @@ def client(configure_test_environment: None) -> Generator[TestClient, None, None
 
 
 @pytest.fixture()
-def initialized_user(client: TestClient) -> dict[str, object]:
+def initialized_user(client: TestClient, db_session: Session) -> dict[str, object]:
     response = client.post(
         "/v1/user",
         headers={"X-API-Key": "test-api-key"},
         json={"notify_email": "student@example.com"},
     )
     assert response.status_code in {200, 201}
+    user = db_session.scalar(select(User).order_by(User.id.asc()).limit(1))
+    assert user is not None
+    user.onboarding_completed_at = datetime.now(timezone.utc)
+    db_session.commit()
     return response.json()

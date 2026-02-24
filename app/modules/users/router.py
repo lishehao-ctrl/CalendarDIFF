@@ -16,14 +16,16 @@ from app.modules.users.schemas import (
 )
 from app.modules.users.service import (
     UserNotInitializedError,
+    UserOnboardingIncompleteError,
     create_or_initialize_user,
     create_user_term,
-    get_initialized_user,
+    get_registered_user,
     get_user_term_by_id,
     list_user_terms,
-    require_initialized_user,
+    require_onboarded_user,
     update_current_user,
     update_user_term,
+    user_onboarding_incomplete_detail,
     user_not_initialized_detail,
 )
 
@@ -32,7 +34,7 @@ router = APIRouter(prefix="/v1/user", tags=["user"], dependencies=[Depends(requi
 
 @router.get("", response_model=UserResponse)
 def get_user(db: Session = Depends(get_db)) -> UserResponse:
-    user = get_initialized_user(db)
+    user = get_registered_user(db)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=user_not_initialized_detail())
     return _to_user_response(user)
@@ -48,7 +50,7 @@ def post_user(payload: UserCreateRequest, response: Response, db: Session = Depe
 
 @router.patch("", response_model=UserResponse)
 def patch_user(payload: UserUpdateRequest, db: Session = Depends(get_db)) -> UserResponse:
-    user = get_initialized_user(db)
+    user = get_registered_user(db)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=user_not_initialized_detail())
     if "notify_email" in payload.model_fields_set and payload.notify_email is None:
@@ -69,20 +71,14 @@ def patch_user(payload: UserUpdateRequest, db: Session = Depends(get_db)) -> Use
 
 @router.get("/terms", response_model=list[UserTermResponse])
 def get_terms(db: Session = Depends(get_db)) -> list[UserTermResponse]:
-    try:
-        user = _require_initialized_user_for_terms(db)
-    except UserNotInitializedError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=user_not_initialized_detail()) from exc
+    user = _require_onboarded_user_for_terms(db)
     rows = list_user_terms(db, user_id=user.id)
     return [_to_term_response(term) for term in rows]
 
 
 @router.post("/terms", response_model=UserTermResponse, status_code=status.HTTP_201_CREATED)
 def post_term(payload: UserTermCreateRequest, db: Session = Depends(get_db)) -> UserTermResponse:
-    try:
-        user = _require_initialized_user_for_terms(db)
-    except UserNotInitializedError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=user_not_initialized_detail()) from exc
+    user = _require_onboarded_user_for_terms(db)
     try:
         term = create_user_term(
             db,
@@ -101,10 +97,7 @@ def post_term(payload: UserTermCreateRequest, db: Session = Depends(get_db)) -> 
 
 @router.patch("/terms/{term_id}", response_model=UserTermResponse)
 def patch_term(term_id: int, payload: UserTermUpdateRequest, db: Session = Depends(get_db)) -> UserTermResponse:
-    try:
-        user = _require_initialized_user_for_terms(db)
-    except UserNotInitializedError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=user_not_initialized_detail()) from exc
+    user = _require_onboarded_user_for_terms(db)
     term = get_user_term_by_id(db, user_id=user.id, term_id=term_id)
     if term is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Term not found")
@@ -152,5 +145,10 @@ def _to_term_response(term) -> UserTermResponse:
     )
 
 
-def _require_initialized_user_for_terms(db: Session):
-    return require_initialized_user(db)
+def _require_onboarded_user_for_terms(db: Session):
+    try:
+        return require_onboarded_user(db)
+    except UserNotInitializedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=user_not_initialized_detail()) from exc
+    except UserOnboardingIncompleteError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=user_onboarding_incomplete_detail()) from exc

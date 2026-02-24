@@ -3,18 +3,25 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlparse
 
+from sqlalchemy import select
+
 from app.core.config import get_settings
+from app.db.models import User
 from app.modules.inputs.service import build_gmail_oauth_start, parse_gmail_oauth_state
 from app.modules.sync.gmail_client import GmailOAuthTokens, GmailProfile
 
 
-def _init_user(client) -> None:
+def _init_user(client, db_session) -> None:
     response = client.post(
         "/v1/user",
         headers={"X-API-Key": "test-api-key"},
         json={"notify_email": "student@example.com"},
     )
     assert response.status_code in {200, 201}
+    user = db_session.scalar(select(User).order_by(User.id.asc()).limit(1))
+    assert user is not None
+    user.onboarding_completed_at = datetime.now(timezone.utc)
+    db_session.commit()
 
 
 def test_gmail_oauth_start_requires_initialized_user(client, monkeypatch) -> None:
@@ -34,12 +41,12 @@ def test_gmail_oauth_start_requires_initialized_user(client, monkeypatch) -> Non
     get_settings.cache_clear()
 
 
-def test_gmail_oauth_start_requires_configuration(client, monkeypatch) -> None:
+def test_gmail_oauth_start_requires_configuration(client, db_session, monkeypatch) -> None:
     monkeypatch.delenv("GMAIL_OAUTH_CLIENT_ID", raising=False)
     monkeypatch.delenv("GMAIL_OAUTH_CLIENT_SECRET", raising=False)
     monkeypatch.delenv("GMAIL_OAUTH_REDIRECT_URI", raising=False)
     get_settings.cache_clear()
-    _init_user(client)
+    _init_user(client, db_session)
 
     response = client.post(
         "/v1/inputs/email/gmail/oauth/start",
@@ -52,12 +59,12 @@ def test_gmail_oauth_start_requires_configuration(client, monkeypatch) -> None:
     get_settings.cache_clear()
 
 
-def test_gmail_oauth_start_returns_authorization_url(client, monkeypatch) -> None:
+def test_gmail_oauth_start_returns_authorization_url(client, db_session, monkeypatch) -> None:
     monkeypatch.setenv("GMAIL_OAUTH_CLIENT_ID", "client-id")
     monkeypatch.setenv("GMAIL_OAUTH_CLIENT_SECRET", "client-secret")
     monkeypatch.setenv("GMAIL_OAUTH_REDIRECT_URI", "http://localhost:8000/v1/oauth/gmail/callback")
     get_settings.cache_clear()
-    _init_user(client)
+    _init_user(client, db_session)
 
     response = client.post(
         "/v1/inputs/email/gmail/oauth/start",
@@ -91,12 +98,12 @@ def test_gmail_oauth_start_returns_authorization_url(client, monkeypatch) -> Non
     get_settings.cache_clear()
 
 
-def test_gmail_oauth_start_rejects_legacy_interval_or_notify_fields(client, monkeypatch) -> None:
+def test_gmail_oauth_start_rejects_legacy_interval_or_notify_fields(client, db_session, monkeypatch) -> None:
     monkeypatch.setenv("GMAIL_OAUTH_CLIENT_ID", "client-id")
     monkeypatch.setenv("GMAIL_OAUTH_CLIENT_SECRET", "client-secret")
     monkeypatch.setenv("GMAIL_OAUTH_REDIRECT_URI", "http://localhost:8000/v1/oauth/gmail/callback")
     get_settings.cache_clear()
-    _init_user(client)
+    _init_user(client, db_session)
 
     with_interval = client.post(
         "/v1/inputs/email/gmail/oauth/start",
@@ -115,13 +122,13 @@ def test_gmail_oauth_start_rejects_legacy_interval_or_notify_fields(client, monk
     get_settings.cache_clear()
 
 
-def test_gmail_oauth_callback_creates_email_input_and_redirects(client, monkeypatch) -> None:
+def test_gmail_oauth_callback_creates_email_input_and_redirects(client, db_session, monkeypatch) -> None:
     monkeypatch.setenv("GMAIL_OAUTH_CLIENT_ID", "client-id")
     monkeypatch.setenv("GMAIL_OAUTH_CLIENT_SECRET", "client-secret")
     monkeypatch.setenv("GMAIL_OAUTH_REDIRECT_URI", "http://localhost:8000/v1/oauth/gmail/callback")
     monkeypatch.setenv("APP_BASE_URL", "http://localhost:8000")
     get_settings.cache_clear()
-    _init_user(client)
+    _init_user(client, db_session)
 
     oauth_start = build_gmail_oauth_start(
         label="INBOX",

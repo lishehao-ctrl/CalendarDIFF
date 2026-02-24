@@ -101,7 +101,11 @@ def test_duplicate_identity_upserts_source_in_place(client, initialized_user) ->
 
 
 def test_list_sources_includes_runtime_state_fields(client, db_session) -> None:
-    user = User(email="owner@example.com")
+    user = User(
+        email="owner@example.com",
+        notify_email="student@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
+    )
     db_session.add(user)
     db_session.flush()
 
@@ -145,7 +149,11 @@ def test_list_sources_includes_runtime_state_fields(client, db_session) -> None:
 
 def test_list_sources_applies_scheduler_lock_skipped_cooldown_to_next_check(client, db_session) -> None:
     now = datetime.now(timezone.utc)
-    user = User(email="owner@example.com")
+    user = User(
+        email="owner@example.com",
+        notify_email="student@example.com",
+        onboarding_completed_at=now,
+    )
     db_session.add(user)
     db_session.flush()
 
@@ -186,7 +194,11 @@ def test_list_sources_applies_scheduler_lock_skipped_cooldown_to_next_check(clie
 
 
 def test_source_runs_endpoint_returns_recent_timeline(client, db_session) -> None:
-    user = User(email="owner@example.com")
+    user = User(
+        email="owner@example.com",
+        notify_email="student@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
+    )
     db_session.add(user)
     db_session.flush()
 

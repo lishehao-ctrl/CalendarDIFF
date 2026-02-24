@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 
-def _init_user(client) -> None:
+from sqlalchemy import select
+
+from app.db.models import User
+
+
+def _init_user(client, db_session) -> None:
     response = client.post(
         "/v1/user",
         headers={"X-API-Key": "test-api-key"},
         json={"notify_email": "student@example.com"},
     )
     assert response.status_code in {200, 201}
+    user = db_session.scalar(select(User).order_by(User.id.asc()).limit(1))
+    assert user is not None
+    user.onboarding_completed_at = datetime.now(timezone.utc)
+    db_session.commit()
 
 
 def test_notification_prefs_require_initialized_user(client) -> None:
@@ -16,8 +26,8 @@ def test_notification_prefs_require_initialized_user(client) -> None:
     assert response.json()["detail"]["code"] == "user_not_initialized"
 
 
-def test_notification_prefs_get_defaults(client) -> None:
-    _init_user(client)
+def test_notification_prefs_get_defaults(client, db_session) -> None:
+    _init_user(client, db_session)
     response = client.get("/v1/notification_prefs", headers={"X-API-Key": "test-api-key"})
     assert response.status_code == 200
     payload = response.json()
@@ -26,8 +36,8 @@ def test_notification_prefs_get_defaults(client) -> None:
     assert payload["digest_times"] == ["09:00"]
 
 
-def test_notification_prefs_put_normalizes_times(client) -> None:
-    _init_user(client)
+def test_notification_prefs_put_normalizes_times(client, db_session) -> None:
+    _init_user(client, db_session)
     response = client.put(
         "/v1/notification_prefs",
         headers={"X-API-Key": "test-api-key"},
@@ -42,8 +52,8 @@ def test_notification_prefs_put_normalizes_times(client) -> None:
     assert payload["digest_times"] == ["09:00", "21:30"]
 
 
-def test_notification_prefs_put_rejects_invalid_times(client) -> None:
-    _init_user(client)
+def test_notification_prefs_put_rejects_invalid_times(client, db_session) -> None:
+    _init_user(client, db_session)
     response = client.put(
         "/v1/notification_prefs",
         headers={"X-API-Key": "test-api-key"},
