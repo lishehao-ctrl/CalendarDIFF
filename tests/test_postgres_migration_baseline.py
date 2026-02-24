@@ -218,6 +218,9 @@ def test_postgres_alembic_upgrade_head_bootstraps_current_schema(test_database_u
                 input_term_baselines_exists = conn.execute(
                     text("SELECT to_regclass('public.input_term_baselines') IS NOT NULL")
                 ).scalar_one()
+                email_rule_candidates_exists = conn.execute(
+                    text("SELECT to_regclass('public.email_rule_candidates') IS NOT NULL")
+                ).scalar_one()
                 revision = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
         finally:
             engine.dispose()
@@ -266,9 +269,10 @@ def test_postgres_alembic_upgrade_head_bootstraps_current_schema(test_database_u
         assert profiles_exists is False
         assert profile_terms_exists is False
         assert input_term_baselines_exists is True
+        assert email_rule_candidates_exists is True
         assert "uq_notifications_idempotency_key" in notification_constraints
         assert "uq_notifications_change_channel" in notification_constraints
-        assert revision == "0006_onboarding_term_baselines"
+        assert revision == "0007_email_rule_candidates"
     finally:
         _restore_runtime_env(runtime_env)
         _reset_runtime_state()

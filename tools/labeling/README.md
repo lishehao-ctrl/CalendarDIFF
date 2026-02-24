@@ -172,3 +172,65 @@ Important:
   - `RESCUE_LLM_ENABLED`, `RESCUE_LLM_BASE_URL`, `RESCUE_LLM_API_KEY`, `RESCUE_LLM_MODEL`
   - `RESCUE_LLM_TIMEOUT_SECONDS`, `RESCUE_LLM_BATCH_SIZE`, `RESCUE_LLM_CONCURRENCY`, `RESCUE_LLM_PATH`
   - logs are sanitized; do not print tokens/secrets manually
+
+## Rules Extract + Eval
+
+Use deterministic rules as a baseline model for fast offline iteration.
+
+1. Build strict labels from raw emails (`emails.jsonl` or mbox):
+
+```bash
+python tools/labeling/rules_extract.py \
+  --input-mbox data/DDW-CANDIDATE.mbox \
+  --output data/rules_labeled.jsonl \
+  --errors data/rules_errors.jsonl \
+  --timezone America/Los_Angeles
+```
+
+JSONL mode:
+
+```bash
+python tools/labeling/rules_extract.py \
+  --input-jsonl data/emails.jsonl \
+  --output data/rules_labeled.jsonl \
+  --errors data/rules_errors.jsonl
+```
+
+2. Evaluate rules against silver labels (silver is normalized automatically when needed):
+
+```bash
+python tools/labeling/eval_rules.py \
+  --pred data/rules_labeled.jsonl \
+  --silver data/labeled.jsonl \
+  --outdir data/rules_eval
+```
+
+Artifacts:
+
+- `data/rules_eval/metrics.json`
+- `data/rules_eval/confusion_label.json`
+- `data/rules_eval/confusion_event_type.json`
+- `data/rules_eval/fn_keep_drop.jsonl`
+- `data/rules_eval/fp_keep_drop.jsonl`
+- `data/rules_eval/event_disagreements.jsonl`
+
+3. Build a focused gold annotation queue (FN-heavy):
+
+```bash
+python tools/labeling/build_gold_queue.py \
+  --eval-dir data/rules_eval \
+  --pred data/rules_labeled.jsonl \
+  --silver-normalized data/normalized.jsonl \
+  --input-mbox data/DDW-CANDIDATE.mbox \
+  --size 150 \
+  --seed 42 \
+  --output data/gold_queue.jsonl
+```
+
+4. Evaluate rules against reviewed gold labels:
+
+```bash
+python tools/labeling/eval_gold.py \
+  --gold data/gold_queue.jsonl \
+  --outdir data/rules_eval_gold
+```

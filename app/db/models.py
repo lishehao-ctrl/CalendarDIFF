@@ -11,6 +11,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     Enum as SAEnum,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -63,6 +64,13 @@ class SyncTriggerType(str, Enum):
     MANUAL = "manual"
 
 
+class ReviewCandidateStatus(str, Enum):
+    PENDING = "pending"
+    APPLIED = "applied"
+    DISMISSED = "dismissed"
+    FAILED = "failed"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -77,6 +85,10 @@ class User(Base):
     inputs: Mapped[list[Input]] = relationship(back_populates="user")
     notification_prefs: Mapped[UserNotificationPrefs | None] = relationship(back_populates="user", uselist=False)
     digest_send_logs: Mapped[list[DigestSendLog]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    email_rule_candidates: Mapped[list[EmailRuleCandidate]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 class UserTerm(Base):
@@ -162,6 +174,10 @@ class Input(Base):
     task_overrides: Mapped[list[TaskOverride]] = relationship(back_populates="input", cascade="all, delete-orphan")
     sync_runs: Mapped[list[SyncRun]] = relationship(back_populates="input", cascade="all, delete-orphan")
     term_baselines: Mapped[list[InputTermBaseline]] = relationship(
+        back_populates="input",
+        cascade="all, delete-orphan",
+    )
+    email_rule_candidates: Mapped[list[EmailRuleCandidate]] = relationship(
         back_populates="input",
         cascade="all, delete-orphan",
     )
@@ -337,6 +353,78 @@ class Change(Base):
         back_populates="changes_as_after",
     )
     notifications: Mapped[list[Notification]] = relationship(back_populates="change", cascade="all, delete-orphan")
+    source_email_rule_candidates: Mapped[list[EmailRuleCandidate]] = relationship(
+        "EmailRuleCandidate",
+        foreign_keys="EmailRuleCandidate.source_change_id",
+        back_populates="source_change",
+    )
+    applied_email_rule_candidates: Mapped[list[EmailRuleCandidate]] = relationship(
+        "EmailRuleCandidate",
+        foreign_keys="EmailRuleCandidate.applied_change_id",
+        back_populates="applied_change",
+    )
+
+
+class EmailRuleCandidate(Base):
+    __tablename__ = "email_rule_candidates"
+    __table_args__ = (
+        UniqueConstraint(
+            "input_id",
+            "gmail_message_id",
+            "rule_version",
+            name="uq_email_rule_candidates_input_message_rule",
+        ),
+        Index("ix_email_rule_candidates_user_status_created", "user_id", "status", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    input_id: Mapped[int] = mapped_column(ForeignKey("inputs.id", ondelete="CASCADE"), nullable=False)
+    gmail_message_id: Mapped[str] = mapped_column(Text, nullable=False)
+    source_change_id: Mapped[int | None] = mapped_column(ForeignKey("changes.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[ReviewCandidateStatus] = mapped_column(
+        SAEnum(
+            ReviewCandidateStatus,
+            name="review_candidate_status",
+            native_enum=False,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+        default=ReviewCandidateStatus.PENDING,
+        server_default=ReviewCandidateStatus.PENDING.value,
+    )
+    rule_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    proposed_event_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    proposed_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    proposed_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    proposed_course_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    reasons: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    raw_extract: Mapped[dict] = mapped_column(JSON, nullable=False)
+    subject: Mapped[str | None] = mapped_column(Text, nullable=True)
+    from_header: Mapped[str | None] = mapped_column(Text, nullable=True)
+    snippet: Mapped[str | None] = mapped_column(Text, nullable=True)
+    applied_change_id: Mapped[int | None] = mapped_column(ForeignKey("changes.id", ondelete="SET NULL"), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="email_rule_candidates")
+    input: Mapped[Input] = relationship(back_populates="email_rule_candidates")
+    source_change: Mapped[Change | None] = relationship(
+        "Change",
+        foreign_keys=[source_change_id],
+        back_populates="source_email_rule_candidates",
+    )
+    applied_change: Mapped[Change | None] = relationship(
+        "Change",
+        foreign_keys=[applied_change_id],
+        back_populates="applied_email_rule_candidates",
+    )
 
 
 class InputTermBaseline(Base):

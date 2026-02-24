@@ -139,6 +139,10 @@ APP_BASE_URL=http://localhost:8000
 4. Change metadata is in `after_json`:
    - `subject`, `snippet`, `internal_date`, `from`, `gmail_message_id`, `open_in_gmail_url`.
 5. Existing notifier pipeline and dedup rules are reused.
+6. Rule candidate queue (backend-only in this phase):
+   - actionable metadata/snippet signals create `email_rule_candidates` rows (`pending`)
+   - candidates are reviewed via `/v1/review_candidates`
+   - apply writes canonical `due_changed` change; no auto-apply on sync path
 
 ### Verification APIs
 
@@ -165,6 +169,9 @@ The input model is user-only (`user + inputs`):
 - `POST /v1/user/terms`
 - `GET /v1/user/terms`
 - `PATCH /v1/user/terms/{term_id}`
+- `GET /v1/review_candidates`
+- `POST /v1/review_candidates/{id}/apply`
+- `POST /v1/review_candidates/{id}/dismiss`
 
 Onboarding completion contract:
 

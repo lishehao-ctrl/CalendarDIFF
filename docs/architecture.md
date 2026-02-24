@@ -22,7 +22,7 @@ The runtime ownership model is **user-only**: one `user` owns many `inputs` and 
 
 ## 3) Data Model (Operationally Relevant)
 
-Active migration head: `0006_onboarding_term_baselines`.
+Active migration head: `0007_email_rule_candidates`.
 
 Core tables:
 
@@ -50,6 +50,10 @@ Core tables:
    - digest schedule and idempotent send ledger
 8. `input_term_baselines`
    - unique `(input_id, user_term_id)` markers for auto-silent term baselines
+9. `email_rule_candidates`
+   - pending/applied/dismissed/failed review queue for Gmail-derived actionable candidates
+   - unique key: `(input_id, gmail_message_id, rule_version)`
+   - links to source Gmail `changes` row and optional applied `changes` row
 
 ## 4) Core Flows
 
@@ -101,6 +105,13 @@ Gmail path:
 1. first sync stores cursor (`historyId`) only
 2. incremental sync reads history since cursor
 3. each new message creates one change (`event_uid=message_id`)
+4. in the same sync transaction, actionable metadata/snippet rules may insert review candidates
+   - candidate generation only, no automatic canonical mutation
+5. candidate apply path is explicit API action (`/v1/review_candidates/{id}/apply`)
+   - creates synthetic snapshot (`raw_evidence_key.kind=email_rule_apply`)
+   - updates canonical event
+   - inserts `changes.change_type=due_changed`
+   - enqueues notification with existing digest semantics
 
 ### 4.3 Notification Priority
 
@@ -128,6 +139,7 @@ Within one user:
    - `/v1/user*`
    - `/v1/inputs*`
    - `/v1/feed`
+   - `/v1/review_candidates*`
    - `/v1/notification_prefs`
    - `/v1/notifications/send_digest_now`
 2. UI routes:

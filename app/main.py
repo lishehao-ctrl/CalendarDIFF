@@ -19,6 +19,7 @@ from app.modules.notify.router import router as notify_router
 from app.modules.onboarding.router import router as onboarding_router
 from app.modules.oauth.router import router as oauth_router
 from app.modules.dev.router import router as dev_router
+from app.modules.review_candidates.router import router as review_candidates_router
 from app.modules.users.router import router as users_router
 from app.modules.scheduler.runner import SchedulerRunner
 from app.modules.status.router import router as status_router
@@ -113,6 +114,7 @@ def create_app() -> FastAPI:
     app.include_router(oauth_router)
     app.include_router(notify_router)
     app.include_router(dev_router)
+    app.include_router(review_candidates_router)
     app.include_router(ui_router)
     return app
 

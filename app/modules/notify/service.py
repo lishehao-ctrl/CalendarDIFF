@@ -93,7 +93,7 @@ def enqueue_notifications_for_changes(
                 deliver_after=deliver_after,
                 enqueue_reason=enqueue_reason,
             )
-            .on_conflict_do_nothing(constraint="uq_notifications_change_channel")
+            .on_conflict_do_nothing()
             .returning(Notification.id)
         )
         inserted_id = db.execute(insert_stmt).scalar_one_or_none()

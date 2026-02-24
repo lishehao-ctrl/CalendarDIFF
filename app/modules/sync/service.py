@@ -33,6 +33,7 @@ from app.modules.evidence.store import save_ics
 from app.modules.notify.interface import Notifier
 from app.modules.notify.prefs_service import get_or_create_notification_prefs
 from app.modules.notify.service import dispatch_due_notifications, enqueue_notifications_for_changes
+from app.modules.review_candidates.service import create_rule_candidates_from_email_changes
 from app.modules.sync.ics_client import ICSClient
 from app.modules.sync.gmail_client import GmailAPIError, GmailClient, GmailHistoryExpiredError
 from app.modules.sync.ics_parser import ICSParser
@@ -791,6 +792,24 @@ def _sync_email_source(
             change_rows.append(change)
 
         db.flush()
+
+        message_by_id = {item.message_id: item for item in matched_messages}
+        try:
+            prefs_for_tz = get_or_create_notification_prefs(db, user_id=input.user_id)
+            create_rule_candidates_from_email_changes(
+                db,
+                user_id=input.user_id,
+                input_id=input.id,
+                changes=change_rows,
+                message_by_id=message_by_id,
+                timezone_name=prefs_for_tz.timezone,
+            )
+        except Exception as exc:
+            logger.error(
+                "failed to create review candidates input_id=%s error=%s",
+                input.id,
+                _sanitize_sync_error(str(exc)),
+            )
 
         email_sent = False
         notify_error: str | None = None
