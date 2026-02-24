@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.modules.sync.deadline_engine import DDLType, ICSDeadlineEngine
+from app.modules.sync.deadline_engine import DDLType, ICSDeadlineEngine, infer_ddl_type
 
 
 SAMPLE_ICS = b"""BEGIN:VCALENDAR
@@ -83,3 +83,21 @@ def test_deadline_engine_outputs_courses_and_various_ddls() -> None:
     assert len(unknown_items) == 1
     assert unknown_items[0].ddl_type == DDLType.OTHER
     assert unknown_items[0].uid.startswith("fp:")
+
+
+def test_infer_ddl_type_summary_quiz_beats_description_exam() -> None:
+    ddl_type = infer_ddl_type(
+        summary="Quiz 1 - Requires LockDown Browser",
+        description="Follow exam rules while taking the exam.",
+    )
+    assert ddl_type == DDLType.QUIZ
+
+
+def test_infer_ddl_type_exam_quiz_tie_uses_first_keyword_position() -> None:
+    assert infer_ddl_type(summary="Test Quiz - Unit 1", description="") == DDLType.EXAM
+    assert infer_ddl_type(summary="Quiz Midterm - Unit 1", description="") == DDLType.QUIZ
+
+
+def test_infer_ddl_type_falls_back_to_description_when_summary_has_no_signal() -> None:
+    assert infer_ddl_type(summary="General deadline", description="Reading quiz this week.") == DDLType.QUIZ
+    assert infer_ddl_type(summary="General deadline", description="No type hints.") == DDLType.OTHER

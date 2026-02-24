@@ -15,7 +15,7 @@ router = APIRouter(prefix="/v1/snapshots", tags=["snapshots"], dependencies=[Dep
 
 @router.get("", response_model=list[SnapshotResponse])
 def list_snapshots(
-    source_id: int = Query(..., ge=1),
+    input_id: int = Query(..., ge=1),
     limit: int | None = Query(default=None, ge=1),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -26,7 +26,7 @@ def list_snapshots(
 
     stmt = (
         select(Snapshot)
-        .where(Snapshot.source_id == source_id)
+        .where(Snapshot.input_id == input_id)
         .order_by(Snapshot.retrieved_at.desc(), Snapshot.id.desc())
         .offset(offset)
         .limit(applied_limit)
@@ -36,7 +36,7 @@ def list_snapshots(
     return [
         SnapshotResponse(
             id=row.id,
-            source_id=row.source_id,
+            input_id=row.input_id,
             retrieved_at=row.retrieved_at,
             content_hash=row.content_hash,
             event_count=row.event_count,

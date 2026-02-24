@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AcademicEmailLabel",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "email_id",
+    "label",
+    "confidence",
+    "reasons",
+    "course_hints",
+    "event_type",
+    "action_items",
+    "raw_extract",
+    "notes"
+  ],
+  "properties": {
+    "email_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "label": {
+      "type": "string",
+      "enum": [
+        "KEEP",
+        "DROP"
+      ]
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "course_hints": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "event_type": {
+      "enum": [
+        "deadline",
+        "exam",
+        "schedule_change",
+        "assignment",
+        "grade",
+        "action_required",
+        "announcement",
+        "other",
+        null
+      ]
+    },
+    "action_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "action",
+          "due_iso",
+          "where"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "minLength": 1
+          },
+          "due_iso": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "where": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "raw_extract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deadline_text",
+        "time_text",
+        "location_text"
+      ],
+      "properties": {
+        "deadline_text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time_text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "location_text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

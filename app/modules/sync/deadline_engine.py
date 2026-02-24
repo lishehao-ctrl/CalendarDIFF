@@ -83,11 +83,15 @@ class ICSDeadlineEngine:
 
 
 def infer_ddl_type(summary: str, description: str) -> DDLType:
-    text = f"{summary} {description}".lower()
+    # Two-pass classification: SUMMARY first, DESCRIPTION fallback.
+    for text in (summary, description):
+        exam_or_quiz = _infer_exam_quiz_type(text)
+        if exam_or_quiz is not None:
+            return exam_or_quiz
 
-    for ddl_type, regexes in DDL_PATTERNS:
-        if any(regex.search(text) for regex in regexes):
-            return ddl_type
+        for ddl_type, regexes in OTHER_DDL_PATTERNS:
+            if any(regex.search(text) for regex in regexes):
+                return ddl_type
 
     return DDLType.OTHER
 
@@ -96,11 +100,30 @@ def _compile(pattern: str) -> re.Pattern[str]:
     return re.compile(pattern, flags=re.IGNORECASE)
 
 
-DDL_PATTERNS: tuple[tuple[DDLType, tuple[re.Pattern[str], ...]], ...] = (
-    (DDLType.EXAM, (_compile(r"\b(midterm|final|exam|考试|期中|期末)\b"),)),
-    (DDLType.QUIZ, (_compile(r"\b(quiz|测验|小测)\b"),)),
+EXAM_QUIZ_PATTERNS: tuple[tuple[DDLType, re.Pattern[str]], ...] = (
+    (DDLType.EXAM, _compile(r"\b(midterm|final|exam|test|考试|期中|期末)\b")),
+    (DDLType.QUIZ, _compile(r"\b(quiz|测验|小测)\b")),
+)
+
+
+OTHER_DDL_PATTERNS: tuple[tuple[DDLType, tuple[re.Pattern[str], ...]], ...] = (
     (DDLType.PROJECT, (_compile(r"\b(project|milestone|capstone|项目|里程碑)\b"),)),
     (DDLType.ASSIGNMENT, (_compile(r"\b(hw\d*|homework|assignment|pset|作业|习题)\b"),)),
     (DDLType.LAB, (_compile(r"\b(lab|实验)\b"),)),
     (DDLType.DISCUSSION, (_compile(r"\b(discussion|论坛|讨论)\b"),)),
 )
+
+
+def _infer_exam_quiz_type(text: str) -> DDLType | None:
+    candidates: list[tuple[int, DDLType]] = []
+    for ddl_type, regex in EXAM_QUIZ_PATTERNS:
+        match = regex.search(text)
+        if match is not None:
+            candidates.append((match.start(), ddl_type))
+
+    if not candidates:
+        return None
+
+    # For titles like "Test Quiz", whichever keyword appears first wins.
+    candidates.sort(key=lambda item: item[0])
+    return candidates[0][1]

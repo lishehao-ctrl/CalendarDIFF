@@ -41,12 +41,18 @@ def test_manual_sync_sends_single_digest_per_changed_run(client, monkeypatch) ->
 
     headers = {"X-API-Key": "test-api-key"}
     create_response = client.post(
-        "/v1/sources/ics",
+        "/v1/inputs/ics",
         headers=headers,
-        json={"name": "My Calendar", "url": "https://example.com/feed.ics"},
+        json={"url": "https://example.com/feed.ics"},
     )
     assert create_response.status_code == 201
     source_id = create_response.json()["id"]
+    prefs_response = client.put(
+        "/v1/notification_prefs",
+        headers=headers,
+        json={"digest_enabled": False},
+    )
+    assert prefs_response.status_code == 200
 
     responses = [
         FetchResult(content=ICS_V1, etag="v1", fetched_at_utc=datetime(2026, 2, 20, 10, 0, tzinfo=timezone.utc)),
@@ -54,7 +60,7 @@ def test_manual_sync_sends_single_digest_per_changed_run(client, monkeypatch) ->
         FetchResult(content=ICS_V2, etag="v2", fetched_at_utc=datetime(2026, 2, 20, 12, 0, tzinfo=timezone.utc)),
     ]
 
-    def fake_fetch(self, url: str, source_id: int):  # noqa: ARG001
+    def fake_fetch(self, url: str, source_id: int, **kwargs):  # noqa: ARG001
         if not responses:
             raise RuntimeError("No stub responses left")
         return responses.pop(0)
@@ -68,9 +74,9 @@ def test_manual_sync_sends_single_digest_per_changed_run(client, monkeypatch) ->
     monkeypatch.setattr("app.modules.sync.service.ICSClient.fetch", fake_fetch)
     monkeypatch.setattr("app.modules.notify.email.SMTPEmailNotifier.send_changes_digest", fake_send_changes_digest)
 
-    first_sync = client.post(f"/v1/sources/{source_id}/sync", headers=headers)
-    second_sync = client.post(f"/v1/sources/{source_id}/sync", headers=headers)
-    third_sync = client.post(f"/v1/sources/{source_id}/sync", headers=headers)
+    first_sync = client.post(f"/v1/inputs/{source_id}/sync", headers=headers)
+    second_sync = client.post(f"/v1/inputs/{source_id}/sync", headers=headers)
+    third_sync = client.post(f"/v1/inputs/{source_id}/sync", headers=headers)
 
     assert first_sync.status_code == 200
     assert second_sync.status_code == 200
@@ -80,17 +86,147 @@ def test_manual_sync_sends_single_digest_per_changed_run(client, monkeypatch) ->
     second_payload = second_sync.json()
     third_payload = third_sync.json()
 
-    assert first_payload["changes_created"] == 1
-    assert first_payload["email_sent"] is True
+    assert first_payload["changes_created"] == 0
+    assert first_payload["email_sent"] is False
+    assert first_payload["is_baseline_sync"] is True
     assert second_payload["changes_created"] == 1
     assert second_payload["email_sent"] is True
+    assert second_payload["is_baseline_sync"] is False
     assert third_payload["changes_created"] == 0
     assert third_payload["email_sent"] is False
+    assert third_payload["is_baseline_sync"] is False
 
-    # Exactly one digest email per changed run, none on unchanged rerun.
-    assert len(send_calls) == 2
+    snapshots_response = client.get(f"/v1/inputs/{source_id}/snapshots", headers=headers)
+    assert snapshots_response.status_code == 200
+    # third run returned identical feed, so snapshot creation is skipped.
+    assert len(snapshots_response.json()) == 2
+
+    # Baseline sync must not notify; only changed rerun sends one digest.
+    assert len(send_calls) == 1
     assert send_calls[0][0] == "notify@example.com"
     assert send_calls[0][3] == 1
-    assert send_calls[1][3] == 1
+
+    get_settings.cache_clear()
+
+
+def test_manual_sync_prefers_user_notify_email_over_global(client, monkeypatch) -> None:
+    monkeypatch.setenv("ENABLE_NOTIFICATIONS", "true")
+    monkeypatch.setenv("DEFAULT_NOTIFY_EMAIL", "global@example.com")
+    get_settings.cache_clear()
+
+    headers = {"X-API-Key": "test-api-key"}
+    user_update_response = client.patch(
+        "/v1/user",
+        headers=headers,
+        json={
+            "notify_email": "profile-specific@example.com",
+            "calendar_delay_seconds": 120,
+        },
+    )
+    assert user_update_response.status_code == 200
+
+    create_response = client.post(
+        "/v1/inputs/ics",
+        headers=headers,
+        json={"url": "https://example.com/feed.ics"},
+    )
+    assert create_response.status_code == 201
+    source_id = create_response.json()["id"]
+    prefs_response = client.put(
+        "/v1/notification_prefs",
+        headers=headers,
+        json={"digest_enabled": False},
+    )
+    assert prefs_response.status_code == 200
+
+    responses = [
+        FetchResult(content=ICS_V1, etag="v1", fetched_at_utc=datetime(2026, 2, 20, 10, 0, tzinfo=timezone.utc)),
+        FetchResult(content=ICS_V2, etag="v2", fetched_at_utc=datetime(2026, 2, 20, 11, 0, tzinfo=timezone.utc)),
+    ]
+
+    sent_to: list[str] = []
+
+    def fake_fetch(self, url: str, source_id: int, **kwargs):  # noqa: ARG001
+        return responses.pop(0)
+
+    def fake_send_changes_digest(self, to_email: str, source_name: str, source_id: int, items):  # noqa: ANN001, ARG001
+        sent_to.append(to_email)
+        return SendResult(success=True)
+
+    monkeypatch.setattr("app.modules.sync.service.ICSClient.fetch", fake_fetch)
+    monkeypatch.setattr("app.modules.notify.email.SMTPEmailNotifier.send_changes_digest", fake_send_changes_digest)
+
+    first_sync_response = client.post(f"/v1/inputs/{source_id}/sync", headers=headers)
+    second_sync_response = client.post(f"/v1/inputs/{source_id}/sync", headers=headers)
+
+    assert first_sync_response.status_code == 200
+    assert second_sync_response.status_code == 200
+    assert first_sync_response.json()["email_sent"] is False
+    assert first_sync_response.json()["is_baseline_sync"] is True
+    assert second_sync_response.json()["email_sent"] is True
+    assert second_sync_response.json()["is_baseline_sync"] is False
+    assert sent_to == ["profile-specific@example.com"]
+
+    get_settings.cache_clear()
+
+
+def test_identity_upsert_keeps_history_and_baseline(client, monkeypatch) -> None:
+    monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")
+    get_settings.cache_clear()
+
+    headers = {"X-API-Key": "test-api-key"}
+    first_create = client.post(
+        "/v1/inputs/ics",
+        headers=headers,
+        json={"url": "https://example.com/feed-v1.ics"},
+    )
+    assert first_create.status_code == 201
+    assert first_create.json()["upserted_existing"] is False
+    source_id = first_create.json()["id"]
+
+    responses = [
+        FetchResult(content=ICS_V1, etag="v1", fetched_at_utc=datetime(2026, 2, 20, 10, 0, tzinfo=timezone.utc)),
+        FetchResult(content=ICS_V2, etag="v2", fetched_at_utc=datetime(2026, 2, 20, 11, 0, tzinfo=timezone.utc)),
+        FetchResult(content=ICS_V2, etag="v2", fetched_at_utc=datetime(2026, 2, 20, 12, 0, tzinfo=timezone.utc)),
+        FetchResult(content=ICS_V2, etag="v2", fetched_at_utc=datetime(2026, 2, 20, 13, 0, tzinfo=timezone.utc)),
+    ]
+
+    def fake_fetch(self, url: str, source_id: int, **kwargs):  # noqa: ARG001
+        if not responses:
+            raise RuntimeError("No stub responses left")
+        return responses.pop(0)
+
+    monkeypatch.setattr("app.modules.sync.service.ICSClient.fetch", fake_fetch)
+
+    first_sync = client.post(f"/v1/inputs/{source_id}/sync", headers=headers)
+    second_sync = client.post(f"/v1/inputs/{source_id}/sync", headers=headers)
+    assert first_sync.status_code == 200
+    assert second_sync.status_code == 200
+    assert first_sync.json()["is_baseline_sync"] is True
+    assert second_sync.json()["changes_created"] == 1
+
+    before_replace_changes = client.get(f"/v1/inputs/{source_id}/changes", headers=headers)
+    assert before_replace_changes.status_code == 200
+    assert len(before_replace_changes.json()) == 1
+
+    upserted = client.post(
+        "/v1/inputs/ics",
+        headers=headers,
+        json={"url": "https://example.com/feed-v1.ics"},
+    )
+    assert upserted.status_code == 200
+    upserted_payload = upserted.json()
+    assert upserted_payload["upserted_existing"] is True
+    assert upserted_payload["id"] == source_id
+    assert upserted_payload["interval_minutes"] == 15
+
+    after_upsert_changes = client.get(f"/v1/inputs/{source_id}/changes", headers=headers)
+    assert after_upsert_changes.status_code == 200
+    assert len(after_upsert_changes.json()) == 1
+
+    sync_after_upsert = client.post(f"/v1/inputs/{source_id}/sync", headers=headers)
+    assert sync_after_upsert.status_code == 200
+    assert sync_after_upsert.json()["is_baseline_sync"] is False
+    assert sync_after_upsert.json()["changes_created"] == 0
 
     get_settings.cache_clear()

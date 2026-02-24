@@ -28,8 +28,8 @@ class Notifier(Protocol):
     def send_changes_digest(
         self,
         to_email: str,
-        source_name: str,
-        source_id: int,
+        input_label: str,
+        input_id: int,
         items: list[ChangeDigestItem],
     ) -> SendResult:
         ...

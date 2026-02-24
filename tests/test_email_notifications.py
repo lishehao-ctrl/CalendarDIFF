@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timezone
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.base import Base
 from app.db.models import Change, ChangeType, Notification, NotificationStatus, Snapshot, Source, SourceType, User
 from app.modules.notify.email import SMTPEmailNotifier
 from app.modules.notify.interface import ChangeDigestItem, SendResult
@@ -31,174 +31,309 @@ class StubNotifier:
         return SendResult(success=False, error="smtp down")
 
 
-def test_notification_rows_marked_sent_on_success() -> None:
-    engine = create_engine("sqlite:///:memory:", future=True)
-    Base.metadata.create_all(engine)
+def test_notification_rows_marked_sent_on_success(db_session: Session) -> None:
+    user = User(email="owner@example.com")
+    db_session.add(user)
+    db_session.flush()
 
-    with Session(engine) as db:
-        user = User(email="owner@example.com")
-        db.add(user)
-        db.flush()
+    source = Source(
+        user_id=user.id,
+        type=SourceType.ICS,
+        name="Course Deadlines",
+        normalized_name="course deadlines",
+        encrypted_url="encrypted",
+        interval_minutes=15,
+        is_active=True,
+    )
+    db_session.add(source)
+    db_session.flush()
 
-        source = Source(
-            user_id=user.id,
-            type=SourceType.ICS,
-            name="Course Deadlines",
-            encrypted_url="encrypted",
-            interval_minutes=15,
-            is_active=True,
-        )
-        db.add(source)
-        db.flush()
+    snapshot = Snapshot(
+        input_id=source.id,
+        content_hash="abc123",
+        event_count=1,
+        raw_evidence_key={"kind": "ics", "store": "fs", "path": "evidence/ics/source_1/file.ics"},
+    )
+    db_session.add(snapshot)
+    db_session.flush()
 
-        snapshot = Snapshot(
-            source_id=source.id,
-            content_hash="abc123",
-            event_count=1,
-            raw_evidence_key={"kind": "ics", "store": "fs", "path": "evidence/ics/source_1/file.ics"},
-        )
-        db.add(snapshot)
-        db.flush()
+    change = Change(
+        input_id=source.id,
+        event_uid="uid-1",
+        change_type=ChangeType.DUE_CHANGED,
+        detected_at=datetime.now(timezone.utc),
+        before_json={"title": "A", "start_at_utc": "2026-02-20T10:00:00+00:00", "course_label": "CSE 151A"},
+        after_json={"title": "A", "start_at_utc": "2026-02-20T11:00:00+00:00", "course_label": "CSE 151A"},
+        delta_seconds=3600,
+        after_snapshot_id=snapshot.id,
+    )
+    db_session.add(change)
+    db_session.flush()
 
-        change = Change(
-            source_id=source.id,
-            event_uid="uid-1",
-            change_type=ChangeType.DUE_CHANGED,
-            detected_at=datetime.now(timezone.utc),
-            before_json={"title": "A", "start_at_utc": "2026-02-20T10:00:00+00:00", "course_label": "CSE 151A"},
-            after_json={"title": "A", "start_at_utc": "2026-02-20T11:00:00+00:00", "course_label": "CSE 151A"},
-            delta_seconds=3600,
-            after_snapshot_id=snapshot.id,
-        )
-        db.add(change)
-        db.flush()
+    notifier = StubNotifier(success=True)
+    result = dispatch_notifications_for_changes(db_session, source, [change], notifier=notifier)
+    db_session.commit()
 
-        notifier = StubNotifier(success=True)
-        result = dispatch_notifications_for_changes(db, source, [change], notifier=notifier)
-        db.commit()
+    assert result.email_sent is True
+    assert result.error is None
+    assert len(notifier.calls) == 1
 
-        assert result.email_sent is True
-        assert result.error is None
-        assert len(notifier.calls) == 1
-
-        rows = db.scalars(select(Notification)).all()
-        assert len(rows) == 1
-        assert rows[0].status == NotificationStatus.SENT
-        assert rows[0].sent_at is not None
-        assert rows[0].idempotency_key == f"email:change:{change.id}"
+    rows = db_session.scalars(select(Notification)).all()
+    assert len(rows) == 1
+    assert rows[0].status == NotificationStatus.SENT
+    assert rows[0].sent_at is not None
+    assert rows[0].idempotency_key == f"email:change:{change.id}"
 
 
-def test_notification_rows_marked_failed_on_error() -> None:
-    engine = create_engine("sqlite:///:memory:", future=True)
-    Base.metadata.create_all(engine)
+def test_notification_rows_marked_failed_on_error(db_session: Session) -> None:
+    user = User(email="owner@example.com")
+    db_session.add(user)
+    db_session.flush()
 
-    with Session(engine) as db:
-        user = User(email="owner@example.com")
-        db.add(user)
-        db.flush()
+    source = Source(
+        user_id=user.id,
+        type=SourceType.ICS,
+        name="Course Deadlines",
+        normalized_name="course deadlines",
+        encrypted_url="encrypted",
+        interval_minutes=15,
+        is_active=True,
+    )
+    db_session.add(source)
+    db_session.flush()
 
-        source = Source(
-            user_id=user.id,
-            type=SourceType.ICS,
-            name="Course Deadlines",
-            encrypted_url="encrypted",
-            interval_minutes=15,
-            is_active=True,
-        )
-        db.add(source)
-        db.flush()
+    snapshot = Snapshot(
+        input_id=source.id,
+        content_hash="abc123",
+        event_count=1,
+        raw_evidence_key={"kind": "ics", "store": "fs", "path": "evidence/ics/source_1/file.ics"},
+    )
+    db_session.add(snapshot)
+    db_session.flush()
 
-        snapshot = Snapshot(
-            source_id=source.id,
-            content_hash="abc123",
-            event_count=1,
-            raw_evidence_key={"kind": "ics", "store": "fs", "path": "evidence/ics/source_1/file.ics"},
-        )
-        db.add(snapshot)
-        db.flush()
+    change = Change(
+        input_id=source.id,
+        event_uid="uid-1",
+        change_type=ChangeType.TITLE_CHANGED,
+        detected_at=datetime.now(timezone.utc),
+        before_json={"title": "Old", "course_label": "Unknown"},
+        after_json={"title": "New", "course_label": "Unknown"},
+        delta_seconds=None,
+        after_snapshot_id=snapshot.id,
+    )
+    db_session.add(change)
+    db_session.flush()
 
-        change = Change(
-            source_id=source.id,
-            event_uid="uid-1",
-            change_type=ChangeType.TITLE_CHANGED,
-            detected_at=datetime.now(timezone.utc),
-            before_json={"title": "Old", "course_label": "Unknown"},
-            after_json={"title": "New", "course_label": "Unknown"},
-            delta_seconds=None,
-            after_snapshot_id=snapshot.id,
-        )
-        db.add(change)
-        db.flush()
+    notifier = StubNotifier(success=False)
+    result = dispatch_notifications_for_changes(db_session, source, [change], notifier=notifier)
+    db_session.commit()
 
-        notifier = StubNotifier(success=False)
-        result = dispatch_notifications_for_changes(db, source, [change], notifier=notifier)
-        db.commit()
+    assert result.email_sent is False
+    assert result.error == "smtp down"
 
-        assert result.email_sent is False
-        assert result.error == "smtp down"
-
-        rows = db.scalars(select(Notification)).all()
-        assert len(rows) == 1
-        assert rows[0].status == NotificationStatus.FAILED
-        assert rows[0].error == "smtp down"
-        assert rows[0].idempotency_key == f"email:change:{change.id}"
+    rows = db_session.scalars(select(Notification)).all()
+    assert len(rows) == 1
+    assert rows[0].status == NotificationStatus.FAILED
+    assert rows[0].error == "smtp down"
+    assert rows[0].idempotency_key == f"email:change:{change.id}"
 
 
-def test_notification_dispatch_is_idempotent_for_same_change() -> None:
-    engine = create_engine("sqlite:///:memory:", future=True)
-    Base.metadata.create_all(engine)
+def test_notification_dispatch_is_idempotent_for_same_change(db_session: Session) -> None:
+    user = User(email="owner@example.com")
+    db_session.add(user)
+    db_session.flush()
 
-    with Session(engine) as db:
-        user = User(email="owner@example.com")
-        db.add(user)
-        db.flush()
+    source = Source(
+        user_id=user.id,
+        type=SourceType.ICS,
+        name="Course Deadlines",
+        normalized_name="course deadlines",
+        encrypted_url="encrypted",
+        interval_minutes=15,
+        is_active=True,
+    )
+    db_session.add(source)
+    db_session.flush()
 
-        source = Source(
-            user_id=user.id,
-            type=SourceType.ICS,
-            name="Course Deadlines",
-            encrypted_url="encrypted",
-            interval_minutes=15,
-            is_active=True,
-        )
-        db.add(source)
-        db.flush()
+    snapshot = Snapshot(
+        input_id=source.id,
+        content_hash="abc123",
+        event_count=1,
+        raw_evidence_key={"kind": "ics", "store": "fs", "path": "evidence/ics/source_1/file.ics"},
+    )
+    db_session.add(snapshot)
+    db_session.flush()
 
-        snapshot = Snapshot(
-            source_id=source.id,
-            content_hash="abc123",
-            event_count=1,
-            raw_evidence_key={"kind": "ics", "store": "fs", "path": "evidence/ics/source_1/file.ics"},
-        )
-        db.add(snapshot)
-        db.flush()
+    change = Change(
+        input_id=source.id,
+        event_uid="uid-1",
+        change_type=ChangeType.TITLE_CHANGED,
+        detected_at=datetime.now(timezone.utc),
+        before_json={"title": "Old", "course_label": "Unknown"},
+        after_json={"title": "New", "course_label": "Unknown"},
+        delta_seconds=None,
+        after_snapshot_id=snapshot.id,
+    )
+    db_session.add(change)
+    db_session.flush()
 
-        change = Change(
-            source_id=source.id,
-            event_uid="uid-1",
-            change_type=ChangeType.TITLE_CHANGED,
-            detected_at=datetime.now(timezone.utc),
-            before_json={"title": "Old", "course_label": "Unknown"},
-            after_json={"title": "New", "course_label": "Unknown"},
-            delta_seconds=None,
-            after_snapshot_id=snapshot.id,
-        )
-        db.add(change)
-        db.flush()
+    notifier = StubNotifier(success=True)
+    first = dispatch_notifications_for_changes(db_session, source, [change], notifier=notifier)
+    second = dispatch_notifications_for_changes(db_session, source, [change], notifier=notifier)
+    db_session.commit()
 
-        notifier = StubNotifier(success=True)
-        first = dispatch_notifications_for_changes(db, source, [change], notifier=notifier)
-        second = dispatch_notifications_for_changes(db, source, [change], notifier=notifier)
-        db.commit()
+    assert first.email_sent is True
+    assert second.email_sent is False
+    assert len(notifier.calls) == 1
 
-        assert first.email_sent is True
-        assert second.email_sent is False
-        assert len(notifier.calls) == 1
+    rows = db_session.scalars(select(Notification).where(Notification.change_id == change.id)).all()
+    assert len(rows) == 1
+    assert rows[0].status == NotificationStatus.SENT
+    assert rows[0].idempotency_key == f"email:change:{change.id}"
 
-        rows = db.scalars(select(Notification).where(Notification.change_id == change.id)).all()
-        assert len(rows) == 1
-        assert rows[0].status == NotificationStatus.SENT
-        assert rows[0].idempotency_key == f"email:change:{change.id}"
+
+def test_failed_notification_is_not_retried_automatically(db_session: Session) -> None:
+    user = User(email="owner@example.com")
+    db_session.add(user)
+    db_session.flush()
+
+    source = Source(
+        user_id=user.id,
+        type=SourceType.ICS,
+        name="Course Deadlines",
+        normalized_name="course deadlines",
+        encrypted_url="encrypted",
+        interval_minutes=15,
+        is_active=True,
+    )
+    db_session.add(source)
+    db_session.flush()
+
+    snapshot = Snapshot(
+        input_id=source.id,
+        content_hash="abc123",
+        event_count=1,
+        raw_evidence_key={"kind": "ics", "store": "fs", "path": "evidence/ics/source_1/file.ics"},
+    )
+    db_session.add(snapshot)
+    db_session.flush()
+
+    change = Change(
+        input_id=source.id,
+        event_uid="uid-1",
+        change_type=ChangeType.TITLE_CHANGED,
+        detected_at=datetime.now(timezone.utc),
+        before_json={"title": "Old", "course_label": "Unknown"},
+        after_json={"title": "New", "course_label": "Unknown"},
+        delta_seconds=None,
+        after_snapshot_id=snapshot.id,
+    )
+    db_session.add(change)
+    db_session.flush()
+
+    failed_notifier = StubNotifier(success=False)
+    first = dispatch_notifications_for_changes(db_session, source, [change], notifier=failed_notifier)
+    db_session.commit()
+
+    assert first.email_sent is False
+    assert first.error == "smtp down"
+    assert len(failed_notifier.calls) == 1
+
+    success_notifier = StubNotifier(success=True)
+    second = dispatch_notifications_for_changes(db_session, source, [change], notifier=success_notifier)
+    db_session.commit()
+
+    assert second.email_sent is False
+    assert second.error is None
+    assert second.dedup_skipped_count == 1
+    assert len(success_notifier.calls) == 0
+
+    rows = db_session.scalars(select(Notification).where(Notification.change_id == change.id)).all()
+    assert len(rows) == 1
+    assert rows[0].status == NotificationStatus.FAILED
+
+
+def test_notification_insert_race_results_in_single_row_and_single_send(db_session, db_session_factory) -> None:
+    user = User(email="owner@example.com")
+    db_session.add(user)
+    db_session.flush()
+
+    source = Source(
+        user_id=user.id,
+        type=SourceType.ICS,
+        name="Race Source",
+        normalized_name="race source",
+        encrypted_url="encrypted",
+        interval_minutes=15,
+        is_active=True,
+    )
+    db_session.add(source)
+    db_session.flush()
+
+    snapshot = Snapshot(
+        input_id=source.id,
+        content_hash="abc123",
+        event_count=1,
+        raw_evidence_key={"kind": "ics", "store": "fs", "path": "evidence/ics/source_race/file.ics"},
+    )
+    db_session.add(snapshot)
+    db_session.flush()
+
+    change = Change(
+        input_id=source.id,
+        event_uid="uid-race",
+        change_type=ChangeType.CREATED,
+        detected_at=datetime.now(timezone.utc),
+        before_json=None,
+        after_json={"title": "New Item", "course_label": "CSE 151A"},
+        delta_seconds=None,
+        after_snapshot_id=snapshot.id,
+    )
+    db_session.add(change)
+    db_session.commit()
+
+    call_count = 0
+    call_lock = threading.Lock()
+    start_barrier = threading.Barrier(2)
+    errors: list[str] = []
+
+    class ThreadSafeNotifier:
+        def send_changes_digest(self, to_email: str, source_name: str, source_id: int, items: list[ChangeDigestItem]) -> SendResult:
+            del to_email, source_name, source_id, items
+            nonlocal call_count
+            with call_lock:
+                call_count += 1
+            return SendResult(success=True)
+
+    def worker() -> None:
+        try:
+            session = db_session_factory()
+            try:
+                source_row = session.get(Source, source.id)
+                change_row = session.get(Change, change.id)
+                assert source_row is not None
+                assert change_row is not None
+                start_barrier.wait()
+                dispatch_notifications_for_changes(session, source_row, [change_row], notifier=ThreadSafeNotifier())
+                session.commit()
+            finally:
+                session.close()
+        except Exception as exc:  # pragma: no cover - defensive branch
+            errors.append(str(exc))
+
+    t1 = threading.Thread(target=worker)
+    t2 = threading.Thread(target=worker)
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
+    assert errors == []
+    assert call_count == 1
+
+    db_session.expire_all()
+    rows = db_session.scalars(select(Notification).where(Notification.change_id == change.id)).all()
+    assert len(rows) == 1
 
 
 def test_smtp_notifier_uses_smtp_transport(monkeypatch) -> None:
@@ -235,8 +370,8 @@ def test_smtp_notifier_uses_smtp_transport(monkeypatch) -> None:
     notifier = SMTPEmailNotifier()
     result = notifier.send_changes_digest(
         to_email="user@test.local",
-        source_name="Source A",
-        source_id=123,
+        input_label="Source A",
+        input_id=123,
         items=[
             ChangeDigestItem(
                 event_uid="u1",

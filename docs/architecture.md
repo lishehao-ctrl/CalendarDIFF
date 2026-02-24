@@ -1,205 +1,121 @@
-# Deadline Diff Watcher MVP Architecture
+# CalendarDIFF Architecture (Current Runtime)
 
-## 1) Product Goal and MVP Scope
+## 1) Scope
 
-### Goal
-Build a backend service that watches ICS calendar feeds and notifies users only when detected event deadlines change.
+CalendarDIFF ingests, diffs, and notifies on two input types:
 
-Core behavior:
-- Accept ICS feed URL from API.
-- Periodically fetch and parse ICS data.
-- Normalize event data into a canonical model.
-- Compare current snapshot with prior canonical state.
-- Persist change audit records.
-- Send email notifications only when at least one change is detected in a sync run.
+1. `ics` calendar feeds
+2. `email` feeds (Gmail OAuth readonly)
 
-### In Scope
-- FastAPI service with Postgres persistence.
-- In-app scheduler (no platform cron).
-- Postgres advisory lock to avoid duplicate scheduler execution across instances.
-- API key authentication for MVP.
-- Encrypted ICS URL at rest.
+The runtime ownership model is **user-only**: one `user` owns many `inputs` and optional `user_terms`.
 
-### Out of Scope (MVP)
-- Full authentication/authorization system.
-- Multi-tenant RBAC.
-- Frontend/UI.
-- Provider-specific deployment integrations.
+## 2) Runtime Stack
 
-## 2) Component Breakdown
+1. API and UI host: FastAPI
+2. Scheduler: APScheduler
+3. Database: PostgreSQL + SQLAlchemy + Alembic
+4. UI: Next.js static export served from `/ui`
+5. Integrations:
+   - ICS: HTTP fetch + parser
+   - Gmail: OAuth + Gmail REST (via `httpx`)
+   - Notification: SMTP
 
-1. API Layer (`FastAPI`)
-- Endpoints for source management, manual sync trigger, change listing, health checks.
-- API key guard on protected endpoints.
+## 3) Data Model (Operationally Relevant)
 
-2. Scheduler Runner (`APScheduler`)
-- Periodic runner checks due sources every minute.
-- Uses Postgres advisory lock for singleton execution.
+Active migration head: `0005_drop_profile_schema`.
 
-3. Source Connector (`httpx`)
-- Downloads ICS content with connect/read timeouts and bounded retries.
-- Captures ETag (if provided).
+Core tables:
 
-4. Parser + Normalizer (`icalendar` + app logic)
-- Parses VEVENT fields from ICS payload.
-- Normalizes to UTC-aware canonical event objects.
-- Infers `course_label` heuristically from summary/description.
+1. `users`
+   - user-level settings: `notify_email`, `calendar_delay_seconds`
+2. `user_terms`
+   - optional semester windows under each user (`code`, `label`, `starts_on`, `ends_on`, `is_active`)
+3. `inputs`
+   - `type=ics|email`
+   - owner: `user_id`
+   - optional term binding: `user_term_id`
+   - identity uniqueness: `(user_id, type, identity_key)`
+   - policy constraints:
+     - `interval_minutes` fixed at `15` (application + DB check)
+     - input-level `notify_email` ignored for delivery routing
+4. `sync_runs`
+   - one row per sync attempt
+5. `changes`
+   - per-detected change records
+6. `notifications`
+   - queued email notifications with `deliver_after` and `enqueue_reason`
+7. `user_notification_prefs` and `digest_send_log`
+   - digest schedule and idempotent send ledger
 
-5. Diff Engine
-- Compares current snapshot events against canonical `events` table.
-- Emits `created`, `removed`, `due_changed`, `title_changed`, `course_changed`.
-- Debounces removals by requiring missing in 3 consecutive snapshots.
+## 4) Core Flows
 
-6. Notification Dispatcher
-- SMTP implementation behind notifier interface.
-- Sends grouped email digest when run contains changes.
-- Persists per-change notification status (`pending`, `sent`, `failed`).
+### 4.1 Input Creation
 
-7. Evidence Store (Filesystem, ICS-only)
-- Stores the exact raw ICS payload fetched for each successful sync.
-- Generates a structured `raw_evidence_key` object (`kind`, `store`, `path`, `sha256`, `retrieved_at`) and persists it on snapshots.
-- Uses atomic file writes (temp file + rename) so evidence artifacts are never partially written.
+1. ICS input:
+   - `POST /v1/inputs/ics`
+   - upsert by canonical URL identity
+   - optional `user_term_id`
+2. Gmail input:
+   - `POST /v1/inputs/email/gmail/oauth/start`
+   - callback exchanges token and upserts by account+filter identity
 
-8. Persistence Layer (`SQLAlchemy 2.0` + Alembic)
-- Stores sources, canonical events, snapshots, snapshot events, changes, and notifications.
+### 4.2 Sync Execution
 
-## 3) Data Flow
+Common rules:
 
-### Normal Flow
+1. input-level advisory lock prevents same-input concurrent execution
+2. first successful sync is baseline-first (no noisy alert)
+3. each run writes one `sync_runs` row
 
-```text
-POST /v1/sources/ics
-  -> validate + encrypt URL
-  -> insert sources row
+ICS path:
 
-Scheduler tick or POST /v1/sources/{id}/sync
-  -> acquire advisory lock
-  -> fetch ICS via httpx
-  -> store raw ICS evidence on local filesystem
-  -> parse VEVENTs
-  -> normalize to canonical events (UTC)
-  -> store snapshots(raw_evidence_key) + snapshot_events
-  -> diff against canonical events
-  -> insert changes rows (before_snapshot_id, after_snapshot_id, evidence_keys)
-  -> update canonical events table
-  -> if changes > 0: send email digest
-  -> insert/update notifications rows
-  -> update sources.last_checked_at, sources.last_error
-```
+1. conditional HTTP fetch (`ETag` / `Last-Modified`)
+2. normalize + hash content for no-op short-circuit
+3. parse + diff against canonical events
+4. create `changes` and queue notifications
 
-### Fetch Failure Branch
+Gmail path:
 
-```text
-fetch error
-  -> set sources.last_checked_at
-  -> set sources.last_error
-  -> do not create snapshots
-  -> do not create changes
-  -> do not send email
-```
+1. first sync stores cursor (`historyId`) only
+2. incremental sync reads history since cursor
+3. each new message creates one change (`event_uid=message_id`)
 
-## 4) DB Schema Summary
+### 4.3 Notification Priority
 
-`events` is the authoritative current canonical state for each source.
+Within one user:
 
-### `users`
-- Purpose: future-ready owner table.
-- Columns: `id`, `email`, `created_at`.
+1. EMAIL changes are dispatched first
+2. Calendar changes may be delayed by `calendar_delay_seconds` (default 120)
+3. recipient resolution order:
+   - `user.notify_email`
+   - `DEFAULT_NOTIFY_EMAIL` / `SMTP_TO`
+   - fallback `user.email`
 
-### `sources`
-- Purpose: registered feed sources.
-- Columns: `id`, `user_id`, `type`, `name`, `encrypted_url`, `interval_minutes`, `is_active`, `last_checked_at`, `last_error`, `created_at`.
-- Notes: feed URL is encrypted and never returned by API.
+## 5) Locking and Scheduling
 
-### `events`
-- Purpose: canonical latest events for each source.
-- Columns: `id`, `source_id`, `uid`, `course_label`, `title`, `start_at_utc`, `end_at_utc`, `updated_at`.
-- Constraints: unique (`source_id`, `uid`).
+1. global scheduler advisory lock: only one instance executes a tick
+2. per-input advisory lock: prevents duplicate processing for the same input
+3. lock contention behavior:
+   - scheduler conflict records `LOCK_SKIPPED`
+   - manual conflict returns recoverable `409` (`source_busy`) and records `LOCK_SKIPPED`
 
-### `snapshots`
-- Purpose: metadata for each sync capture.
-- Columns: `id`, `source_id`, `retrieved_at`, `etag`, `content_hash`, `event_count`, `raw_evidence_key`.
+## 6) APIs and UI
 
-### `snapshot_events`
-- Purpose: immutable event rows per snapshot.
-- Columns: `id`, `snapshot_id`, `uid`, `course_label`, `title`, `start_at_utc`, `end_at_utc`.
+1. Core APIs:
+   - `/v1/user*`
+   - `/v1/inputs*`
+   - `/v1/feed`
+   - `/v1/notification_prefs`
+   - `/v1/notifications/send_digest_now`
+2. UI routes:
+   - `/ui` -> `/ui/processing`
+   - `/ui/processing`
+   - `/ui/feed`
+   - `/ui/runs?input_id=<id>`
+   - `/ui/dev` (dev-gated)
+3. `/ui/profiles` is removed.
 
-### `changes`
-- Purpose: audit log of detected differences.
-- Columns: `id`, `source_id`, `event_uid`, `change_type`, `detected_at`, `before_json`, `after_json`, `delta_seconds`, `before_snapshot_id`, `after_snapshot_id`, `evidence_keys`.
-- Index: (`source_id`, `detected_at` desc).
+## 7) Structural Notes
 
-### `notifications`
-- Purpose: outbound delivery tracking per change.
-- Columns: `id`, `change_id`, `channel`, `status`, `sent_at`, `error`.
-
-## 5) Sync Lifecycle
-
-1. Scheduler tick executes every minute.
-2. Runner attempts global advisory lock (`pg_try_advisory_lock`).
-3. If lock not acquired, run is skipped.
-4. Runner selects active due sources:
-- due if `last_checked_at` is null, or elapsed minutes >= `interval_minutes`.
-5. For each source:
-- fetch -> parse -> normalize -> persist snapshot -> diff -> persist changes -> update canonical state -> notify (if needed).
-6. Update `sources.last_checked_at` on every attempt.
-7. Set `sources.last_error` on failure, clear on success.
-
-## 6) Diff Semantics
-
-### Event Keying
-- Primary key: `(source_id, uid)`.
-- If UID missing: fallback deterministic fingerprint
-  - `uid = "fp:" + sha256(title|start|end)[:16]`.
-
-### Change Rules
-- `created`: event in new snapshot but not in canonical events.
-- `removed`: event missing from new snapshot and missing in prior 2 snapshots too (3 consecutive misses).
-- `due_changed`: start or end changed.
-- `title_changed`: title changed.
-- `course_changed`: inferred course label changed.
-
-### Priority and Coalescing
-- Exactly one `changes` row per event per sync run.
-- If multiple fields changed in one event, choose highest priority:
-  - `due_changed > title_changed > course_changed`.
-- `before_json` and `after_json` include all changed fields.
-
-## 7) Failure Modes and Mitigations
-
-1. ICS fetch timeout/network failure
-- Mitigation: connect/read timeout + retries, store `last_error`, no diff/no email.
-
-2. ICS parse failure (invalid feed/transient content)
-- Mitigation: store `last_error`, skip state mutation and notifications.
-
-3. Duplicate scheduler runs (multi-instance)
-- Mitigation: Postgres advisory lock around scheduler loop.
-
-4. Notification failure (SMTP issue)
-- Mitigation: mark notification rows `failed` with error; do not rollback change audit rows.
-
-5. DB contention/transient failure
-- Mitigation: short transactions per source, lock acquisition fallback, explicit error handling.
-
-## 8) Security and Secrets Handling
-
-- API key header `X-API-Key` required for protected endpoints.
-- ICS URL is encrypted at rest via Fernet key (`APP_SECRET_KEY`).
-- ICS URL is excluded from API responses and redacted from logs.
-- APIs expose evidence metadata (`raw_evidence_key` path and hashes), never raw ICS content or source URL.
-- Use environment variables for SMTP and app secrets.
-
-## 9) Observability
-
-- Structured application logs with secret redaction.
-- In-memory scheduler runtime status:
-  - running flag
-  - last run start/end
-  - last error
-  - last skip reason
-  - last synced source count
-- Persistent source status fields:
-  - `last_checked_at`
-  - `last_error`
-- `/health` endpoint reports DB connectivity and scheduler summary.
+1. `app/modules/sync/service.py` and `frontend/lib/hooks/use-dashboard-data.ts` are still large orchestrators.
+2. Router boundary tests and private import boundary tests remain enforced in CI.

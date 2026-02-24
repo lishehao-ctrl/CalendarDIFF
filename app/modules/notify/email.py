@@ -13,14 +13,14 @@ class SMTPEmailNotifier(Notifier):
     def send_changes_digest(
         self,
         to_email: str,
-        source_name: str,
-        source_id: int,
+        input_label: str,
+        input_id: int,
         items: list[ChangeDigestItem],
     ) -> SendResult:
         settings = get_settings()
 
-        subject = f"[Deadline Diff] {source_name} - {len(items)} changes"
-        body = _build_email_body(source_id=source_id, source_name=source_name, items=items)
+        subject = f"[Deadline Diff] {input_label} - {len(items)} changes"
+        body = _build_email_body(input_id=input_id, input_label=input_label, items=items)
 
         message = EmailMessage()
         message["Subject"] = subject
@@ -41,18 +41,18 @@ class SMTPEmailNotifier(Notifier):
         return SendResult(success=True)
 
 
-def _build_email_body(source_id: int, source_name: str, items: list[ChangeDigestItem]) -> str:
+def _build_email_body(input_id: int, input_label: str, items: list[ChangeDigestItem]) -> str:
     settings = get_settings()
     grouped: dict[str, list[ChangeDigestItem]] = defaultdict(list)
     for item in items:
         grouped[item.course_label].append(item)
 
     if settings.app_base_url:
-        link = f"{settings.app_base_url.rstrip('/')}/v1/changes?source_id={source_id}"
+        link = f"{settings.app_base_url.rstrip('/')}/v1/inputs/{input_id}/changes"
     else:
-        link = f"/v1/changes?source_id={source_id}"
+        link = f"/v1/inputs/{input_id}/changes"
 
-    lines: list[str] = [f"Source: {source_name}", f"Changes: {len(items)}", ""]
+    lines: list[str] = [f"Input: {input_label}", f"Changes: {len(items)}", ""]
 
     for course_label in sorted(grouped):
         lines.append(f"## {course_label}")

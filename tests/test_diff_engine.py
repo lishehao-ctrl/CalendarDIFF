@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.db.base import Base
 from app.db.models import ChangeType, Snapshot, SnapshotEvent, Source, SourceType, User
 from app.modules.diff.engine import EventState, compute_diff
 from app.modules.sync.service import _find_debounced_removed_uids
@@ -91,56 +89,53 @@ def test_diff_noop_when_event_unchanged() -> None:
     assert result.updated_events == []
 
 
-def test_removed_requires_three_consecutive_missing_snapshots() -> None:
-    engine = create_engine("sqlite:///:memory:", future=True)
-    Base.metadata.create_all(engine)
+def test_removed_requires_three_consecutive_missing_snapshots(db_session: Session) -> None:
+    user = User(email="owner@example.com")
+    db_session.add(user)
+    db_session.flush()
 
-    with Session(engine) as db:
-        user = User(email="owner@example.com")
-        db.add(user)
-        db.flush()
+    source = Source(
+        user_id=user.id,
+        type=SourceType.ICS,
+        name="Test",
+        normalized_name="test",
+        encrypted_url="encrypted",
+        interval_minutes=15,
+        is_active=True,
+    )
+    db_session.add(source)
+    db_session.flush()
 
-        source = Source(
-            user_id=user.id,
-            type=SourceType.ICS,
-            name="Test",
-            encrypted_url="encrypted",
-            interval_minutes=15,
-            is_active=True,
+    snap1 = Snapshot(input_id=source.id, content_hash="a", event_count=0)
+    snap2 = Snapshot(input_id=source.id, content_hash="b", event_count=0)
+    db_session.add_all([snap1, snap2])
+    db_session.flush()
+
+    # only two snapshots so far, candidate removal must not pass debounce
+    candidate = {"uid-removed"}
+    debounced = _find_debounced_removed_uids(db_session, input_id=source.id, candidate_uids=candidate)
+    assert debounced == set()
+
+    snap3 = Snapshot(input_id=source.id, content_hash="c", event_count=0)
+    db_session.add(snap3)
+    db_session.flush()
+
+    # still absent in all latest 3 snapshots -> removal is now allowed
+    debounced = _find_debounced_removed_uids(db_session, input_id=source.id, candidate_uids=candidate)
+    assert debounced == {"uid-removed"}
+
+    # if event appears in one of latest three snapshots, debounce blocks removal
+    db_session.add(
+        SnapshotEvent(
+            snapshot_id=snap3.id,
+            uid="uid-removed",
+            course_label="Unknown",
+            title="Back",
+            start_at_utc=_dt(8),
+            end_at_utc=_dt(9),
         )
-        db.add(source)
-        db.flush()
+    )
+    db_session.flush()
 
-        snap1 = Snapshot(source_id=source.id, content_hash="a", event_count=0)
-        snap2 = Snapshot(source_id=source.id, content_hash="b", event_count=0)
-        db.add_all([snap1, snap2])
-        db.flush()
-
-        # only two snapshots so far, candidate removal must not pass debounce
-        candidate = {"uid-removed"}
-        debounced = _find_debounced_removed_uids(db, source_id=source.id, candidate_uids=candidate)
-        assert debounced == set()
-
-        snap3 = Snapshot(source_id=source.id, content_hash="c", event_count=0)
-        db.add(snap3)
-        db.flush()
-
-        # still absent in all latest 3 snapshots -> removal is now allowed
-        debounced = _find_debounced_removed_uids(db, source_id=source.id, candidate_uids=candidate)
-        assert debounced == {"uid-removed"}
-
-        # if event appears in one of latest three snapshots, debounce blocks removal
-        db.add(
-            SnapshotEvent(
-                snapshot_id=snap3.id,
-                uid="uid-removed",
-                course_label="Unknown",
-                title="Back",
-                start_at_utc=_dt(8),
-                end_at_utc=_dt(9),
-            )
-        )
-        db.flush()
-
-        debounced = _find_debounced_removed_uids(db, source_id=source.id, candidate_uids=candidate)
-        assert debounced == set()
+    debounced = _find_debounced_removed_uids(db_session, input_id=source.id, candidate_uids=candidate)
+    assert debounced == set()

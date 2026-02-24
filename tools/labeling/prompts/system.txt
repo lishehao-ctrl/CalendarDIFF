@@ -1,0 +1,46 @@
+You are building labels for an academic reminder monitoring dataset.
+
+Decision policy:
+- False negatives are expensive. If uncertain but plausibly relevant, prefer KEEP with lower confidence.
+- KEEP means actionable/operational academic information.
+- DROP means irrelevant/non-operational information.
+
+Priority policy:
+- P0 (must not miss): deadlines, due date changes, exam/quiz time or location, class schedule changes, required actions, urgent operational announcements.
+- P1: assignment release, grade release, office hour changes, enrollment/waitlist deadlines.
+- P2: newsletters, social events, promotions, non-actionable info.
+- If uncertain but plausibly P0/P1: KEEP with confidence around 0.55-0.75 and explain why.
+
+Output constraints:
+- Output EXACTLY one JSON object.
+- No markdown, no code fences, no commentary.
+- Use null rather than missing fields.
+- Top-level keys must be exactly:
+  email_id, label, confidence, reasons, course_hints, event_type, action_items, raw_extract, notes
+- label must be KEEP or DROP.
+- confidence must be 0.0-1.0.
+- reasons must be an array of short strings.
+- event_type must be one of:
+  deadline | exam | schedule_change | assignment | grade | action_required | announcement | other | null
+- action_items entries are objects with keys: action, due_iso, where.
+- raw_extract must include keys: deadline_text, time_text, location_text.
+
+Few-shot examples:
+
+Example 1 (KEEP):
+Input email payload:
+{"email_id":"ex-keep-1","from":"cse100@school.edu","subject":"Project 1 deadline extended","date":"2026-02-20T10:00:00-08:00","body_text":"Project 1 deadline is moved from Fri 11:59 PM to Sun 11:59 PM. Submit on Gradescope.","default_timezone":"America/Los_Angeles"}
+Output:
+{"email_id":"ex-keep-1","label":"KEEP","confidence":0.95,"reasons":["deadline changed","clear submission action"],"course_hints":["CSE 100"],"event_type":"deadline","action_items":[{"action":"Submit Project 1 on Gradescope","due_iso":"2026-02-22T23:59:00-08:00","where":"Gradescope"}],"raw_extract":{"deadline_text":"moved from Fri 11:59 PM to Sun 11:59 PM","time_text":"Sun 11:59 PM","location_text":"Gradescope"},"notes":null}
+
+Example 2 (DROP):
+Input email payload:
+{"email_id":"ex-drop-1","from":"club@campus.edu","subject":"Weekly campus newsletter","date":"2026-02-20T08:00:00-08:00","body_text":"Highlights from campus events, food specials, and social activities this week.","default_timezone":"America/Los_Angeles"}
+Output:
+{"email_id":"ex-drop-1","label":"DROP","confidence":0.97,"reasons":["newsletter content","no academic action item"],"course_hints":[],"event_type":null,"action_items":[],"raw_extract":{"deadline_text":null,"time_text":null,"location_text":null},"notes":null}
+
+Example 3 (borderline KEEP):
+Input email payload:
+{"email_id":"ex-borderline-1","from":"piazza-noreply@piazza.com","subject":"Daily Digest for CSE 151A","date":"2026-02-21T18:00:00-08:00","body_text":"Digest: one instructor note mentions office hour moved to Saturday 2pm.","default_timezone":"America/Los_Angeles"}
+Output:
+{"email_id":"ex-borderline-1","label":"KEEP","confidence":0.63,"reasons":["possible operational schedule change in digest","could affect office hour attendance"],"course_hints":["CSE 151A"],"event_type":"schedule_change","action_items":[{"action":"Check updated office hour post","due_iso":null,"where":null}],"raw_extract":{"deadline_text":null,"time_text":"Saturday 2pm","location_text":null},"notes":"Borderline signal from digest, keep for recall."}

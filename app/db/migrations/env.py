@@ -4,6 +4,8 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+from sqlalchemy.engine import Connection
+from sqlalchemy.engine.url import make_url
 
 from app.core.config import get_settings
 from app.db.base import Base
@@ -20,8 +22,28 @@ config.set_main_option("sqlalchemy.url", settings.database_url)
 target_metadata = Base.metadata
 
 
+def _assert_postgres_url(url: str) -> None:
+    parsed = make_url(url)
+    if parsed.drivername.startswith("postgresql"):
+        return
+    raise RuntimeError(
+        "PostgreSQL-only migration chain: DATABASE_URL must use a PostgreSQL driver. "
+        f"Got driver '{parsed.drivername}'."
+    )
+
+
+def _assert_postgres_connection(connection: Connection) -> None:
+    if connection.dialect.name.startswith("postgresql"):
+        return
+    raise RuntimeError(
+        "PostgreSQL-only migration chain: connected dialect must be PostgreSQL. "
+        f"Got '{connection.dialect.name}'."
+    )
+
+
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
+    _assert_postgres_url(url)
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -41,6 +63,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        _assert_postgres_connection(connection)
         context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():

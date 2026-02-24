@@ -10,7 +10,7 @@ from typing import Any
 from app.core.config import get_settings
 
 
-def save_ics(source_id: int, content: bytes, retrieved_at: datetime) -> dict[str, Any]:
+def save_ics(input_id: int, content: bytes, retrieved_at: datetime) -> dict[str, Any]:
     settings = get_settings()
     retrieved_at_utc = _as_utc(retrieved_at)
 
@@ -26,7 +26,7 @@ def save_ics(source_id: int, content: bytes, retrieved_at: datetime) -> dict[str
         write_base_dir = (Path.cwd() / configured_base).resolve()
         stored_base_dir = configured_base
 
-    write_source_dir = write_base_dir / "ics" / f"source_{source_id}"
+    write_source_dir = write_base_dir / "ics" / f"source_{input_id}"
     write_source_dir.mkdir(parents=True, exist_ok=True)
 
     final_write_path = write_source_dir / filename
@@ -42,7 +42,7 @@ def save_ics(source_id: int, content: bytes, retrieved_at: datetime) -> dict[str
         temp_path.unlink(missing_ok=True)
         raise
 
-    stored_path = (stored_base_dir / "ics" / f"source_{source_id}" / filename).as_posix()
+    stored_path = (stored_base_dir / "ics" / f"source_{input_id}" / filename).as_posix()
     return {
         "kind": "ics",
         "store": "fs",

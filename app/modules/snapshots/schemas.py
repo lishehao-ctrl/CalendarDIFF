@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 class SnapshotResponse(BaseModel):
     id: int
-    source_id: int
+    input_id: int
     retrieved_at: datetime
     content_hash: str
     event_count: int

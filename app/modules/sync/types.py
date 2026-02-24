@@ -6,9 +6,12 @@ from datetime import datetime
 
 @dataclass(frozen=True)
 class FetchResult:
-    content: bytes
+    content: bytes | None
     etag: str | None
     fetched_at_utc: datetime
+    last_modified: str | None = None
+    status_code: int = 200
+    not_modified: bool = False
 
 
 @dataclass(frozen=True)

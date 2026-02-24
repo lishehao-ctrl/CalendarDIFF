@@ -4,20 +4,30 @@ from collections.abc import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
+from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
+from app.db.schema_guard import ensure_schema_ready, reset_schema_guard_cache
 
 _ENGINE: Engine | None = None
 _SESSION_FACTORY: sessionmaker[Session] | None = None
 
 
+def _assert_postgres_database_url(database_url: str) -> None:
+    driver = make_url(database_url).drivername
+    if driver.startswith("postgresql"):
+        return
+    raise RuntimeError(
+        "PostgreSQL-only runtime: DATABASE_URL must use a PostgreSQL driver, "
+        f"got '{driver}'."
+    )
+
+
 def _build_engine() -> Engine:
     settings = get_settings()
-    connect_args: dict[str, object] = {}
-    if settings.database_url.startswith("sqlite"):
-        connect_args["check_same_thread"] = False
-    return create_engine(settings.database_url, pool_pre_ping=True, future=True, connect_args=connect_args)
+    _assert_postgres_database_url(settings.database_url)
+    return create_engine(settings.database_url, pool_pre_ping=True, future=True)
 
 
 def get_engine() -> Engine:
@@ -36,6 +46,7 @@ def reset_engine() -> None:
         _ENGINE.dispose()
     _ENGINE = None
     _SESSION_FACTORY = None
+    reset_schema_guard_cache()
 
 
 def get_session_factory() -> sessionmaker[Session]:
@@ -47,6 +58,10 @@ def get_session_factory() -> sessionmaker[Session]:
 
 
 def get_db() -> Generator[Session, None, None]:
+    settings = get_settings()
+    if settings.schema_guard_enabled:
+        ensure_schema_ready(get_engine())
+
     session_factory = get_session_factory()
     db = session_factory()
     try:

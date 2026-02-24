@@ -16,7 +16,7 @@ def test_save_ics_persists_file_and_returns_evidence_key(tmp_path, monkeypatch) 
     content = b"BEGIN:VCALENDAR\nEND:VCALENDAR\n"
     retrieved_at = datetime(2026, 2, 19, 20, 31, 10, tzinfo=timezone.utc)
 
-    evidence_key = save_ics(source_id=12, content=content, retrieved_at=retrieved_at)
+    evidence_key = save_ics(input_id=12, content=content, retrieved_at=retrieved_at)
 
     assert evidence_key["kind"] == "ics"
     assert evidence_key["store"] == "fs"
