@@ -36,7 +36,7 @@ from app.modules.inputs.service import (
     InputBusyError,
     InputReplaceConflictError,
     build_gmail_oauth_start,
-    create_ics_input_for_default,
+    create_ics_input,
     get_input_by_id,
     list_input_runs,
     list_inputs_with_runtime_state,
@@ -51,7 +51,7 @@ from app.modules.overrides.service import (
     upsert_course_override,
     upsert_task_override,
 )
-from app.modules.users.service import get_or_create_default_user
+from app.modules.users.service import UserNotInitializedError, require_initialized_user, user_not_initialized_detail
 from app.modules.snapshots.schemas import SnapshotResponse
 
 router = APIRouter(prefix="/v1/inputs", tags=["inputs"], dependencies=[Depends(require_api_key)])
@@ -74,9 +74,12 @@ def create_input_from_ics(
     db: Session = Depends(get_db),
 ) -> InputCreateResponse:
     try:
-        result = create_ics_input_for_default(db, payload)
+        user = require_initialized_user(db)
+        result = create_ics_input(db, user_id=user.id, payload=payload)
     except InputReplaceConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except UserNotInitializedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=user_not_initialized_detail()) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
@@ -90,7 +93,10 @@ def start_input_gmail_oauth(
     payload: GmailOAuthStartRequest,
     db: Session = Depends(get_db),
 ) -> GmailOAuthStartResponse:
-    get_or_create_default_user(db)
+    try:
+        require_initialized_user(db)
+    except UserNotInitializedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=user_not_initialized_detail()) from exc
     try:
         result = build_gmail_oauth_start(
             label=payload.label,

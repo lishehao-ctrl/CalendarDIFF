@@ -52,7 +52,6 @@ class GmailOAuthStartResponse(BaseModel):
 
 class InputResponse(BaseModel):
     id: int
-    user_id: int
     type: str
     display_label: str
     term_id: int | None

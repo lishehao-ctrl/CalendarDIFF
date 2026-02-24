@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { FlaskConical, Loader2 } from "lucide-react";
 
 import { AppNav } from "@/components/dashboard/app-nav";
@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { apiRequest } from "@/lib/api";
+import { ApiError, apiRequest } from "@/lib/api";
 import { getRuntimeConfig } from "@/lib/config";
 
 export default function DevPage() {
@@ -22,6 +22,21 @@ export default function DevPage() {
   const [error, setError] = useState<string | null>(null);
 
   const enabled = Boolean(config.enableDevEndpoints && (config.appEnv ?? "").toLowerCase() === "dev");
+
+  useEffect(() => {
+    if (!config.apiKey) {
+      return;
+    }
+    void (async () => {
+      try {
+        await apiRequest(config, "/v1/user");
+      } catch (err) {
+        if (isUserNotInitializedError(err)) {
+          window.location.replace("/ui/onboarding");
+        }
+      }
+    })();
+  }, [config]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -70,7 +85,7 @@ export default function DevPage() {
               </h1>
               <p className="mt-1 text-sm text-muted">Inject one demo notify item from email-like text for UI verification.</p>
             </div>
-            <AppNav current="dev" activeUserId={null} activeInputId={null} showDev={enabled} />
+            <AppNav current="dev" activeInputId={null} showDev={enabled} />
           </div>
         </header>
 
@@ -116,4 +131,22 @@ export default function DevPage() {
       </div>
     </div>
   );
+}
+
+function isUserNotInitializedError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) {
+    return false;
+  }
+  if (error.status !== 404) {
+    return false;
+  }
+  const body = error.body;
+  if (!body || typeof body !== "object") {
+    return false;
+  }
+  const detail = (body as Record<string, unknown>).detail;
+  if (!detail || typeof detail !== "object") {
+    return false;
+  }
+  return (detail as Record<string, unknown>).code === "user_not_initialized";
 }

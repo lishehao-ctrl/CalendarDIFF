@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from app.db.models import Change, Notification, Source
 
 
-def test_manual_sync_failure_updates_source_error_without_changes_or_notifications(client, db_session, monkeypatch) -> None:
+def test_manual_sync_failure_updates_source_error_without_changes_or_notifications(client, initialized_user, db_session, monkeypatch) -> None:
     headers = {"X-API-Key": "test-api-key"}
 
     create_response = client.post(

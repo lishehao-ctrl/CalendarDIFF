@@ -117,3 +117,14 @@ def client(configure_test_environment: None) -> Generator[TestClient, None, None
         yield test_client
     get_settings.cache_clear()
     reset_engine()
+
+
+@pytest.fixture()
+def initialized_user(client: TestClient) -> dict[str, object]:
+    response = client.post(
+        "/v1/user",
+        headers={"X-API-Key": "test-api-key"},
+        json={"notify_email": "student@example.com"},
+    )
+    assert response.status_code in {200, 201}
+    return response.json()

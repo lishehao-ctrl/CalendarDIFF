@@ -248,6 +248,12 @@ def test_source_api_works_after_postgres_migration(test_database_url: str) -> No
         app = create_app()
         with TestClient(app) as client:
             headers = {"X-API-Key": "test-api-key"}
+            init_user_response = client.post(
+                "/v1/user",
+                headers=headers,
+                json={"notify_email": "student@example.com"},
+            )
+            assert init_user_response.status_code == 201
 
             create_response = client.post(
                 "/v1/inputs/ics",

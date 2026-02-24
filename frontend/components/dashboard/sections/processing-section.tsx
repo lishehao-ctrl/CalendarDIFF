@@ -141,14 +141,14 @@ export function ProcessingSection({
               </TableHeader>
               <TableBody>
                 {sources.map((source) => (
-                  <TableRow key={source.id}>
-                    <TableCell className="font-medium">
-                      <div>{source.display_label}</div>
-                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                        <span>{`user-${source.user_id}`}</span>
-                        <Badge variant="muted">{source.term_label ?? "Global"}</Badge>
-                      </div>
-                    </TableCell>
+                    <TableRow key={source.id}>
+                      <TableCell className="font-medium">
+                        <div>{source.display_label}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+                          <span>{`input-${source.id}`}</span>
+                          <Badge variant="muted">{source.term_label ?? "Global"}</Badge>
+                        </div>
+                      </TableCell>
                     <TableCell>
                       <Badge variant={source.type === "email" ? "warning" : "muted"}>{source.type.toUpperCase()}</Badge>
                     </TableCell>

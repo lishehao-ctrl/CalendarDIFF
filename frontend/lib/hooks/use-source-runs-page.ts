@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { apiRequest } from "@/lib/api";
+import { ApiError, apiRequest } from "@/lib/api";
 import { getRuntimeConfig } from "@/lib/config";
 import { AppConfig, Source, SourceRun } from "@/lib/types";
 
@@ -19,6 +19,7 @@ export function useSourceRunsPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [sourcesLoading, setSourcesLoading] = useState(false);
   const [sourcesError, setSourcesError] = useState<string | null>(null);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
   const [sourceIdQueryError, setSourceIdQueryError] = useState<string | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
@@ -55,7 +56,18 @@ export function useSourceRunsPage() {
     if (!config) {
       return;
     }
-    void loadSources(config);
+    void (async () => {
+      try {
+        const initialized = await checkUserInitialized(config);
+        setNeedsOnboarding(!initialized);
+        if (!initialized) {
+          return;
+        }
+        await loadSources(config);
+      } catch (error) {
+        setSourcesError(toErrorMessage(error));
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config]);
 
@@ -131,11 +143,24 @@ export function useSourceRunsPage() {
   }
 
   async function handleRefresh() {
-    await loadSources();
+    if (!config) {
+      return;
+    }
+    try {
+      const initialized = await checkUserInitialized(config);
+      setNeedsOnboarding(!initialized);
+      if (!initialized) {
+        return;
+      }
+      await loadSources(config);
+    } catch (error) {
+      setSourcesError(toErrorMessage(error));
+    }
   }
 
   return {
     configError,
+    needsOnboarding,
     sources,
     sourcesLoading,
     sourcesError,
@@ -152,6 +177,18 @@ export function useSourceRunsPage() {
     selectLimit,
     handleRefresh,
   };
+}
+
+async function checkUserInitialized(config: AppConfig): Promise<boolean> {
+  try {
+    await apiRequest(config, "/v1/user");
+    return true;
+  } catch (error) {
+    if (isUserNotInitializedError(error)) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 function parseSourceIdFromLocation(): SourceIdQueryParse {
@@ -194,4 +231,22 @@ function toErrorMessage(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+function isUserNotInitializedError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) {
+    return false;
+  }
+  if (error.status !== 404) {
+    return false;
+  }
+  const body = error.body;
+  if (!body || typeof body !== "object") {
+    return false;
+  }
+  const detail = (body as Record<string, unknown>).detail;
+  if (!detail || typeof detail !== "object") {
+    return false;
+  }
+  return (detail as Record<string, unknown>).code === "user_not_initialized";
 }

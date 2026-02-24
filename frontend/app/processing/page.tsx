@@ -10,8 +10,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useDashboardData } from "@/lib/hooks/use-dashboard-data";
@@ -21,11 +19,7 @@ export default function ProcessingPage() {
     configError,
     showDevTools,
     toasts,
-    users,
-    activeUserId,
-    usersLoading,
-    usersError,
-    handleActiveUserChange,
+    needsOnboarding,
     sources,
     activeSourceId,
     sourcesLoading,
@@ -70,8 +64,7 @@ export default function ProcessingPage() {
     getTaskDisplayTitle,
   } = useDashboardData();
 
-  const visibleInputs = activeUserId ? sources.filter((source) => source.user_id === activeUserId) : sources;
-  const activeInput = activeSourceId ? visibleInputs.find((source) => source.id === activeSourceId) ?? null : null;
+  const activeInput = activeSourceId ? sources.find((source) => source.id === activeSourceId) ?? null : null;
   const activeInputType = activeInput?.type ?? null;
   const hasStatusLoadError = Boolean(healthError || statusError);
   const overallStatusLevel = readOverallStatusLevel({
@@ -80,6 +73,13 @@ export default function ProcessingPage() {
   });
   const overallStatusHeadline = readOverallStatusHeadline(overallStatusLevel);
   const statusTimestamp = status?.scheduler_last_tick_at ?? "unknown";
+
+  useEffect(() => {
+    if (needsOnboarding) {
+      window.location.replace("/ui/onboarding");
+      return;
+    }
+  }, [needsOnboarding]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -109,7 +109,7 @@ export default function ProcessingPage() {
                 Run manual sync, inspect runtime state, and manage ICS rename overrides for the selected input.
               </p>
             </div>
-            <AppNav current="processing" activeUserId={activeUserId} activeInputId={activeSourceId} showDev={showDevTools} />
+            <AppNav current="processing" activeInputId={activeSourceId} showDev={showDevTools} />
           </div>
         </header>
 
@@ -119,48 +119,6 @@ export default function ProcessingPage() {
             <AlertDescription>{configError}</AlertDescription>
           </Alert>
         ) : null}
-
-        <Card className="animate-fade-in">
-          <CardHeader>
-            <CardTitle>Active User Context</CardTitle>
-            <CardDescription>Processing and sync actions are scoped to the current user.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {usersError ? (
-              <Alert>
-                <AlertTitle>User Load Failed</AlertTitle>
-                <AlertDescription>{usersError}</AlertDescription>
-              </Alert>
-            ) : usersLoading ? (
-              <Skeleton className="h-10" />
-            ) : !users.length ? (
-              <Alert>
-                <AlertTitle>No User</AlertTitle>
-                <AlertDescription>Initialize user settings first.</AlertDescription>
-              </Alert>
-            ) : (
-              <div className="max-w-md space-y-2">
-                <Label htmlFor="processing-user">User</Label>
-                <Select
-                  id="processing-user"
-                  value={activeUserId ? String(activeUserId) : ""}
-                  onChange={(event) => {
-                    const parsed = Number(event.target.value);
-                    if (Number.isInteger(parsed) && parsed > 0) {
-                      void handleActiveUserChange(parsed);
-                    }
-                  }}
-                >
-                  {users.map((user) => (
-                    <option key={user.id} value={String(user.id)}>
-                      {user.id} - {user.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
         <Card className="animate-fade-in">
           <CardHeader className="pb-3">
@@ -254,7 +212,7 @@ export default function ProcessingPage() {
         </Card>
 
         <ProcessingSection
-          sources={visibleInputs}
+          sources={sources}
           activeSourceId={activeSourceId}
           sourcesLoading={sourcesLoading}
           sourcesError={sourcesError}

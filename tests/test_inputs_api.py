@@ -8,8 +8,35 @@ from app.modules.sync.service import SyncRunResult
 inputs_router_module = importlib.import_module("app.modules.inputs.router")
 
 
+def _init_user(client) -> None:
+    response = client.post(
+        "/v1/user",
+        headers={"X-API-Key": "test-api-key"},
+        json={"notify_email": "student@example.com"},
+    )
+    assert response.status_code in {200, 201}
+
+
+def test_inputs_require_initialized_user(client) -> None:
+    headers = {"X-API-Key": "test-api-key"}
+
+    create_response = client.post(
+        "/v1/inputs/ics",
+        headers=headers,
+        json={"url": "https://example.com/input-alias.ics"},
+    )
+    assert create_response.status_code == 409
+    assert create_response.json()["detail"]["code"] == "user_not_initialized"
+
+    feed_response = client.get("/v1/feed", headers=headers)
+    assert feed_response.status_code == 409
+    assert feed_response.json()["detail"]["code"] == "user_not_initialized"
+
+
 def test_inputs_list_and_runs_endpoints(client) -> None:
     headers = {"X-API-Key": "test-api-key"}
+    _init_user(client)
+
     create_response = client.post(
         "/v1/inputs/ics",
         headers=headers,
@@ -18,11 +45,14 @@ def test_inputs_list_and_runs_endpoints(client) -> None:
         },
     )
     assert create_response.status_code == 201
+    assert "user_id" not in create_response.json()
     source_id = create_response.json()["id"]
 
     list_response = client.get("/v1/inputs", headers=headers)
     assert list_response.status_code == 200
     rows = list_response.json()
+    assert rows
+    assert "user_id" not in rows[0]
     assert any(item["id"] == source_id for item in rows)
 
     runs_response = client.get(f"/v1/inputs/{source_id}/runs?limit=20", headers=headers)
@@ -32,6 +62,8 @@ def test_inputs_list_and_runs_endpoints(client) -> None:
 
 def test_input_sync_endpoint_uses_existing_manual_sync_flow(client, monkeypatch) -> None:
     headers = {"X-API-Key": "test-api-key"}
+    _init_user(client)
+
     create_response = client.post(
         "/v1/inputs/ics",
         headers=headers,
@@ -61,14 +93,6 @@ def test_input_sync_endpoint_uses_existing_manual_sync_flow(client, monkeypatch)
     assert payload["is_baseline_sync"] is True
 
 
-def test_feed_endpoint_available(client) -> None:
-    headers = {"X-API-Key": "test-api-key"}
-    response = client.get("/v1/feed", headers=headers)
-
-    assert response.status_code == 200
-    assert isinstance(response.json(), list)
-
-
 def test_legacy_source_routes_are_removed(client) -> None:
     headers = {"X-API-Key": "test-api-key"}
 
@@ -85,6 +109,7 @@ def test_legacy_source_routes_are_removed(client) -> None:
 
 def test_input_create_rejects_legacy_interval_or_notify_fields(client) -> None:
     headers = {"X-API-Key": "test-api-key"}
+    _init_user(client)
 
     with_interval = client.post(
         "/v1/inputs/ics",

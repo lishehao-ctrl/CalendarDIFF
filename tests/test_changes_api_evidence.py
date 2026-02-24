@@ -33,7 +33,7 @@ END:VCALENDAR
 """
 
 
-def test_changes_and_snapshots_endpoints_include_evidence(client, monkeypatch, tmp_path) -> None:
+def test_changes_and_snapshots_endpoints_include_evidence(client, initialized_user, monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("EVIDENCE_DIR", "./evidence")
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")

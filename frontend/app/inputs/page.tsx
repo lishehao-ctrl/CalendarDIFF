@@ -1,40 +1,35 @@
 "use client";
 
 import { useEffect } from "react";
-import { BellRing } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 
 import { AppNav } from "@/components/dashboard/app-nav";
-import { DiffSection } from "@/components/dashboard/sections/diff-section";
+import { InputSection } from "@/components/dashboard/sections/input-section";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { useDashboardData } from "@/lib/hooks/use-dashboard-data";
 
-export default function FeedPage() {
+export default function InputsPage() {
   const {
     configError,
     showDevTools,
     toasts,
     needsOnboarding,
     activeSourceId,
-    changeFilter,
-    setChangeFilter,
-    changeSourceTypeFilter,
-    setChangeSourceTypeFilter,
-    feedTermScope,
-    setFeedTermScope,
-    feedTermId,
-    setFeedTermId,
+    sourceUrl,
+    sourceTermId,
+    sourceEmailLabel,
+    sourceEmailFromContains,
+    sourceEmailSubjectKeywords,
+    setSourceUrl,
+    setSourceTermId,
+    setSourceEmailLabel,
+    setSourceEmailFromContains,
+    setSourceEmailSubjectKeywords,
+    createBusy,
     activeUserTerms,
-    filteredChanges,
-    changesLoading,
-    changesError,
-    handleRefreshChanges,
-    handleToggleViewed,
-    handleDownloadEvidence,
-    changeNotes,
-    setChangeNote,
-    getTaskDisplayTitle,
-    getCourseDisplayLabel,
+    handleCreateCalendarInput,
+    handleConnectGmailInput,
   } = useDashboardData();
 
   useEffect(() => {
@@ -51,14 +46,14 @@ export default function FeedPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="inline-flex items-center gap-2 text-2xl font-semibold [font-family:var(--font-heading)] md:text-3xl">
-                <BellRing className="h-6 w-6 text-accent" />
-                Feed
+                <CalendarDays className="h-6 w-6 text-accent" />
+                Inputs
               </h1>
               <p className="mt-1 text-sm text-muted">
-                Review aggregated changes across email and calendar inputs with term filters.
+                Add calendar and Gmail sources. Processing, feed, and runs are managed in their own workspaces.
               </p>
             </div>
-            <AppNav current="feed" activeInputId={activeSourceId} showDev={showDevTools} />
+            <AppNav current="inputs" activeInputId={activeSourceId} showDev={showDevTools} />
           </div>
         </header>
 
@@ -69,26 +64,21 @@ export default function FeedPage() {
           </Alert>
         ) : null}
 
-        <DiffSection
-          changeFilter={changeFilter}
-          onChangeFilter={setChangeFilter}
-          changeSourceTypeFilter={changeSourceTypeFilter}
-          onChangeSourceTypeFilter={setChangeSourceTypeFilter}
-          feedTermScope={feedTermScope}
-          onFeedTermScopeChange={setFeedTermScope}
-          feedTermId={feedTermId}
-          onFeedTermIdChange={setFeedTermId}
+        <InputSection
+          sourceUrl={sourceUrl}
+          sourceTermId={sourceTermId}
+          sourceEmailLabel={sourceEmailLabel}
+          sourceEmailFromContains={sourceEmailFromContains}
+          sourceEmailSubjectKeywords={sourceEmailSubjectKeywords}
           activeUserTerms={activeUserTerms}
-          changesError={changesError}
-          changesLoading={changesLoading}
-          filteredChanges={filteredChanges}
-          changeNotes={changeNotes}
-          onChangeNote={setChangeNote}
-          onToggleViewed={handleToggleViewed}
-          onDownloadEvidence={handleDownloadEvidence}
-          onRefreshChanges={handleRefreshChanges}
-          getTaskDisplayTitle={getTaskDisplayTitle}
-          getCourseDisplayLabel={getCourseDisplayLabel}
+          createBusy={createBusy}
+          onSourceUrlChange={setSourceUrl}
+          onSourceTermIdChange={setSourceTermId}
+          onSourceEmailLabelChange={setSourceEmailLabel}
+          onSourceEmailFromContainsChange={setSourceEmailFromContains}
+          onSourceEmailSubjectKeywordsChange={setSourceEmailSubjectKeywords}
+          onCreateCalendarInput={handleCreateCalendarInput}
+          onConnectGmailInput={handleConnectGmailInput}
         />
       </div>
 

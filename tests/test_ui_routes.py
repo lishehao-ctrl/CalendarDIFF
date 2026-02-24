@@ -22,6 +22,14 @@ def _write_ui_fixture(root: Path) -> None:
         "<html><body><h1>Feed</h1><div id='feed-page'></div></body></html>",
         encoding="utf-8",
     )
+    (root / "inputs.html").write_text(
+        "<html><body><h1>Inputs</h1><div id='inputs-page'></div></body></html>",
+        encoding="utf-8",
+    )
+    (root / "onboarding.html").write_text(
+        "<html><body><h1>Onboarding</h1><div id='onboarding-page'></div></body></html>",
+        encoding="utf-8",
+    )
     (root / "runs.html").write_text(
         "<html><body><h1>Input Run History</h1><div id='run-history-page'></div></body></html>",
         encoding="utf-8",
@@ -88,6 +96,16 @@ def test_ui_named_page_path_is_served(client, monkeypatch, tmp_path) -> None:
     assert response_feed.status_code == 200
     assert "Feed" in response_feed.text
     assert "feed-page" in response_feed.text
+
+    response_inputs = client.get("/ui/inputs")
+    assert response_inputs.status_code == 200
+    assert "Inputs" in response_inputs.text
+    assert "inputs-page" in response_inputs.text
+
+    response_onboarding = client.get("/ui/onboarding")
+    assert response_onboarding.status_code == 200
+    assert "Onboarding" in response_onboarding.text
+    assert "onboarding-page" in response_onboarding.text
 
     response_runs = client.get("/ui/runs")
     assert response_runs.status_code == 200

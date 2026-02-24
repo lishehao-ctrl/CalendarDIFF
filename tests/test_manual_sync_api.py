@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.modules.sync.service import SyncRunResult
 
 
-def test_manual_sync_endpoint_returns_sync_summary(client, monkeypatch) -> None:
+def test_manual_sync_endpoint_returns_sync_summary(client, initialized_user, monkeypatch) -> None:
     headers = {"X-API-Key": "test-api-key"}
 
     create_response = client.post(
@@ -40,7 +40,7 @@ def test_manual_sync_endpoint_returns_sync_summary(client, monkeypatch) -> None:
     }
 
 
-def test_manual_sync_endpoint_uses_non_blocking_source_lock(client, monkeypatch) -> None:
+def test_manual_sync_endpoint_uses_non_blocking_source_lock(client, initialized_user, monkeypatch) -> None:
     headers = {"X-API-Key": "test-api-key"}
 
     create_response = client.post(
@@ -82,7 +82,7 @@ def test_manual_sync_endpoint_uses_non_blocking_source_lock(client, monkeypatch)
     assert calls[0][1] == source_id
 
 
-def test_manual_sync_returns_busy_and_records_lock_skipped_run(client, monkeypatch) -> None:
+def test_manual_sync_returns_busy_and_records_lock_skipped_run(client, initialized_user, monkeypatch) -> None:
     headers = {"X-API-Key": "test-api-key"}
 
     create_response = client.post(

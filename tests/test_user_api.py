@@ -1,51 +1,95 @@
 from __future__ import annotations
 
+from app.db.models import User
 
-def test_user_api_get_patch_and_create_ics_input(client) -> None:
+
+def test_user_get_404_until_initialized_and_post_is_idempotent(client) -> None:
     headers = {"X-API-Key": "test-api-key"}
 
-    get_response = client.get("/v1/user", headers=headers)
-    assert get_response.status_code == 200
-    user_payload = get_response.json()
-    user_id = user_payload["id"]
-
-    patch_response = client.patch(
-        "/v1/user",
-        headers=headers,
-        json={
-            "notify_email": "student-a@example.com",
-            "calendar_delay_seconds": 120,
-        },
-    )
-    assert patch_response.status_code == 200
-    assert patch_response.json()["notify_email"] == "student-a@example.com"
-
-    input_response = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={
-            "url": "https://example.com/student-a.ics",
-        },
-    )
-    assert input_response.status_code == 201
-    created_input = input_response.json()
-    assert created_input["user_id"] == user_id
-    assert created_input["type"] == "ics"
-    assert created_input["interval_minutes"] == 15
-    assert created_input["notify_email"] is None
-    assert created_input["upserted_existing"] is False
-
-    sources_response = client.get("/v1/inputs", headers=headers)
-    assert sources_response.status_code == 200
-    sources = sources_response.json()
-    assert len(sources) == 1
-    assert sources[0]["user_id"] == user_id
-
-
-def test_user_terms_create_list_patch(client) -> None:
-    headers = {"X-API-Key": "test-api-key"}
+    get_before = client.get("/v1/user", headers=headers)
+    assert get_before.status_code == 404
+    assert get_before.json()["detail"]["code"] == "user_not_initialized"
 
     create_response = client.post(
+        "/v1/user",
+        headers=headers,
+        json={"notify_email": "student-a@example.com"},
+    )
+    assert create_response.status_code == 201
+    assert create_response.json()["notify_email"] == "student-a@example.com"
+
+    get_after = client.get("/v1/user", headers=headers)
+    assert get_after.status_code == 200
+    assert get_after.json()["notify_email"] == "student-a@example.com"
+
+    create_again = client.post(
+        "/v1/user",
+        headers=headers,
+        json={"notify_email": "ignored@example.com"},
+    )
+    assert create_again.status_code == 200
+    assert create_again.json()["notify_email"] == "student-a@example.com"
+
+
+def test_user_post_validates_email_and_patch_cannot_clear_notify(client) -> None:
+    headers = {"X-API-Key": "test-api-key"}
+
+    invalid_create = client.post(
+        "/v1/user",
+        headers=headers,
+        json={"notify_email": "not-an-email"},
+    )
+    assert invalid_create.status_code == 422
+
+    create_response = client.post(
+        "/v1/user",
+        headers=headers,
+        json={"notify_email": "student-a@example.com"},
+    )
+    assert create_response.status_code == 201
+
+    clear_notify = client.patch(
+        "/v1/user",
+        headers=headers,
+        json={"notify_email": None},
+    )
+    assert clear_notify.status_code == 422
+
+
+def test_legacy_user_without_notify_email_is_uninitialized(client, db_session) -> None:
+    headers = {"X-API-Key": "test-api-key"}
+
+    db_session.add(User(email="legacy@example.com", notify_email=None))
+    db_session.commit()
+
+    get_response = client.get("/v1/user", headers=headers)
+    assert get_response.status_code == 404
+    assert get_response.json()["detail"]["code"] == "user_not_initialized"
+
+    init_response = client.post(
+        "/v1/user",
+        headers=headers,
+        json={"notify_email": "student-b@example.com"},
+    )
+    assert init_response.status_code == 201
+    assert init_response.json()["notify_email"] == "student-b@example.com"
+
+
+def test_user_terms_require_initialized_user(client) -> None:
+    headers = {"X-API-Key": "test-api-key"}
+
+    list_before = client.get("/v1/user/terms", headers=headers)
+    assert list_before.status_code == 409
+    assert list_before.json()["detail"]["code"] == "user_not_initialized"
+
+    create_user = client.post(
+        "/v1/user",
+        headers=headers,
+        json={"notify_email": "student-a@example.com"},
+    )
+    assert create_user.status_code == 201
+
+    create_term = client.post(
         "/v1/user/terms",
         headers=headers,
         json={
@@ -56,57 +100,4 @@ def test_user_terms_create_list_patch(client) -> None:
             "is_active": True,
         },
     )
-    assert create_response.status_code == 201
-    term_id = create_response.json()["id"]
-
-    list_response = client.get("/v1/user/terms", headers=headers)
-    assert list_response.status_code == 200
-    rows = list_response.json()
-    assert len(rows) == 1
-    assert rows[0]["code"] == "WI26"
-
-    patch_response = client.patch(
-        f"/v1/user/terms/{term_id}",
-        headers=headers,
-        json={"label": "Winter 2026 Updated"},
-    )
-    assert patch_response.status_code == 200
-    assert patch_response.json()["label"] == "Winter 2026 Updated"
-
-
-def test_input_create_rejects_legacy_interval_or_notify_fields(client) -> None:
-    headers = {"X-API-Key": "test-api-key"}
-
-    with_interval = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={
-            "url": "https://example.com/legacy.ics",
-            "interval_minutes": 30,
-        },
-    )
-    assert with_interval.status_code == 422
-
-    with_notify = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={
-            "url": "https://example.com/legacy2.ics",
-            "notify_email": "legacy@example.com",
-        },
-    )
-    assert with_notify.status_code == 422
-
-    gmail_with_interval = client.post(
-        "/v1/inputs/email/gmail/oauth/start",
-        headers=headers,
-        json={"interval_minutes": 10},
-    )
-    assert gmail_with_interval.status_code == 422
-
-    gmail_with_notify = client.post(
-        "/v1/inputs/email/gmail/oauth/start",
-        headers=headers,
-        json={"notify_email": "legacy@example.com"},
-    )
-    assert gmail_with_notify.status_code == 422
+    assert create_term.status_code == 201

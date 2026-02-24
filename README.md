@@ -45,7 +45,9 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 5. Open demo:
 
 - `http://localhost:8000/ui`
-- root UI now redirects to `/ui/processing`
+- root UI routing:
+  - uninitialized user -> `/ui/onboarding`
+  - initialized user -> `/ui/inputs`
 
 Important:
 
@@ -127,7 +129,7 @@ APP_BASE_URL=http://localhost:8000
 2. Add redirect URI: `http://localhost:8000/v1/oauth/gmail/callback`.
 3. Restart backend after updating `.env`.
 4. Open `http://localhost:8000/ui`.
-5. Open `http://localhost:8000/ui/processing`, then use input management to connect Gmail.
+5. Open `http://localhost:8000/ui/inputs`, then use input management to connect Gmail.
 
 ### Runtime semantics
 
@@ -155,11 +157,20 @@ The input model is user-only (`user + inputs`):
 
 ### User APIs
 
+- `POST /v1/user` (create/initialize with required `notify_email`)
 - `GET /v1/user`
 - `PATCH /v1/user` (edit `notify_email`, `calendar_delay_seconds`)
 - `POST /v1/user/terms`
 - `GET /v1/user/terms`
 - `PATCH /v1/user/terms/{term_id}`
+
+Initialization contract:
+
+1. `GET /v1/user` returns `404` with `detail.code=user_not_initialized` until user setup is completed.
+2. `POST /v1/user` accepts only:
+   - `{ "notify_email": "student@example.com" }`
+3. `PATCH /v1/user` rejects clearing `notify_email`.
+4. User-dependent endpoints return `409` with `detail.code=user_not_initialized` before setup.
 
 ### Input Layer policy (fixed)
 
@@ -172,18 +183,22 @@ The input model is user-only (`user + inputs`):
 ### Feed API
 
 - `GET /v1/feed`
-  - Query: `user_id?`, `input_id?`, `view=all|unread`, `input_types=email,ics`, `term_scope=current|all|term`, `term_id?`, `limit`, `offset`
+  - Query: `input_id?`, `view=all|unread`, `input_types=email,ics`, `term_scope=current|all|term`, `term_id?`, `limit`, `offset`
   - Ordered by: `priority_rank ASC (email first)`, then `detected_at DESC`, then `id DESC`
-  - Extra fields: `user_id`, `user_notify_email`, `input_type`, `term_id`, `term_code`, `term_label`, `term_scope`, `priority_rank`, `priority_label`, `notification_state`, `deliver_after`
+  - Extra fields: `input_type`, `term_id`, `term_code`, `term_label`, `term_scope`, `priority_rank`, `priority_label`, `notification_state`, `deliver_after`
   - Old/New summary times in UI are rendered in the viewer's local timezone.
 
 ### UI information architecture
 
-1. `/ui` -> redirects to `/ui/processing`.
-2. `/ui/processing` -> health, input processing, manual sync, ICS rename management.
-3. `/ui/feed` -> aggregated change feed (EMAIL > Calendar ordering).
-4. `/ui/runs?input_id=<id>` -> input run timeline and refresh timestamp.
-5. `/ui/dev` -> dev-only inject tool (enabled only when `APP_ENV=dev` and `ENABLE_DEV_ENDPOINTS=true`).
+1. `/ui` -> onboarding gate:
+   - no initialized user: `/ui/onboarding`
+   - initialized user: `/ui/inputs`
+2. `/ui/onboarding` -> create user with one required field: `notify_email`.
+3. `/ui/inputs` -> add input sources (Calendar/Gmail).
+4. `/ui/processing` -> health, manual sync, ICS rename management.
+5. `/ui/feed` -> aggregated change feed (EMAIL > Calendar ordering); uninitialized direct access redirects to onboarding.
+6. `/ui/runs?input_id=<id>` -> input run timeline and refresh timestamp; uninitialized direct access redirects to onboarding.
+7. `/ui/dev` -> dev-only inject tool (enabled only when `APP_ENV=dev` and `ENABLE_DEV_ENDPOINTS=true`); uninitialized direct access redirects to onboarding.
 
 ## Notification Digest Schedule
 
@@ -286,6 +301,9 @@ Important:
     - `PATCH /v1/inputs/{input_id}/changes/{change_id}/viewed`
     - `GET /v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/download`
     - `GET /v1/inputs/{input_id}/snapshots`
+12. Before user onboarding, protected endpoints return:
+    - status `409`
+    - `detail.code = "user_not_initialized"`
 
 ## More Docs
 

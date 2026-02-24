@@ -16,12 +16,11 @@ from app.db.models import (
     Notification,
     NotificationChannel,
     NotificationStatus,
-    User,
     UserTerm,
 )
 from app.db.session import get_db
 from app.modules.changes.schemas import ChangeFeedResponse, ChangeResponse, ChangeSummary, ChangeSummarySide
-from app.modules.users.service import get_current_user
+from app.modules.users.service import UserNotInitializedError, require_initialized_user, user_not_initialized_detail
 
 router = APIRouter(prefix="/v1", tags=["changes"], dependencies=[Depends(require_api_key)])
 SUMMARY_TIME_FIELDS = ("start_at_utc", "internal_date", "due_at", "end_at_utc")
@@ -29,7 +28,6 @@ SUMMARY_TIME_FIELDS = ("start_at_utc", "internal_date", "due_at", "end_at_utc")
 
 @router.get("/feed", response_model=list[ChangeFeedResponse])
 def list_feed(
-    user_id: int | None = Query(default=None),
     input_id: int | None = Query(default=None),
     view: str = Query(default="all"),
     input_types: str | None = Query(default=None),
@@ -50,7 +48,11 @@ def list_feed(
     if normalized_term_scope == "term" and term_id is None:
         raise HTTPException(status_code=422, detail="term_id is required when term_scope=term")
 
-    current_user_id = user_id if user_id is not None else get_current_user(db).id
+    try:
+        current_user_id = require_initialized_user(db).id
+    except UserNotInitializedError as exc:
+        raise HTTPException(status_code=409, detail=user_not_initialized_detail()) from exc
+
     current_term_id: int | None = None
     if normalized_term_scope == "current":
         current_term = _resolve_current_user_term(db, user_id=current_user_id, today=date.today())
@@ -60,10 +62,9 @@ def list_feed(
     priority_rank_expr = case((Input.type == InputType.EMAIL, 0), else_=1)
 
     stmt = (
-        select(Change, Input, User, UserTerm, Notification)
+        select(Change, Input, UserTerm, Notification)
         .options(joinedload(Change.before_snapshot), joinedload(Change.after_snapshot))
         .join(Input, Change.input_id == Input.id)
-        .join(User, Input.user_id == User.id)
         .outerjoin(UserTerm, Input.user_term_id == UserTerm.id)
         .outerjoin(
             Notification,
@@ -76,8 +77,7 @@ def list_feed(
 
     if input_id is not None:
         stmt = stmt.where(Change.input_id == input_id)
-    if current_user_id is not None:
-        stmt = stmt.where(Input.user_id == current_user_id)
+    stmt = stmt.where(Input.user_id == current_user_id)
     if requested_types is not None:
         stmt = stmt.where(Input.type.in_(requested_types))
     if view == "unread":
@@ -95,7 +95,7 @@ def list_feed(
 
     now = datetime.now(timezone.utc)
     result: list[ChangeFeedResponse] = []
-    for change, input, user, term, notification in rows:
+    for change, input, term, notification in rows:
         base = _to_response(change)
         priority_rank = 0 if input.type == InputType.EMAIL else 1
         priority_label = "high" if priority_rank == 0 else "normal"
@@ -103,8 +103,6 @@ def list_feed(
         result.append(
             ChangeFeedResponse(
                 **base.model_dump(),
-                user_id=user.id,
-                user_notify_email=user.notify_email,
                 input_type=input.type.value,
                 term_id=input.user_term_id,
                 term_code=term.code if term is not None else None,

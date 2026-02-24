@@ -138,7 +138,7 @@ def test_changes_feed_orders_email_before_calendar_and_exposes_notification_stat
     db_session.commit()
 
     headers = {"X-API-Key": "test-api-key"}
-    response = client.get(f"/v1/feed?user_id={user.id}&limit=20", headers=headers)
+    response = client.get("/v1/feed?limit=20", headers=headers)
     assert response.status_code == 200
     rows = response.json()
     assert len(rows) == 2
@@ -147,8 +147,8 @@ def test_changes_feed_orders_email_before_calendar_and_exposes_notification_stat
     assert rows[0]["priority_rank"] == 0
     assert rows[0]["priority_label"] == "high"
     assert rows[0]["notification_state"] == "sent"
-    assert rows[0]["user_id"] == user.id
-    assert rows[0]["user_notify_email"] == user.notify_email
+    assert "user_id" not in rows[0]
+    assert "user_notify_email" not in rows[0]
     assert rows[0]["change_summary"]["old"]["value_time"] is None
     assert rows[0]["change_summary"]["old"]["source_observed_at"] is None
     assert _parse_utc(rows[0]["change_summary"]["new"]["value_time"]) == datetime(2026, 3, 1, 15, 30, tzinfo=timezone.utc)
@@ -161,8 +161,8 @@ def test_changes_feed_orders_email_before_calendar_and_exposes_notification_stat
     assert rows[1]["priority_label"] == "normal"
     assert rows[1]["notification_state"] == "queued_delayed_by_email_priority"
     assert rows[1]["deliver_after"] is not None
-    assert rows[1]["user_id"] == user.id
-    assert rows[1]["user_notify_email"] == user.notify_email
+    assert "user_id" not in rows[1]
+    assert "user_notify_email" not in rows[1]
     assert _parse_utc(rows[1]["change_summary"]["old"]["value_time"]) == datetime(2026, 3, 2, 18, 0, tzinfo=timezone.utc)
     assert _parse_utc(rows[1]["change_summary"]["new"]["value_time"]) == datetime(2026, 3, 2, 20, 0, tzinfo=timezone.utc)
     assert rows[1]["change_summary"]["old"]["source_type"] == "ics"
@@ -174,7 +174,7 @@ def test_changes_feed_orders_email_before_calendar_and_exposes_notification_stat
 
 
 def test_changes_feed_source_type_filter(client, db_session) -> None:
-    user = User(email="owner@example.com")
+    user = User(email="owner@example.com", notify_email="student-a@example.com")
     db_session.add(user)
     db_session.flush()
 
@@ -249,7 +249,7 @@ def test_changes_feed_source_type_filter(client, db_session) -> None:
     db_session.commit()
 
     headers = {"X-API-Key": "test-api-key"}
-    response = client.get(f"/v1/feed?user_id={user.id}&input_types=ics", headers=headers)
+    response = client.get("/v1/feed?input_types=ics", headers=headers)
     assert response.status_code == 200
     rows = response.json()
     assert len(rows) == 1

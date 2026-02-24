@@ -36,7 +36,7 @@ END:VCALENDAR
 """
 
 
-def test_download_change_evidence_before_and_after_success(client, monkeypatch, tmp_path) -> None:
+def test_download_change_evidence_before_and_after_success(client, initialized_user, monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("EVIDENCE_DIR", "./evidence")
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")

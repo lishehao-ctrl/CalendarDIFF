@@ -22,7 +22,7 @@ from app.db.models import (
     Snapshot,
 )
 from app.db.session import get_db
-from app.modules.users.service import get_current_user
+from app.modules.users.service import UserNotInitializedError, require_initialized_user, user_not_initialized_detail
 
 
 class InjectActionItem(BaseModel):
@@ -71,7 +71,10 @@ def inject_notify(payload: InjectNotifyRequest, db: Session = Depends(get_db)) -
     if settings.app_env.lower() != "dev" or not settings.enable_dev_endpoints:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
-    user = get_current_user(db)
+    try:
+        user = require_initialized_user(db)
+    except UserNotInitializedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=user_not_initialized_detail()) from exc
     input_row = _get_or_create_dev_email_input(db, user_id=user.id)
 
     email_id = payload.email_id.strip() if isinstance(payload.email_id, str) and payload.email_id.strip() else uuid4().hex

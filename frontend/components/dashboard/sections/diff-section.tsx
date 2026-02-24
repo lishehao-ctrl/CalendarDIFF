@@ -161,7 +161,6 @@ export function DiffSection({
                 const afterPath = readEvidencePath(change.after_raw_evidence_key);
                 const sourceType = readString((change as Record<string, unknown>).input_type) ?? "ics";
                 const priorityLabel = readString((change as Record<string, unknown>).priority_label) ?? (sourceType === "email" ? "high" : "normal");
-                const userNotifyEmail = readString((change as Record<string, unknown>).user_notify_email);
                 const termLabel = readString((change as Record<string, unknown>).term_label);
                 const termScope = readString((change as Record<string, unknown>).term_scope) ?? "global";
                 const notificationState = readString((change as Record<string, unknown>).notification_state);
@@ -195,7 +194,6 @@ export function DiffSection({
                     </div>
 
                     <div className="grid gap-2 text-sm text-muted md:grid-cols-2">
-                      <div>user notify: {userNotifyEmail ?? "-"}</div>
                       <div>term: {termScope === "global" ? "Global" : (termLabel ?? "-")}</div>
                       <div>course: {displayCourse}</div>
                       <div>type: {change.change_type}</div>

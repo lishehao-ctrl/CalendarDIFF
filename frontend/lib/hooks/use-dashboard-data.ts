@@ -10,13 +10,13 @@ import {
   GmailOAuthStartResponse,
   HealthResponse,
   ManualSyncResponse,
-  DashboardUser,
   SourceBusyDetail,
   Source,
   SourceCreateResponse,
   SourceDeadlines,
   SourceOverrides,
   StatusResponse,
+  UserTerm,
 } from "@/lib/types";
 import { ToastItem, ToastTone, useToast } from "@/lib/hooks/use-toast";
 
@@ -36,8 +36,8 @@ export function useDashboardData() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
 
-  const [users, setUsers] = useState<DashboardUser[]>([]);
-  const [activeUserId, setActiveUserId] = useState<number | null>(null);
+  const [activeUserTerms, setActiveUserTerms] = useState<UserTerm[]>([]);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
   const [sources, setSources] = useState<Source[]>([]);
   const [activeSourceId, setActiveSourceId] = useState<number | null>(null);
@@ -57,7 +57,6 @@ export function useDashboardData() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
 
   const [sourcesLoading, setSourcesLoading] = useState(false);
-  const [usersLoading, setUsersLoading] = useState(false);
   const [scopedLoading, setScopedLoading] = useState(false);
   const [changesLoading, setChangesLoading] = useState(false);
   const [healthLoading, setHealthLoading] = useState(false);
@@ -70,18 +69,15 @@ export function useDashboardData() {
   const [manualSyncAutoRetried, setManualSyncAutoRetried] = useState(false);
 
   const [sourcesError, setSourcesError] = useState<string | null>(null);
-  const [usersError, setUsersError] = useState<string | null>(null);
   const [scopedError, setScopedError] = useState<string | null>(null);
   const [changesError, setChangesError] = useState<string | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
 
   const [createBusy, setCreateBusy] = useState(false);
-  const [userUpdateBusy, setUserUpdateBusy] = useState(false);
   const [courseBusy, setCourseBusy] = useState(false);
   const [taskBusy, setTaskBusy] = useState(false);
 
-  const [activeUserNotifyEmail, setActiveUserNotifyEmail] = useState("");
   const [changeSourceTypeFilter, setChangeSourceTypeFilter] = useState<"all" | "email" | "ics">("all");
   const [feedTermScope, setFeedTermScope] = useState<"current" | "all" | "term">("current");
   const [feedTermId, setFeedTermId] = useState<number | null>(null);
@@ -105,11 +101,7 @@ export function useDashboardData() {
     }
 
     const params = new URLSearchParams(window.location.search);
-    const userId = parsePositiveInt(params.get("user_id"));
     const inputId = parsePositiveInt(params.get("input_id"));
-    if (userId !== null) {
-      setActiveUserId(userId);
-    }
     if (inputId !== null) {
       setActiveSourceId(inputId);
     }
@@ -155,25 +147,31 @@ export function useDashboardData() {
     params.delete("message");
     const nextQuery = params.toString();
     window.history.replaceState({}, "", `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`);
-    void Promise.all([loadUsers(config), loadSources(config), loadHealth(), loadStatus(config)]);
+    void (async () => {
+      const initialized = await loadUsers(config);
+      if (!initialized) {
+        return;
+      }
+      await Promise.all([loadSources(config), loadHealth(), loadStatus(config)]);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config]);
 
   useEffect(() => {
-    if (!config) {
+    if (!config || needsOnboarding) {
       return;
     }
     void loadSources(config);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeUserId]);
+  }, [needsOnboarding]);
 
   useEffect(() => {
-    if (!config) {
+    if (!config || needsOnboarding) {
       return;
     }
     void handleRefreshChanges();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [changeSourceTypeFilter, feedTermScope, feedTermId]);
+  }, [changeSourceTypeFilter, feedTermScope, feedTermId, needsOnboarding]);
 
   useEffect(() => {
     if (feedTermScope !== "term" && feedTermId !== null) {
@@ -185,33 +183,32 @@ export function useDashboardData() {
     if (!config) {
       return;
     }
-    syncSelectionQuery(activeUserId, activeSourceId);
-  }, [config, activeUserId, activeSourceId]);
-
-  useEffect(() => {
-    if (activeUserId === null) {
-      setActiveUserNotifyEmail("");
-      return;
-    }
-    const activeUser = users.find((item) => item.id === activeUserId);
-    setActiveUserNotifyEmail(activeUser?.notify_email ?? "");
-  }, [users, activeUserId]);
+    syncSelectionQuery(activeSourceId);
+  }, [config, activeSourceId]);
 
   async function boot(runtimeConfig: AppConfig) {
-    await Promise.all([loadHealth(), loadStatus(runtimeConfig), loadUsers(runtimeConfig)]);
+    const initialized = await loadUsers(runtimeConfig);
+    if (!initialized) {
+      setActiveUserTerms([]);
+      setSources([]);
+      setChanges([]);
+      setChangeNotes({});
+      setOverrides({ input_id: 0, courses: [], tasks: [] });
+      setDeadlines({ input_id: 0, input_label: null, fetched_at_utc: "", total_deadlines: 0, courses: [] });
+      return;
+    }
+    await Promise.all([loadHealth(), loadStatus(runtimeConfig)]);
     await loadSources(runtimeConfig);
   }
 
-  async function loadUsers(runtimeConfig?: AppConfig) {
+  async function loadUsers(runtimeConfig?: AppConfig): Promise<boolean> {
     const runtime = runtimeConfig ?? config;
     if (!runtime) {
-      return;
+      return false;
     }
 
-    setUsersLoading(true);
-    setUsersError(null);
     try {
-      const [user, terms] = await Promise.all([
+      const [, terms] = await Promise.all([
         apiRequest<{
           id: number;
           email: string | null;
@@ -236,28 +233,18 @@ export function useDashboardData() {
           "/v1/user/terms"
         ),
       ]);
-      const rows: DashboardUser[] = [
-        {
-          id: user.id,
-          email: user.email,
-          name: user.email ?? `User ${user.id}`,
-          notify_email: user.notify_email,
-          calendar_delay_seconds: user.calendar_delay_seconds,
-          created_at: user.created_at,
-          terms,
-        },
-      ];
-      setUsers(rows);
-      setActiveUserId((current) => {
-        if (current && rows.some((item) => item.id === current)) {
-          return current;
-        }
-        return rows.length ? rows[0].id : null;
-      });
+      setConfigError(null);
+      setActiveUserTerms(terms);
+      setNeedsOnboarding(false);
+      return true;
     } catch (error) {
-      setUsersError(toErrorMessage(error));
-    } finally {
-      setUsersLoading(false);
+      if (isUserNotInitializedError(error)) {
+        setNeedsOnboarding(true);
+        setActiveUserTerms([]);
+        return false;
+      }
+      setConfigError(toErrorMessage(error));
+      return false;
     }
   }
 
@@ -298,27 +285,30 @@ export function useDashboardData() {
   }
 
   async function loadSources(runtimeConfig: AppConfig) {
+    if (needsOnboarding) {
+      setSources([]);
+      setActiveSourceId(null);
+      return;
+    }
     setSourcesLoading(true);
     setSourcesError(null);
     try {
       const rows = await apiRequest<Source[]>(runtimeConfig, "/v1/inputs");
       setSources(rows);
-      const userScopedRows = activeUserId ? rows.filter((row) => row.user_id === activeUserId) : rows;
       setActiveSourceId((current) => {
-        if (current && userScopedRows.some((row) => row.id === current)) {
+        if (current && rows.some((row) => row.id === current)) {
           return current;
         }
-        return userScopedRows.length ? userScopedRows[0].id : null;
+        return rows.length ? rows[0].id : null;
       });
 
-      if (!userScopedRows.length) {
+      if (!rows.length) {
         setOverrides({ input_id: 0, courses: [], tasks: [] });
         setDeadlines({ input_id: 0, input_label: null, fetched_at_utc: "", total_deadlines: 0, courses: [] });
         setChanges([]);
         setChangeNotes({});
       } else {
-        const nextActive =
-          activeSourceId && userScopedRows.some((row) => row.id === activeSourceId) ? activeSourceId : userScopedRows[0].id;
+        const nextActive = activeSourceId && rows.some((row) => row.id === activeSourceId) ? activeSourceId : rows[0].id;
         const nextSourceType = rows.find((row) => row.id === nextActive)?.type ?? null;
         await loadSourceScopedData(runtimeConfig, nextActive, nextSourceType);
       }
@@ -383,9 +373,6 @@ export function useDashboardData() {
   async function loadChangesFeed(runtimeConfig: AppConfig): Promise<ChangeFeedRecord[]> {
     const params = new URLSearchParams();
     params.set("limit", "200");
-    if (activeUserId !== null) {
-      params.set("user_id", String(activeUserId));
-    }
     if (changeSourceTypeFilter !== "all") {
       params.set("input_types", changeSourceTypeFilter);
     }
@@ -403,16 +390,10 @@ export function useDashboardData() {
     if (!config) {
       return;
     }
-    await Promise.all([loadUsers(config), loadSources(config), loadHealth(), loadStatus(config)]);
-  }
-
-  async function handleActiveUserChange(userId: number) {
-    if (!config) {
+    const initialized = await loadUsers(config);
+    if (!initialized) {
       return;
     }
-    setActiveUserId(userId);
-    setFeedTermId(null);
-    setFeedTermScope("current");
     await Promise.all([loadSources(config), loadHealth(), loadStatus(config)]);
   }
 
@@ -517,10 +498,6 @@ export function useDashboardData() {
     if (!config) {
       return;
     }
-    if (!activeUserId) {
-      pushToast("Create or select a user first", "error");
-      return;
-    }
     if (!sourceUrl.trim()) {
       pushToast("ICS URL is required", "error");
       return;
@@ -569,10 +546,6 @@ export function useDashboardData() {
     if (!config) {
       return;
     }
-    if (!activeUserId) {
-      pushToast("Create or select a user first", "error");
-      return;
-    }
 
     setCreateBusy(true);
     try {
@@ -598,30 +571,6 @@ export function useDashboardData() {
       pushToast(`Connect Gmail failed: ${toErrorMessage(error)}`, "error");
     } finally {
       setCreateBusy(false);
-    }
-  }
-
-  async function handleSaveActiveUserNotifyEmail(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!config || activeUserId === null) {
-      return;
-    }
-
-    setUserUpdateBusy(true);
-    try {
-      const payload = {
-        notify_email: activeUserNotifyEmail.trim() || null,
-      };
-      await apiRequest(config, "/v1/user", {
-        method: "PATCH",
-        body: JSON.stringify(payload),
-      });
-      await Promise.all([loadUsers(config), loadSources(config)]);
-      pushToast("User settings saved", "success");
-    } catch (error) {
-      pushToast(`Save user settings failed: ${toErrorMessage(error)}`, "error");
-    } finally {
-      setUserUpdateBusy(false);
     }
   }
 
@@ -705,7 +654,7 @@ export function useDashboardData() {
   }
 
   async function handleRefreshChanges() {
-    if (!config) {
+    if (!config || needsOnboarding) {
       return;
     }
     setChangesLoading(true);
@@ -792,14 +741,6 @@ export function useDashboardData() {
     return Boolean(config?.enableDevEndpoints && (config?.appEnv ?? "").toLowerCase() === "dev");
   }, [config]);
 
-  const activeUserTerms = useMemo(() => {
-    if (activeUserId === null) {
-      return [];
-    }
-    const user = users.find((item) => item.id === activeUserId);
-    return user?.terms ?? [];
-  }, [users, activeUserId]);
-
   function getCourseDisplayLabel(label: string) {
     return courseLabelMap.get(label) ?? label;
   }
@@ -820,16 +761,7 @@ export function useDashboardData() {
     configError,
     showDevTools,
     toasts,
-
-    users,
-    activeUserId,
-    usersLoading,
-    usersError,
-    activeUserNotifyEmail,
-    userUpdateBusy,
-    setActiveUserNotifyEmail,
-    handleSaveActiveUserNotifyEmail,
-    handleActiveUserChange,
+    needsOnboarding,
 
     sourceUrl,
     sourceTermId,
@@ -926,6 +858,24 @@ function toErrorMessage(error: unknown): string {
   return String(error);
 }
 
+function isUserNotInitializedError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) {
+    return false;
+  }
+  if (error.status !== 404) {
+    return false;
+  }
+  const body = error.body;
+  if (!body || typeof body !== "object") {
+    return false;
+  }
+  const detail = (body as Record<string, unknown>).detail;
+  if (!detail || typeof detail !== "object") {
+    return false;
+  }
+  return (detail as Record<string, unknown>).code === "user_not_initialized";
+}
+
 export type DashboardDataHook = ReturnType<typeof useDashboardData>;
 export type DashboardToastItem = ToastItem;
 export type DashboardToastTone = ToastTone;
@@ -941,13 +891,8 @@ function parsePositiveInt(raw: string | null): number | null {
   return parsed;
 }
 
-function syncSelectionQuery(userId: number | null, inputId: number | null): void {
+function syncSelectionQuery(inputId: number | null): void {
   const url = new URL(window.location.href);
-  if (userId === null) {
-    url.searchParams.delete("user_id");
-  } else {
-    url.searchParams.set("user_id", String(userId));
-  }
   if (inputId === null) {
     url.searchParams.delete("input_id");
   } else {

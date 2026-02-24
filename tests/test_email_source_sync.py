@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from app.core.config import get_settings
-from app.db.models import Input
+from app.db.models import Input, User
 from app.modules.inputs.service import create_gmail_input_from_oauth
 from app.modules.sync.gmail_client import (
     GmailHistoryExpiredError,
@@ -17,8 +17,13 @@ def test_email_input_first_sync_is_baseline_without_notification(client, db_sess
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")
     get_settings.cache_clear()
 
+    user = User(email="owner@example.com", notify_email="student@example.com")
+    db_session.add(user)
+    db_session.flush()
+
     input_row = create_gmail_input_from_oauth(
         db_session,
+        user_id=user.id,
         label=None,
         from_contains=None,
         subject_keywords=None,
@@ -57,8 +62,13 @@ def test_email_input_changed_sync_creates_changes_and_deduplicates(client, db_se
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")
     get_settings.cache_clear()
 
+    user = User(email="owner@example.com", notify_email="student@example.com")
+    db_session.add(user)
+    db_session.flush()
+
     input_row = create_gmail_input_from_oauth(
         db_session,
+        user_id=user.id,
         label=None,
         from_contains=None,
         subject_keywords=None,
@@ -136,8 +146,13 @@ def test_email_input_history_expired_resets_cursor_without_notifying(client, db_
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")
     get_settings.cache_clear()
 
+    user = User(email="owner@example.com", notify_email="student@example.com")
+    db_session.add(user)
+    db_session.flush()
+
     input_row = create_gmail_input_from_oauth(
         db_session,
+        user_id=user.id,
         label=None,
         from_contains=None,
         subject_keywords=None,

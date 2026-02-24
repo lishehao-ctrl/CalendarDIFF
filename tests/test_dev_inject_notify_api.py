@@ -24,10 +24,35 @@ def test_dev_inject_notify_respects_gate(client, monkeypatch) -> None:
     assert response.status_code == 404
 
 
+def test_dev_inject_notify_requires_initialized_user(client, monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "dev")
+    monkeypatch.setenv("ENABLE_DEV_ENDPOINTS", "true")
+    get_settings.cache_clear()
+
+    response = client.post(
+        "/v1/dev/inject_notify",
+        headers={"X-API-Key": "test-api-key"},
+        json={
+            "subject": "demo",
+            "from": "demo@example.com",
+            "date": "2026-02-24T10:00:00Z",
+            "body_text": "hello",
+        },
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "user_not_initialized"
+
+
 def test_dev_inject_notify_creates_digest_eligible_row(client, db_session, monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "dev")
     monkeypatch.setenv("ENABLE_DEV_ENDPOINTS", "true")
     get_settings.cache_clear()
+    init_user = client.post(
+        "/v1/user",
+        headers={"X-API-Key": "test-api-key"},
+        json={"notify_email": "student@example.com"},
+    )
+    assert init_user.status_code in {200, 201}
 
     response = client.post(
         "/v1/dev/inject_notify",

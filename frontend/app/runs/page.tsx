@@ -18,6 +18,7 @@ import { RunLimitOption, useSourceRunsPage } from "@/lib/hooks/use-source-runs-p
 export default function InputRunsPage() {
   const {
     configError,
+    needsOnboarding,
     sources,
     sourcesLoading,
     sourcesError,
@@ -35,7 +36,13 @@ export default function InputRunsPage() {
     handleRefresh,
   } = useSourceRunsPage();
   const [now, setNow] = useState(() => Date.now());
-  const navUserId = selectedSource?.user_id ?? null;
+
+  useEffect(() => {
+    if (needsOnboarding) {
+      window.location.replace("/ui/onboarding");
+      return;
+    }
+  }, [needsOnboarding]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -58,7 +65,7 @@ export default function InputRunsPage() {
               </h1>
               <p className="mt-1 text-sm text-muted">Inspect recent sync attempts, outcomes, and failure causes per input.</p>
             </div>
-            <AppNav current="runs" activeUserId={navUserId} activeInputId={selectedSourceId} />
+            <AppNav current="runs" activeInputId={selectedSourceId} />
           </div>
         </header>
 

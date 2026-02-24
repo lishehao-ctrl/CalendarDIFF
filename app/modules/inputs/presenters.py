@@ -9,7 +9,6 @@ from app.modules.inputs.schemas import InputCreateResponse, InputResponse, Input
 def to_input_response(input: Input, *, next_check_at: datetime | None, last_result: str | None) -> InputResponse:
     return InputResponse(
         id=input.id,
-        user_id=input.user_id,
         type=input.type.value,
         display_label=input.display_label,
         term_id=input.user_term_id,

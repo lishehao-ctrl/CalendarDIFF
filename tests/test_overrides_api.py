@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-def test_overrides_crud_for_source(client) -> None:
+def test_overrides_crud_for_source(client, initialized_user) -> None:
     headers = {"X-API-Key": "test-api-key"}
 
     create_response = client.post(

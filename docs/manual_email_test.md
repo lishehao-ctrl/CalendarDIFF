@@ -92,6 +92,20 @@ export API_KEY="<APP_API_KEY>"
 
 ### 4.2 设置 user 通知参数（可选）
 
+首次运行或 reset DB 后，先完成 user onboarding（必填 `notify_email`）：
+
+```bash
+curl -sS -X POST "${BASE_URL}/v1/user" \
+  -H "X-API-Key: ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "notify_email": "notify@example.com"
+  }' \
+  | python3 -m json.tool
+```
+
+然后按需更新其它 user 设置（可选）：
+
 ```bash
 curl -sS -X PATCH "${BASE_URL}/v1/user" \
   -H "X-API-Key: ${API_KEY}" \

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import require_api_key
 from app.db.session import get_db
 from app.modules.users.schemas import (
+    UserCreateRequest,
     UserResponse,
     UserTermCreateRequest,
     UserTermResponse,
@@ -14,12 +15,16 @@ from app.modules.users.schemas import (
     UserUpdateRequest,
 )
 from app.modules.users.service import (
+    UserNotInitializedError,
+    create_or_initialize_user,
     create_user_term,
-    get_current_user,
+    get_initialized_user,
     get_user_term_by_id,
     list_user_terms,
+    require_initialized_user,
     update_current_user,
     update_user_term,
+    user_not_initialized_detail,
 )
 
 router = APIRouter(prefix="/v1/user", tags=["user"], dependencies=[Depends(require_api_key)])
@@ -27,45 +32,57 @@ router = APIRouter(prefix="/v1/user", tags=["user"], dependencies=[Depends(requi
 
 @router.get("", response_model=UserResponse)
 def get_user(db: Session = Depends(get_db)) -> UserResponse:
-    user = get_current_user(db)
-    return UserResponse(
-        id=user.id,
-        email=user.email,
-        notify_email=user.notify_email,
-        calendar_delay_seconds=user.calendar_delay_seconds,
-        created_at=user.created_at,
-    )
+    user = get_initialized_user(db)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=user_not_initialized_detail())
+    return _to_user_response(user)
+
+
+@router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+def post_user(payload: UserCreateRequest, response: Response, db: Session = Depends(get_db)) -> UserResponse:
+    user, initialized_now = create_or_initialize_user(db, notify_email=payload.notify_email)
+    if not initialized_now:
+        response.status_code = status.HTTP_200_OK
+    return _to_user_response(user)
 
 
 @router.patch("", response_model=UserResponse)
 def patch_user(payload: UserUpdateRequest, db: Session = Depends(get_db)) -> UserResponse:
-    user = get_current_user(db)
-    updated = update_current_user(
-        db,
-        user=user,
-        email=payload.email,
-        notify_email=payload.notify_email,
-        calendar_delay_seconds=payload.calendar_delay_seconds,
-    )
-    return UserResponse(
-        id=updated.id,
-        email=updated.email,
-        notify_email=updated.notify_email,
-        calendar_delay_seconds=updated.calendar_delay_seconds,
-        created_at=updated.created_at,
-    )
+    user = get_initialized_user(db)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=user_not_initialized_detail())
+    if "notify_email" in payload.model_fields_set and payload.notify_email is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="notify_email cannot be cleared")
+
+    try:
+        updated = update_current_user(
+            db,
+            user=user,
+            email=payload.email,
+            notify_email=payload.notify_email,
+            calendar_delay_seconds=payload.calendar_delay_seconds,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return _to_user_response(updated)
 
 
 @router.get("/terms", response_model=list[UserTermResponse])
 def get_terms(db: Session = Depends(get_db)) -> list[UserTermResponse]:
-    user = get_current_user(db)
+    try:
+        user = _require_initialized_user_for_terms(db)
+    except UserNotInitializedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=user_not_initialized_detail()) from exc
     rows = list_user_terms(db, user_id=user.id)
     return [_to_term_response(term) for term in rows]
 
 
 @router.post("/terms", response_model=UserTermResponse, status_code=status.HTTP_201_CREATED)
 def post_term(payload: UserTermCreateRequest, db: Session = Depends(get_db)) -> UserTermResponse:
-    user = get_current_user(db)
+    try:
+        user = _require_initialized_user_for_terms(db)
+    except UserNotInitializedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=user_not_initialized_detail()) from exc
     try:
         term = create_user_term(
             db,
@@ -84,7 +101,10 @@ def post_term(payload: UserTermCreateRequest, db: Session = Depends(get_db)) -> 
 
 @router.patch("/terms/{term_id}", response_model=UserTermResponse)
 def patch_term(term_id: int, payload: UserTermUpdateRequest, db: Session = Depends(get_db)) -> UserTermResponse:
-    user = get_current_user(db)
+    try:
+        user = _require_initialized_user_for_terms(db)
+    except UserNotInitializedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=user_not_initialized_detail()) from exc
     term = get_user_term_by_id(db, user_id=user.id, term_id=term_id)
     if term is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Term not found")
@@ -108,6 +128,16 @@ def patch_term(term_id: int, payload: UserTermUpdateRequest, db: Session = Depen
     return _to_term_response(updated)
 
 
+def _to_user_response(user) -> UserResponse:
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        notify_email=user.notify_email,
+        calendar_delay_seconds=user.calendar_delay_seconds,
+        created_at=user.created_at,
+    )
+
+
 def _to_term_response(term) -> UserTermResponse:
     return UserTermResponse(
         id=term.id,
@@ -120,3 +150,7 @@ def _to_term_response(term) -> UserTermResponse:
         created_at=term.created_at,
         updated_at=term.updated_at,
     )
+
+
+def _require_initialized_user_for_terms(db: Session):
+    return require_initialized_user(db)

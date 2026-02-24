@@ -34,7 +34,7 @@ END:VCALENDAR
 """
 
 
-def test_manual_sync_sends_single_digest_per_changed_run(client, monkeypatch) -> None:
+def test_manual_sync_sends_single_digest_per_changed_run(client, initialized_user, monkeypatch) -> None:
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "true")
     monkeypatch.setenv("DEFAULT_NOTIFY_EMAIL", "notify@example.com")
     get_settings.cache_clear()
@@ -103,13 +103,13 @@ def test_manual_sync_sends_single_digest_per_changed_run(client, monkeypatch) ->
 
     # Baseline sync must not notify; only changed rerun sends one digest.
     assert len(send_calls) == 1
-    assert send_calls[0][0] == "notify@example.com"
+    assert send_calls[0][0] == "student@example.com"
     assert send_calls[0][3] == 1
 
     get_settings.cache_clear()
 
 
-def test_manual_sync_prefers_user_notify_email_over_global(client, monkeypatch) -> None:
+def test_manual_sync_prefers_user_notify_email_over_global(client, initialized_user, monkeypatch) -> None:
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "true")
     monkeypatch.setenv("DEFAULT_NOTIFY_EMAIL", "global@example.com")
     get_settings.cache_clear()
@@ -170,7 +170,7 @@ def test_manual_sync_prefers_user_notify_email_over_global(client, monkeypatch) 
     get_settings.cache_clear()
 
 
-def test_identity_upsert_keeps_history_and_baseline(client, monkeypatch) -> None:
+def test_identity_upsert_keeps_history_and_baseline(client, initialized_user, monkeypatch) -> None:
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")
     get_settings.cache_clear()
 

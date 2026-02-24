@@ -21,7 +21,6 @@ from app.db.models import (
     UserTerm,
 )
 from app.modules.inputs.schemas import InputCreateRequest
-from app.modules.users.service import get_or_create_default_user
 from app.modules.scheduler.runner import release_source_lock, try_acquire_source_lock
 from app.modules.sync.deadline_engine import CourseDeadlineGroup, ICSDeadlineEngine
 from app.modules.sync.gmail_client import GmailClient
@@ -155,11 +154,6 @@ def parse_gmail_oauth_state(state_token: str, *, now: datetime | None = None) ->
     )
 
 
-def create_ics_input_for_default(db: Session, payload: InputCreateRequest) -> InputCreateResult:
-    user = get_or_create_default_user(db)
-    return create_ics_input(db, user_id=user.id, payload=payload)
-
-
 def create_ics_input(
     db: Session,
     *,
@@ -235,6 +229,7 @@ def create_ics_input(
 def create_gmail_input_from_oauth(
     db: Session,
     *,
+    user_id: int,
     label: str | None,
     from_contains: str | None,
     subject_keywords: list[str] | None,
@@ -244,8 +239,6 @@ def create_gmail_input_from_oauth(
     refresh_token: str | None,
     access_token_expires_at: datetime | None,
 ) -> InputCreateResult:
-    user = get_or_create_default_user(db)
-
     account_email_norm = account_email.strip().lower()
     label_norm = _normalize_optional_text(label)
     from_norm = _normalize_optional_text(from_contains)
@@ -265,7 +258,7 @@ def create_gmail_input_from_oauth(
     existing_input = db.scalar(
         select(Input)
         .where(
-            Input.user_id == user.id,
+            Input.user_id == user_id,
             Input.type == InputType.EMAIL,
             Input.identity_key == identity_key,
         )
@@ -291,7 +284,7 @@ def create_gmail_input_from_oauth(
         return InputCreateResult(input=existing_input, upserted_existing=True)
 
     input = Input(
-        user_id=user.id,
+        user_id=user_id,
         user_term_id=None,
         type=InputType.EMAIL,
         provider="gmail",
@@ -319,7 +312,7 @@ def create_gmail_input_from_oauth(
         existing_input = db.scalar(
             select(Input)
             .where(
-                Input.user_id == user.id,
+                Input.user_id == user_id,
                 Input.type == InputType.EMAIL,
                 Input.identity_key == identity_key,
             )

@@ -32,7 +32,7 @@ END:VCALENDAR
 """
 
 
-def test_patch_change_viewed_status(client, monkeypatch) -> None:
+def test_patch_change_viewed_status(client, initialized_user, monkeypatch) -> None:
     headers = {"X-API-Key": "test-api-key"}
     create_response = client.post(
         "/v1/inputs/ics",

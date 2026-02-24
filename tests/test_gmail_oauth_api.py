@@ -8,11 +8,38 @@ from app.modules.inputs.service import build_gmail_oauth_start, parse_gmail_oaut
 from app.modules.sync.gmail_client import GmailOAuthTokens, GmailProfile
 
 
+def _init_user(client) -> None:
+    response = client.post(
+        "/v1/user",
+        headers={"X-API-Key": "test-api-key"},
+        json={"notify_email": "student@example.com"},
+    )
+    assert response.status_code in {200, 201}
+
+
+def test_gmail_oauth_start_requires_initialized_user(client, monkeypatch) -> None:
+    monkeypatch.setenv("GMAIL_OAUTH_CLIENT_ID", "client-id")
+    monkeypatch.setenv("GMAIL_OAUTH_CLIENT_SECRET", "client-secret")
+    monkeypatch.setenv("GMAIL_OAUTH_REDIRECT_URI", "http://localhost:8000/v1/oauth/gmail/callback")
+    get_settings.cache_clear()
+
+    response = client.post(
+        "/v1/inputs/email/gmail/oauth/start",
+        headers={"X-API-Key": "test-api-key"},
+        json={},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "user_not_initialized"
+
+    get_settings.cache_clear()
+
+
 def test_gmail_oauth_start_requires_configuration(client, monkeypatch) -> None:
     monkeypatch.delenv("GMAIL_OAUTH_CLIENT_ID", raising=False)
     monkeypatch.delenv("GMAIL_OAUTH_CLIENT_SECRET", raising=False)
     monkeypatch.delenv("GMAIL_OAUTH_REDIRECT_URI", raising=False)
     get_settings.cache_clear()
+    _init_user(client)
 
     response = client.post(
         "/v1/inputs/email/gmail/oauth/start",
@@ -30,6 +57,7 @@ def test_gmail_oauth_start_returns_authorization_url(client, monkeypatch) -> Non
     monkeypatch.setenv("GMAIL_OAUTH_CLIENT_SECRET", "client-secret")
     monkeypatch.setenv("GMAIL_OAUTH_REDIRECT_URI", "http://localhost:8000/v1/oauth/gmail/callback")
     get_settings.cache_clear()
+    _init_user(client)
 
     response = client.post(
         "/v1/inputs/email/gmail/oauth/start",
@@ -68,6 +96,7 @@ def test_gmail_oauth_start_rejects_legacy_interval_or_notify_fields(client, monk
     monkeypatch.setenv("GMAIL_OAUTH_CLIENT_SECRET", "client-secret")
     monkeypatch.setenv("GMAIL_OAUTH_REDIRECT_URI", "http://localhost:8000/v1/oauth/gmail/callback")
     get_settings.cache_clear()
+    _init_user(client)
 
     with_interval = client.post(
         "/v1/inputs/email/gmail/oauth/start",
@@ -92,6 +121,7 @@ def test_gmail_oauth_callback_creates_email_input_and_redirects(client, monkeypa
     monkeypatch.setenv("GMAIL_OAUTH_REDIRECT_URI", "http://localhost:8000/v1/oauth/gmail/callback")
     monkeypatch.setenv("APP_BASE_URL", "http://localhost:8000")
     get_settings.cache_clear()
+    _init_user(client)
 
     oauth_start = build_gmail_oauth_start(
         label="INBOX",

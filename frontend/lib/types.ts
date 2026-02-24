@@ -7,7 +7,6 @@ export type AppConfig = {
 
 export type Input = {
   id: number;
-  user_id: number;
   type: string;
   display_label: string;
   term_id: number | null;
@@ -231,8 +230,6 @@ export type DashboardUser = {
 };
 
 export type ChangeFeedRecord = ChangeRecord & {
-  user_id: number;
-  user_notify_email: string | null;
   input_type: string;
   term_id: number | null;
   term_code: string | null;

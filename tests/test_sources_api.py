@@ -13,7 +13,7 @@ def test_sources_api_requires_api_key(client) -> None:
     assert response.status_code == 401
 
 
-def test_create_input_rejects_legacy_name_field(client) -> None:
+def test_create_input_rejects_legacy_name_field(client, initialized_user) -> None:
     headers = {"X-API-Key": "test-api-key"}
 
     no_name_required = client.post(
@@ -31,7 +31,7 @@ def test_create_input_rejects_legacy_name_field(client) -> None:
     assert legacy_name.status_code == 422
 
 
-def test_create_and_list_sources_hides_url(client) -> None:
+def test_create_and_list_sources_hides_url(client, initialized_user) -> None:
     headers = {"X-API-Key": "test-api-key"}
 
     create_response = client.post(
@@ -67,7 +67,7 @@ def test_create_and_list_sources_hides_url(client) -> None:
     assert "encrypted_url" not in items[0]
 
 
-def test_duplicate_identity_upserts_source_in_place(client) -> None:
+def test_duplicate_identity_upserts_source_in_place(client, initialized_user) -> None:
     headers = {"X-API-Key": "test-api-key"}
 
     first = client.post(

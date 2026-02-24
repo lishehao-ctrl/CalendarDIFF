@@ -39,8 +39,6 @@ class ChangeSummary(BaseModel):
 
 
 class ChangeFeedResponse(ChangeResponse):
-    user_id: int
-    user_notify_email: str | None
     input_type: str
     term_id: int | None
     term_code: str | None
