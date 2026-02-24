@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 
-import { ApiError, apiRequest } from "@/lib/api";
+import { getOnboardingStatus } from "@/lib/api";
 import { getRuntimeConfig } from "@/lib/config";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -20,17 +20,17 @@ export default function UiRootRedirectPage() {
 
     void (async () => {
       try {
-        await apiRequest(runtimeConfig, "/v1/user");
+        const status = await getOnboardingStatus(runtimeConfig);
+        if (status.stage !== "ready") {
+          const target = new URL("/ui/onboarding", window.location.origin);
+          window.location.replace(target.pathname);
+          return;
+        }
         const target = new URL("/ui/inputs", window.location.origin);
         target.search = window.location.search;
         target.hash = window.location.hash;
         window.location.replace(`${target.pathname}${target.search}${target.hash}`);
       } catch (err) {
-        if (isUserNotInitializedError(err)) {
-          const target = new URL("/ui/onboarding", window.location.origin);
-          window.location.replace(target.pathname);
-          return;
-        }
         const detail = err instanceof Error ? err.message : String(err);
         setMessage("Failed to resolve entry route.");
         setError(detail);
@@ -60,22 +60,4 @@ export default function UiRootRedirectPage() {
       </div>
     </div>
   );
-}
-
-function isUserNotInitializedError(error: unknown): boolean {
-  if (!(error instanceof ApiError)) {
-    return false;
-  }
-  if (error.status !== 404) {
-    return false;
-  }
-  const body = error.body;
-  if (!body || typeof body !== "object") {
-    return false;
-  }
-  const detail = (body as Record<string, unknown>).detail;
-  if (!detail || typeof detail !== "object") {
-    return false;
-  }
-  return (detail as Record<string, unknown>).code === "user_not_initialized";
 }

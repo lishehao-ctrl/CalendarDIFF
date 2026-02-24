@@ -64,7 +64,7 @@ export function ManagementSection({
   return (
     <section id="management" className="section-anchor">
       <div className="grid gap-4 xl:grid-cols-2">
-        <Card className="animate-fade-in">
+        <Card className="animate-in">
           <CardHeader>
             <CardTitle>Management: Course Rename</CardTitle>
             <CardDescription>Override course display label for clearer UI and review context.</CardDescription>
@@ -139,7 +139,7 @@ export function ManagementSection({
           </CardContent>
         </Card>
 
-        <Card className="animate-fade-in">
+        <Card className="animate-in">
           <CardHeader>
             <CardTitle>Management: Task Rename</CardTitle>
             <CardDescription>Map raw event UID titles to user-facing labels.</CardDescription>

@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import { apiRequest, ApiError, downloadEvidence } from "@/lib/api";
+import { apiRequest, ApiError, downloadEvidence, getOnboardingStatus } from "@/lib/api";
 import { getRuntimeConfig } from "@/lib/config";
 import {
   AppConfig,
@@ -201,13 +201,20 @@ export function useDashboardData() {
     await loadSources(runtimeConfig);
   }
 
-  async function loadUsers(runtimeConfig?: AppConfig): Promise<boolean> {
+async function loadUsers(runtimeConfig?: AppConfig): Promise<boolean> {
     const runtime = runtimeConfig ?? config;
     if (!runtime) {
       return false;
     }
 
     try {
+      const onboarding = await getOnboardingStatus(runtime);
+      if (onboarding.stage !== "ready") {
+        setNeedsOnboarding(true);
+        setActiveUserTerms([]);
+        return false;
+      }
+
       const [, terms] = await Promise.all([
         apiRequest<{
           id: number;
@@ -228,17 +235,14 @@ export function useDashboardData() {
             created_at: string;
             updated_at: string;
           }>
-        >(
-          runtime,
-          "/v1/user/terms"
-        ),
+        >(runtime, "/v1/user/terms"),
       ]);
       setConfigError(null);
       setActiveUserTerms(terms);
       setNeedsOnboarding(false);
       return true;
     } catch (error) {
-      if (isUserNotInitializedError(error)) {
+      if (isOnboardingRequiredError(error)) {
         setNeedsOnboarding(true);
         setActiveUserTerms([]);
         return false;
@@ -313,6 +317,12 @@ export function useDashboardData() {
         await loadSourceScopedData(runtimeConfig, nextActive, nextSourceType);
       }
     } catch (error) {
+      if (isOnboardingRequiredError(error)) {
+        setNeedsOnboarding(true);
+        setSources([]);
+        setActiveSourceId(null);
+        return;
+      }
       setSourcesError(toErrorMessage(error));
     } finally {
       setSourcesLoading(false);
@@ -361,6 +371,10 @@ export function useDashboardData() {
         setTaskUid((current) => (current && taskChoices.includes(current) ? current : taskChoices[0] ?? ""));
       }
     } catch (error) {
+      if (isOnboardingRequiredError(error)) {
+        setNeedsOnboarding(true);
+        return;
+      }
       const message = toErrorMessage(error);
       setScopedError(message);
       setChangesError(message);
@@ -858,11 +872,11 @@ function toErrorMessage(error: unknown): string {
   return String(error);
 }
 
-function isUserNotInitializedError(error: unknown): boolean {
+function isOnboardingRequiredError(error: unknown): boolean {
   if (!(error instanceof ApiError)) {
     return false;
   }
-  if (error.status !== 404) {
+  if (error.status !== 404 && error.status !== 409) {
     return false;
   }
   const body = error.body;
@@ -873,7 +887,8 @@ function isUserNotInitializedError(error: unknown): boolean {
   if (!detail || typeof detail !== "object") {
     return false;
   }
-  return (detail as Record<string, unknown>).code === "user_not_initialized";
+  const code = (detail as Record<string, unknown>).code;
+  return code === "user_not_initialized" || code === "user_onboarding_incomplete";
 }
 
 export type DashboardDataHook = ReturnType<typeof useDashboardData>;

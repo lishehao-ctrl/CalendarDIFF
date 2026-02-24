@@ -229,6 +229,38 @@ export type DashboardUser = {
   terms: UserTerm[];
 };
 
+export type OnboardingStage = "needs_user" | "needs_term" | "needs_ics" | "needs_baseline" | "ready";
+
+export type OnboardingStatus = {
+  stage: OnboardingStage;
+  message: string;
+  registered_user_id: number | null;
+  first_input_id: number | null;
+  last_error: string | null;
+};
+
+export type OnboardingRegisterRequest = {
+  notify_email: string;
+  term: {
+    code: string;
+    label: string;
+    starts_on: string;
+    ends_on: string;
+  };
+  ics: {
+    url: string;
+  };
+};
+
+export type OnboardingRegisterResponse = {
+  status: "ready";
+  user_id: number;
+  term_id: number;
+  input_id: number;
+  is_baseline_sync: boolean;
+  changes_created: number;
+};
+
 export type ChangeFeedRecord = ChangeRecord & {
   input_type: string;
   term_id: number | null;

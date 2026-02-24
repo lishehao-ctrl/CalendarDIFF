@@ -1,4 +1,9 @@
-import { AppConfig } from "@/lib/types";
+import {
+  AppConfig,
+  OnboardingRegisterRequest,
+  OnboardingRegisterResponse,
+  OnboardingStatus,
+} from "@/lib/types";
 
 const HOP_BY_HOP = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade"]);
 
@@ -36,6 +41,20 @@ export async function apiRequest<T>(config: AppConfig, path: string, init: Reque
   }
 
   return (await response.json()) as T;
+}
+
+export function getOnboardingStatus(config: AppConfig): Promise<OnboardingStatus> {
+  return apiRequest<OnboardingStatus>(config, "/v1/onboarding/status");
+}
+
+export function registerOnboarding(
+  config: AppConfig,
+  payload: OnboardingRegisterRequest,
+): Promise<OnboardingRegisterResponse> {
+  return apiRequest<OnboardingRegisterResponse>(config, "/v1/onboarding/register", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function downloadEvidence(

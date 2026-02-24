@@ -1,11 +1,11 @@
 import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { SectionState } from "@/components/dashboard/section-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Select } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { deriveChangeSummary, formatSummaryDate } from "@/lib/change-summary";
@@ -57,11 +57,11 @@ export function DiffSection({
 }: DiffSectionProps) {
   return (
     <section id="diff" className="section-anchor">
-      <Card className="animate-fade-in">
+      <Card className="animate-in">
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <CardTitle>Notification Layer: Diff Review</CardTitle>
+              <CardTitle>Diff Review</CardTitle>
               <CardDescription>Review change records, toggle viewed state, and download evidence files.</CardDescription>
             </div>
             <Button variant="secondary" onClick={() => void onRefreshChanges()} disabled={changesLoading}>
@@ -70,84 +70,85 @@ export function DiffSection({
             </Button>
           </div>
         </CardHeader>
+
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <Tabs value={changeFilter} onValueChange={(value) => onChangeFilter(value as ChangeFilter)}>
-              <TabsList>
-                <TabsTrigger value="all">All</TabsTrigger>
-                <TabsTrigger value="unread">Unread</TabsTrigger>
-              </TabsList>
-            </Tabs>
-            <div className="ml-auto flex items-center gap-2 text-sm">
-              <Label htmlFor="change-source-type">Input Type</Label>
-              <select
-                id="change-source-type"
-                className="h-9 rounded-md border border-line bg-white px-2 py-1 text-sm"
-                value={changeSourceTypeFilter}
-                onChange={(event) => onChangeSourceTypeFilter(event.target.value as "all" | "email" | "ics")}
-              >
-                <option value="all">All Inputs</option>
-                <option value="email">Email Only</option>
-                <option value="ics">Calendar Only</option>
-              </select>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <Label htmlFor="change-term-scope">Term</Label>
-              <select
-                id="change-term-scope"
-                className="h-9 rounded-md border border-line bg-white px-2 py-1 text-sm"
-                value={feedTermScope}
-                onChange={(event) => onFeedTermScopeChange(event.target.value as "current" | "all" | "term")}
-              >
-                <option value="current">Current + Global Email</option>
-                <option value="all">All Terms</option>
-                <option value="term">Specific Term</option>
-              </select>
-            </div>
-            {feedTermScope === "term" ? (
-              <div className="flex items-center gap-2 text-sm">
-                <Label htmlFor="change-term-id">Semester</Label>
-                <select
-                  id="change-term-id"
-                  className="h-9 rounded-md border border-line bg-white px-2 py-1 text-sm"
-                  value={feedTermId ? String(feedTermId) : ""}
-                  onChange={(event) => {
-                    const value = event.target.value.trim();
-                    if (!value) {
-                      onFeedTermIdChange(null);
-                      return;
-                    }
-                    onFeedTermIdChange(Number(value));
-                  }}
-                >
-                  <option value="">Select term</option>
-                  {activeUserTerms.map((term) => (
-                    <option key={term.id} value={String(term.id)}>
-                      {term.label} ({term.code})
-                    </option>
-                  ))}
-                </select>
+          <div className="sticky top-2 z-10 rounded-2xl border border-line bg-white/95 p-3 shadow-card backdrop-blur-sm">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[150px]">
+                <p className="mb-2 text-sm font-medium text-ink">View</p>
+                <Tabs value={changeFilter} onValueChange={(value) => onChangeFilter(value as ChangeFilter)}>
+                  <TabsList>
+                    <TabsTrigger value="all">
+                      All
+                    </TabsTrigger>
+                    <TabsTrigger value="unread">Unread</TabsTrigger>
+                  </TabsList>
+                </Tabs>
               </div>
-            ) : null}
+
+              <div className="min-w-[190px] flex-1 space-y-2">
+                <Label htmlFor="change-source-type">Input Type</Label>
+                <Select
+                  id="change-source-type"
+                  value={changeSourceTypeFilter}
+                  onChange={(event) => onChangeSourceTypeFilter(event.target.value as "all" | "email" | "ics")}
+                >
+                  <option value="all">All Inputs</option>
+                  <option value="email">Email Only</option>
+                  <option value="ics">Calendar Only</option>
+                </Select>
+              </div>
+
+              <div className="min-w-[220px] flex-1 space-y-2">
+                <Label htmlFor="change-term-scope">Term Scope</Label>
+                <Select
+                  id="change-term-scope"
+                  value={feedTermScope}
+                  onChange={(event) => onFeedTermScopeChange(event.target.value as "current" | "all" | "term")}
+                >
+                  <option value="current">Current + Global Email</option>
+                  <option value="all">All Terms</option>
+                  <option value="term">Specific Term</option>
+                </Select>
+              </div>
+
+              {feedTermScope === "term" ? (
+                <div className="min-w-[220px] flex-1 space-y-2">
+                  <Label htmlFor="change-term-id">Semester</Label>
+                  <Select
+                    id="change-term-id"
+                    value={feedTermId ? String(feedTermId) : ""}
+                    onChange={(event) => {
+                      const value = event.target.value.trim();
+                      if (!value) {
+                        onFeedTermIdChange(null);
+                        return;
+                      }
+                      onFeedTermIdChange(Number(value));
+                    }}
+                  >
+                    <option value="">Select term</option>
+                    {activeUserTerms.map((term) => (
+                      <option key={term.id} value={String(term.id)}>
+                        {term.label} ({term.code})
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              ) : null}
+            </div>
           </div>
 
-          {changesError ? (
-            <Alert>
-              <AlertTitle>Change List Failed</AlertTitle>
-              <AlertDescription>{changesError}</AlertDescription>
-            </Alert>
-          ) : changesLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-28" />
-              <Skeleton className="h-28" />
-            </div>
-          ) : !filteredChanges.length ? (
-            <Alert>
-              <AlertTitle>Empty Changes</AlertTitle>
-              <AlertDescription>No changes for selected input and filter.</AlertDescription>
-            </Alert>
-          ) : (
-            <div className="space-y-3">
+          <SectionState
+            isLoading={changesLoading}
+            error={changesError}
+            isEmpty={!changesLoading && !changesError && !filteredChanges.length}
+            loadingRows={2}
+            errorTitle="Change List Failed"
+            emptyTitle="No Changes"
+            emptyDescription="No changes for the selected filter criteria."
+          >
+            <div className="stagger-fade space-y-3">
               {filteredChanges.map((change) => {
                 const beforeJson = change.before_json ?? {};
                 const afterJson = change.after_json ?? {};
@@ -174,49 +175,54 @@ export function DiffSection({
 
                 return (
                   <article key={change.id} className="rounded-2xl border border-line bg-white p-4 shadow-card">
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <h3 className="text-base font-semibold text-ink">{displayTitle}</h3>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <h3 className="text-base font-semibold text-ink">{displayTitle}</h3>
+                        <p className="text-sm text-muted">
+                          {displayCourse} · {termScope === "global" ? "Global" : termLabel ?? "-"} · detected {change.detected_at}
+                        </p>
+                      </div>
                       <div className="flex flex-wrap gap-2">
-                        <Badge variant={sourceType === "email" ? "warning" : "muted"}>
-                          {sourceType === "email" ? "EMAIL High Priority" : "Calendar"}
-                        </Badge>
+                        <Badge variant={sourceType === "email" ? "warning" : "muted"}>{sourceType === "email" ? "EMAIL" : "CALENDAR"}</Badge>
                         <Badge variant={priorityLabel === "high" ? "warning" : "muted"}>{priorityLabel}</Badge>
                         <Badge variant={viewed ? "muted" : "warning"}>{viewed ? "Viewed" : "Unread"}</Badge>
                       </div>
                     </div>
 
-                    <div className="mb-3 rounded-xl border border-line bg-slate-50/80 p-3">
+                    <div className="mt-3 rounded-xl border border-line bg-slate-50/85 p-3">
                       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">At-a-glance Summary</p>
-                      <div className="grid gap-3 md:grid-cols-2">
+                      <div className="grid gap-3 lg:grid-cols-2">
                         <SummarySideCard title="Old" side={summary.old} emptyValueText="No previous value" />
                         <SummarySideCard title="New" side={summary.new} emptyValueText="Removed in latest snapshot" />
                       </div>
                     </div>
 
-                    <div className="grid gap-2 text-sm text-muted md:grid-cols-2">
-                      <div>term: {termScope === "global" ? "Global" : (termLabel ?? "-")}</div>
-                      <div>course: {displayCourse}</div>
-                      <div>type: {change.change_type}</div>
-                      <div>notification: {notificationState ?? "-"}</div>
-                      <div>detected_at: {change.detected_at}</div>
-                      {isEmailChange ? (
-                        <>
-                          <div>subject: {gmailSubject}</div>
-                          <div>from: {gmailFrom ?? "n/a"}</div>
-                          <div>internal_date: {gmailInternalDate ?? "n/a"}</div>
-                          <div className="md:col-span-2">snippet: {gmailSnippet ?? "n/a"}</div>
-                        </>
-                      ) : (
-                        <>
-                          <div>delta: {change.delta_seconds ?? "n/a"}</div>
-                          <div>
-                            before -&gt; after: {String((beforeJson.start_at_utc ?? "n/a") as string)} -&gt;{" "}
-                            {String((afterJson.start_at_utc ?? "n/a") as string)}
-                          </div>
-                          <div>after evidence: {afterPath ?? "n/a"}</div>
-                        </>
-                      )}
-                    </div>
+                    <details className="mt-3 rounded-xl border border-line bg-white">
+                      <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-ink">Evidence and metadata</summary>
+                      <div className="border-t border-line p-3 text-sm text-muted">
+                        <div className="grid gap-2 md:grid-cols-2">
+                          <div>change type: {change.change_type}</div>
+                          <div>notification: {notificationState ?? "-"}</div>
+                          {isEmailChange ? (
+                            <>
+                              <div>subject: {gmailSubject}</div>
+                              <div>from: {gmailFrom ?? "n/a"}</div>
+                              <div>internal date: {gmailInternalDate ?? "n/a"}</div>
+                              <div className="md:col-span-2">snippet: {gmailSnippet ?? "n/a"}</div>
+                            </>
+                          ) : (
+                            <>
+                              <div>delta: {change.delta_seconds ?? "n/a"}</div>
+                              <div>
+                                before -&gt; after: {String((beforeJson.start_at_utc ?? "n/a") as string)} -&gt;{" "}
+                                {String((afterJson.start_at_utc ?? "n/a") as string)}
+                              </div>
+                              <div className="md:col-span-2">after evidence: {afterPath ?? "n/a"}</div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </details>
 
                     <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-end">
                       <div className="space-y-2">
@@ -228,9 +234,11 @@ export function DiffSection({
                           className="min-h-16"
                         />
                       </div>
+
                       <Button variant={viewed ? "secondary" : "default"} onClick={() => void onToggleViewed(change)}>
                         {viewed ? "Mark Unread" : "Mark Viewed"}
                       </Button>
+
                       {isEmailChange ? (
                         openInGmailUrl ? (
                           <Button variant="outline" asChild>
@@ -259,7 +267,7 @@ export function DiffSection({
                 );
               })}
             </div>
-          )}
+          </SectionState>
         </CardContent>
       </Card>
     </section>
@@ -307,11 +315,7 @@ function SummarySideCard({ title, side, emptyValueText }: SummarySideCardProps) 
         <div className="grid grid-cols-[90px_1fr] gap-2">
           <dt>Source</dt>
           <dd className="flex flex-wrap items-center gap-2 text-ink">
-            <Badge
-              variant={sourceBadge.variant}
-              title={`Source type: ${sourceBadge.label}`}
-              aria-label={`Source type: ${sourceBadge.label}`}
-            >
+            <Badge variant={sourceBadge.variant} title={`Source type: ${sourceBadge.label}`} aria-label={`Source type: ${sourceBadge.label}`}>
               {sourceBadge.label}
             </Badge>
             <span>{sourceText}</span>

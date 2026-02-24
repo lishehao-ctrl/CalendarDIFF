@@ -1,12 +1,12 @@
 import { Clock3, Loader2, RefreshCw } from "lucide-react";
 
+import { SectionState } from "@/components/dashboard/section-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Source } from "@/lib/types";
 
@@ -46,21 +46,27 @@ export function ProcessingSection({
 
   return (
     <section id="processing" className="section-anchor">
-      <Card className="animate-fade-in">
+      <Card className="animate-in">
         <CardHeader>
-          <CardTitle>Processing Layer: Inputs & Sync</CardTitle>
-          <CardDescription>Operate input-level manual sync and inspect last check/error state.</CardDescription>
+          <CardTitle>Input Queue and Manual Sync</CardTitle>
+          <CardDescription>Choose an input, run manual sync, and inspect the latest queue state.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[220px] flex-1 space-y-2">
+            <div className="min-w-[240px] flex-1 space-y-2">
               <Label htmlFor="active-source">Active Input</Label>
               <Select
                 id="active-source"
                 value={activeSourceId ? String(activeSourceId) : ""}
-                onChange={(event) => void onActiveSourceChange(Number(event.target.value))}
+                onChange={(event) => {
+                  const value = Number(event.target.value);
+                  if (Number.isInteger(value) && value > 0) {
+                    void onActiveSourceChange(value);
+                  }
+                }}
                 disabled={!sources.length}
               >
+                <option value="">Select an input</option>
                 {sources.map((source) => (
                   <option key={source.id} value={String(source.id)}>
                     {source.id} - {source.display_label}
@@ -107,70 +113,48 @@ export function ProcessingSection({
             </Alert>
           ) : null}
 
-          {sourcesError ? (
-            <Alert>
-              <AlertTitle>Input List Failed</AlertTitle>
-              <AlertDescription>{sourcesError}</AlertDescription>
-            </Alert>
-          ) : sourcesLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-10" />
-              <Skeleton className="h-10" />
-              <Skeleton className="h-10" />
-            </div>
-          ) : !sources.length ? (
-            <Alert>
-              <AlertTitle>Empty Inputs</AlertTitle>
-              <AlertDescription>Create your first input from the input layer above.</AlertDescription>
-            </Alert>
-          ) : (
+          <SectionState
+            isLoading={sourcesLoading}
+            error={sourcesError}
+            isEmpty={!sourcesLoading && !sourcesError && sources.length === 0}
+            loadingRows={3}
+            errorTitle="Input List Failed"
+            emptyTitle="Empty Inputs"
+            emptyDescription="Create your first input in Inputs workspace."
+          >
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Input Type</TableHead>
-                  <TableHead>Priority</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Interval</TableHead>
                   <TableHead>Last Result</TableHead>
                   <TableHead>Next Check</TableHead>
                   <TableHead>Last Checked</TableHead>
-                  <TableHead>Last Error</TableHead>
                   <TableHead className="w-[220px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sources.map((source) => (
-                    <TableRow key={source.id}>
-                      <TableCell className="font-medium">
-                        <div>{source.display_label}</div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                          <span>{`input-${source.id}`}</span>
-                          <Badge variant="muted">{source.term_label ?? "Global"}</Badge>
-                        </div>
-                      </TableCell>
-                    <TableCell>
-                      <Badge variant={source.type === "email" ? "warning" : "muted"}>{source.type.toUpperCase()}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={source.type === "email" ? "warning" : "muted"}>
-                        {source.type === "email" ? "High" : "Normal"}
-                      </Badge>
+                  <TableRow key={source.id}>
+                    <TableCell className="font-medium">
+                      <div>{source.display_label}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+                        <span>{`input-${source.id}`}</span>
+                        <Badge variant="muted">{source.term_label ?? "Global"}</Badge>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge variant={readSourceHealthVariant(source)}>{readSourceHealthLabel(source)}</Badge>
                     </TableCell>
-                    <TableCell>{source.interval_minutes}</TableCell>
+                    <TableCell>
+                      <Badge variant={source.type === "email" ? "warning" : "muted"}>{source.type.toUpperCase()}</Badge>
+                    </TableCell>
+                    <TableCell>{source.interval_minutes} min</TableCell>
                     <TableCell>{source.last_result ?? "-"}</TableCell>
                     <TableCell>{source.next_check_at ?? "-"}</TableCell>
                     <TableCell>{source.last_checked_at ?? "-"}</TableCell>
-                    <TableCell>
-                      {source.last_error ? (
-                        <span className="text-xs text-rose-700">{source.last_error}</span>
-                      ) : (
-                        <span className="text-xs text-muted">-</span>
-                      )}
-                    </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-2">
                         <Button size="sm" onClick={() => void onRunManualSync(source.id)} disabled={manualSyncingSourceId !== null}>
@@ -180,16 +164,17 @@ export function ProcessingSection({
                         <Button size="sm" variant="secondary" asChild>
                           <a href={`/ui/runs?input_id=${source.id}`}>
                             <Clock3 className="mr-2 h-4 w-4" />
-                            View Run History
+                            Run history
                           </a>
                         </Button>
                       </div>
+                      {source.last_error ? <div className="mt-2 text-xs text-rose-700">{source.last_error}</div> : null}
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
-          )}
+          </SectionState>
         </CardContent>
       </Card>
     </section>

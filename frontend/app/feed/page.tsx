@@ -3,10 +3,10 @@
 import { useEffect } from "react";
 import { BellRing } from "lucide-react";
 
-import { AppNav } from "@/components/dashboard/app-nav";
+import { DashboardPage, DashboardPageHeader } from "@/components/dashboard/page-shell";
 import { DiffSection } from "@/components/dashboard/sections/diff-section";
+import { DashboardToastStack } from "@/components/dashboard/toast-stack";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { cn } from "@/lib/utils";
 import { useDashboardData } from "@/lib/hooks/use-dashboard-data";
 
 export default function FeedPage() {
@@ -45,68 +45,46 @@ export default function FeedPage() {
   }, [needsOnboarding]);
 
   return (
-    <div className="container py-4 md:py-6">
-      <div className="mx-auto max-w-6xl space-y-4 md:space-y-6">
-        <header className="animate-fade-in rounded-2xl border border-line bg-white/90 p-5 shadow-card">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="inline-flex items-center gap-2 text-2xl font-semibold [font-family:var(--font-heading)] md:text-3xl">
-                <BellRing className="h-6 w-6 text-accent" />
-                Feed
-              </h1>
-              <p className="mt-1 text-sm text-muted">
-                Review aggregated changes across email and calendar inputs with term filters.
-              </p>
-            </div>
-            <AppNav current="feed" activeInputId={activeSourceId} showDev={showDevTools} />
-          </div>
-        </header>
+    <DashboardPage>
+      <DashboardPageHeader
+        icon={BellRing}
+        title="Feed"
+        description="Review aggregated changes across email and calendar inputs with term filters."
+        current="feed"
+        activeInputId={activeSourceId}
+        showDev={showDevTools}
+      />
 
-        {configError ? (
-          <Alert>
-            <AlertTitle>Configuration Missing</AlertTitle>
-            <AlertDescription>{configError}</AlertDescription>
-          </Alert>
-        ) : null}
+      {configError ? (
+        <Alert>
+          <AlertTitle>Configuration Missing</AlertTitle>
+          <AlertDescription>{configError}</AlertDescription>
+        </Alert>
+      ) : null}
 
-        <DiffSection
-          changeFilter={changeFilter}
-          onChangeFilter={setChangeFilter}
-          changeSourceTypeFilter={changeSourceTypeFilter}
-          onChangeSourceTypeFilter={setChangeSourceTypeFilter}
-          feedTermScope={feedTermScope}
-          onFeedTermScopeChange={setFeedTermScope}
-          feedTermId={feedTermId}
-          onFeedTermIdChange={setFeedTermId}
-          activeUserTerms={activeUserTerms}
-          changesError={changesError}
-          changesLoading={changesLoading}
-          filteredChanges={filteredChanges}
-          changeNotes={changeNotes}
-          onChangeNote={setChangeNote}
-          onToggleViewed={handleToggleViewed}
-          onDownloadEvidence={handleDownloadEvidence}
-          onRefreshChanges={handleRefreshChanges}
-          getTaskDisplayTitle={getTaskDisplayTitle}
-          getCourseDisplayLabel={getCourseDisplayLabel}
-        />
-      </div>
+      <DiffSection
+        changeFilter={changeFilter}
+        onChangeFilter={setChangeFilter}
+        changeSourceTypeFilter={changeSourceTypeFilter}
+        onChangeSourceTypeFilter={setChangeSourceTypeFilter}
+        feedTermScope={feedTermScope}
+        onFeedTermScopeChange={setFeedTermScope}
+        feedTermId={feedTermId}
+        onFeedTermIdChange={setFeedTermId}
+        activeUserTerms={activeUserTerms}
+        changesError={changesError}
+        changesLoading={changesLoading}
+        filteredChanges={filteredChanges}
+        changeNotes={changeNotes}
+        onChangeNote={setChangeNote}
+        onToggleViewed={handleToggleViewed}
+        onDownloadEvidence={handleDownloadEvidence}
+        onRefreshChanges={handleRefreshChanges}
+        getTaskDisplayTitle={getTaskDisplayTitle}
+        getCourseDisplayLabel={getCourseDisplayLabel}
+      />
 
-      <div className="fixed bottom-4 right-4 z-50 space-y-2">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={cn(
-              "max-w-[420px] rounded-xl px-4 py-3 text-sm text-white shadow-xl",
-              toast.tone === "success" && "bg-emerald-700",
-              toast.tone === "error" && "bg-rose-700",
-              toast.tone === "info" && "bg-slate-800"
-            )}
-          >
-            {toast.message}
-          </div>
-        ))}
-      </div>
-    </div>
+      <DashboardToastStack toasts={toasts} />
+    </DashboardPage>
   );
 }

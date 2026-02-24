@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { ApiError, apiRequest } from "@/lib/api";
+import { ApiError, apiRequest, getOnboardingStatus } from "@/lib/api";
 import { getRuntimeConfig } from "@/lib/config";
 import { AppConfig, Source, SourceRun } from "@/lib/types";
 
@@ -181,10 +181,10 @@ export function useSourceRunsPage() {
 
 async function checkUserInitialized(config: AppConfig): Promise<boolean> {
   try {
-    await apiRequest(config, "/v1/user");
-    return true;
+    const status = await getOnboardingStatus(config);
+    return status.stage === "ready";
   } catch (error) {
-    if (isUserNotInitializedError(error)) {
+    if (isOnboardingRequiredError(error)) {
       return false;
     }
     throw error;
@@ -233,11 +233,11 @@ function toErrorMessage(error: unknown): string {
   return String(error);
 }
 
-function isUserNotInitializedError(error: unknown): boolean {
+function isOnboardingRequiredError(error: unknown): boolean {
   if (!(error instanceof ApiError)) {
     return false;
   }
-  if (error.status !== 404) {
+  if (error.status !== 404 && error.status !== 409) {
     return false;
   }
   const body = error.body;
@@ -248,5 +248,6 @@ function isUserNotInitializedError(error: unknown): boolean {
   if (!detail || typeof detail !== "object") {
     return false;
   }
-  return (detail as Record<string, unknown>).code === "user_not_initialized";
+  const code = (detail as Record<string, unknown>).code;
+  return code === "user_not_initialized" || code === "user_onboarding_incomplete";
 }
