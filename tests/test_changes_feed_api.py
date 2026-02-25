@@ -9,10 +9,9 @@ from app.db.models import (
     NotificationChannel,
     NotificationStatus,
     Snapshot,
-    Source,
-    SourceType,
+    Input,
+    InputType,
     User,
-    UserTerm,
 )
 
 
@@ -36,28 +35,18 @@ def test_changes_feed_orders_email_before_calendar_and_exposes_notification_stat
     )
     db_session.add(user)
     db_session.flush()
-    user_term = UserTerm(
-        user_id=user.id,
-        code="WI26",
-        label="Winter 2026",
-        starts_on=datetime(2026, 1, 1, tzinfo=timezone.utc).date(),
-        ends_on=datetime(2026, 12, 31, tzinfo=timezone.utc).date(),
-        is_active=True,
-    )
-    db_session.add(user_term)
-    db_session.flush()
 
-    ics_source = Source(
+    ics_source = Input(
         user_id=user.id,
-        type=SourceType.ICS,
+        type=InputType.ICS,
         identity_key="calendar-input-a",
         encrypted_url="encrypted-ics",
         interval_minutes=15,
         is_active=True,
     )
-    email_source = Source(
+    email_source = Input(
         user_id=user.id,
-        type=SourceType.EMAIL,
+        type=InputType.EMAIL,
         provider="gmail",
         gmail_account_email="student-a@school.edu",
         identity_key="email-input-a",
@@ -97,7 +86,6 @@ def test_changes_feed_orders_email_before_calendar_and_exposes_notification_stat
 
     calendar_change = Change(
         input_id=ics_source.id,
-        user_term_id=user_term.id,
         event_uid="calendar-change-1",
         change_type=ChangeType.DUE_CHANGED,
         detected_at=now,
@@ -194,28 +182,18 @@ def test_changes_feed_source_type_filter(client, db_session) -> None:
     user = User(email="owner@example.com", notify_email="student-a@example.com", onboarding_completed_at=datetime.now(timezone.utc))
     db_session.add(user)
     db_session.flush()
-    user_term = UserTerm(
-        user_id=user.id,
-        code="WI26",
-        label="Winter 2026",
-        starts_on=datetime(2026, 1, 1, tzinfo=timezone.utc).date(),
-        ends_on=datetime(2026, 12, 31, tzinfo=timezone.utc).date(),
-        is_active=True,
-    )
-    db_session.add(user_term)
-    db_session.flush()
 
-    ics_source = Source(
+    ics_source = Input(
         user_id=user.id,
-        type=SourceType.ICS,
+        type=InputType.ICS,
         identity_key="calendar-input-b",
         encrypted_url="encrypted-ics",
         interval_minutes=15,
         is_active=True,
     )
-    email_source = Source(
+    email_source = Input(
         user_id=user.id,
-        type=SourceType.EMAIL,
+        type=InputType.EMAIL,
         provider="gmail",
         identity_key="email-input-b",
         encrypted_url="encrypted-email",
@@ -249,7 +227,6 @@ def test_changes_feed_source_type_filter(client, db_session) -> None:
         [
             Change(
                 input_id=ics_source.id,
-                user_term_id=user_term.id,
                 event_uid="ics-1",
                 change_type=ChangeType.DUE_CHANGED,
                 detected_at=now,
@@ -286,7 +263,7 @@ def test_changes_feed_source_type_filter(client, db_session) -> None:
     assert rows[0]["change_summary"]["new"]["value_time"] is None
 
 
-def test_changes_feed_current_scope_falls_back_to_all_when_no_active_term(client, db_session) -> None:
+def test_changes_feed_returns_calendar_and_email_without_term_filters(client, db_session) -> None:
     now = datetime.now(timezone.utc)
     user = User(
         email="owner@example.com",
@@ -296,17 +273,17 @@ def test_changes_feed_current_scope_falls_back_to_all_when_no_active_term(client
     db_session.add(user)
     db_session.flush()
 
-    ics_source = Source(
+    ics_source = Input(
         user_id=user.id,
-        type=SourceType.ICS,
+        type=InputType.ICS,
         identity_key="calendar-input-current-fallback",
         encrypted_url="encrypted-ics",
         interval_minutes=15,
         is_active=True,
     )
-    email_source = Source(
+    email_source = Input(
         user_id=user.id,
-        type=SourceType.EMAIL,
+        type=InputType.EMAIL,
         provider="gmail",
         identity_key="email-input-current-fallback",
         encrypted_url="encrypted-email",
@@ -339,7 +316,6 @@ def test_changes_feed_current_scope_falls_back_to_all_when_no_active_term(client
         [
             Change(
                 input_id=ics_source.id,
-                user_term_id=None,
                 event_uid="ics-current-fallback",
                 change_type=ChangeType.DUE_CHANGED,
                 detected_at=now,
@@ -352,7 +328,6 @@ def test_changes_feed_current_scope_falls_back_to_all_when_no_active_term(client
             ),
             Change(
                 input_id=email_source.id,
-                user_term_id=None,
                 event_uid="email-current-fallback",
                 change_type=ChangeType.CREATED,
                 detected_at=now - timedelta(minutes=1),
@@ -367,7 +342,7 @@ def test_changes_feed_current_scope_falls_back_to_all_when_no_active_term(client
     )
     db_session.commit()
 
-    response = client.get("/v1/feed?term_scope=current", headers={"X-API-Key": "test-api-key"})
+    response = client.get("/v1/feed", headers={"X-API-Key": "test-api-key"})
     assert response.status_code == 200
     rows = response.json()
     assert len(rows) == 2

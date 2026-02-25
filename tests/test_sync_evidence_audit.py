@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.security import encrypt_secret
-from app.db.models import Change, ChangeType, Snapshot, SnapshotEvent, Source, SourceType, User
-from app.modules.sync.service import sync_source
+from app.db.models import Change, ChangeType, Snapshot, SnapshotEvent, Input, InputType, User
+from app.modules.sync.service import sync_input
 from app.modules.sync.types import FetchResult
 
 
@@ -71,10 +71,10 @@ def test_sync_persists_snapshot_evidence_and_links_changes(tmp_path, monkeypatch
     db_session.add(user)
     db_session.flush()
 
-    source = Source(
+    source = Input(
         user_id=user.id,
-        type=SourceType.ICS,
-        name="Audit Source",
+        type=InputType.ICS,
+        name="Audit Input",
         normalized_name="audit source",
         encrypted_url=encrypt_secret("https://example.com/private.ics"),
         interval_minutes=15,
@@ -99,8 +99,8 @@ def test_sync_persists_snapshot_evidence_and_links_changes(tmp_path, monkeypatch
         ]
     )
 
-    first_run = sync_source(db=db_session, input=source, ics_client=client)
-    second_run = sync_source(db=db_session, input=source, ics_client=client)
+    first_run = sync_input(db=db_session, input=source, ics_client=client)
+    second_run = sync_input(db=db_session, input=source, ics_client=client)
 
     assert first_run.last_error is None
     assert first_run.is_baseline_sync is True
@@ -152,10 +152,10 @@ def test_sync_304_not_modified_skips_snapshot_and_diff(tmp_path, monkeypatch, db
     db_session.add(user)
     db_session.flush()
 
-    source = Source(
+    source = Input(
         user_id=user.id,
-        type=SourceType.ICS,
-        name="Not Modified Source",
+        type=InputType.ICS,
+        name="Not Modified Input",
         normalized_name="not modified source",
         encrypted_url=encrypt_secret("https://example.com/private.ics"),
         interval_minutes=15,
@@ -185,8 +185,8 @@ def test_sync_304_not_modified_skips_snapshot_and_diff(tmp_path, monkeypatch, db
         ]
     )
 
-    first_run = sync_source(db=db_session, input=source, ics_client=client)
-    second_run = sync_source(db=db_session, input=source, ics_client=client)
+    first_run = sync_input(db=db_session, input=source, ics_client=client)
+    second_run = sync_input(db=db_session, input=source, ics_client=client)
 
     assert first_run.changes_created == 0
     assert first_run.is_baseline_sync is True
@@ -228,10 +228,10 @@ def test_sync_same_normalized_hash_skips_snapshot_and_diff(tmp_path, monkeypatch
     db_session.add(user)
     db_session.flush()
 
-    source = Source(
+    source = Input(
         user_id=user.id,
-        type=SourceType.ICS,
-        name="Normalized Hash Source",
+        type=InputType.ICS,
+        name="Normalized Hash Input",
         normalized_name="normalized hash source",
         encrypted_url=encrypt_secret("https://example.com/private.ics"),
         interval_minutes=15,
@@ -262,8 +262,8 @@ def test_sync_same_normalized_hash_skips_snapshot_and_diff(tmp_path, monkeypatch
         ]
     )
 
-    first_run = sync_source(db=db_session, input=source, ics_client=client)
-    second_run = sync_source(db=db_session, input=source, ics_client=client)
+    first_run = sync_input(db=db_session, input=source, ics_client=client)
+    second_run = sync_input(db=db_session, input=source, ics_client=client)
 
     assert first_run.is_baseline_sync is True
     assert second_run.is_baseline_sync is False

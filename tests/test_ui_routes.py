@@ -34,6 +34,11 @@ def _write_ui_fixture(root: Path) -> None:
         "<html><body><h1>Input Run History</h1><div id='run-history-page'></div></body></html>",
         encoding="utf-8",
     )
+    (root / "emails").mkdir(parents=True, exist_ok=True)
+    (root / "emails" / "review.html").write_text(
+        "<html><body><h1>Email Review</h1><div id='email-review-page'></div></body></html>",
+        encoding="utf-8",
+    )
     (root / "_next" / "static" / "chunks" / "main.js").write_text("console.log('ok');", encoding="utf-8")
 
 
@@ -111,3 +116,8 @@ def test_ui_named_page_path_is_served(client, monkeypatch, tmp_path) -> None:
     assert response_runs.status_code == 200
     assert "Input Run History" in response_runs.text
     assert "run-history-page" in response_runs.text
+
+    response_email_review = client.get("/ui/emails/review")
+    assert response_email_review.status_code == 200
+    assert "Email Review" in response_email_review.text
+    assert "email-review-page" in response_email_review.text

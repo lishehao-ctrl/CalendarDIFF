@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from datetime import date
 import re
 
-from sqlalchemy import and_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import User, UserTerm
+from app.db.models import User
 
 EMAIL_PATTERN = re.compile(r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$")
-USER_NOT_INITIALIZED_MESSAGE = "Create user first via POST /v1/user"
+USER_NOT_INITIALIZED_MESSAGE = "Initialize user via POST /v1/onboarding/register"
 USER_ONBOARDING_INCOMPLETE_MESSAGE = "Complete onboarding via POST /v1/onboarding/register"
 
 
@@ -73,15 +72,6 @@ def require_onboarded_user(db: Session) -> User:
     return user
 
 
-# Backward-compatible aliases while call sites migrate.
-def get_initialized_user(db: Session) -> User | None:
-    return get_registered_user(db)
-
-
-def require_initialized_user(db: Session) -> User:
-    return require_registered_user(db)
-
-
 def create_or_initialize_user(db: Session, *, notify_email: str) -> tuple[User, bool]:
     normalized_notify_email = _normalize_required_email(notify_email)
     user = db.scalar(select(User).order_by(User.id.asc()).limit(1))
@@ -120,95 +110,6 @@ def update_current_user(
     return user
 
 
-def list_user_terms(db: Session, *, user_id: int) -> list[UserTerm]:
-    return db.scalars(
-        select(UserTerm)
-        .where(UserTerm.user_id == user_id)
-        .order_by(UserTerm.starts_on.asc(), UserTerm.id.asc())
-    ).all()
-
-
-def get_user_term_by_id(db: Session, *, user_id: int, term_id: int) -> UserTerm | None:
-    return db.scalar(select(UserTerm).where(UserTerm.id == term_id, UserTerm.user_id == user_id))
-
-
-def create_user_term(
-    db: Session,
-    *,
-    user_id: int,
-    code: str,
-    label: str,
-    starts_on: date,
-    ends_on: date,
-    is_active: bool = True,
-) -> UserTerm:
-    normalized_code = code.strip()
-    normalized_label = label.strip()
-    if not normalized_code:
-        raise ValueError("code must not be blank")
-    if not normalized_label:
-        raise ValueError("label must not be blank")
-    if ends_on < starts_on:
-        raise ValueError("ends_on must be greater than or equal to starts_on")
-    if is_active:
-        _assert_no_active_term_overlap(db, user_id=user_id, starts_on=starts_on, ends_on=ends_on, exclude_term_id=None)
-
-    term = UserTerm(
-        user_id=user_id,
-        code=normalized_code,
-        label=normalized_label,
-        starts_on=starts_on,
-        ends_on=ends_on,
-        is_active=is_active,
-    )
-    db.add(term)
-    db.commit()
-    db.refresh(term)
-    return term
-
-
-def update_user_term(
-    db: Session,
-    *,
-    term: UserTerm,
-    code: str | None = None,
-    label: str | None = None,
-    starts_on: date | None = None,
-    ends_on: date | None = None,
-    is_active: bool | None = None,
-) -> UserTerm:
-    next_code = code.strip() if code is not None else term.code
-    next_label = label.strip() if label is not None else term.label
-    next_starts_on = starts_on if starts_on is not None else term.starts_on
-    next_ends_on = ends_on if ends_on is not None else term.ends_on
-    next_is_active = is_active if is_active is not None else term.is_active
-
-    if not next_code:
-        raise ValueError("code must not be blank")
-    if not next_label:
-        raise ValueError("label must not be blank")
-    if next_ends_on < next_starts_on:
-        raise ValueError("ends_on must be greater than or equal to starts_on")
-    if next_is_active:
-        _assert_no_active_term_overlap(
-            db,
-            user_id=term.user_id,
-            starts_on=next_starts_on,
-            ends_on=next_ends_on,
-            exclude_term_id=term.id,
-        )
-
-    term.code = next_code
-    term.label = next_label
-    term.starts_on = next_starts_on
-    term.ends_on = next_ends_on
-    term.is_active = next_is_active
-
-    db.commit()
-    db.refresh(term)
-    return term
-
-
 def _normalize_optional_text(value: str | None) -> str | None:
     if value is None:
         return None
@@ -229,26 +130,3 @@ def _is_valid_email(value: str | None) -> bool:
     if value is None:
         return False
     return EMAIL_PATTERN.fullmatch(value.strip()) is not None
-
-
-def _assert_no_active_term_overlap(
-    db: Session,
-    *,
-    user_id: int,
-    starts_on: date,
-    ends_on: date,
-    exclude_term_id: int | None,
-) -> None:
-    stmt = select(UserTerm).where(
-        and_(
-            UserTerm.user_id == user_id,
-            UserTerm.is_active.is_(True),
-            UserTerm.starts_on <= ends_on,
-            UserTerm.ends_on >= starts_on,
-        )
-    )
-    if exclude_term_id is not None:
-        stmt = stmt.where(UserTerm.id != exclude_term_id)
-    overlap = db.scalar(stmt.order_by(UserTerm.starts_on.asc(), UserTerm.id.asc()).limit(1))
-    if overlap is not None:
-        raise ValueError("active term window overlaps existing active term")

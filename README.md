@@ -155,7 +155,7 @@ APP_BASE_URL=http://localhost:8000
 
 The input model is user-only (`user + inputs`):
 
-1. One user can have multiple inputs (for example Gmail + ICS together).
+1. One user can have multiple inputs overall, but exactly one ICS input record (`type=ics`) at any time.
 2. Priority is fixed as `EMAIL > Calendar` in feed ordering and notification sequencing.
 3. Calendar notifications can be delayed by user-level window (`calendar_delay_seconds`, default `120`).
 4. No cross-input dedup is applied (email and calendar changes are both preserved for traceability).
@@ -181,12 +181,15 @@ Onboarding completion contract:
 3. `/v1/onboarding/status` stages:
    - `needs_user | needs_ics | needs_baseline | ready`
 4. `POST /v1/onboarding/register` writes `users.onboarding_completed_at` only after successful baseline sync.
-5. Re-running onboarding with a new ICS URL keeps that ICS as the only active calendar input (older ICS inputs are deactivated).
-6. Gate errors:
+5. Re-running onboarding with a new ICS URL performs replace-by-recreate:
+   - previous ICS input row is removed
+   - new ICS row becomes the single ICS record
+6. If replacement baseline fails, the new ICS is cleared and onboarding is downgraded to `needs_ics`.
+7. Gate errors:
    - `user_not_initialized` (not registered)
    - `user_onboarding_incomplete` (registered, not onboarded)
-7. `PATCH /v1/user` rejects clearing `notify_email`.
-8. Protected endpoints return `409` before onboarding is ready:
+8. `PATCH /v1/user` rejects clearing `notify_email`.
+9. Protected endpoints return `409` before onboarding is ready:
    - `/v1/feed`
    - `/v1/inputs*`
    - `/v1/inputs/email/gmail/oauth/start`
@@ -203,6 +206,7 @@ Onboarding completion contract:
 4. Input create payloads reject legacy fields (`interval_minutes`, `notify_email`) with `422`.
 5. Effective recipient is resolved at user level: `user.notify_email`.
 6. First ICS successful sync is the onboarding baseline. It suppresses first-run diff/notification noise.
+7. Replacing ICS URL is destructive for old ICS timeline history by design.
 
 ### Feed API
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from app.modules.sync.service import SyncRunResult
 from app.db.models import Input, InputType, SyncRunStatus, SyncTriggerType, User
 
@@ -84,7 +86,7 @@ def test_onboarding_register_blocks_on_baseline_failure(client, monkeypatch) -> 
 
     status_response = client.get("/v1/onboarding/status", headers={"X-API-Key": "test-api-key"})
     assert status_response.status_code == 200
-    assert status_response.json()["stage"] == "needs_baseline"
+    assert status_response.json()["stage"] == "needs_ics"
 
 
 def test_gate_returns_onboarding_incomplete_until_ready(client, db_session) -> None:
@@ -104,7 +106,7 @@ def test_gate_returns_onboarding_incomplete_until_ready(client, db_session) -> N
     assert prefs.json()["detail"]["code"] == "user_onboarding_incomplete"
 
 
-def test_onboarding_reconfigure_keeps_single_active_ics(client, monkeypatch, db_session) -> None:
+def test_onboarding_reconfigure_keeps_single_ics_record(client, monkeypatch, db_session) -> None:
     def fake_sync_input(db, input, notifier=None, trigger_type=SyncTriggerType.MANUAL, lock_owner=None):  # noqa: ANN001
         return SyncRunResult(
             input_id=input.id,
@@ -133,6 +135,72 @@ def test_onboarding_reconfigure_keeps_single_active_ics(client, monkeypatch, db_
     assert second_input_id != first_input_id
 
     inputs = db_session.query(Input).filter(Input.type == InputType.ICS).order_by(Input.id.asc()).all()
-    assert len(inputs) == 2
-    assert any(row.id == second_input_id and row.is_active for row in inputs)
-    assert any(row.id == first_input_id and not row.is_active for row in inputs)
+    assert len(inputs) == 1
+    assert inputs[0].id == second_input_id
+    assert inputs[0].is_active is True
+    assert db_session.get(Input, first_input_id) is None
+
+
+def test_onboarding_status_does_not_report_ready_without_ics(client, db_session) -> None:
+    user = User(
+        email=None,
+        notify_email="student@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    response = client.get("/v1/onboarding/status", headers={"X-API-Key": "test-api-key"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["stage"] == "needs_ics"
+
+
+def test_onboarding_reconfigure_failure_clears_ics_and_blocks_gate(client, monkeypatch, db_session) -> None:
+    calls = {"count": 0}
+
+    def fake_sync_input(db, input, notifier=None, trigger_type=SyncTriggerType.MANUAL, lock_owner=None):  # noqa: ANN001
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return SyncRunResult(
+                input_id=input.id,
+                changes_created=0,
+                email_sent=False,
+                last_error=None,
+                is_baseline_sync=True,
+                status=SyncRunStatus.NO_CHANGE,
+                trigger_type=trigger_type,
+            )
+        return SyncRunResult(
+            input_id=input.id,
+            changes_created=0,
+            email_sent=False,
+            last_error="parse invalid ics",
+            is_baseline_sync=False,
+            status=SyncRunStatus.PARSE_FAILED,
+            trigger_type=trigger_type,
+        )
+
+    monkeypatch.setattr("app.modules.onboarding.service.sync_input", fake_sync_input)
+    headers = {"X-API-Key": "test-api-key"}
+
+    first = client.post("/v1/onboarding/register", headers=headers, json=REGISTER_PAYLOAD)
+    assert first.status_code == 200
+
+    second_payload = {
+        "notify_email": "student@example.com",
+        "ics": {"url": "https://example.com/calendar-broken.ics"},
+    }
+    second = client.post("/v1/onboarding/register", headers=headers, json=second_payload)
+    assert second.status_code == 422
+
+    status_response = client.get("/v1/onboarding/status", headers=headers)
+    assert status_response.status_code == 200
+    assert status_response.json()["stage"] == "needs_ics"
+
+    remaining_ics = db_session.query(Input).filter(Input.type == InputType.ICS).all()
+    assert remaining_ics == []
+
+    feed = client.get("/v1/feed", headers=headers)
+    assert feed.status_code == 409
+    assert feed.json()["detail"]["code"] == "user_onboarding_incomplete"

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.db.models import Source, SourceType, User
+from app.db.models import Input, InputType, User
 
 
 def test_health_returns_scheduler_summary(client) -> None:
@@ -29,24 +29,25 @@ def test_health_returns_scheduler_summary(client) -> None:
 
 
 def test_health_reports_global_next_expected_check(client, db_session) -> None:
-    user = User(email="owner@example.com")
-    db_session.add(user)
+    early_user = User(email="owner-early@example.com")
+    late_user = User(email="owner-late@example.com")
+    db_session.add_all([early_user, late_user])
     db_session.flush()
 
-    source_early = Source(
-        user_id=user.id,
-        type=SourceType.ICS,
-        name="Source Early",
+    source_early = Input(
+        user_id=early_user.id,
+        type=InputType.ICS,
+        name="Input Early",
         normalized_name="source early",
         encrypted_url="encrypted-1",
         interval_minutes=15,
         is_active=True,
         last_checked_at=datetime(2026, 2, 21, 10, 0, tzinfo=timezone.utc),
     )
-    source_late = Source(
-        user_id=user.id,
-        type=SourceType.ICS,
-        name="Source Late",
+    source_late = Input(
+        user_id=late_user.id,
+        type=InputType.ICS,
+        name="Input Late",
         normalized_name="source late",
         encrypted_url="encrypted-2",
         interval_minutes=15,

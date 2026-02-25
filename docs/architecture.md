@@ -121,14 +121,15 @@ Notable state:
 ### 5.1 Onboarding
 
 1. `POST /v1/onboarding/register` with `notify_email + ics.url`
-2. create/update user + first ICS input
-3. onboarding reconfiguration keeps a single active ICS (newly submitted ICS remains active, older ICS inputs are deactivated)
+2. create/update user + single ICS input (hard invariant: one ICS row per user)
+3. onboarding reconfiguration uses delete-old + create-new semantics for ICS URL replacement
 4. run immediate first sync
 5. if baseline succeeds:
    - write `users.onboarding_completed_at`
    - return `status=ready`
 6. if baseline fails:
-   - onboarding remains incomplete
+   - replacement ICS row is removed
+   - onboarding downgrades to `needs_ics`
    - protected APIs stay gated
 
 ### 5.2 ICS Sync

@@ -8,10 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Source } from "@/lib/types";
+import { Input } from "@/lib/types";
 
 type ProcessingSectionProps = {
-  sources: Source[];
+  sources: Input[];
   activeSourceId: number | null;
   sourcesLoading: boolean;
   sourcesError: string | null;
@@ -142,7 +142,7 @@ export function ProcessingSection({
                       <div>{source.display_label}</div>
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
                         <span>{`input-${source.id}`}</span>
-                        <Badge variant="muted">{source.term_label ?? "Global"}</Badge>
+                        <Badge variant="muted">{source.type === "email" ? "Global" : "Primary"}</Badge>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -181,7 +181,7 @@ export function ProcessingSection({
   );
 }
 
-function readSourceHealthVariant(source: Source): "success" | "warning" | "danger" {
+function readSourceHealthVariant(source: Input): "success" | "warning" | "danger" {
   const failedStatuses = new Set(["FETCH_FAILED", "PARSE_FAILED", "DIFF_FAILED", "EMAIL_FAILED"]);
   if ((source.last_result && failedStatuses.has(source.last_result)) || source.last_error) {
     return "danger";
@@ -192,7 +192,7 @@ function readSourceHealthVariant(source: Source): "success" | "warning" | "dange
   return "success";
 }
 
-function readSourceHealthLabel(source: Source): string {
+function readSourceHealthLabel(source: Input): string {
   const variant = readSourceHealthVariant(source);
   if (variant === "danger") {
     return "failed";
@@ -203,7 +203,7 @@ function readSourceHealthLabel(source: Source): string {
   return "healthy";
 }
 
-function isSourceStale(source: Source): boolean {
+function isSourceStale(source: Input): boolean {
   if (!source.last_checked_at) {
     return false;
   }

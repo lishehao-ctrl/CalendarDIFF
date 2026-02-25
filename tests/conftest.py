@@ -7,7 +7,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session, sessionmaker
@@ -123,14 +123,19 @@ def client(configure_test_environment: None) -> Generator[TestClient, None, None
 
 @pytest.fixture()
 def initialized_user(client: TestClient, db_session: Session) -> dict[str, object]:
-    response = client.post(
-        "/v1/user",
-        headers={"X-API-Key": "test-api-key"},
-        json={"notify_email": "student@example.com"},
+    del client
+    user = User(
+        email=None,
+        notify_email="student@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
     )
-    assert response.status_code in {200, 201}
-    user = db_session.scalar(select(User).order_by(User.id.asc()).limit(1))
-    assert user is not None
-    user.onboarding_completed_at = datetime.now(timezone.utc)
+    db_session.add(user)
     db_session.commit()
-    return response.json()
+    db_session.refresh(user)
+    return {
+        "id": user.id,
+        "email": user.email,
+        "notify_email": user.notify_email,
+        "calendar_delay_seconds": user.calendar_delay_seconds,
+        "created_at": user.created_at,
+    }

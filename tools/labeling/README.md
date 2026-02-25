@@ -213,8 +213,44 @@ Artifacts:
 - `data/rules_eval/fn_keep_drop.jsonl`
 - `data/rules_eval/fp_keep_drop.jsonl`
 - `data/rules_eval/event_disagreements.jsonl`
+- `data/rules_eval/metrics_delta.json`
+- `data/rules_eval/guardrail.json`
 
-3. Build a focused gold annotation queue (FN-heavy):
+Optional guardrail mode (compare against previous metrics):
+
+```bash
+python tools/labeling/eval_rules.py \
+  --pred data/rules_labeled.jsonl \
+  --silver data/labeled.jsonl \
+  --outdir data/rules_eval \
+  --baseline-metrics data/rules_eval_baseline/metrics.json \
+  --max-precision-drop 0.01 \
+  --fail-on-guardrail
+```
+
+3. Inspect FN batches and iterate rules (10 emails per loop):
+
+```bash
+python tools/labeling/inspect_fn.py \
+  --fn data/rules_eval/fn_keep_drop.jsonl \
+  --input-mbox data/DDW-CANDIDATE.mbox \
+  --batch-size 10 \
+  --batch-index 0 \
+  --out-jsonl data/rules_eval/fn_batch0.jsonl \
+  --out-md data/rules_eval/fn_batch0.md
+```
+
+Recommended loop:
+
+1. Run `rules_extract.py` and `eval_rules.py`.
+2. Inspect one batch (`batch-size=10`) in `fn_batchN.md`.
+3. Update only 1-2 rule groups (keywords/time parsing/course hints).
+4. Re-run eval and verify:
+   - `recall_keep` increases
+   - `precision_keep` absolute drop <= `0.01`
+5. Keep each round's `metrics.json` as baseline for traceable deltas.
+
+4. Build a focused gold annotation queue (FN-heavy):
 
 ```bash
 python tools/labeling/build_gold_queue.py \
@@ -227,7 +263,7 @@ python tools/labeling/build_gold_queue.py \
   --output data/gold_queue.jsonl
 ```
 
-4. Evaluate rules against reviewed gold labels:
+5. Evaluate rules against reviewed gold labels:
 
 ```bash
 python tools/labeling/eval_gold.py \

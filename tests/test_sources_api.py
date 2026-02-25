@@ -76,6 +76,29 @@ def test_duplicate_identity_upserts_source_in_place(client, initialized_user, db
     assert items[0]["id"] == first.input.id
 
 
+def test_different_ics_url_replaces_previous_row(client, initialized_user, db_session) -> None:
+    first = create_ics_input(
+        db_session,
+        user_id=initialized_user["id"],
+        payload=InputCreateRequest(url="https://example.com/feed-a.ics"),
+    )
+    assert first.upserted_existing is False
+    first_id = first.input.id
+
+    second = create_ics_input(
+        db_session,
+        user_id=initialized_user["id"],
+        payload=InputCreateRequest(url="https://example.com/feed-b.ics"),
+    )
+    assert second.upserted_existing is False
+    assert second.input.id != first_id
+
+    rows = db_session.query(Input).filter(Input.user_id == initialized_user["id"], Input.type == InputType.ICS).all()
+    assert len(rows) == 1
+    assert rows[0].id == second.input.id
+    assert db_session.get(Input, first_id) is None
+
+
 def test_list_sources_includes_runtime_state_fields(client, db_session) -> None:
     user = User(
         email="owner@example.com",

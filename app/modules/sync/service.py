@@ -3,8 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from sqlalchemy import Select, case, func, or_, select
@@ -17,7 +16,6 @@ from app.db.models import (
     Change,
     ChangeType,
     Event,
-    InputTermBaseline,
     Snapshot,
     SnapshotEvent,
     Input,
@@ -25,15 +23,13 @@ from app.db.models import (
     SyncRun,
     SyncRunStatus,
     SyncTriggerType,
-    UserNotificationPrefs,
-    UserTerm,
 )
 from app.modules.diff.engine import EventState, compute_diff
 from app.modules.evidence.store import save_ics
+from app.modules.emails.service import create_review_queue_from_email_changes
 from app.modules.notify.interface import Notifier
 from app.modules.notify.prefs_service import get_or_create_notification_prefs
 from app.modules.notify.service import dispatch_due_notifications, enqueue_notifications_for_changes
-from app.modules.review_candidates.service import create_rule_candidates_from_email_changes
 from app.modules.sync.ics_client import ICSClient
 from app.modules.sync.gmail_client import GmailAPIError, GmailClient, GmailHistoryExpiredError
 from app.modules.sync.ics_parser import ICSParser
@@ -62,16 +58,7 @@ class SyncRunResult:
     notification_state: str | None = None
 
 
-@dataclass(frozen=True)
-class UserTermContext:
-    timezone_name: str
-    timezone: ZoneInfo
-    local_today: date
-    terms: list[UserTerm]
-    active_term_ids: set[int]
-
-
-def list_due_sources(db: Session, now: datetime | None = None) -> list[Input]:
+def list_due_inputs(db: Session, now: datetime | None = None) -> list[Input]:
     current = now or datetime.now(timezone.utc)
     interval_expr = Input.last_checked_at + func.make_interval(0, 0, 0, 0, 0, Input.interval_minutes, 0)
     due_at_expr = func.coalesce(interval_expr, current)
@@ -87,17 +74,17 @@ def list_due_sources(db: Session, now: datetime | None = None) -> list[Input]:
         )
         .order_by(priority_rank_expr.asc(), due_at_expr.asc(), Input.id.asc())
     )
-    due_sources = db.scalars(stmt).all()
-    if not due_sources:
+    due_inputs = db.scalars(stmt).all()
+    if not due_inputs:
         return []
 
-    due_source_ids = [input.id for input in due_sources]
+    due_input_ids = [input.id for input in due_inputs]
     latest_run_subquery = (
         select(
             SyncRun.input_id.label("input_id"),
             func.max(SyncRun.id).label("latest_run_id"),
         )
-        .where(SyncRun.input_id.in_(due_source_ids))
+        .where(SyncRun.input_id.in_(due_input_ids))
         .group_by(SyncRun.input_id)
         .subquery()
     )
@@ -120,9 +107,9 @@ def list_due_sources(db: Session, now: datetime | None = None) -> list[Input]:
         and started_at >= cooldown_start
     }
     if not blocked_source_ids:
-        return due_sources
+        return due_inputs
 
-    return [input for input in due_sources if input.id not in blocked_source_ids]
+    return [input for input in due_inputs if input.id not in blocked_source_ids]
 
 
 def record_lock_skipped_run(
@@ -141,7 +128,7 @@ def record_lock_skipped_run(
         finished_at=finished_at,
         status=SyncRunStatus.LOCK_SKIPPED,
         changes_count=0,
-        error_code="source_lock_not_acquired",
+        error_code="input_lock_not_acquired",
         error_message="input lock not acquired",
         lock_owner=lock_owner,
     )
@@ -158,13 +145,13 @@ def record_lock_skipped_run(
         notification_failed=False,
         notification_skipped_duplicate=False,
         status=SyncRunStatus.LOCK_SKIPPED,
-        error_code="source_lock_not_acquired",
+        error_code="input_lock_not_acquired",
         run_id=run.id,
         trigger_type=trigger_type,
     )
 
 
-def sync_source(
+def sync_input(
     db: Session,
     input: Input,
     notifier: Notifier | None = None,
@@ -175,7 +162,7 @@ def sync_source(
     lock_owner: str | None = None,
 ) -> SyncRunResult:
     if input.type == InputType.EMAIL:
-        return _sync_email_source(
+        return _sync_email_input(
             db=db,
             input=input,
             notifier=notifier,
@@ -270,7 +257,7 @@ def sync_source(
                 trigger_type=trigger_type,
             )
     except Exception as exc:
-        return _handle_source_error(
+        return _handle_input_error(
             db,
             input,
             exc,
@@ -285,7 +272,7 @@ def sync_source(
     try:
         evidence_key = save_ics(input_id=input.id, content=fetched.content, retrieved_at=fetched.fetched_at_utc)
     except Exception as exc:
-        return _handle_source_error(
+        return _handle_input_error(
             db,
             input,
             exc,
@@ -300,7 +287,7 @@ def sync_source(
         raw_events = parser.parse(fetched.content)
         normalized_events = normalize_events(raw_events)
     except Exception as exc:
-        return _handle_source_error(
+        return _handle_input_error(
             db,
             input,
             exc,
@@ -436,47 +423,9 @@ def sync_source(
 
         change_rows: list[Change] = []
         detected_at = datetime.now(timezone.utc)
-        term_context = _build_user_term_context(db, user_id=input.user_id, now=detected_at)
-        payloads_with_terms = [
-            (payload, _resolve_change_user_term_id(payload, context=term_context))
-            for payload in diff_result.changes
-        ]
-        silent_term_ids = _resolve_silent_baseline_term_ids(
-            db,
-            input_id=input.id,
-            payloads_with_terms=payloads_with_terms,
-            context=term_context,
-        )
-        for term_id in sorted(silent_term_ids):
-            db.add(
-                InputTermBaseline(
-                    input_id=input.id,
-                    user_term_id=term_id,
-                    first_snapshot_id=snapshot.id,
-                    established_at=detected_at,
-                    mode="auto_silent",
-                )
-            )
-
-        suppressed_count = sum(
-            1
-            for _, attributed_term_id in payloads_with_terms
-            if attributed_term_id is not None and attributed_term_id in silent_term_ids
-        )
-        if suppressed_count > 0:
-            logger.info(
-                "applied silent term baseline input_id=%s term_ids=%s suppressed_changes=%s",
-                input.id,
-                ",".join(str(item) for item in sorted(silent_term_ids)),
-                suppressed_count,
-            )
-
-        for payload, attributed_term_id in payloads_with_terms:
-            if attributed_term_id is not None and attributed_term_id in silent_term_ids:
-                continue
+        for payload in diff_result.changes:
             change = Change(
                 input_id=input.id,
-                user_term_id=attributed_term_id,
                 event_uid=payload.event_uid,
                 change_type=payload.change_type,
                 detected_at=detected_at,
@@ -566,7 +515,7 @@ def sync_source(
             notification_state=notification_state,
         )
     except Exception as exc:
-        return _handle_source_error(
+        return _handle_input_error(
             db,
             input,
             exc,
@@ -578,7 +527,7 @@ def sync_source(
         )
 
 
-def _sync_email_source(
+def _sync_email_input(
     *,
     db: Session,
     input: Input,
@@ -591,7 +540,7 @@ def _sync_email_source(
     input.last_error = None
 
     if input.provider != "gmail":
-        return _handle_source_error(
+        return _handle_input_error(
             db,
             input,
             RuntimeError(f"unsupported email provider: {input.provider}"),
@@ -796,7 +745,7 @@ def _sync_email_source(
         message_by_id = {item.message_id: item for item in matched_messages}
         try:
             prefs_for_tz = get_or_create_notification_prefs(db, user_id=input.user_id)
-            create_rule_candidates_from_email_changes(
+            create_review_queue_from_email_changes(
                 db,
                 user_id=input.user_id,
                 input_id=input.id,
@@ -881,7 +830,7 @@ def _sync_email_source(
             notification_state=notification_state,
         )
     except Exception as exc:
-        return _handle_source_error(
+        return _handle_input_error(
             db,
             input,
             exc,
@@ -929,7 +878,7 @@ def _get_previous_snapshot(db: Session, input_id: int, current_snapshot_id: int)
     return db.scalar(stmt)
 
 
-def _handle_source_error(
+def _handle_input_error(
     db: Session,
     input: Input,
     exc: Exception,
@@ -1060,125 +1009,6 @@ def _resolve_gmail_access_token(input: Input, gmail_client: GmailClient) -> str:
         input.encrypted_refresh_token = encrypt_secret(refreshed.refresh_token)
     input.access_token_expires_at = refreshed.expires_at
     return refreshed.access_token
-
-
-def _build_user_term_context(db: Session, *, user_id: int, now: datetime) -> UserTermContext:
-    timezone_name = db.scalar(
-        select(UserNotificationPrefs.timezone)
-        .where(UserNotificationPrefs.user_id == user_id)
-        .limit(1)
-    )
-    normalized_tz = timezone_name.strip() if isinstance(timezone_name, str) and timezone_name.strip() else "UTC"
-    timezone_obj = _resolve_timezone_or_utc(normalized_tz)
-    local_today = now.astimezone(timezone_obj).date()
-
-    terms = db.scalars(
-        select(UserTerm)
-        .where(UserTerm.user_id == user_id)
-        .order_by(UserTerm.starts_on.asc(), UserTerm.id.asc())
-    ).all()
-    active_term_ids = {
-        term.id
-        for term in terms
-        if term.is_active and term.starts_on <= local_today <= term.ends_on
-    }
-    return UserTermContext(
-        timezone_name=normalized_tz,
-        timezone=timezone_obj,
-        local_today=local_today,
-        terms=terms,
-        active_term_ids=active_term_ids,
-    )
-
-
-def _resolve_change_user_term_id(payload: object, *, context: UserTermContext) -> int | None:
-    event_start = _read_change_event_start_at_utc(payload)
-    if event_start is None:
-        return None
-    local_date = event_start.astimezone(context.timezone).date()
-    matched_terms = [
-        term for term in context.terms if term.starts_on <= local_date <= term.ends_on
-    ]
-    if not matched_terms:
-        return None
-    matched_terms.sort(key=lambda term: (term.starts_on, term.id))
-    if len(matched_terms) > 1:
-        logger.warning(
-            "multiple term matches for change event_uid=%s local_date=%s timezone=%s",
-            getattr(payload, "event_uid", "unknown"),
-            local_date.isoformat(),
-            context.timezone_name,
-        )
-    return matched_terms[0].id
-
-
-def _read_change_event_start_at_utc(payload: object) -> datetime | None:
-    change_type = getattr(payload, "change_type", None)
-    before_json = getattr(payload, "before_json", None)
-    after_json = getattr(payload, "after_json", None)
-
-    primary = before_json if change_type == ChangeType.REMOVED else after_json
-    secondary = after_json if change_type == ChangeType.REMOVED else before_json
-
-    for candidate in (primary, secondary):
-        if not isinstance(candidate, dict):
-            continue
-        parsed = _parse_iso_datetime(candidate.get("start_at_utc"))
-        if parsed is not None:
-            return parsed
-    return None
-
-
-def _resolve_silent_baseline_term_ids(
-    db: Session,
-    *,
-    input_id: int,
-    payloads_with_terms: list[tuple[object, int | None]],
-    context: UserTermContext,
-) -> set[int]:
-    if not context.active_term_ids:
-        return set()
-
-    candidate_term_ids = {
-        term_id
-        for _, term_id in payloads_with_terms
-        if term_id is not None and term_id in context.active_term_ids
-    }
-    if not candidate_term_ids:
-        return set()
-
-    existing_term_ids = set(
-        db.scalars(
-            select(InputTermBaseline.user_term_id).where(
-                InputTermBaseline.input_id == input_id,
-                InputTermBaseline.user_term_id.in_(candidate_term_ids),
-            )
-        ).all()
-    )
-    return {term_id for term_id in candidate_term_ids if term_id not in existing_term_ids}
-
-
-def _parse_iso_datetime(value: object) -> datetime | None:
-    if isinstance(value, datetime):
-        return _as_utc(value)
-    if not isinstance(value, str):
-        return None
-    raw = value.strip()
-    if not raw:
-        return None
-    normalized = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
-    return _as_utc(parsed)
-
-
-def _resolve_timezone_or_utc(name: str) -> ZoneInfo:
-    try:
-        return ZoneInfo(name)
-    except Exception:
-        return ZoneInfo("UTC")
 
 
 def _resolve_gmail_label_id(label_name: str, labels) -> str | None:

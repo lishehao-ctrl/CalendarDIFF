@@ -40,10 +40,6 @@ class ChangeSummary(BaseModel):
 
 class ChangeFeedResponse(ChangeResponse):
     input_type: str
-    term_id: int | None
-    term_code: str | None
-    term_label: str | None
-    term_scope: str
     priority_rank: int
     priority_label: str
     notification_state: str | None

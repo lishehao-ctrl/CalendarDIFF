@@ -62,13 +62,13 @@ def _seed_apply_row(
     db_session.commit()
 
 
-def test_apply_email_review_creates_event_and_change_on_earliest_active_ics(client, initialized_user, db_session) -> None:
-    first_input_id = create_ics_input_for_user(
+def test_apply_email_review_creates_event_and_change_on_single_ics(client, initialized_user, db_session) -> None:
+    create_ics_input_for_user(
         db_session,
         user_id=initialized_user["id"],
         url="https://example.com/calendar-1.ics",
     )
-    create_ics_input_for_user(
+    active_input_id = create_ics_input_for_user(
         db_session,
         user_id=initialized_user["id"],
         url="https://example.com/calendar-2.ics",
@@ -88,7 +88,7 @@ def test_apply_email_review_creates_event_and_change_on_earliest_active_ics(clie
 
     created_event = db_session.scalar(select(Event).where(Event.id == payload["task_id"]))
     assert created_event is not None
-    assert created_event.input_id == first_input_id
+    assert created_event.input_id == active_input_id
     assert created_event.uid == "email-apply:email-apply-1"
 
     created_change = db_session.scalar(select(Change).where(Change.id == payload["change_id"]))

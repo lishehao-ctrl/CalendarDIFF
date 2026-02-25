@@ -307,6 +307,7 @@ def test_postgres_alembic_upgrade_head_bootstraps_current_schema(test_database_u
         assert "error_code" in sync_runs_cols
         assert "error_message" in sync_runs_cols
         assert "ix_inputs_due_lookup" in input_indexes
+        assert "ux_inputs_user_single_ics" in input_indexes
         assert "ix_inputs_user_term_id" not in input_indexes
         assert "ix_changes_user_term_id" not in changes_indexes
         assert "ix_sync_runs_input_started_desc" in sync_run_indexes
@@ -328,7 +329,7 @@ def test_postgres_alembic_upgrade_head_bootstraps_current_schema(test_database_u
         assert "ix_email_messages_user_received_at_desc" in email_messages_indexes
         assert "uq_notifications_idempotency_key" in notification_constraints
         assert "uq_notifications_change_channel" in notification_constraints
-        assert revision == "0010_drop_review_candidates"
+        assert revision == "0011_single_ics_per_user"
     finally:
         _restore_runtime_env(runtime_env)
         _reset_runtime_state()

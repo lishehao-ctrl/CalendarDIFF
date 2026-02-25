@@ -12,7 +12,7 @@ from app.core.logging import sanitize_log_message
 from app.db.models import Input, SyncRun, SyncRunStatus, SyncTriggerType
 from app.modules.notify.digest_service import process_due_digests
 from app.modules.notify.service import dispatch_due_notifications
-from app.modules.sync.service import list_due_sources, record_lock_skipped_run, sync_source
+from app.modules.sync.service import list_due_inputs, record_lock_skipped_run, sync_input
 from app.state import SchedulerStatus
 
 logger = logging.getLogger(__name__)
@@ -70,7 +70,7 @@ class SchedulerRunner:
         run_success_count = 0
         run_failed_count = 0
         run_notification_failed_count = 0
-        run_synced_sources = 0
+        run_synced_inputs = 0
         try:
             lock_acquired = try_acquire_global_lock(db, settings.global_scheduler_lock_key)
             if not lock_acquired:
@@ -81,8 +81,8 @@ class SchedulerRunner:
 
             self._status.last_tick_lock_acquired = True
             self._status.cumulative_run_executed_count += 1
-            due_sources = list_due_sources(db)
-            for input in due_sources:
+            due_inputs = list_due_inputs(db)
+            for input in due_inputs:
                 if not try_acquire_source_lock(db, settings.source_lock_namespace, input.id):
                     record_lock_skipped_run(
                         db,
@@ -93,7 +93,7 @@ class SchedulerRunner:
                     continue
                 try:
                     try:
-                        result = sync_source(
+                        result = sync_input(
                             db,
                             input,
                             trigger_type=SyncTriggerType.SCHEDULER,
@@ -116,10 +116,10 @@ class SchedulerRunner:
                         run_failed_count += 1
                     elif result.status == SyncRunStatus.EMAIL_FAILED:
                         run_notification_failed_count += 1
-                        run_synced_sources += 1
+                        run_synced_inputs += 1
                     else:
                         run_success_count += 1
-                        run_synced_sources += 1
+                        run_synced_inputs += 1
                 finally:
                     release_source_lock(db, settings.source_lock_namespace, input.id)
 
@@ -145,7 +145,7 @@ class SchedulerRunner:
             logger.error("scheduler tick failed error=%s", safe_error)
         finally:
             if lock_acquired:
-                self._status.last_synced_sources = run_synced_sources
+                self._status.last_synced_sources = run_synced_inputs
                 self._status.last_run_success_count = run_success_count
                 self._status.last_run_failed_count = run_failed_count
                 self._status.last_run_notification_failed_count = run_notification_failed_count

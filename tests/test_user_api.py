@@ -1,94 +1,52 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from app.db.models import User
 
 
-def test_user_get_404_until_initialized_and_post_is_idempotent(client) -> None:
+def test_user_get_404_until_registered(client) -> None:
     headers = {"X-API-Key": "test-api-key"}
 
     get_before = client.get("/v1/user", headers=headers)
     assert get_before.status_code == 404
     assert get_before.json()["detail"]["code"] == "user_not_initialized"
 
-    create_response = client.post(
+
+def test_user_post_removed(client) -> None:
+    headers = {"X-API-Key": "test-api-key"}
+    response = client.post(
         "/v1/user",
         headers=headers,
         json={"notify_email": "student-a@example.com"},
     )
-    assert create_response.status_code == 201
-    assert create_response.json()["notify_email"] == "student-a@example.com"
-
-    get_after = client.get("/v1/user", headers=headers)
-    assert get_after.status_code == 200
-    assert get_after.json()["notify_email"] == "student-a@example.com"
-
-    create_again = client.post(
-        "/v1/user",
-        headers=headers,
-        json={"notify_email": "ignored@example.com"},
-    )
-    assert create_again.status_code == 200
-    assert create_again.json()["notify_email"] == "student-a@example.com"
+    assert response.status_code == 405
 
 
-def test_user_post_validates_email_and_patch_cannot_clear_notify(client) -> None:
+def test_user_patch_updates_existing_user(client, db_session) -> None:
     headers = {"X-API-Key": "test-api-key"}
-
-    invalid_create = client.post(
-        "/v1/user",
-        headers=headers,
-        json={"notify_email": "not-an-email"},
+    user = User(
+        email="legacy@example.com",
+        notify_email="student-a@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
     )
-    assert invalid_create.status_code == 422
-
-    create_response = client.post(
-        "/v1/user",
-        headers=headers,
-        json={"notify_email": "student-a@example.com"},
-    )
-    assert create_response.status_code == 201
-
-    clear_notify = client.patch(
-        "/v1/user",
-        headers=headers,
-        json={"notify_email": None},
-    )
-    assert clear_notify.status_code == 422
-
-
-def test_legacy_user_without_notify_email_is_uninitialized(client, db_session) -> None:
-    headers = {"X-API-Key": "test-api-key"}
-
-    db_session.add(User(email="legacy@example.com", notify_email=None))
+    db_session.add(user)
     db_session.commit()
 
-    get_response = client.get("/v1/user", headers=headers)
-    assert get_response.status_code == 404
-    assert get_response.json()["detail"]["code"] == "user_not_initialized"
-
-    init_response = client.post(
+    patch_response = client.patch(
         "/v1/user",
         headers=headers,
-        json={"notify_email": "student-b@example.com"},
+        json={"notify_email": "student-b@example.com", "calendar_delay_seconds": 300},
     )
-    assert init_response.status_code == 201
-    assert init_response.json()["notify_email"] == "student-b@example.com"
+    assert patch_response.status_code == 200
+    payload = patch_response.json()
+    assert payload["notify_email"] == "student-b@example.com"
+    assert payload["calendar_delay_seconds"] == 300
 
 
-def test_user_terms_require_initialized_user(client) -> None:
+def test_user_terms_routes_removed(client) -> None:
     headers = {"X-API-Key": "test-api-key"}
 
-    list_before = client.get("/v1/user/terms", headers=headers)
-    assert list_before.status_code == 409
-    assert list_before.json()["detail"]["code"] == "user_not_initialized"
-
-    create_user = client.post(
-        "/v1/user",
-        headers=headers,
-        json={"notify_email": "student-a@example.com"},
-    )
-    assert create_user.status_code == 201
-
-    list_after_register = client.get("/v1/user/terms", headers=headers)
-    assert list_after_register.status_code == 409
-    assert list_after_register.json()["detail"]["code"] == "user_onboarding_incomplete"
+    assert client.get("/v1/user/terms", headers=headers).status_code == 404
+    assert client.post("/v1/user/terms", headers=headers, json={}).status_code == 404
+    assert client.patch("/v1/user/terms/1", headers=headers, json={}).status_code == 404

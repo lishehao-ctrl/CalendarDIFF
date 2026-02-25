@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Input, InputType, SyncRunStatus, SyncTriggerType
@@ -63,21 +63,21 @@ def get_onboarding_status(db: Session) -> OnboardingStatus:
         .limit(1)
     )
 
-    if user.onboarding_completed_at is not None:
-        return OnboardingStatus(
-            stage="ready",
-            message="Onboarding complete.",
-            registered_user_id=user.id,
-            first_input_id=first_ics_input.id if first_ics_input is not None else None,
-            last_error=None,
-        )
-
     if first_ics_input is None:
         return OnboardingStatus(
             stage="needs_ics",
             message="Connect first ICS calendar source.",
             registered_user_id=user.id,
             first_input_id=None,
+            last_error=None,
+        )
+
+    if user.onboarding_completed_at is not None:
+        return OnboardingStatus(
+            stage="ready",
+            message="Onboarding complete.",
+            registered_user_id=user.id,
+            first_input_id=first_ics_input.id,
             last_error=None,
         )
 
@@ -107,15 +107,14 @@ def register_onboarding(
     except RuntimeError as exc:
         raise OnboardingRegisterError(str(exc), status_code=422) from exc
 
-    _enforce_single_active_ics_input(
-        db,
-        user_id=user.id,
-        active_input_id=input_result.input.id,
-    )
-
     sync_result = _run_baseline_sync(db, input_row=input_result.input)
     if sync_result.status in BASELINE_FAILURE_STATUSES:
         safe_error = sync_result.last_error or "baseline sync failed"
+        failed_input = db.get(Input, input_result.input.id)
+        if failed_input is not None:
+            db.delete(failed_input)
+        user.onboarding_completed_at = None
+        db.commit()
         if sync_result.status == SyncRunStatus.PARSE_FAILED:
             raise OnboardingRegisterError(safe_error, status_code=422)
         raise OnboardingRegisterError(safe_error, status_code=502)
@@ -152,17 +151,3 @@ def _run_baseline_sync(db: Session, *, input_row: Input) -> SyncRunResult:
         trigger_type=SyncTriggerType.MANUAL,
         lock_owner="onboarding-register",
     )
-
-
-def _enforce_single_active_ics_input(db: Session, *, user_id: int, active_input_id: int) -> None:
-    # Onboarding reconfiguration should leave exactly one active ICS input.
-    db.execute(
-        update(Input)
-        .where(
-            Input.user_id == user_id,
-            Input.type == InputType.ICS,
-            Input.id != active_input_id,
-        )
-        .values(is_active=False)
-    )
-    db.flush()

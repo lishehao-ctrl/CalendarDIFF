@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.db.models import ChangeType, Snapshot, SnapshotEvent, Source, SourceType, User
+from app.db.models import ChangeType, Snapshot, SnapshotEvent, Input, InputType, User
 from app.modules.diff.engine import EventState, compute_diff
 from app.modules.sync.service import _find_debounced_removed_uids
 from app.modules.sync.types import CanonicalEventInput
@@ -94,9 +94,9 @@ def test_removed_requires_three_consecutive_missing_snapshots(db_session: Sessio
     db_session.add(user)
     db_session.flush()
 
-    source = Source(
+    source = Input(
         user_id=user.id,
-        type=SourceType.ICS,
+        type=InputType.ICS,
         name="Test",
         normalized_name="test",
         encrypted_url="encrypted",

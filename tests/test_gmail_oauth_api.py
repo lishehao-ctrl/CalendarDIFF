@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlparse
 
-from sqlalchemy import select
-
 from app.core.config import get_settings
 from app.db.models import User
 from app.modules.inputs.service import build_gmail_oauth_start, parse_gmail_oauth_state
@@ -12,15 +10,13 @@ from app.modules.sync.gmail_client import GmailOAuthTokens, GmailProfile
 
 
 def _init_user(client, db_session) -> None:
-    response = client.post(
-        "/v1/user",
-        headers={"X-API-Key": "test-api-key"},
-        json={"notify_email": "student@example.com"},
+    del client
+    user = User(
+        email=None,
+        notify_email="student@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
     )
-    assert response.status_code in {200, 201}
-    user = db_session.scalar(select(User).order_by(User.id.asc()).limit(1))
-    assert user is not None
-    user.onboarding_completed_at = datetime.now(timezone.utc)
+    db_session.add(user)
     db_session.commit()
 
 

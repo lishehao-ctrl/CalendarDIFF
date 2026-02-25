@@ -160,7 +160,6 @@ def _get_or_create_dev_email_input(db: Session, *, user_id: int) -> Input:
 
     row = Input(
         user_id=user_id,
-        user_term_id=None,
         type=InputType.EMAIL,
         identity_key="dev:inject:email",
         encrypted_url=encrypt_secret("dev://inject/email"),

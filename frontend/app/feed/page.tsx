@@ -7,7 +7,7 @@ import { DashboardPage, DashboardPageHeader } from "@/components/dashboard/page-
 import { DiffSection } from "@/components/dashboard/sections/diff-section";
 import { DashboardToastStack } from "@/components/dashboard/toast-stack";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useDashboardData } from "@/lib/hooks/use-dashboard-data";
+import { useFeedData } from "@/lib/hooks/use-feed-data";
 
 export default function FeedPage() {
   const {
@@ -20,22 +20,18 @@ export default function FeedPage() {
     setChangeFilter,
     changeSourceTypeFilter,
     setChangeSourceTypeFilter,
-    feedTermScope,
-    setFeedTermScope,
-    feedTermId,
-    setFeedTermId,
-    activeUserTerms,
     filteredChanges,
     changesLoading,
     changesError,
     handleRefreshChanges,
     handleToggleViewed,
-    handleDownloadEvidence,
+    evidencePreviews,
+    handlePreviewEvidence,
     changeNotes,
     setChangeNote,
     getTaskDisplayTitle,
     getCourseDisplayLabel,
-  } = useDashboardData();
+  } = useFeedData();
 
   useEffect(() => {
     if (!needsOnboarding) {
@@ -49,7 +45,7 @@ export default function FeedPage() {
       <DashboardPageHeader
         icon={BellRing}
         title="Feed"
-        description="Review aggregated changes across email and calendar inputs with term filters."
+        description="Review aggregated changes across email and calendar inputs."
         current="feed"
         activeInputId={activeSourceId}
         showDev={showDevTools}
@@ -67,18 +63,14 @@ export default function FeedPage() {
         onChangeFilter={setChangeFilter}
         changeSourceTypeFilter={changeSourceTypeFilter}
         onChangeSourceTypeFilter={setChangeSourceTypeFilter}
-        feedTermScope={feedTermScope}
-        onFeedTermScopeChange={setFeedTermScope}
-        feedTermId={feedTermId}
-        onFeedTermIdChange={setFeedTermId}
-        activeUserTerms={activeUserTerms}
         changesError={changesError}
         changesLoading={changesLoading}
         filteredChanges={filteredChanges}
         changeNotes={changeNotes}
         onChangeNote={setChangeNote}
         onToggleViewed={handleToggleViewed}
-        onDownloadEvidence={handleDownloadEvidence}
+        evidencePreviews={evidencePreviews}
+        onPreviewEvidence={handlePreviewEvidence}
         onRefreshChanges={handleRefreshChanges}
         getTaskDisplayTitle={getTaskDisplayTitle}
         getCourseDisplayLabel={getCourseDisplayLabel}

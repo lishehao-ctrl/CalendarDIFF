@@ -44,7 +44,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 说明：
 - 本流程不需要 `name` 字段。
-- Gmail input 默认是 Global（`user_term_id=NULL`，不绑定学期）。
+- Gmail input 是全局输入，不依赖 term 配置。
 
 ## 同步语义验收
 

@@ -1,2 +1,0 @@
-"""Review candidate queue APIs."""
-

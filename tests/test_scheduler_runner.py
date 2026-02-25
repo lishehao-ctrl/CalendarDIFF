@@ -2,22 +2,24 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from app.db.models import Source, SourceType, SyncRun, SyncRunStatus, SyncTriggerType, User
+from app.db.models import Input, InputType, SyncRun, SyncRunStatus, SyncTriggerType, User
 from app.modules.scheduler.runner import SchedulerRunner, release_global_lock, try_acquire_global_lock
-from app.modules.sync.service import SyncRunResult, list_due_sources
+from app.modules.sync.service import SyncRunResult, list_due_inputs
 from app.state import SchedulerStatus
 
 
-def test_list_due_sources_respects_interval_minutes(db_session) -> None:
+def test_list_due_inputs_respects_interval_minutes(db_session) -> None:
     now = datetime(2026, 2, 21, 12, 0, tzinfo=timezone.utc)
 
-    user = User(email="owner@example.com")
-    db_session.add(user)
+    user_never = User(email="owner-never@example.com")
+    user_not_due = User(email="owner-not-due@example.com")
+    user_elapsed = User(email="owner-elapsed@example.com")
+    db_session.add_all([user_never, user_not_due, user_elapsed])
     db_session.flush()
 
-    due_never_checked = Source(
-        user_id=user.id,
-        type=SourceType.ICS,
+    due_never_checked = Input(
+        user_id=user_never.id,
+        type=InputType.ICS,
         name="due-never",
         normalized_name="due-never",
         encrypted_url="encrypted-1",
@@ -25,9 +27,9 @@ def test_list_due_sources_respects_interval_minutes(db_session) -> None:
         is_active=True,
         last_checked_at=None,
     )
-    not_due_yet = Source(
-        user_id=user.id,
-        type=SourceType.ICS,
+    not_due_yet = Input(
+        user_id=user_not_due.id,
+        type=InputType.ICS,
         name="not-due",
         normalized_name="not-due",
         encrypted_url="encrypted-2",
@@ -35,9 +37,9 @@ def test_list_due_sources_respects_interval_minutes(db_session) -> None:
         is_active=True,
         last_checked_at=now - timedelta(minutes=5),
     )
-    due_by_elapsed_time = Source(
-        user_id=user.id,
-        type=SourceType.ICS,
+    due_by_elapsed_time = Input(
+        user_id=user_elapsed.id,
+        type=InputType.ICS,
         name="due-elapsed",
         normalized_name="due-elapsed",
         encrypted_url="encrypted-3",
@@ -48,7 +50,7 @@ def test_list_due_sources_respects_interval_minutes(db_session) -> None:
     db_session.add_all([due_never_checked, not_due_yet, due_by_elapsed_time])
     db_session.commit()
 
-    due_sources = list_due_sources(db_session, now=now)
+    due_sources = list_due_inputs(db_session, now=now)
     due_ids = {source.id for source in due_sources}
 
     assert due_never_checked.id in due_ids
@@ -56,16 +58,16 @@ def test_list_due_sources_respects_interval_minutes(db_session) -> None:
     assert not_due_yet.id not in due_ids
 
 
-def test_list_due_sources_skips_recent_scheduler_lock_skipped_source(db_session) -> None:
+def test_list_due_inputs_skips_recent_scheduler_lock_skipped_source(db_session) -> None:
     now = datetime(2026, 2, 21, 12, 0, tzinfo=timezone.utc)
 
     user = User(email="owner@example.com")
     db_session.add(user)
     db_session.flush()
 
-    source = Source(
+    source = Input(
         user_id=user.id,
-        type=SourceType.ICS,
+        type=InputType.ICS,
         name="locked-recently",
         normalized_name="locked-recently",
         encrypted_url="encrypted-locked",
@@ -83,16 +85,16 @@ def test_list_due_sources_skips_recent_scheduler_lock_skipped_source(db_session)
             finished_at=now - timedelta(seconds=10),
             status=SyncRunStatus.LOCK_SKIPPED,
             changes_count=0,
-            error_code="source_lock_not_acquired",
+            error_code="input_lock_not_acquired",
             duration_ms=0,
         )
     )
     db_session.commit()
 
-    due_now = list_due_sources(db_session, now=now)
+    due_now = list_due_inputs(db_session, now=now)
     assert source.id not in {item.id for item in due_now}
 
-    due_after_cooldown = list_due_sources(db_session, now=now + timedelta(seconds=31))
+    due_after_cooldown = list_due_inputs(db_session, now=now + timedelta(seconds=31))
     assert source.id in {item.id for item in due_after_cooldown}
 
 
@@ -116,31 +118,33 @@ def test_global_advisory_lock_allows_single_holder(db_session_factory) -> None:
 
 
 def test_scheduler_tick_tracks_success_failure_and_notification_failure(db_session, db_session_factory, monkeypatch) -> None:
-    user = User(email="owner@example.com")
-    db_session.add(user)
+    user_sync_failed = User(email="owner-sync-failed@example.com")
+    user_notification_failed = User(email="owner-notification-failed@example.com")
+    user_success = User(email="owner-success@example.com")
+    db_session.add_all([user_sync_failed, user_notification_failed, user_success])
     db_session.flush()
 
-    source_sync_failed = Source(
-        user_id=user.id,
-        type=SourceType.ICS,
+    source_sync_failed = Input(
+        user_id=user_sync_failed.id,
+        type=InputType.ICS,
         name="sync-failed",
         normalized_name="sync-failed",
         encrypted_url="encrypted-1",
         interval_minutes=15,
         is_active=True,
     )
-    source_notification_failed = Source(
-        user_id=user.id,
-        type=SourceType.ICS,
+    source_notification_failed = Input(
+        user_id=user_notification_failed.id,
+        type=InputType.ICS,
         name="notification-failed",
         normalized_name="notification-failed",
         encrypted_url="encrypted-2",
         interval_minutes=15,
         is_active=True,
     )
-    source_success = Source(
-        user_id=user.id,
-        type=SourceType.ICS,
+    source_success = Input(
+        user_id=user_success.id,
+        type=InputType.ICS,
         name="success",
         normalized_name="success",
         encrypted_url="encrypted-3",
@@ -159,9 +163,9 @@ def test_scheduler_tick_tracks_success_failure_and_notification_failure(db_sessi
     monkeypatch.setattr("app.modules.scheduler.runner.release_global_lock", lambda db, key: None)
     monkeypatch.setattr("app.modules.scheduler.runner.try_acquire_source_lock", lambda db, ns, source_id: True)
     monkeypatch.setattr("app.modules.scheduler.runner.release_source_lock", lambda db, ns, source_id: None)
-    monkeypatch.setattr("app.modules.scheduler.runner.list_due_sources", lambda db: due_sources)
+    monkeypatch.setattr("app.modules.scheduler.runner.list_due_inputs", lambda db: due_sources)
 
-    def fake_sync_source(db, source, **kwargs):  # noqa: ANN001, ARG001
+    def fake_sync_input(db, source, **kwargs):  # noqa: ANN001, ARG001
         if source.id == source_sync_failed.id:
             return SyncRunResult(
                 input_id=source.id,
@@ -193,7 +197,7 @@ def test_scheduler_tick_tracks_success_failure_and_notification_failure(db_sessi
             status=SyncRunStatus.CHANGED,
         )
 
-    monkeypatch.setattr("app.modules.scheduler.runner.sync_source", fake_sync_source)
+    monkeypatch.setattr("app.modules.scheduler.runner.sync_input", fake_sync_input)
 
     runner._tick()
 
@@ -240,9 +244,9 @@ def test_scheduler_tick_records_lock_skipped_run_for_source_conflict(db_session,
     db_session.add(user)
     db_session.flush()
 
-    source = Source(
+    source = Input(
         user_id=user.id,
-        type=SourceType.ICS,
+        type=InputType.ICS,
         name="locked-source",
         normalized_name="locked-source",
         encrypted_url="encrypted-locked",
@@ -257,7 +261,7 @@ def test_scheduler_tick_records_lock_skipped_run_for_source_conflict(db_session,
 
     monkeypatch.setattr("app.modules.scheduler.runner.try_acquire_global_lock", lambda db, key: True)
     monkeypatch.setattr("app.modules.scheduler.runner.release_global_lock", lambda db, key: None)
-    monkeypatch.setattr("app.modules.scheduler.runner.list_due_sources", lambda db: [source])
+    monkeypatch.setattr("app.modules.scheduler.runner.list_due_inputs", lambda db: [source])
     monkeypatch.setattr("app.modules.scheduler.runner.try_acquire_source_lock", lambda db, ns, source_id: False)
 
     runner._tick()
@@ -273,22 +277,23 @@ def test_scheduler_tick_records_lock_skipped_run_for_source_conflict(db_session,
 
 
 def test_scheduler_tick_isolates_unexpected_source_exception(db_session, db_session_factory, monkeypatch) -> None:
-    user = User(email="owner@example.com")
-    db_session.add(user)
+    user_broken = User(email="owner-broken@example.com")
+    user_success = User(email="owner-success@example.com")
+    db_session.add_all([user_broken, user_success])
     db_session.flush()
 
-    source_broken = Source(
-        user_id=user.id,
-        type=SourceType.ICS,
+    source_broken = Input(
+        user_id=user_broken.id,
+        type=InputType.ICS,
         name="broken",
         normalized_name="broken",
         encrypted_url="encrypted-broken",
         interval_minutes=15,
         is_active=True,
     )
-    source_success = Source(
-        user_id=user.id,
-        type=SourceType.ICS,
+    source_success = Input(
+        user_id=user_success.id,
+        type=InputType.ICS,
         name="success",
         normalized_name="success",
         encrypted_url="encrypted-success",
@@ -307,9 +312,9 @@ def test_scheduler_tick_isolates_unexpected_source_exception(db_session, db_sess
     monkeypatch.setattr("app.modules.scheduler.runner.release_global_lock", lambda db, key: None)
     monkeypatch.setattr("app.modules.scheduler.runner.try_acquire_source_lock", lambda db, ns, source_id: True)
     monkeypatch.setattr("app.modules.scheduler.runner.release_source_lock", lambda db, ns, source_id: None)
-    monkeypatch.setattr("app.modules.scheduler.runner.list_due_sources", lambda db: due_sources)
+    monkeypatch.setattr("app.modules.scheduler.runner.list_due_inputs", lambda db: due_sources)
 
-    def fake_sync_source(db, source, **kwargs):  # noqa: ANN001, ARG001
+    def fake_sync_input(db, source, **kwargs):  # noqa: ANN001, ARG001
         if source.id == source_broken.id:
             raise RuntimeError("unexpected parser crash")
         return SyncRunResult(
@@ -320,7 +325,7 @@ def test_scheduler_tick_isolates_unexpected_source_exception(db_session, db_sess
             status=SyncRunStatus.CHANGED,
         )
 
-    monkeypatch.setattr("app.modules.scheduler.runner.sync_source", fake_sync_source)
+    monkeypatch.setattr("app.modules.scheduler.runner.sync_input", fake_sync_input)
 
     runner._tick()
 
@@ -329,7 +334,7 @@ def test_scheduler_tick_isolates_unexpected_source_exception(db_session, db_sess
     assert status.last_synced_sources == 1
 
     db_session.expire_all()
-    broken = db_session.get(Source, source_broken.id)
+    broken = db_session.get(Input, source_broken.id)
     assert broken is not None
     assert broken.last_error is not None
 
@@ -339,9 +344,9 @@ def test_scheduler_tick_cleans_up_old_sync_runs_once_per_day(db_session, db_sess
     db_session.add(user)
     db_session.flush()
 
-    source = Source(
+    source = Input(
         user_id=user.id,
-        type=SourceType.ICS,
+        type=InputType.ICS,
         name="cleanup-source",
         normalized_name="cleanup-source",
         encrypted_url="encrypted-cleanup",
@@ -380,7 +385,7 @@ def test_scheduler_tick_cleans_up_old_sync_runs_once_per_day(db_session, db_sess
 
     monkeypatch.setattr("app.modules.scheduler.runner.try_acquire_global_lock", lambda db, key: True)
     monkeypatch.setattr("app.modules.scheduler.runner.release_global_lock", lambda db, key: None)
-    monkeypatch.setattr("app.modules.scheduler.runner.list_due_sources", lambda db: [])
+    monkeypatch.setattr("app.modules.scheduler.runner.list_due_inputs", lambda db: [])
 
     runner._tick()
 

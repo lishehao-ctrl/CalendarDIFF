@@ -8,14 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SourceOverrides } from "@/lib/types";
-import { TaskChoice } from "@/lib/hooks/use-dashboard-data";
+import { InputOverrides } from "@/lib/types";
+import type { TaskChoice } from "@/lib/hooks/use-processing-data";
 
 type ManagementSectionProps = {
   scopedError: string | null;
   scopedLoading: boolean;
 
-  overrides: SourceOverrides;
+  overrides: InputOverrides;
 
   courseSet: string[];
   courseOriginal: string;

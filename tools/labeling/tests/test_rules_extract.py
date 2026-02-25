@@ -5,10 +5,11 @@ import mailbox
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 
-from tools.labeling.rules_extract import RuleExtractConfig, run_rules_extract
+from tools.labeling.rules_extract import RuleExtractConfig, analyze_email_rules, run_rules_extract
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
 SCHEMA_PATH = ROOT_DIR / "tools" / "labeling" / "schema" / "email_label.json"
@@ -186,3 +187,37 @@ def test_schema_invalid_candidate_is_diverted_to_error_sidecar(
     assert summary["output_rows"] == 0
     assert out_rows == []
     assert any(item["error_type"] == "schema_validation" for item in err_rows)
+
+
+def test_analyze_email_rules_explainability_and_mdy_time_parse() -> None:
+    analysis = analyze_email_rules(
+        subject="[CSE151A] Deadline pushed back",
+        body_text=(
+            "Please complete the submission. The deadline is pushed back to 03/14 11:59 PM PT. "
+            "Room change: CENTR 222."
+        ),
+        date_hint="2026-03-01T10:00:00-08:00",
+        timezone=ZoneInfo("America/Los_Angeles"),
+    )
+
+    assert analysis.label == "KEEP"
+    assert analysis.event_type == "schedule_change"
+    assert analysis.event_flags["schedule_change"] is True
+    assert analysis.raw_extract["deadline_text"] is not None
+    assert analysis.action_items
+    assert analysis.action_items[0]["due_iso"] is not None
+    assert "CSE 151A" in analysis.course_hints
+    assert any(item["rule"] == "schedule_change" for item in [{"rule": k} for k in analysis.matched_snippets.keys()])
+
+
+def test_analyze_email_rules_drop_reason_codes_for_digest() -> None:
+    analysis = analyze_email_rules(
+        subject="Recent Canvas Notifications",
+        body_text="Daily digest and newsletter summary. No action required.",
+        date_hint="2026-02-20T18:00:00-08:00",
+        timezone=ZoneInfo("America/Los_Angeles"),
+    )
+
+    assert analysis.label == "DROP"
+    assert "noise_digest" in analysis.drop_reason_codes
+    assert "no_actionable_signal" in analysis.drop_reason_codes

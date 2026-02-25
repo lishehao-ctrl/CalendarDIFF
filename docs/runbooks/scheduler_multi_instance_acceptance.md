@@ -62,7 +62,7 @@ Goal: verify lock contention is recoverable and user-facing behavior stays neutr
    - one request runs normally (`200`)
    - one request returns `409` with detail containing:
      - `status=LOCK_SKIPPED`
-     - `code=source_busy`
+     - `code=input_busy`
      - `retry_after_seconds=10`
 
 ### Scenario B: Single instance concurrent clicks

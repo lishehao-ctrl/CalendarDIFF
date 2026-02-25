@@ -11,20 +11,21 @@ type AppNavProps = {
   density?: AppNavDensity;
 };
 
-export type AppNavCurrent = "inputs" | "processing" | "feed" | "runs" | "dev";
+export type AppNavCurrent = "inputs" | "processing" | "feed" | "emails" | "runs" | "dev";
 export type AppNavDensity = "comfortable" | "compact";
 
 type NavItem = {
   key: AppNavCurrent;
   label: string;
   icon: LucideIcon;
-  path: "/ui/inputs" | "/ui/processing" | "/ui/feed" | "/ui/runs" | "/ui/dev";
+  path: "/ui/inputs" | "/ui/processing" | "/ui/feed" | "/ui/runs" | "/ui/emails/review" | "/ui/dev";
 };
 
 const NAV_ITEMS: NavItem[] = [
   { key: "inputs", label: "Inputs", icon: CalendarDays, path: "/ui/inputs" },
   { key: "processing", label: "Processing", icon: Workflow, path: "/ui/processing" },
   { key: "feed", label: "Feed", icon: BellRing, path: "/ui/feed" },
+  { key: "emails", label: "Email Review", icon: BellRing, path: "/ui/emails/review" },
   { key: "runs", label: "Runs", icon: ListChecks, path: "/ui/runs" },
   { key: "dev", label: "Dev", icon: FlaskConical, path: "/ui/dev" },
 ];

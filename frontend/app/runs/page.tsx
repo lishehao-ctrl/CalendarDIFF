@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import { SourceRun } from "@/lib/types";
+import { InputRun } from "@/lib/types";
 import { RunLimitOption, useSourceRunsPage } from "@/lib/hooks/use-source-runs-page";
 
 export default function InputRunsPage() {
@@ -138,7 +138,6 @@ export default function InputRunsPage() {
           {selectedSource ? (
             <div className="grid gap-3 rounded-2xl border border-line bg-slate-50/85 p-4 md:grid-cols-2 xl:grid-cols-4">
               <SummaryItem label="Input" value={selectedSource.display_label} />
-              <SummaryItem label="Term" value={selectedSource.term_label ?? "Global"} />
               <SummaryItem label="Interval" value={`${selectedSource.interval_minutes} min`} />
               <SummaryItem label="Next Check" value={selectedSource.next_check_at ?? "-"} />
             </div>
@@ -237,7 +236,7 @@ function RunMeta({ label, value }: { label: string; value: string }) {
   );
 }
 
-function readRunStatusVariant(status: SourceRun["status"]): "success" | "warning" | "danger" | "muted" {
+function readRunStatusVariant(status: InputRun["status"]): "success" | "warning" | "danger" | "muted" {
   if (status === "CHANGED") {
     return "success";
   }

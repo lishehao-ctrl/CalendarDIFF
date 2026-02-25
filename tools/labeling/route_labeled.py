@@ -303,6 +303,42 @@ def is_review_row(payload: dict[str, Any], review_threshold: float) -> bool:
     return False
 
 
+def evaluate_notify_route(payload: dict[str, Any]) -> tuple[bool, bool]:
+    event_type = payload.get("event_type")
+    action_items = payload.get("action_items") if isinstance(payload.get("action_items"), list) else []
+    raw_extract = payload.get("raw_extract") if isinstance(payload.get("raw_extract"), dict) else {}
+
+    should_notify = False
+    downgraded_from_notify_intent = False
+    if event_type in HIGH_PRIORITY_TYPES:
+        if has_notify_strong_signal(action_items, raw_extract):
+            should_notify = True
+        else:
+            downgraded_from_notify_intent = True
+    elif event_type == "assignment":
+        if has_parseable_due_iso(action_items) and has_notify_strong_signal(action_items, raw_extract):
+            should_notify = True
+        else:
+            downgraded_from_notify_intent = True
+    return should_notify, downgraded_from_notify_intent
+
+
+def derive_primary_route(payload: dict[str, Any], review_threshold: float) -> str:
+    label = payload.get("label")
+    if label == "DROP":
+        return "drop"
+
+    should_notify, downgraded_from_notify_intent = evaluate_notify_route(payload)
+    review_hit = is_review_row(payload, review_threshold)
+    if not review_hit and downgraded_from_notify_intent and float(payload.get("confidence", 0.0)) < review_threshold:
+        review_hit = True
+    if review_hit:
+        return "review"
+    if should_notify:
+        return "notify"
+    return "archive"
+
+
 def has_parseable_due_iso(action_items: list[Any]) -> bool:
     for item in action_items:
         if not isinstance(item, dict):
@@ -378,19 +414,7 @@ def run_router(config: RouteConfig) -> dict[str, Any]:
             if isinstance(hint, str) and hint.strip():
                 course_hint_counter[hint.strip()] += 1
 
-        should_route_notify = False
-        downgraded_from_notify_intent = False
-
-        if event_type in HIGH_PRIORITY_TYPES:
-            if has_notify_strong_signal(action_items, raw_extract):
-                should_route_notify = True
-            else:
-                downgraded_from_notify_intent = True
-        elif event_type == "assignment":
-            if has_parseable_due_iso(action_items) and has_notify_strong_signal(action_items, raw_extract):
-                should_route_notify = True
-            else:
-                downgraded_from_notify_intent = True
+        should_route_notify, downgraded_from_notify_intent = evaluate_notify_route(payload)
 
         if should_route_notify:
             notify_rows.append(payload)

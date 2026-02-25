@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import select
+
 from app.core.config import get_settings
-from app.db.models import EmailRuleCandidate, ReviewCandidateStatus, User
+from app.db.models import EmailMessage, EmailRoute, EmailRuleLabel, User
 from app.modules.inputs.service import create_gmail_input_from_oauth
 from app.modules.sync.gmail_client import GmailHistoryResult, GmailMessageMetadata, GmailProfile
 
 
-def test_gmail_sync_creates_review_candidate_and_is_idempotent(client, db_session, monkeypatch) -> None:
+def test_gmail_sync_creates_email_review_queue_item_and_is_idempotent(client, db_session, monkeypatch) -> None:
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")
     get_settings.cache_clear()
 
@@ -73,15 +75,23 @@ def test_gmail_sync_creates_review_candidate_and_is_idempotent(client, db_sessio
     assert second.json()["changes_created"] == 0
 
     db_session.expire_all()
-    candidates = db_session.query(EmailRuleCandidate).filter(EmailRuleCandidate.input_id == input_row.id).all()
-    list_response = client.get("/v1/review_candidates", headers=headers)
-    assert list_response.status_code == 200
-    assert len(list_response.json()) == 1
-    assert len(candidates) == 1
-    candidate = candidates[0]
-    assert candidate.gmail_message_id == "m1"
-    assert candidate.status == ReviewCandidateStatus.PENDING
-    assert candidate.source_change_id is not None
-    assert candidate.proposed_event_type in {"deadline", "schedule_change", "assignment", "exam", "action_required"}
+    assert db_session.scalar(select(EmailMessage).where(EmailMessage.email_id == "m1")) is not None
+    route_row = db_session.scalar(select(EmailRoute).where(EmailRoute.email_id == "m1"))
+    assert route_row is not None
+    assert route_row.route == "review"
+    label_row = db_session.scalar(select(EmailRuleLabel).where(EmailRuleLabel.email_id == "m1"))
+    assert label_row is not None
+
+    queue_response = client.get("/v1/emails/queue?route=review", headers=headers)
+    assert queue_response.status_code == 200
+    rows = queue_response.json()
+    assert len(rows) == 1
+    assert rows[0]["email_id"] == "m1"
 
     get_settings.cache_clear()
+
+
+def test_review_candidates_endpoint_removed(client) -> None:
+    headers = {"X-API-Key": "test-api-key"}
+    response = client.get("/v1/review_candidates", headers=headers)
+    assert response.status_code == 404

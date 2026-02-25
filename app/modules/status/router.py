@@ -11,7 +11,7 @@ from app.core.security import require_api_key
 from app.db.models import Notification, NotificationStatus, Input, SyncRun, SyncRunStatus
 from app.db.session import get_db
 from app.modules.scheduler.runner import SchedulerRunner
-from app.modules.sync.service import list_due_sources
+from app.modules.sync.service import list_due_inputs
 
 router = APIRouter(prefix="/v1", tags=["status"], dependencies=[Depends(require_api_key)])
 
@@ -93,4 +93,4 @@ def get_status(request: Request, db: Session = Depends(get_db)) -> StatusRespons
 
 
 def _count_due_inputs(db: Session, *, now: datetime) -> int:
-    return len(list_due_sources(db, now=now))
+    return len(list_due_inputs(db, now=now))

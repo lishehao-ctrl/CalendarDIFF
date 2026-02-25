@@ -35,6 +35,22 @@ def parse_args() -> argparse.Namespace:
         help="Optional pre-normalized silver JSONL. If absent, normalize --silver on the fly.",
     )
     parser.add_argument("--outdir", default="data/rules_eval", help="Output directory for metrics/artifacts.")
+    parser.add_argument(
+        "--baseline-metrics",
+        default=None,
+        help="Optional previous metrics.json for guardrail comparison.",
+    )
+    parser.add_argument(
+        "--max-precision-drop",
+        type=float,
+        default=0.01,
+        help="Maximum allowed absolute precision drop versus baseline.",
+    )
+    parser.add_argument(
+        "--fail-on-guardrail",
+        action="store_true",
+        help="Return non-zero exit code when guardrail check fails.",
+    )
     return parser.parse_args()
 
 
@@ -151,7 +167,126 @@ def _normalize_silver_if_needed(silver_path: Path, normalized_path: Path | None)
         return _read_jsonl(config.output_path)
 
 
-def run_eval(*, pred_path: Path, silver_path: Path, silver_normalized_path: Path | None, outdir: Path) -> dict[str, Any]:
+def _read_json(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        raise RuntimeError(f"JSON not found: {path}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"JSON object expected at: {path}")
+    return payload
+
+
+def _safe_float(value: Any) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return 0.0
+
+
+def _safe_int(value: Any) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return 0
+
+
+def _build_metrics_delta(*, current_metrics: dict[str, Any], baseline_metrics: dict[str, Any] | None) -> dict[str, Any]:
+    if baseline_metrics is None:
+        return {
+            "has_baseline": False,
+            "precision_keep_delta": None,
+            "recall_keep_delta": None,
+            "f1_keep_delta": None,
+            "fp_keep_delta": None,
+            "fn_keep_delta": None,
+        }
+
+    current_label = current_metrics.get("label_metrics", {})
+    baseline_label = baseline_metrics.get("label_metrics", {})
+    return {
+        "has_baseline": True,
+        "precision_keep_delta": round(
+            _safe_float(current_label.get("precision_keep")) - _safe_float(baseline_label.get("precision_keep")),
+            6,
+        ),
+        "recall_keep_delta": round(
+            _safe_float(current_label.get("recall_keep")) - _safe_float(baseline_label.get("recall_keep")),
+            6,
+        ),
+        "f1_keep_delta": round(
+            _safe_float(current_label.get("f1_keep")) - _safe_float(baseline_label.get("f1_keep")),
+            6,
+        ),
+        "fp_keep_delta": _safe_int(current_label.get("fp_keep")) - _safe_int(baseline_label.get("fp_keep")),
+        "fn_keep_delta": _safe_int(current_label.get("fn_keep")) - _safe_int(baseline_label.get("fn_keep")),
+    }
+
+
+def _build_guardrail(
+    *,
+    current_metrics: dict[str, Any],
+    baseline_metrics: dict[str, Any] | None,
+    max_precision_drop: float,
+) -> dict[str, Any]:
+    if baseline_metrics is None:
+        return {
+            "has_baseline": False,
+            "passed": True,
+            "max_precision_drop": max_precision_drop,
+            "reason": "baseline metrics not provided",
+            "checks": [],
+        }
+
+    current_label = current_metrics.get("label_metrics", {})
+    baseline_label = baseline_metrics.get("label_metrics", {})
+    current_precision = _safe_float(current_label.get("precision_keep"))
+    baseline_precision = _safe_float(baseline_label.get("precision_keep"))
+    current_recall = _safe_float(current_label.get("recall_keep"))
+    baseline_recall = _safe_float(baseline_label.get("recall_keep"))
+
+    precision_drop = baseline_precision - current_precision
+    recall_delta = current_recall - baseline_recall
+
+    checks = [
+        {
+            "name": "recall_improved",
+            "passed": recall_delta > 0.0,
+            "delta": round(recall_delta, 6),
+            "baseline": round(baseline_recall, 6),
+            "current": round(current_recall, 6),
+        },
+        {
+            "name": "precision_drop_within_limit",
+            "passed": precision_drop <= max_precision_drop,
+            "drop": round(precision_drop, 6),
+            "max_allowed_drop": round(max_precision_drop, 6),
+            "baseline": round(baseline_precision, 6),
+            "current": round(current_precision, 6),
+        },
+    ]
+    passed = all(check.get("passed") for check in checks)
+    return {
+        "has_baseline": True,
+        "passed": passed,
+        "max_precision_drop": max_precision_drop,
+        "precision_drop": round(precision_drop, 6),
+        "recall_delta": round(recall_delta, 6),
+        "checks": checks,
+    }
+
+
+def run_eval(
+    *,
+    pred_path: Path,
+    silver_path: Path,
+    silver_normalized_path: Path | None,
+    outdir: Path,
+    baseline_metrics_path: Path | None = None,
+    max_precision_drop: float = 0.01,
+) -> dict[str, Any]:
+    if max_precision_drop < 0:
+        raise RuntimeError("--max-precision-drop must be >= 0.")
+
     pred_map = _dedupe_by_email(_read_jsonl(pred_path))
     silver_rows = _normalize_silver_if_needed(silver_path, silver_normalized_path)
     silver_map = _dedupe_by_email(silver_rows)
@@ -238,6 +373,15 @@ def run_eval(*, pred_path: Path, silver_path: Path, silver_normalized_path: Path
         "label_metrics": label_metrics,
         "event_metrics": event_metrics,
     }
+    baseline_metrics = _read_json(baseline_metrics_path) if baseline_metrics_path is not None else None
+    metrics_delta = _build_metrics_delta(current_metrics=metrics, baseline_metrics=baseline_metrics)
+    guardrail = _build_guardrail(
+        current_metrics=metrics,
+        baseline_metrics=baseline_metrics,
+        max_precision_drop=max_precision_drop,
+    )
+    metrics["metrics_delta"] = metrics_delta
+    metrics["guardrail"] = guardrail
 
     _write_json(outdir / "metrics.json", metrics)
     _write_json(outdir / "confusion_label.json", label_confusion)
@@ -245,6 +389,8 @@ def run_eval(*, pred_path: Path, silver_path: Path, silver_normalized_path: Path
     _write_jsonl(outdir / "fn_keep_drop.jsonl", fn_rows)
     _write_jsonl(outdir / "fp_keep_drop.jsonl", fp_rows)
     _write_jsonl(outdir / "event_disagreements.jsonl", event_disagreements)
+    _write_json(outdir / "metrics_delta.json", metrics_delta)
+    _write_json(outdir / "guardrail.json", guardrail)
     return metrics
 
 
@@ -256,8 +402,12 @@ def main() -> int:
             silver_path=Path(args.silver),
             silver_normalized_path=Path(args.silver_normalized) if args.silver_normalized else None,
             outdir=Path(args.outdir),
+            baseline_metrics_path=Path(args.baseline_metrics) if args.baseline_metrics else None,
+            max_precision_drop=float(args.max_precision_drop),
         )
         print(json.dumps(metrics, ensure_ascii=False, indent=2))
+        if args.fail_on_guardrail and not bool(metrics.get("guardrail", {}).get("passed", True)):
+            return 1
         return 0
     except Exception as exc:
         print(json.dumps({"error": str(exc)}, ensure_ascii=False))

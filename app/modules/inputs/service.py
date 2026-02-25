@@ -18,7 +18,6 @@ from app.db.models import (
     SyncRun,
     SyncRunStatus,
     SyncTriggerType,
-    UserTerm,
 )
 from app.modules.inputs.schemas import InputCreateRequest
 from app.modules.scheduler.runner import release_source_lock, try_acquire_source_lock
@@ -29,7 +28,7 @@ from app.modules.sync.service import (
     LOCK_SKIPPED_COOLDOWN_SECONDS,
     SyncRunResult,
     record_lock_skipped_run,
-    sync_source,
+    sync_input,
 )
 
 MANUAL_SYNC_RETRY_AFTER_SECONDS = 10
@@ -164,45 +163,49 @@ def create_ics_input(
     identity_key = _build_ics_identity_key(canonical_url)
     encrypted_url = encrypt_secret(canonical_url)
     interval_minutes = FIXED_INPUT_INTERVAL_MINUTES
-    user_term_id = payload.user_term_id
-    if user_term_id is not None:
-        _ensure_user_term_exists(db, user_id=user_id, term_id=user_term_id)
+
+    def _insert_new_ics_input() -> Input:
+        row = Input(
+            user_id=user_id,
+            type=InputType.ICS,
+            provider=None,
+            identity_key=identity_key,
+            encrypted_url=encrypted_url,
+            notify_email=None,
+            interval_minutes=interval_minutes,
+            is_active=True,
+        )
+        db.add(row)
+        db.flush()
+        return row
 
     existing_input = db.scalar(
         select(Input)
         .where(
             Input.user_id == user_id,
             Input.type == InputType.ICS,
-            Input.identity_key == identity_key,
         )
         .with_for_update()
     )
-    if existing_input is not None:
+    if existing_input is not None and existing_input.identity_key == identity_key:
         existing_input.encrypted_url = encrypted_url
         existing_input.notify_email = None
         existing_input.interval_minutes = interval_minutes
-        existing_input.user_term_id = user_term_id
         existing_input.is_active = True
         db.commit()
         db.refresh(existing_input)
         return InputCreateResult(input=existing_input, upserted_existing=True)
 
-    input = Input(
-        user_id=user_id,
-        user_term_id=user_term_id,
-        type=InputType.ICS,
-        provider=None,
-        identity_key=identity_key,
-        encrypted_url=encrypted_url,
-        notify_email=None,
-        interval_minutes=interval_minutes,
-        is_active=True,
-    )
-    db.add(input)
+    if existing_input is not None:
+        # Single-ICS invariant: replacing URL deletes previous ICS timeline lineage.
+        db.delete(existing_input)
+        db.flush()
+
+    input_row = _insert_new_ics_input()
     try:
         db.commit()
-        db.refresh(input)
-        return InputCreateResult(input=input, upserted_existing=False)
+        db.refresh(input_row)
+        return InputCreateResult(input=input_row, upserted_existing=False)
     except IntegrityError:
         db.rollback()
         existing_input = db.scalar(
@@ -210,20 +213,42 @@ def create_ics_input(
             .where(
                 Input.user_id == user_id,
                 Input.type == InputType.ICS,
-                Input.identity_key == identity_key,
             )
             .with_for_update()
         )
-        if existing_input is None:
-            raise
-        existing_input.encrypted_url = encrypted_url
-        existing_input.notify_email = None
-        existing_input.interval_minutes = interval_minutes
-        existing_input.user_term_id = user_term_id
-        existing_input.is_active = True
-        db.commit()
-        db.refresh(existing_input)
-        return InputCreateResult(input=existing_input, upserted_existing=True)
+        if existing_input is not None and existing_input.identity_key == identity_key:
+            existing_input.encrypted_url = encrypted_url
+            existing_input.notify_email = None
+            existing_input.interval_minutes = interval_minutes
+            existing_input.is_active = True
+            db.commit()
+            db.refresh(existing_input)
+            return InputCreateResult(input=existing_input, upserted_existing=True)
+
+        if existing_input is not None:
+            db.delete(existing_input)
+            db.flush()
+
+        retry_row = _insert_new_ics_input()
+        try:
+            db.commit()
+            db.refresh(retry_row)
+            return InputCreateResult(input=retry_row, upserted_existing=False)
+        except IntegrityError:
+            db.rollback()
+            latest = db.scalar(
+                select(Input)
+                .where(
+                    Input.user_id == user_id,
+                    Input.type == InputType.ICS,
+                )
+                .order_by(Input.created_at.desc(), Input.id.desc())
+                .limit(1)
+            )
+            if latest is None:
+                raise
+            db.refresh(latest)
+            return InputCreateResult(input=latest, upserted_existing=(latest.identity_key == identity_key))
 
 
 def create_gmail_input_from_oauth(
@@ -285,7 +310,6 @@ def create_gmail_input_from_oauth(
 
     input = Input(
         user_id=user_id,
-        user_term_id=None,
         type=InputType.EMAIL,
         provider="gmail",
         identity_key=identity_key,
@@ -438,7 +462,7 @@ def run_manual_input_sync(db: Session, input: Input) -> SyncRunResult:
         )
 
     try:
-        return sync_source(
+        return sync_input(
             db=db,
             input=input,
             trigger_type=SyncTriggerType.MANUAL,
@@ -472,12 +496,6 @@ def preview_input_deadlines(
         total_deadlines=total_deadlines,
         courses=courses,
     )
-
-
-def _ensure_user_term_exists(db: Session, *, user_id: int, term_id: int) -> None:
-    row = db.scalar(select(UserTerm.id).where(UserTerm.id == term_id, UserTerm.user_id == user_id))
-    if row is None:
-        raise RuntimeError("Term not found for user")
 
 
 def _canonicalize_ics_url(raw_url: str) -> str:

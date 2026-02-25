@@ -62,7 +62,7 @@ curl http://localhost:8000/ui/app-config.js
 期望：页面顶部健康卡片有 run 计数和 `next_expected_check` 信息；Inputs 区域可刷新。
 
 4. 创建 input 成功  
-先创建或选择 User；在 Input Layer 的 `Add Calendar Input` 卡片填写 `url`（可选 `user_term_id`）。  
+先完成 onboarding；在 Input Layer 的 `Add Calendar Input` 卡片填写 `url`。  
 期望：toast 显示创建成功，input 出现在表格。
 
 5. 第一次手动同步是 baseline  

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ApiError, apiRequest, getOnboardingStatus } from "@/lib/api";
 import { getRuntimeConfig } from "@/lib/config";
-import { AppConfig, Source, SourceRun } from "@/lib/types";
+import { AppConfig, Input, InputRun } from "@/lib/types";
 
 const RUN_LIMIT_OPTIONS = [20, 50, 100, 200] as const;
 export type RunLimitOption = (typeof RUN_LIMIT_OPTIONS)[number];
@@ -16,7 +16,7 @@ export function useSourceRunsPage() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
 
-  const [sources, setSources] = useState<Source[]>([]);
+  const [sources, setSources] = useState<Input[]>([]);
   const [sourcesLoading, setSourcesLoading] = useState(false);
   const [sourcesError, setSourcesError] = useState<string | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
@@ -25,7 +25,7 @@ export function useSourceRunsPage() {
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
   const [limit, setLimit] = useState<RunLimitOption>(20);
 
-  const [runs, setRuns] = useState<SourceRun[]>([]);
+  const [runs, setRuns] = useState<InputRun[]>([]);
   const [runsLoading, setRunsLoading] = useState(false);
   const [runsError, setRunsError] = useState<string | null>(null);
   const [runsLastRefreshedAt, setRunsLastRefreshedAt] = useState<Date | null>(null);
@@ -98,7 +98,7 @@ export function useSourceRunsPage() {
     setSourcesLoading(true);
     setSourcesError(null);
     try {
-      const rows = await apiRequest<Source[]>(runtime, "/v1/inputs");
+      const rows = await apiRequest<Input[]>(runtime, "/v1/inputs");
       setSources(rows);
 
       if (selectedSourceId !== null && !rows.some((item) => item.id === selectedSourceId)) {
@@ -116,7 +116,7 @@ export function useSourceRunsPage() {
     setRunsLoading(true);
     setRunsError(null);
     try {
-      const rows = await apiRequest<SourceRun[]>(runtimeConfig, `/v1/inputs/${sourceId}/runs?limit=${selectedLimit}`);
+      const rows = await apiRequest<InputRun[]>(runtimeConfig, `/v1/inputs/${sourceId}/runs?limit=${selectedLimit}`);
       setRuns(rows);
       setRunsLastRefreshedAt(new Date());
     } catch (error) {

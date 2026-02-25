@@ -49,15 +49,12 @@ def test_dev_inject_notify_creates_digest_eligible_row(client, db_session, monke
     monkeypatch.setenv("APP_ENV", "dev")
     monkeypatch.setenv("ENABLE_DEV_ENDPOINTS", "true")
     get_settings.cache_clear()
-    init_user = client.post(
-        "/v1/user",
-        headers={"X-API-Key": "test-api-key"},
-        json={"notify_email": "student@example.com"},
+    user = User(
+        email=None,
+        notify_email="student@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
     )
-    assert init_user.status_code in {200, 201}
-    user = db_session.scalar(select(User).order_by(User.id.asc()).limit(1))
-    assert user is not None
-    user.onboarding_completed_at = datetime.now(timezone.utc)
+    db_session.add(user)
     db_session.commit()
 
     response = client.post(

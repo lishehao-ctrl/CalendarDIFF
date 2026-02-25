@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from app.db.models import Source, SourceType, SyncRun, SyncRunStatus, SyncTriggerType, User
+from app.db.models import Input, InputType, SyncRun, SyncRunStatus, SyncTriggerType, User
 
 
 def test_status_api_requires_api_key(client) -> None:
@@ -12,13 +12,14 @@ def test_status_api_requires_api_key(client) -> None:
 
 def test_status_api_returns_scheduler_and_source_observability(client, db_session) -> None:
     now = datetime.now(timezone.utc)
-    user = User(email="owner@example.com")
-    db_session.add(user)
+    due_user = User(email="owner-due@example.com")
+    checked_user = User(email="owner-checked@example.com")
+    db_session.add_all([due_user, checked_user])
     db_session.flush()
 
-    due_source = Source(
-        user_id=user.id,
-        type=SourceType.ICS,
+    due_source = Input(
+        user_id=due_user.id,
+        type=InputType.ICS,
         name="due-source",
         normalized_name="due-source",
         encrypted_url="encrypted-1",
@@ -26,9 +27,9 @@ def test_status_api_returns_scheduler_and_source_observability(client, db_sessio
         is_active=True,
         last_checked_at=None,
     )
-    checked_source = Source(
-        user_id=user.id,
-        type=SourceType.ICS,
+    checked_source = Input(
+        user_id=checked_user.id,
+        type=InputType.ICS,
         name="checked-source",
         normalized_name="checked-source",
         encrypted_url="encrypted-2",
@@ -91,9 +92,9 @@ def test_status_api_due_inputs_count_skips_recent_scheduler_lock_skipped_source(
     db_session.add(user)
     db_session.flush()
 
-    source = Source(
+    source = Input(
         user_id=user.id,
-        type=SourceType.ICS,
+        type=InputType.ICS,
         name="locked-source",
         normalized_name="locked-source",
         encrypted_url="encrypted-locked",

@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { useDashboardData } from "@/lib/hooks/use-dashboard-data";
+import { useProcessingData } from "@/lib/hooks/use-processing-data";
 
 export default function ProcessingPage() {
   const {
@@ -63,7 +63,7 @@ export default function ProcessingPage() {
     handleSaveTaskRename,
     handleDeleteTaskRename,
     getTaskDisplayTitle,
-  } = useDashboardData();
+  } = useProcessingData();
 
   const activeInput = activeSourceId ? sources.find((source) => source.id === activeSourceId) ?? null : null;
   const activeInputType = activeInput?.type ?? null;

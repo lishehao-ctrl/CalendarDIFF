@@ -154,3 +154,57 @@ def test_eval_rules_event_macro_micro_and_disagreements(tmp_path: Path) -> None:
     assert [row["email_id"] for row in disagreement_rows] == ["y"]
     confusion_event = _read_json(outdir / "confusion_event_type.json")
     assert confusion_event["deadline"]["exam"] == 1
+
+
+def test_eval_rules_guardrail_and_delta_outputs(tmp_path: Path) -> None:
+    pred_path = tmp_path / "rules_labeled.jsonl"
+    silver_norm_path = tmp_path / "silver_normalized.jsonl"
+    outdir = tmp_path / "rules_eval"
+    baseline_path = tmp_path / "baseline_metrics.json"
+
+    _write_jsonl(
+        pred_path,
+        [
+            {"email_id": "a", "label": "KEEP", "event_type": "deadline", "confidence": 0.9},
+            {"email_id": "b", "label": "DROP", "event_type": None, "confidence": 0.9},
+            {"email_id": "c", "label": "DROP", "event_type": None, "confidence": 0.9},
+        ],
+    )
+    _write_jsonl(
+        silver_norm_path,
+        [
+            {"email_id": "a", "label": "KEEP", "event_type": "deadline", "confidence": 0.9},
+            {"email_id": "b", "label": "KEEP", "event_type": "assignment", "confidence": 0.9},
+            {"email_id": "c", "label": "DROP", "event_type": None, "confidence": 0.9},
+        ],
+    )
+    baseline_payload = {
+        "label_metrics": {
+            "precision_keep": 0.9,
+            "recall_keep": 0.4,
+            "f1_keep": 0.55,
+            "fp_keep": 1,
+            "fn_keep": 2,
+        }
+    }
+    baseline_path.write_text(json.dumps(baseline_payload), encoding="utf-8")
+
+    metrics = run_eval(
+        pred_path=pred_path,
+        silver_path=silver_norm_path,
+        silver_normalized_path=silver_norm_path,
+        outdir=outdir,
+        baseline_metrics_path=baseline_path,
+        max_precision_drop=0.2,
+    )
+
+    assert "metrics_delta" in metrics
+    assert "guardrail" in metrics
+    assert (outdir / "metrics_delta.json").is_file()
+    assert (outdir / "guardrail.json").is_file()
+
+    delta = _read_json(outdir / "metrics_delta.json")
+    guardrail = _read_json(outdir / "guardrail.json")
+    assert delta["has_baseline"] is True
+    assert guardrail["has_baseline"] is True
+    assert guardrail["passed"] is True
