@@ -2,19 +2,17 @@ from __future__ import annotations
 
 from sqlalchemy import func, select
 
-from app.db.models import Change, Notification, Source
+from app.db.models import Change, Notification, Input
+from tests.helpers_inputs import create_ics_input_for_user
 
 
 def test_manual_sync_failure_updates_source_error_without_changes_or_notifications(client, initialized_user, db_session, monkeypatch) -> None:
     headers = {"X-API-Key": "test-api-key"}
-
-    create_response = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={"url": "https://example.com/failure.ics"},
+    source_id = create_ics_input_for_user(
+        db_session,
+        user_id=initialized_user["id"],
+        url="https://example.com/failure.ics",
     )
-    assert create_response.status_code == 201
-    source_id = create_response.json()["id"]
 
     def fake_fetch(self, url: str, source_id: int, **kwargs):  # noqa: ARG001
         raise RuntimeError("simulated fetch failure")
@@ -29,7 +27,7 @@ def test_manual_sync_failure_updates_source_error_without_changes_or_notificatio
     assert payload["last_error"] is not None
 
     db_session.expire_all()
-    source = db_session.get(Source, source_id)
+    source = db_session.get(Input, source_id)
     assert source is not None
     assert source.last_checked_at is not None
     assert source.last_error is not None

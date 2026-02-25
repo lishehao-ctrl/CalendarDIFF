@@ -109,7 +109,7 @@ All require `X-API-Key`.
 - `GET /v1/inputs`
 - `GET /v1/inputs/{id}/runs?limit=20`
 
-## Gmail EMAIL Source (MVP)
+## Gmail Email Input + Review Queue (MVP)
 
 This project supports `Input.type=email` with `provider=gmail`.
 
@@ -139,10 +139,11 @@ APP_BASE_URL=http://localhost:8000
 4. Change metadata is in `after_json`:
    - `subject`, `snippet`, `internal_date`, `from`, `gmail_message_id`, `open_in_gmail_url`.
 5. Existing notifier pipeline and dedup rules are reused.
-6. Rule candidate queue (backend-only in this phase):
-   - actionable metadata/snippet signals create `email_rule_candidates` rows (`pending`)
-   - candidates are reviewed via `/v1/review_candidates`
-   - apply writes canonical `due_changed` change; no auto-apply on sync path
+6. Email review queue:
+   - actionable metadata/snippet signals are ingested into `email_*` review tables
+   - queue API: `/v1/emails/queue`, `/v1/emails/{email_id}/route`, `/v1/emails/{email_id}/mark_viewed`, `/v1/emails/{email_id}/apply`
+   - `apply` writes canonical changes (create new or update existing) through the same diff/audit pipeline
+   - no auto-apply on sync path
 
 ### Verification APIs
 
@@ -163,15 +164,12 @@ The input model is user-only (`user + inputs`):
 
 - `GET /v1/onboarding/status`
 - `POST /v1/onboarding/register` (required fields: `notify_email + first ICS URL`)
-- `POST /v1/user` (create/initialize notify-only user row, mainly for compatibility/ops)
 - `GET /v1/user`
 - `PATCH /v1/user` (edit `notify_email`, `calendar_delay_seconds`)
-- `POST /v1/user/terms`
-- `GET /v1/user/terms`
-- `PATCH /v1/user/terms/{term_id}`
-- `GET /v1/review_candidates`
-- `POST /v1/review_candidates/{id}/apply`
-- `POST /v1/review_candidates/{id}/dismiss`
+- `GET /v1/emails/queue`
+- `POST /v1/emails/{email_id}/route`
+- `POST /v1/emails/{email_id}/mark_viewed`
+- `POST /v1/emails/{email_id}/apply`
 
 Onboarding completion contract:
 
@@ -183,43 +181,38 @@ Onboarding completion contract:
 3. `/v1/onboarding/status` stages:
    - `needs_user | needs_ics | needs_baseline | ready`
 4. `POST /v1/onboarding/register` writes `users.onboarding_completed_at` only after successful baseline sync.
-5. Gate errors:
+5. Re-running onboarding with a new ICS URL keeps that ICS as the only active calendar input (older ICS inputs are deactivated).
+6. Gate errors:
    - `user_not_initialized` (not registered)
    - `user_onboarding_incomplete` (registered, not onboarded)
-6. `PATCH /v1/user` rejects clearing `notify_email`.
-7. Protected endpoints return `409` before onboarding is ready:
+7. `PATCH /v1/user` rejects clearing `notify_email`.
+8. Protected endpoints return `409` before onboarding is ready:
    - `/v1/feed`
    - `/v1/inputs*`
    - `/v1/inputs/email/gmail/oauth/start`
    - `/v1/notification_prefs*`
    - `/v1/notifications/send_digest_now`
    - `/v1/dev/inject_notify`
-   - `/v1/user/terms*`
+   - `/v1/emails*`
 
 ### Input Layer policy (fixed)
 
-1. Input creation UI is minimal: add Calendar or Gmail input only.
+1. Input creation UI focuses on Gmail connection; ICS baseline is managed in onboarding.
 2. Input-level `notify_email` is not configurable and not used for delivery routing.
 3. Input-level `interval_minutes` is fixed at `15` minutes (DB-enforced).
 4. Input create payloads reject legacy fields (`interval_minutes`, `notify_email`) with `422`.
 5. Effective recipient is resolved at user level: `user.notify_email`.
-6. `user_terms` are optional advanced filters; onboarding does not require term setup.
+6. First ICS successful sync is the onboarding baseline. It suppresses first-run diff/notification noise.
 
 ### Feed API
 
 - `GET /v1/feed`
-  - Query: `input_id?`, `view=all|unread`, `input_types=email,ics`, `term_scope=current|all|term`, `term_id?`, `limit`, `offset`
+  - Query: `input_id?`, `view=all|unread`, `input_types=email,ics`, `limit`, `offset`
   - Ordered by: `priority_rank ASC (email first)`, then `detected_at DESC`, then `id DESC`
-  - Extra fields: `input_type`, `term_id`, `term_code`, `term_label`, `term_scope`, `priority_rank`, `priority_label`, `notification_state`, `deliver_after`
-  - Term attribution is **change-level**:
-    - `term_*` comes from `changes.user_term_id -> user_terms`
-    - no longer derived from `inputs.user_term_id`
-  - ICS change term attribution uses event start time in user timezone (`user_notification_prefs.timezone`, fallback `UTC`)
-  - New-term first-run behavior:
-    - first-ever ICS sync is always baseline-first (no diff notification)
-    - if terms are configured and `(input_id, term_id)` has no baseline record, first candidate change batch in that term is silently baselined
-    - baseline record stored in `input_term_baselines`
-    - subsequent runs in same term emit normal diff/notify
+  - Extra fields: `input_type`, `priority_rank`, `priority_label`, `notification_state`, `deliver_after`
+  - Baseline behavior:
+    - first-ever ICS sync is baseline-first (no diff notification)
+    - subsequent syncs emit normal diff/notify relative to canonical timeline
   - Old/New summary times in UI are rendered in the viewer's local timezone.
 
 ### UI information architecture
@@ -229,11 +222,12 @@ Onboarding completion contract:
    - `stage=ready` -> `/ui/inputs`
    - otherwise -> `/ui/onboarding`
 2. `/ui/onboarding` -> submit `notify_email + ics.url` to `POST /v1/onboarding/register`.
-3. `/ui/inputs` -> add input sources (Calendar/Gmail).
+3. `/ui/inputs` -> connect/manage Gmail inputs. ICS is configured only through onboarding.
 4. `/ui/processing` -> health, manual sync, ICS rename management.
 5. `/ui/feed` -> aggregated change feed (EMAIL > Calendar ordering); onboarding-incomplete direct access redirects to onboarding.
 6. `/ui/runs?input_id=<id>` -> input run timeline and refresh timestamp; onboarding-incomplete direct access redirects to onboarding.
-7. `/ui/dev` -> dev-only inject tool (enabled only when `APP_ENV=dev` and `ENABLE_DEV_ENDPOINTS=true`); onboarding-incomplete direct access redirects to onboarding.
+7. `/ui/emails/review` -> email review queue for Apply/Archive/Drop/Mark viewed operations.
+8. `/ui/dev` -> dev-only inject tool (enabled only when `APP_ENV=dev` and `ENABLE_DEV_ENDPOINTS=true`); onboarding-incomplete direct access redirects to onboarding.
 
 ## Notification Digest Schedule
 
@@ -321,20 +315,20 @@ Important:
 
 ## Notes
 
-1. Manual `POST /v1/inputs/{id}/sync` returns `409 source_busy` on input lock contention (recoverable).
+1. Manual `POST /v1/inputs/{id}/sync` returns `409 input_busy` on input lock contention (recoverable).
 2. Conflict detail now includes `status=LOCK_SKIPPED` and `retry_after_seconds` for recoverable UX.
-3. UI handles `source_busy` with one auto retry after 10 seconds plus a `Retry now` action.
-4. Scheduler path is still non-blocking and uses a 30-second cooldown after scheduler `LOCK_SKIPPED`.
-5. Per-input run history page is available at `/ui/runs?input_id=<id>`.
-6. For LOCK_SKIPPED acceptance steps, use `docs/runbooks/scheduler_multi_instance_acceptance.md`.
-7. Input-centric API cutover is complete: use `/v1/inputs*` and `/v1/feed`.
-8. `/v1/inputs/ics` accepts `url` and optional `user_term_id`; feed filtering uses `term_scope` + `term_id`.
-9. Input create payloads are strict and do not accept `interval_minutes` / `notify_email`.
+3. Busy error code is `input_busy`.
+4. UI handles busy lock contention with one auto retry after 10 seconds plus a `Retry now` action.
+5. Scheduler path is still non-blocking and uses a 30-second cooldown after scheduler `LOCK_SKIPPED`.
+6. Per-input run history page is available at `/ui/runs?input_id=<id>`.
+7. For LOCK_SKIPPED acceptance steps, use `docs/runbooks/scheduler_multi_instance_acceptance.md`.
+8. Input-centric API cutover is complete: use `/v1/inputs*` and `/v1/feed`.
+9. ICS input creation is onboarding-only (`POST /v1/onboarding/register`); `/v1/inputs/ics` is removed.
 10. Legacy `/v1/sources*` and `/v1/changes/feed` endpoints are removed.
 11. Change and snapshot detail routes are input-scoped:
     - `GET /v1/inputs/{input_id}/changes`
     - `PATCH /v1/inputs/{input_id}/changes/{change_id}/viewed`
-    - `GET /v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/download`
+    - `GET /v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/preview`
     - `GET /v1/inputs/{input_id}/snapshots`
 12. Before onboarding is ready, protected endpoints return:
     - status `409`
@@ -343,6 +337,7 @@ Important:
 ## More Docs
 
 - Architecture (current runtime): `docs/architecture.md`
+- Legacy cleanup matrix: `docs/legacy_cleanup.md`
 - Legacy migration archive notes: `docs/legacy_migrations/README.md`
 - Demo acceptance: `docs/demo_ui_acceptance.md`
 - Manual email test: `docs/manual_email_test.md`

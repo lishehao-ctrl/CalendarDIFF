@@ -1,8 +1,15 @@
 import {
+  ApplyEmailReviewRequest,
+  ApplyEmailReviewResponse,
   AppConfig,
+  EvidencePreviewResponse,
+  EmailQueueItem,
+  MarkEmailViewedResponse,
   OnboardingRegisterRequest,
   OnboardingRegisterResponse,
   OnboardingStatus,
+  UpdateEmailRouteRequest,
+  UpdateEmailRouteResponse,
 } from "@/lib/types";
 
 const HOP_BY_HOP = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade"]);
@@ -57,54 +64,66 @@ export function registerOnboarding(
   });
 }
 
-export async function downloadEvidence(
+export function getEmailQueue(
+  config: AppConfig,
+  params: {
+    route?: "drop" | "archive" | "notify" | "review";
+    limit?: number;
+    cursor?: string | null;
+  } = {}
+): Promise<EmailQueueItem[]> {
+  const search = new URLSearchParams();
+  if (params.route) {
+    search.set("route", params.route);
+  }
+  if (typeof params.limit === "number") {
+    search.set("limit", String(params.limit));
+  }
+  if (params.cursor) {
+    search.set("cursor", params.cursor);
+  }
+  const query = search.toString();
+  return apiRequest<EmailQueueItem[]>(config, `/v1/emails/queue${query ? `?${query}` : ""}`);
+}
+
+export function updateEmailRoute(
+  config: AppConfig,
+  emailId: string,
+  payload: UpdateEmailRouteRequest
+): Promise<UpdateEmailRouteResponse> {
+  return apiRequest<UpdateEmailRouteResponse>(config, `/v1/emails/${encodeURIComponent(emailId)}/route`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function markEmailViewed(config: AppConfig, emailId: string): Promise<MarkEmailViewedResponse> {
+  return apiRequest<MarkEmailViewedResponse>(config, `/v1/emails/${encodeURIComponent(emailId)}/mark_viewed`, {
+    method: "POST",
+  });
+}
+
+export function applyEmailReview(
+  config: AppConfig,
+  emailId: string,
+  payload: ApplyEmailReviewRequest = {}
+): Promise<ApplyEmailReviewResponse> {
+  return apiRequest<ApplyEmailReviewResponse>(config, `/v1/emails/${encodeURIComponent(emailId)}/apply`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getEvidencePreview(
   config: AppConfig,
   inputId: number,
   changeId: number,
   side: "before" | "after"
-): Promise<void> {
-  const response = await fetch(`${config.apiBase}/v1/inputs/${inputId}/changes/${changeId}/evidence/${side}/download`, {
-    method: "GET",
-    headers: {
-      "X-API-Key": config.apiKey,
-    },
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    const body = parseErrorBody(text);
-    throw new ApiError(response.status, buildErrorMessage(response.status, response.statusText, text, body), body);
-  }
-
-  const blob = await response.blob();
-  const disposition = response.headers.get("Content-Disposition") ?? "";
-  const fallback = `change-${changeId}-${side}.ics`;
-  const filename = parseDownloadFilename(disposition, fallback);
-  const objectUrl = window.URL.createObjectURL(blob);
-  try {
-    const anchor = document.createElement("a");
-    anchor.href = objectUrl;
-    anchor.download = filename;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-  } finally {
-    window.URL.revokeObjectURL(objectUrl);
-  }
-}
-
-function parseDownloadFilename(contentDisposition: string, fallback: string): string {
-  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
-  if (utf8Match?.[1]) {
-    return decodeURIComponent(utf8Match[1]);
-  }
-
-  const simpleMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
-  if (simpleMatch?.[1]) {
-    return simpleMatch[1];
-  }
-
-  return fallback;
+): Promise<EvidencePreviewResponse> {
+  return apiRequest<EvidencePreviewResponse>(
+    config,
+    `/v1/inputs/${inputId}/changes/${changeId}/evidence/${side}/preview`
+  );
 }
 
 export function sanitizeHeaderMap(input: Headers): Headers {

@@ -1,16 +1,15 @@
 from __future__ import annotations
 
+from tests.helpers_inputs import create_ics_input_for_user
 
-def test_overrides_crud_for_source(client, initialized_user) -> None:
+
+def test_overrides_crud_for_source(client, initialized_user, db_session) -> None:
     headers = {"X-API-Key": "test-api-key"}
-
-    create_response = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={"url": "https://example.com/feed.ics"},
+    source_id = create_ics_input_for_user(
+        db_session,
+        user_id=initialized_user["id"],
+        url="https://example.com/feed.ics",
     )
-    assert create_response.status_code == 201
-    source_id = create_response.json()["id"]
 
     course_put = client.put(
         f"/v1/inputs/{source_id}/courses/rename",

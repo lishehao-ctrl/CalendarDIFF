@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.modules.sync.types import FetchResult
+from tests.helpers_inputs import create_ics_input_for_user
 
 
 SAMPLE_ICS = b"""BEGIN:VCALENDAR
@@ -26,16 +27,13 @@ END:VCALENDAR
 """
 
 
-def test_source_deadlines_endpoint_returns_grouped_output(client, initialized_user, monkeypatch) -> None:
+def test_source_deadlines_endpoint_returns_grouped_output(client, initialized_user, db_session, monkeypatch) -> None:
     headers = {"X-API-Key": "test-api-key"}
-
-    create_response = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={"url": "https://example.com/calendar.ics"},
+    source_id = create_ics_input_for_user(
+        db_session,
+        user_id=initialized_user["id"],
+        url="https://example.com/calendar.ics",
     )
-    assert create_response.status_code == 201
-    source_id = create_response.json()["id"]
 
     def fake_fetch(self, url: str, source_id: int, **kwargs):
         return FetchResult(

@@ -1,20 +1,18 @@
 from __future__ import annotations
 
 from app.modules.sync.service import SyncRunResult
+from tests.helpers_inputs import create_ics_input_for_user
 
 
-def test_manual_sync_endpoint_returns_sync_summary(client, initialized_user, monkeypatch) -> None:
+def test_manual_sync_endpoint_returns_sync_summary(client, initialized_user, db_session, monkeypatch) -> None:
     headers = {"X-API-Key": "test-api-key"}
-
-    create_response = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={"url": "https://example.com/feed.ics"},
+    source_id = create_ics_input_for_user(
+        db_session,
+        user_id=initialized_user["id"],
+        url="https://example.com/feed.ics",
     )
-    assert create_response.status_code == 201
-    source_id = create_response.json()["id"]
 
-    def fake_sync_source(*args, **kwargs):
+    def fake_sync_input(*args, **kwargs):
         source = kwargs.get("input") or args[1]
         return SyncRunResult(
             input_id=source.id,
@@ -24,7 +22,7 @@ def test_manual_sync_endpoint_returns_sync_summary(client, initialized_user, mon
             is_baseline_sync=False,
         )
 
-    monkeypatch.setattr("app.modules.inputs.service.sync_source", fake_sync_source)
+    monkeypatch.setattr("app.modules.inputs.service.sync_input", fake_sync_input)
 
     response = client.post(f"/v1/inputs/{source_id}/sync", headers=headers)
     assert response.status_code == 200
@@ -40,16 +38,13 @@ def test_manual_sync_endpoint_returns_sync_summary(client, initialized_user, mon
     }
 
 
-def test_manual_sync_endpoint_uses_non_blocking_source_lock(client, initialized_user, monkeypatch) -> None:
+def test_manual_sync_endpoint_uses_non_blocking_source_lock(client, initialized_user, db_session, monkeypatch) -> None:
     headers = {"X-API-Key": "test-api-key"}
-
-    create_response = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={"url": "https://example.com/feed.ics"},
+    source_id = create_ics_input_for_user(
+        db_session,
+        user_id=initialized_user["id"],
+        url="https://example.com/feed.ics",
     )
-    assert create_response.status_code == 201
-    source_id = create_response.json()["id"]
 
     calls: list[tuple[int, int]] = []
 
@@ -57,7 +52,7 @@ def test_manual_sync_endpoint_uses_non_blocking_source_lock(client, initialized_
         calls.append((namespace, locked_source_id))
         return True
 
-    def fake_sync_source(*args, **kwargs):
+    def fake_sync_input(*args, **kwargs):
         source = kwargs.get("input") or args[1]
         return SyncRunResult(
             input_id=source.id,
@@ -69,7 +64,7 @@ def test_manual_sync_endpoint_uses_non_blocking_source_lock(client, initialized_
 
     monkeypatch.setattr("app.modules.inputs.service.try_acquire_source_lock", fake_try_acquire_source_lock)
     monkeypatch.setattr("app.modules.inputs.service.release_source_lock", lambda *args, **kwargs: None)
-    monkeypatch.setattr("app.modules.inputs.service.sync_source", fake_sync_source)
+    monkeypatch.setattr("app.modules.inputs.service.sync_input", fake_sync_input)
 
     response = client.post(f"/v1/inputs/{source_id}/sync", headers=headers)
     assert response.status_code == 200
@@ -82,16 +77,13 @@ def test_manual_sync_endpoint_uses_non_blocking_source_lock(client, initialized_
     assert calls[0][1] == source_id
 
 
-def test_manual_sync_returns_busy_and_records_lock_skipped_run(client, initialized_user, monkeypatch) -> None:
+def test_manual_sync_returns_busy_and_records_lock_skipped_run(client, initialized_user, db_session, monkeypatch) -> None:
     headers = {"X-API-Key": "test-api-key"}
-
-    create_response = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={"url": "https://example.com/feed.ics"},
+    source_id = create_ics_input_for_user(
+        db_session,
+        user_id=initialized_user["id"],
+        url="https://example.com/feed.ics",
     )
-    assert create_response.status_code == 201
-    source_id = create_response.json()["id"]
 
     monkeypatch.setattr("app.modules.inputs.service.try_acquire_source_lock", lambda *args, **kwargs: False)
 
@@ -100,7 +92,7 @@ def test_manual_sync_returns_busy_and_records_lock_skipped_run(client, initializ
 
     payload = response.json()
     assert payload["detail"]["status"] == "LOCK_SKIPPED"
-    assert payload["detail"]["code"] == "source_busy"
+    assert payload["detail"]["code"] == "input_busy"
     assert payload["detail"]["message"] == "sync in progress"
     assert payload["detail"]["retry_after_seconds"] == 10
     assert payload["detail"]["recoverable"] is True
@@ -112,4 +104,4 @@ def test_manual_sync_returns_busy_and_records_lock_skipped_run(client, initializ
     assert len(runs) == 1
     assert runs[0]["status"] == "LOCK_SKIPPED"
     assert runs[0]["trigger_type"] == "manual"
-    assert runs[0]["error_code"] == "source_lock_not_acquired"
+    assert runs[0]["error_code"] == "input_lock_not_acquired"

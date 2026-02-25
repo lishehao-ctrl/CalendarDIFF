@@ -3,14 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import Input, InputType, SyncRunStatus, SyncTriggerType
 from app.modules.inputs.schemas import InputCreateRequest
 from app.modules.inputs.service import create_ics_input
 from app.modules.notify.interface import ChangeDigestItem, Notifier, SendResult
-from app.modules.sync.service import SyncRunResult, sync_source
+from app.modules.sync.service import SyncRunResult, sync_input
 from app.modules.users.service import create_or_initialize_user, get_registered_user
 
 
@@ -102,10 +102,16 @@ def register_onboarding(
         input_result = create_ics_input(
             db,
             user_id=user.id,
-            payload=InputCreateRequest(url=ics_url, user_term_id=None),
+            payload=InputCreateRequest(url=ics_url),
         )
     except RuntimeError as exc:
         raise OnboardingRegisterError(str(exc), status_code=422) from exc
+
+    _enforce_single_active_ics_input(
+        db,
+        user_id=user.id,
+        active_input_id=input_result.input.id,
+    )
 
     sync_result = _run_baseline_sync(db, input_row=input_result.input)
     if sync_result.status in BASELINE_FAILURE_STATUSES:
@@ -139,10 +145,24 @@ def _run_baseline_sync(db: Session, *, input_row: Input) -> SyncRunResult:
         ) -> SendResult:
             return SendResult(success=True, error=None)
 
-    return sync_source(
+    return sync_input(
         db,
         input_row,
         notifier=_NoopNotifier(),
         trigger_type=SyncTriggerType.MANUAL,
         lock_owner="onboarding-register",
     )
+
+
+def _enforce_single_active_ics_input(db: Session, *, user_id: int, active_input_id: int) -> None:
+    # Onboarding reconfiguration should leave exactly one active ICS input.
+    db.execute(
+        update(Input)
+        .where(
+            Input.user_id == user_id,
+            Input.type == InputType.ICS,
+            Input.id != active_input_id,
+        )
+        .values(is_active=False)
+    )
+    db.flush()

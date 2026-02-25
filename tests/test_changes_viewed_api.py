@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.modules.sync.types import FetchResult
+from tests.helpers_inputs import create_ics_input_for_user
 
 
 ICS_V1 = b"""BEGIN:VCALENDAR
@@ -32,15 +33,13 @@ END:VCALENDAR
 """
 
 
-def test_patch_change_viewed_status(client, initialized_user, monkeypatch) -> None:
+def test_patch_change_viewed_status(client, initialized_user, db_session, monkeypatch) -> None:
     headers = {"X-API-Key": "test-api-key"}
-    create_response = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={"url": "https://example.com/feed.ics"},
+    source_id = create_ics_input_for_user(
+        db_session,
+        user_id=initialized_user["id"],
+        url="https://example.com/feed.ics",
     )
-    assert create_response.status_code == 201
-    source_id = create_response.json()["id"]
 
     responses = [
         FetchResult(content=ICS_V1, etag="v1", fetched_at_utc=datetime(2026, 2, 19, 20, 31, 10, tzinfo=timezone.utc)),

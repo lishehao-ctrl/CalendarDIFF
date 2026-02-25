@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.modules.sync.service import SyncRunResult
-from app.db.models import SyncRunStatus, SyncTriggerType
+from app.db.models import Input, InputType, SyncRunStatus, SyncTriggerType, User
 
 
 REGISTER_PAYLOAD = {
@@ -20,13 +20,9 @@ def test_onboarding_status_needs_user_by_default(client) -> None:
     assert payload["registered_user_id"] is None
 
 
-def test_onboarding_status_needs_ics_after_user_registration(client) -> None:
-    init = client.post(
-        "/v1/user",
-        headers={"X-API-Key": "test-api-key"},
-        json={"notify_email": "student@example.com"},
-    )
-    assert init.status_code in {200, 201}
+def test_onboarding_status_needs_ics_after_user_registration(client, db_session) -> None:
+    db_session.add(User(email=None, notify_email="student@example.com", onboarding_completed_at=None))
+    db_session.commit()
 
     response = client.get("/v1/onboarding/status", headers={"X-API-Key": "test-api-key"})
     assert response.status_code == 200
@@ -36,7 +32,7 @@ def test_onboarding_status_needs_ics_after_user_registration(client) -> None:
 
 
 def test_onboarding_register_success_marks_ready(client, monkeypatch) -> None:
-    def fake_sync_source(db, input, notifier=None, trigger_type=SyncTriggerType.MANUAL, lock_owner=None):  # noqa: ANN001
+    def fake_sync_input(db, input, notifier=None, trigger_type=SyncTriggerType.MANUAL, lock_owner=None):  # noqa: ANN001
         return SyncRunResult(
             input_id=input.id,
             changes_created=0,
@@ -47,7 +43,7 @@ def test_onboarding_register_success_marks_ready(client, monkeypatch) -> None:
             trigger_type=trigger_type,
         )
 
-    monkeypatch.setattr("app.modules.onboarding.service.sync_source", fake_sync_source)
+    monkeypatch.setattr("app.modules.onboarding.service.sync_input", fake_sync_input)
 
     register = client.post(
         "/v1/onboarding/register",
@@ -66,7 +62,7 @@ def test_onboarding_register_success_marks_ready(client, monkeypatch) -> None:
 
 
 def test_onboarding_register_blocks_on_baseline_failure(client, monkeypatch) -> None:
-    def fake_sync_source(db, input, notifier=None, trigger_type=SyncTriggerType.MANUAL, lock_owner=None):  # noqa: ANN001
+    def fake_sync_input(db, input, notifier=None, trigger_type=SyncTriggerType.MANUAL, lock_owner=None):  # noqa: ANN001
         return SyncRunResult(
             input_id=input.id,
             changes_created=0,
@@ -77,7 +73,7 @@ def test_onboarding_register_blocks_on_baseline_failure(client, monkeypatch) -> 
             trigger_type=trigger_type,
         )
 
-    monkeypatch.setattr("app.modules.onboarding.service.sync_source", fake_sync_source)
+    monkeypatch.setattr("app.modules.onboarding.service.sync_input", fake_sync_input)
 
     register = client.post(
         "/v1/onboarding/register",
@@ -91,26 +87,52 @@ def test_onboarding_register_blocks_on_baseline_failure(client, monkeypatch) -> 
     assert status_response.json()["stage"] == "needs_baseline"
 
 
-def test_gate_returns_onboarding_incomplete_until_ready(client) -> None:
-    init = client.post(
-        "/v1/user",
-        headers={"X-API-Key": "test-api-key"},
-        json={"notify_email": "student@example.com"},
-    )
-    assert init.status_code in {200, 201}
+def test_gate_returns_onboarding_incomplete_until_ready(client, db_session) -> None:
+    db_session.add(User(email=None, notify_email="student@example.com", onboarding_completed_at=None))
+    db_session.commit()
 
     feed = client.get("/v1/feed", headers={"X-API-Key": "test-api-key"})
     assert feed.status_code == 409
     assert feed.json()["detail"]["code"] == "user_onboarding_incomplete"
 
-    create_input = client.post(
-        "/v1/inputs/ics",
-        headers={"X-API-Key": "test-api-key"},
-        json={"url": "https://example.com/incomplete.ics"},
-    )
-    assert create_input.status_code == 409
-    assert create_input.json()["detail"]["code"] == "user_onboarding_incomplete"
+    inputs = client.get("/v1/inputs", headers={"X-API-Key": "test-api-key"})
+    assert inputs.status_code == 409
+    assert inputs.json()["detail"]["code"] == "user_onboarding_incomplete"
 
     prefs = client.get("/v1/notification_prefs", headers={"X-API-Key": "test-api-key"})
     assert prefs.status_code == 409
     assert prefs.json()["detail"]["code"] == "user_onboarding_incomplete"
+
+
+def test_onboarding_reconfigure_keeps_single_active_ics(client, monkeypatch, db_session) -> None:
+    def fake_sync_input(db, input, notifier=None, trigger_type=SyncTriggerType.MANUAL, lock_owner=None):  # noqa: ANN001
+        return SyncRunResult(
+            input_id=input.id,
+            changes_created=0,
+            email_sent=False,
+            last_error=None,
+            is_baseline_sync=True,
+            status=SyncRunStatus.NO_CHANGE,
+            trigger_type=trigger_type,
+        )
+
+    monkeypatch.setattr("app.modules.onboarding.service.sync_input", fake_sync_input)
+    headers = {"X-API-Key": "test-api-key"}
+
+    first = client.post("/v1/onboarding/register", headers=headers, json=REGISTER_PAYLOAD)
+    assert first.status_code == 200
+    first_input_id = first.json()["input_id"]
+
+    second_payload = {
+        "notify_email": "student@example.com",
+        "ics": {"url": "https://example.com/calendar-2.ics"},
+    }
+    second = client.post("/v1/onboarding/register", headers=headers, json=second_payload)
+    assert second.status_code == 200
+    second_input_id = second.json()["input_id"]
+    assert second_input_id != first_input_id
+
+    inputs = db_session.query(Input).filter(Input.type == InputType.ICS).order_by(Input.id.asc()).all()
+    assert len(inputs) == 2
+    assert any(row.id == second_input_id and row.is_active for row in inputs)
+    assert any(row.id == first_input_id and not row.is_active for row in inputs)

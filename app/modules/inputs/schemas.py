@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 
 class InputCreateRequest(BaseModel):
     url: HttpUrl
-    user_term_id: int | None = Field(default=None, ge=1)
 
     model_config = {"extra": "forbid"}
 
@@ -54,10 +54,6 @@ class InputResponse(BaseModel):
     id: int
     type: str
     display_label: str
-    term_id: int | None
-    term_code: str | None
-    term_label: str | None
-    term_scope: str
     provider: str | None
     gmail_label: str | None
     gmail_from_contains: str | None
@@ -147,3 +143,21 @@ class InputOverridesResponse(BaseModel):
     input_id: int
     courses: list[InputCourseOverrideResponse]
     tasks: list[InputTaskOverrideResponse]
+
+
+class EvidencePreviewEvent(BaseModel):
+    uid: str | None
+    summary: str | None
+    dtstart: str | None
+    dtend: str | None
+    location: str | None
+    description: str | None
+
+
+class EvidencePreviewResponse(BaseModel):
+    side: Literal["before", "after"]
+    content_type: str
+    truncated: bool
+    filename: str
+    event_count: int
+    events: list[EvidencePreviewEvent]

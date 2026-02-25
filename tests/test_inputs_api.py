@@ -1,85 +1,63 @@
 from __future__ import annotations
 
 import importlib
-from datetime import datetime, timezone
 
-from sqlalchemy import select
-
-from app.db.models import SyncRunStatus, SyncTriggerType, User
+from app.db.models import SyncRunStatus, SyncTriggerType
+from app.modules.inputs.schemas import InputCreateRequest
+from app.modules.inputs.service import create_ics_input
 from app.modules.sync.service import SyncRunResult
 
 inputs_router_module = importlib.import_module("app.modules.inputs.router")
 
 
-def _init_user(client, db_session) -> None:
-    response = client.post(
-        "/v1/user",
-        headers={"X-API-Key": "test-api-key"},
-        json={"notify_email": "student@example.com"},
+def _create_ics_input_for_user(*, db_session, user_id: int, url: str) -> int:
+    created = create_ics_input(
+        db_session,
+        user_id=user_id,
+        payload=InputCreateRequest(url=url),
     )
-    assert response.status_code in {200, 201}
-    user = db_session.scalar(select(User).order_by(User.id.asc()).limit(1))
-    assert user is not None
-    user.onboarding_completed_at = datetime.now(timezone.utc)
-    db_session.commit()
+    return created.input.id
 
 
 def test_inputs_require_initialized_user(client) -> None:
     headers = {"X-API-Key": "test-api-key"}
 
-    create_response = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={"url": "https://example.com/input-alias.ics"},
-    )
-    assert create_response.status_code == 409
-    assert create_response.json()["detail"]["code"] == "user_not_initialized"
+    list_response = client.get("/v1/inputs", headers=headers)
+    assert list_response.status_code == 409
+    assert list_response.json()["detail"]["code"] == "user_not_initialized"
 
     feed_response = client.get("/v1/feed", headers=headers)
     assert feed_response.status_code == 409
     assert feed_response.json()["detail"]["code"] == "user_not_initialized"
 
 
-def test_inputs_list_and_runs_endpoints(client, db_session) -> None:
+def test_inputs_list_and_runs_endpoints(client, initialized_user, db_session) -> None:
     headers = {"X-API-Key": "test-api-key"}
-    _init_user(client, db_session)
-
-    create_response = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={
-            "url": "https://example.com/input-alias.ics",
-        },
+    input_id = _create_ics_input_for_user(
+        db_session=db_session,
+        user_id=initialized_user["id"],
+        url="https://example.com/input-alias.ics",
     )
-    assert create_response.status_code == 201
-    assert "user_id" not in create_response.json()
-    source_id = create_response.json()["id"]
 
     list_response = client.get("/v1/inputs", headers=headers)
     assert list_response.status_code == 200
     rows = list_response.json()
     assert rows
     assert "user_id" not in rows[0]
-    assert any(item["id"] == source_id for item in rows)
+    assert any(item["id"] == input_id for item in rows)
 
-    runs_response = client.get(f"/v1/inputs/{source_id}/runs?limit=20", headers=headers)
+    runs_response = client.get(f"/v1/inputs/{input_id}/runs?limit=20", headers=headers)
     assert runs_response.status_code == 200
     assert isinstance(runs_response.json(), list)
 
 
-def test_input_sync_endpoint_uses_existing_manual_sync_flow(client, db_session, monkeypatch) -> None:
+def test_input_sync_endpoint_uses_existing_manual_sync_flow(client, initialized_user, db_session, monkeypatch) -> None:
     headers = {"X-API-Key": "test-api-key"}
-    _init_user(client, db_session)
-
-    create_response = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={
-            "url": "https://example.com/input-sync.ics",
-        },
+    input_id = _create_ics_input_for_user(
+        db_session=db_session,
+        user_id=initialized_user["id"],
+        url="https://example.com/input-sync.ics",
     )
-    assert create_response.status_code == 201
-    source_id = create_response.json()["id"]
 
     def _fake_manual_sync(_db, input):
         return SyncRunResult(
@@ -93,10 +71,10 @@ def test_input_sync_endpoint_uses_existing_manual_sync_flow(client, db_session, 
         )
 
     monkeypatch.setattr(inputs_router_module, "run_manual_input_sync", _fake_manual_sync)
-    sync_response = client.post(f"/v1/inputs/{source_id}/sync", headers=headers)
+    sync_response = client.post(f"/v1/inputs/{input_id}/sync", headers=headers)
     assert sync_response.status_code == 200
     payload = sync_response.json()
-    assert payload["input_id"] == source_id
+    assert payload["input_id"] == input_id
     assert payload["is_baseline_sync"] is True
 
 
@@ -114,26 +92,11 @@ def test_legacy_source_routes_are_removed(client) -> None:
     assert legacy_snapshots.status_code == 404
 
 
-def test_input_create_rejects_legacy_interval_or_notify_fields(client, db_session) -> None:
+def test_ics_input_create_route_removed(client, initialized_user) -> None:
     headers = {"X-API-Key": "test-api-key"}
-    _init_user(client, db_session)
-
-    with_interval = client.post(
+    response = client.post(
         "/v1/inputs/ics",
         headers=headers,
-        json={
-            "url": "https://example.com/input-legacy.ics",
-            "interval_minutes": 5,
-        },
+        json={"url": "https://example.com/input-legacy.ics"},
     )
-    assert with_interval.status_code == 422
-
-    with_notify = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={
-            "url": "https://example.com/input-legacy-notify.ics",
-            "notify_email": "legacy@example.com",
-        },
-    )
-    assert with_notify.status_code == 422
+    assert response.status_code == 404

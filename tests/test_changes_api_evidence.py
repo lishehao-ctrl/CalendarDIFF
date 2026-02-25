@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from app.core.config import get_settings
 from app.modules.sync.types import FetchResult
+from tests.helpers_inputs import create_ics_input_for_user
 
 
 ICS_V1 = b"""BEGIN:VCALENDAR
@@ -33,20 +34,18 @@ END:VCALENDAR
 """
 
 
-def test_changes_and_snapshots_endpoints_include_evidence(client, initialized_user, monkeypatch, tmp_path) -> None:
+def test_changes_and_snapshots_endpoints_include_evidence(client, initialized_user, db_session, monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("EVIDENCE_DIR", "./evidence")
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")
     get_settings.cache_clear()
 
     headers = {"X-API-Key": "test-api-key"}
-    create_response = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={"url": "https://example.com/calendar.ics"},
+    source_id = create_ics_input_for_user(
+        db_session,
+        user_id=initialized_user["id"],
+        url="https://example.com/calendar.ics",
     )
-    assert create_response.status_code == 201
-    source_id = create_response.json()["id"]
 
     responses = [
         FetchResult(content=ICS_V1, etag="v1", fetched_at_utc=datetime(2026, 2, 19, 20, 31, 10, tzinfo=timezone.utc)),

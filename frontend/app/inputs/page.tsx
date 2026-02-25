@@ -7,7 +7,7 @@ import { DashboardPage, DashboardPageHeader } from "@/components/dashboard/page-
 import { InputSection } from "@/components/dashboard/sections/input-section";
 import { DashboardToastStack } from "@/components/dashboard/toast-stack";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useDashboardData } from "@/lib/hooks/use-dashboard-data";
+import { useInputsData } from "@/lib/hooks/use-inputs-data";
 
 export default function InputsPage() {
   const {
@@ -16,21 +16,15 @@ export default function InputsPage() {
     toasts,
     needsOnboarding,
     activeSourceId,
-    sourceUrl,
-    sourceTermId,
     sourceEmailLabel,
     sourceEmailFromContains,
     sourceEmailSubjectKeywords,
-    setSourceUrl,
-    setSourceTermId,
     setSourceEmailLabel,
     setSourceEmailFromContains,
     setSourceEmailSubjectKeywords,
     createBusy,
-    activeUserTerms,
-    handleCreateCalendarInput,
     handleConnectGmailInput,
-  } = useDashboardData();
+  } = useInputsData();
 
   useEffect(() => {
     if (!needsOnboarding) {
@@ -44,7 +38,7 @@ export default function InputsPage() {
       <DashboardPageHeader
         icon={CalendarDays}
         title="Inputs"
-        description="Add calendar and Gmail sources. Processing, feed, and runs are managed in their own workspaces."
+        description="Manage Gmail sources. ICS baseline is configured in onboarding."
         current="inputs"
         activeInputId={activeSourceId}
         showDev={showDevTools}
@@ -58,19 +52,13 @@ export default function InputsPage() {
       ) : null}
 
       <InputSection
-        sourceUrl={sourceUrl}
-        sourceTermId={sourceTermId}
         sourceEmailLabel={sourceEmailLabel}
         sourceEmailFromContains={sourceEmailFromContains}
         sourceEmailSubjectKeywords={sourceEmailSubjectKeywords}
-        activeUserTerms={activeUserTerms}
         createBusy={createBusy}
-        onSourceUrlChange={setSourceUrl}
-        onSourceTermIdChange={setSourceTermId}
         onSourceEmailLabelChange={setSourceEmailLabel}
         onSourceEmailFromContainsChange={setSourceEmailFromContains}
         onSourceEmailSubjectKeywordsChange={setSourceEmailSubjectKeywords}
-        onCreateCalendarInput={handleCreateCalendarInput}
         onConnectGmailInput={handleConnectGmailInput}
       />
 

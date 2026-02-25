@@ -10,25 +10,21 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { deriveChangeSummary, formatSummaryDate } from "@/lib/change-summary";
 import { ChangeFeedRecord, ChangeRecord, ChangeSummarySide } from "@/lib/types";
-import { ChangeFilter } from "@/lib/hooks/use-dashboard-data";
+import type { ChangeFilter, EvidencePreviewState } from "@/lib/hooks/use-feed-data";
 
 type DiffSectionProps = {
   changeFilter: ChangeFilter;
   onChangeFilter: (value: ChangeFilter) => void;
   changeSourceTypeFilter: "all" | "email" | "ics";
   onChangeSourceTypeFilter: (value: "all" | "email" | "ics") => void;
-  feedTermScope: "current" | "all" | "term";
-  onFeedTermScopeChange: (value: "current" | "all" | "term") => void;
-  feedTermId: number | null;
-  onFeedTermIdChange: (value: number | null) => void;
-  activeUserTerms: Array<{ id: number; code: string; label: string }>;
   changesError: string | null;
   changesLoading: boolean;
   filteredChanges: ChangeRecord[];
   changeNotes: Record<number, string>;
   onChangeNote: (changeId: number, note: string) => void;
   onToggleViewed: (change: ChangeRecord) => void | Promise<void>;
-  onDownloadEvidence: (changeId: number, side: "before" | "after") => void | Promise<void>;
+  evidencePreviews: Record<string, EvidencePreviewState>;
+  onPreviewEvidence: (changeId: number, inputId: number, side: "before" | "after") => void | Promise<void>;
   onRefreshChanges: () => void | Promise<void>;
   getTaskDisplayTitle: (uid: string, title: string) => string;
   getCourseDisplayLabel: (label: string) => string;
@@ -39,18 +35,14 @@ export function DiffSection({
   onChangeFilter,
   changeSourceTypeFilter,
   onChangeSourceTypeFilter,
-  feedTermScope,
-  onFeedTermScopeChange,
-  feedTermId,
-  onFeedTermIdChange,
-  activeUserTerms,
   changesError,
   changesLoading,
   filteredChanges,
   changeNotes,
   onChangeNote,
   onToggleViewed,
-  onDownloadEvidence,
+  evidencePreviews,
+  onPreviewEvidence,
   onRefreshChanges,
   getTaskDisplayTitle,
   getCourseDisplayLabel,
@@ -62,7 +54,7 @@ export function DiffSection({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <CardTitle>Diff Review</CardTitle>
-              <CardDescription>Review change records, toggle viewed state, and download evidence files.</CardDescription>
+              <CardDescription>Review change records, toggle viewed state, and inspect structured ICS evidence.</CardDescription>
             </div>
             <Button variant="secondary" onClick={() => void onRefreshChanges()} disabled={changesLoading}>
               {changesLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
@@ -98,44 +90,6 @@ export function DiffSection({
                   <option value="ics">Calendar Only</option>
                 </Select>
               </div>
-
-              <div className="min-w-[220px] flex-1 space-y-2">
-                <Label htmlFor="change-term-scope">Term Scope</Label>
-                <Select
-                  id="change-term-scope"
-                  value={feedTermScope}
-                  onChange={(event) => onFeedTermScopeChange(event.target.value as "current" | "all" | "term")}
-                >
-                  <option value="current">Current Term + Global Email</option>
-                  <option value="all">All Terms</option>
-                  <option value="term">Specific Term (advanced)</option>
-                </Select>
-              </div>
-
-              {feedTermScope === "term" ? (
-                <div className="min-w-[220px] flex-1 space-y-2">
-                  <Label htmlFor="change-term-id">Semester</Label>
-                  <Select
-                    id="change-term-id"
-                    value={feedTermId ? String(feedTermId) : ""}
-                    onChange={(event) => {
-                      const value = event.target.value.trim();
-                      if (!value) {
-                        onFeedTermIdChange(null);
-                        return;
-                      }
-                      onFeedTermIdChange(Number(value));
-                    }}
-                  >
-                    <option value="">Select term</option>
-                    {activeUserTerms.map((term) => (
-                      <option key={term.id} value={String(term.id)}>
-                        {term.label} ({term.code})
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              ) : null}
             </div>
           </div>
 
@@ -162,8 +116,6 @@ export function DiffSection({
                 const afterPath = readEvidencePath(change.after_raw_evidence_key);
                 const sourceType = readString((change as Record<string, unknown>).input_type) ?? "ics";
                 const priorityLabel = readString((change as Record<string, unknown>).priority_label) ?? (sourceType === "email" ? "high" : "normal");
-                const termLabel = readString((change as Record<string, unknown>).term_label);
-                const termScope = readString((change as Record<string, unknown>).term_scope) ?? "global";
                 const notificationState = readString((change as Record<string, unknown>).notification_state);
                 const gmailMessageId = readString(afterJson.gmail_message_id) ?? readString(beforeJson.gmail_message_id);
                 const isEmailChange = gmailMessageId !== null;
@@ -172,6 +124,8 @@ export function DiffSection({
                 const gmailInternalDate = readString(afterJson.internal_date) ?? readString(beforeJson.internal_date);
                 const gmailFrom = readString(afterJson.from) ?? readString(beforeJson.from);
                 const openInGmailUrl = readString(afterJson.open_in_gmail_url) ?? readString(beforeJson.open_in_gmail_url);
+                const beforePreview = evidencePreviews[previewCacheKey(change.id, "before")] ?? null;
+                const afterPreview = evidencePreviews[previewCacheKey(change.id, "after")] ?? null;
 
                 return (
                   <article key={change.id} className="rounded-2xl border border-line bg-white p-4 shadow-card">
@@ -179,7 +133,7 @@ export function DiffSection({
                       <div className="space-y-1">
                         <h3 className="text-base font-semibold text-ink">{displayTitle}</h3>
                         <p className="text-sm text-muted">
-                          {displayCourse} · {termScope === "global" ? "Global" : termLabel ?? "-"} · detected {change.detected_at}
+                          {displayCourse} · detected {change.detected_at}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -197,7 +151,20 @@ export function DiffSection({
                       </div>
                     </div>
 
-                    <details className="mt-3 rounded-xl border border-line bg-white">
+                    <details
+                      className="mt-3 rounded-xl border border-line bg-white"
+                      onToggle={(event) => {
+                        if (isEmailChange || !event.currentTarget.open) {
+                          return;
+                        }
+                        if (beforePath) {
+                          void onPreviewEvidence(change.id, change.input_id, "before");
+                        }
+                        if (afterPath) {
+                          void onPreviewEvidence(change.id, change.input_id, "after");
+                        }
+                      }}
+                    >
                       <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-ink">Evidence and metadata</summary>
                       <div className="border-t border-line p-3 text-sm text-muted">
                         <div className="grid gap-2 md:grid-cols-2">
@@ -221,10 +188,16 @@ export function DiffSection({
                             </>
                           )}
                         </div>
+                        {!isEmailChange ? (
+                          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                            <EvidencePreviewPanel title="Old Preview" preview={beforePreview} />
+                            <EvidencePreviewPanel title="New Preview" preview={afterPreview} />
+                          </div>
+                        ) : null}
                       </div>
                     </details>
 
-                    <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-end">
+                    <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
                       <div className="space-y-2">
                         <Label htmlFor={`note-${change.id}`}>Optional note</Label>
                         <Textarea
@@ -252,16 +225,7 @@ export function DiffSection({
                             Open in Gmail
                           </Button>
                         )
-                      ) : (
-                        <>
-                          <Button variant="outline" disabled={!beforePath} onClick={() => void onDownloadEvidence(change.id, "before")}>
-                            Download Before ICS
-                          </Button>
-                          <Button variant="outline" disabled={!afterPath} onClick={() => void onDownloadEvidence(change.id, "after")}>
-                            Download After ICS
-                          </Button>
-                        </>
-                      )}
+                      ) : null}
                     </div>
                   </article>
                 );
@@ -348,4 +312,60 @@ function sourceTypeBadge(value: "ics" | "email" | null): { label: "EMAIL" | "CAL
     return { label: "CALENDAR", variant: "muted" };
   }
   return { label: "UNKNOWN", variant: "muted" };
+}
+
+type EvidencePreviewPanelProps = {
+  title: "Old Preview" | "New Preview";
+  preview: EvidencePreviewState | null;
+};
+
+function EvidencePreviewPanel({ title, preview }: EvidencePreviewPanelProps) {
+  return (
+    <div className="rounded-lg border border-line bg-slate-50/75 p-3">
+      <p className="mb-2 text-sm font-semibold text-ink">{title}</p>
+      {preview?.loading ? <p className="text-xs text-muted">Loading preview...</p> : null}
+      {preview?.error ? <p className="text-xs text-danger">Preview error: {preview.error}</p> : null}
+      {preview?.data
+        ? (() => {
+            const data = preview.data;
+            return (
+              <div className="space-y-2">
+                <p className="text-xs text-muted">
+                  {data.filename}
+                  {data.truncated ? " · Source truncated for preview" : ""}
+                </p>
+                {!data.events.length ? <p className="text-xs text-muted">No VEVENT entries found.</p> : null}
+                <div className="max-h-72 space-y-2 overflow-auto pr-1">
+                  {data.events.map((event, index) => {
+                    const key = event.uid ?? `${data.side}-${index}`;
+                    return (
+                      <div key={key} className="rounded-md border border-line bg-white p-2 text-xs text-slate-700">
+                        <p className="font-semibold text-ink">{event.summary ?? "Untitled event"}</p>
+                        <dl className="mt-1 grid grid-cols-[84px_1fr] gap-x-2 gap-y-1">
+                          <dt className="text-muted">UID</dt>
+                          <dd className="break-all">{event.uid ?? "n/a"}</dd>
+                          <dt className="text-muted">DTSTART</dt>
+                          <dd>{event.dtstart ?? "n/a"}</dd>
+                          <dt className="text-muted">DTEND</dt>
+                          <dd>{event.dtend ?? "n/a"}</dd>
+                          <dt className="text-muted">Location</dt>
+                          <dd>{event.location ?? "n/a"}</dd>
+                          <dt className="text-muted">Description</dt>
+                          <dd className="whitespace-pre-wrap break-words">{event.description ?? "n/a"}</dd>
+                        </dl>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()
+        : null}
+      {!preview ? <p className="text-xs text-muted">Open evidence panel to load preview.</p> : null}
+    </div>
+  );
+}
+
+function previewCacheKey(changeId: number, side: "before" | "after"): string {
+  return `${changeId}:${side}`;
 }

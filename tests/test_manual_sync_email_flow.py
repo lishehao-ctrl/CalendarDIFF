@@ -3,8 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.core.config import get_settings
+from app.modules.inputs.schemas import InputCreateRequest
+from app.modules.inputs.service import create_ics_input
 from app.modules.notify.interface import SendResult
 from app.modules.sync.types import FetchResult
+from tests.helpers_inputs import create_ics_input_for_user
 
 
 ICS_V1 = b"""BEGIN:VCALENDAR
@@ -34,19 +37,17 @@ END:VCALENDAR
 """
 
 
-def test_manual_sync_sends_single_digest_per_changed_run(client, initialized_user, monkeypatch) -> None:
+def test_manual_sync_sends_single_digest_per_changed_run(client, initialized_user, db_session, monkeypatch) -> None:
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "true")
     monkeypatch.setenv("DEFAULT_NOTIFY_EMAIL", "notify@example.com")
     get_settings.cache_clear()
 
     headers = {"X-API-Key": "test-api-key"}
-    create_response = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={"url": "https://example.com/feed.ics"},
+    source_id = create_ics_input_for_user(
+        db_session,
+        user_id=initialized_user["id"],
+        url="https://example.com/feed.ics",
     )
-    assert create_response.status_code == 201
-    source_id = create_response.json()["id"]
     prefs_response = client.put(
         "/v1/notification_prefs",
         headers=headers,
@@ -109,7 +110,7 @@ def test_manual_sync_sends_single_digest_per_changed_run(client, initialized_use
     get_settings.cache_clear()
 
 
-def test_manual_sync_prefers_user_notify_email_over_global(client, initialized_user, monkeypatch) -> None:
+def test_manual_sync_prefers_user_notify_email_over_global(client, initialized_user, db_session, monkeypatch) -> None:
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "true")
     monkeypatch.setenv("DEFAULT_NOTIFY_EMAIL", "global@example.com")
     get_settings.cache_clear()
@@ -125,13 +126,11 @@ def test_manual_sync_prefers_user_notify_email_over_global(client, initialized_u
     )
     assert user_update_response.status_code == 200
 
-    create_response = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={"url": "https://example.com/feed.ics"},
+    source_id = create_ics_input_for_user(
+        db_session,
+        user_id=initialized_user["id"],
+        url="https://example.com/feed.ics",
     )
-    assert create_response.status_code == 201
-    source_id = create_response.json()["id"]
     prefs_response = client.put(
         "/v1/notification_prefs",
         headers=headers,
@@ -170,19 +169,18 @@ def test_manual_sync_prefers_user_notify_email_over_global(client, initialized_u
     get_settings.cache_clear()
 
 
-def test_identity_upsert_keeps_history_and_baseline(client, initialized_user, monkeypatch) -> None:
+def test_identity_upsert_keeps_history_and_baseline(client, initialized_user, db_session, monkeypatch) -> None:
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")
     get_settings.cache_clear()
 
     headers = {"X-API-Key": "test-api-key"}
-    first_create = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={"url": "https://example.com/feed-v1.ics"},
+    first_create = create_ics_input(
+        db_session,
+        user_id=initialized_user["id"],
+        payload=InputCreateRequest(url="https://example.com/feed-v1.ics"),
     )
-    assert first_create.status_code == 201
-    assert first_create.json()["upserted_existing"] is False
-    source_id = first_create.json()["id"]
+    assert first_create.upserted_existing is False
+    source_id = first_create.input.id
 
     responses = [
         FetchResult(content=ICS_V1, etag="v1", fetched_at_utc=datetime(2026, 2, 20, 10, 0, tzinfo=timezone.utc)),
@@ -209,16 +207,14 @@ def test_identity_upsert_keeps_history_and_baseline(client, initialized_user, mo
     assert before_replace_changes.status_code == 200
     assert len(before_replace_changes.json()) == 1
 
-    upserted = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={"url": "https://example.com/feed-v1.ics"},
+    upserted = create_ics_input(
+        db_session,
+        user_id=initialized_user["id"],
+        payload=InputCreateRequest(url="https://example.com/feed-v1.ics"),
     )
-    assert upserted.status_code == 200
-    upserted_payload = upserted.json()
-    assert upserted_payload["upserted_existing"] is True
-    assert upserted_payload["id"] == source_id
-    assert upserted_payload["interval_minutes"] == 15
+    assert upserted.upserted_existing is True
+    assert upserted.input.id == source_id
+    assert upserted.input.interval_minutes == 15
 
     after_upsert_changes = client.get(f"/v1/inputs/{source_id}/changes", headers=headers)
     assert after_upsert_changes.status_code == 200

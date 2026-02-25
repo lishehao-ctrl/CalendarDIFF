@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from fastapi.responses import FileResponse
+from icalendar import Calendar
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
@@ -16,16 +17,16 @@ from app.db.models import Change, Snapshot
 from app.db.session import get_db
 from app.modules.changes.schemas import ChangeResponse, ChangeViewedUpdateRequest
 from app.modules.evidence import EvidencePathError, resolve_evidence_file_path
-from app.modules.inputs.presenters import to_input_create_response, to_input_response, to_input_run_response
+from app.modules.inputs.presenters import to_input_response, to_input_run_response
 from app.modules.inputs.schemas import (
     CourseDeadlinesResponse,
     DeadlineItemResponse,
+    EvidencePreviewEvent,
     GmailOAuthStartRequest,
     GmailOAuthStartResponse,
     InputCourseOverrideResponse,
-    InputCreateRequest,
-    InputCreateResponse,
     InputDeadlinesPreviewResponse,
+    EvidencePreviewResponse,
     InputOverridesResponse,
     InputResponse,
     InputRunResponse,
@@ -34,9 +35,7 @@ from app.modules.inputs.schemas import (
 )
 from app.modules.inputs.service import (
     InputBusyError,
-    InputReplaceConflictError,
     build_gmail_oauth_start,
-    create_ics_input,
     get_input_by_id,
     list_input_runs,
     list_inputs_with_runtime_state,
@@ -76,6 +75,8 @@ router = APIRouter(
     dependencies=[Depends(require_api_key), Depends(_require_onboarded_user_or_409)],
 )
 logger = logging.getLogger(__name__)
+PREVIEW_MAX_BYTES = 64 * 1024
+PREVIEW_DESCRIPTION_MAX_CHARS = 240
 
 
 @router.get("", response_model=list[InputResponse])
@@ -85,25 +86,6 @@ def list_inputs(db: Session = Depends(get_db)) -> list[InputResponse]:
         to_input_response(input, next_check_at=next_check_at, last_result=last_result)
         for input, next_check_at, last_result in rows
     ]
-
-
-@router.post("/ics", response_model=InputCreateResponse, status_code=status.HTTP_201_CREATED)
-def create_input_from_ics(
-    payload: InputCreateRequest,
-    response: Response,
-    db: Session = Depends(get_db),
-) -> InputCreateResponse:
-    user = require_onboarded_user(db)
-    try:
-        result = create_ics_input(db, user_id=user.id, payload=payload)
-    except InputReplaceConflictError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-
-    if result.upserted_existing:
-        response.status_code = status.HTTP_200_OK
-    return to_input_create_response(result.input, upserted_existing=result.upserted_existing)
 
 
 @router.post("/email/gmail/oauth/start", response_model=GmailOAuthStartResponse)
@@ -140,7 +122,7 @@ def sync_input_now(input_id: int, db: Session = Depends(get_db)) -> ManualInputS
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "status": "LOCK_SKIPPED",
-                "code": "source_busy",
+                "code": "input_busy",
                 "message": "sync in progress",
                 "retry_after_seconds": exc.retry_after_seconds,
                 "recoverable": True,
@@ -258,41 +240,31 @@ def mark_input_change_viewed(
     return _to_change_response(row)
 
 
-@router.get("/{input_id}/changes/{change_id}/evidence/{side}/download")
-def download_input_change_evidence(
+@router.get("/{input_id}/changes/{change_id}/evidence/{side}/preview", response_model=EvidencePreviewResponse)
+def preview_input_change_evidence(
     input_id: int,
     change_id: int,
     side: Literal["before", "after"],
     db: Session = Depends(get_db),
-) -> FileResponse:
-    row = db.scalar(
-        select(Change)
-        .options(joinedload(Change.before_snapshot), joinedload(Change.after_snapshot))
-        .where(Change.id == change_id, Change.input_id == input_id)
-    )
-    if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Change not found")
-
-    snapshot = row.before_snapshot if side == "before" else row.after_snapshot
-    evidence_path = _extract_snapshot_evidence_path(snapshot.raw_evidence_key if snapshot is not None else None)
-    if evidence_path is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evidence file not found")
-
+) -> EvidencePreviewResponse:
+    row, resolved = _resolve_change_evidence_file(db, input_id=input_id, change_id=change_id, side=side)
     try:
-        resolved = resolve_evidence_file_path(evidence_path)
-    except EvidencePathError:
+        content_bytes = resolved.read_bytes()
+    except FileNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evidence file not found") from None
     except Exception as exc:  # pragma: no cover - defensive guard
-        logger.error("failed to resolve evidence path error=%s", sanitize_log_message(str(exc)))
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to prepare evidence file")
+        logger.error("failed to read evidence preview error=%s", sanitize_log_message(str(exc)))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to prepare evidence preview")
 
-    if not resolved.exists() or not resolved.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evidence file not found")
-
-    return FileResponse(
-        resolved,
-        media_type="text/calendar",
+    truncated = len(content_bytes) > PREVIEW_MAX_BYTES
+    events = _build_evidence_preview_events(content_bytes)
+    return EvidencePreviewResponse(
+        side=side,
+        content_type="text/calendar",
+        truncated=truncated,
         filename=f"change-{row.id}-{side}.ics",
+        event_count=len(events),
+        events=events,
     )
 
 
@@ -453,3 +425,81 @@ def _extract_snapshot_evidence_path(raw_evidence_key: object) -> str | None:
     if isinstance(path_value, str) and path_value:
         return path_value
     return None
+
+
+def _resolve_change_evidence_file(
+    db: Session,
+    *,
+    input_id: int,
+    change_id: int,
+    side: Literal["before", "after"],
+) -> tuple[Change, Path]:
+    row = db.scalar(
+        select(Change)
+        .options(joinedload(Change.before_snapshot), joinedload(Change.after_snapshot))
+        .where(Change.id == change_id, Change.input_id == input_id)
+    )
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Change not found")
+
+    snapshot = row.before_snapshot if side == "before" else row.after_snapshot
+    evidence_path = _extract_snapshot_evidence_path(snapshot.raw_evidence_key if snapshot is not None else None)
+    if evidence_path is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evidence file not found")
+
+    try:
+        resolved = resolve_evidence_file_path(evidence_path)
+    except EvidencePathError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evidence file not found") from None
+    except Exception as exc:  # pragma: no cover - defensive guard
+        logger.error("failed to resolve evidence path error=%s", sanitize_log_message(str(exc)))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to prepare evidence file")
+
+    if not resolved.exists() or not resolved.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evidence file not found")
+    return row, resolved
+
+
+def _build_evidence_preview_events(content_bytes: bytes) -> list[EvidencePreviewEvent]:
+    try:
+        calendar = Calendar.from_ical(content_bytes)
+    except Exception:  # pragma: no cover - parser failure handled as empty preview
+        return []
+
+    events: list[EvidencePreviewEvent] = []
+    for component in calendar.walk("VEVENT"):
+        description = _to_preview_text(component.get("description"), prefer_ical=False)
+        if description and len(description) > PREVIEW_DESCRIPTION_MAX_CHARS:
+            description = f"{description[:PREVIEW_DESCRIPTION_MAX_CHARS].rstrip()}..."
+
+        events.append(
+            EvidencePreviewEvent(
+                uid=_to_preview_text(component.get("uid"), prefer_ical=False),
+                summary=_to_preview_text(component.get("summary"), prefer_ical=False),
+                dtstart=_to_preview_text(component.get("dtstart"), prefer_ical=True),
+                dtend=_to_preview_text(component.get("dtend"), prefer_ical=True),
+                location=_to_preview_text(component.get("location"), prefer_ical=False),
+                description=description,
+            )
+        )
+    return events
+
+
+def _to_preview_text(value: object, *, prefer_ical: bool) -> str | None:
+    if value is None:
+        return None
+
+    if prefer_ical and hasattr(value, "to_ical"):
+        try:
+            encoded = value.to_ical()
+            if isinstance(encoded, bytes):
+                text = encoded.decode("utf-8", errors="replace").strip()
+            else:
+                text = str(encoded).strip()
+            if text:
+                return text
+        except Exception:  # pragma: no cover - fallback below
+            pass
+
+    text = str(value).strip()
+    return text or None

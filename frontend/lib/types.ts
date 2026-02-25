@@ -9,10 +9,6 @@ export type Input = {
   id: number;
   type: string;
   display_label: string;
-  term_id: number | null;
-  term_code: string | null;
-  term_label: string | null;
-  term_scope: "term" | "global";
   provider: string | null;
   gmail_label: string | null;
   gmail_from_contains: string | null;
@@ -32,13 +28,9 @@ export type Input = {
   created_at: string;
 };
 
-export type Source = Input;
-
 export type InputCreateResponse = Input & {
   upserted_existing: boolean;
 };
-
-export type SourceCreateResponse = InputCreateResponse;
 
 export type GmailOAuthStartRequest = {
   label?: string | null;
@@ -62,7 +54,7 @@ export type ManualSyncResponse = {
 
 export type SourceBusyDetail = {
   status?: "LOCK_SKIPPED";
-  code: "source_busy";
+  code: "input_busy";
   message: string;
   retry_after_seconds: number;
   recoverable: boolean;
@@ -89,8 +81,6 @@ export type InputDeadlines = {
   courses: CourseDeadlines[];
 };
 
-export type SourceDeadlines = InputDeadlines;
-
 export type CourseOverride = {
   id: number;
   input_id: number;
@@ -115,8 +105,6 @@ export type InputOverrides = {
   tasks: TaskOverride[];
 };
 
-export type SourceOverrides = InputOverrides;
-
 export type ChangeRecord = {
   id: number;
   input_id: number;
@@ -133,6 +121,24 @@ export type ChangeRecord = {
   after_raw_evidence_key: Record<string, unknown> | null;
   viewed_at: string | null;
   viewed_note: string | null;
+};
+
+export type EvidencePreviewResponse = {
+  side: "before" | "after";
+  content_type: string;
+  truncated: boolean;
+  filename: string;
+  event_count: number;
+  events: EvidencePreviewEvent[];
+};
+
+export type EvidencePreviewEvent = {
+  uid: string | null;
+  summary: string | null;
+  dtstart: string | null;
+  dtend: string | null;
+  location: string | null;
+  description: string | null;
 };
 
 export type ChangeSummarySide = {
@@ -205,20 +211,6 @@ export type InputRun = {
   lock_owner: string | null;
 };
 
-export type SourceRun = InputRun;
-
-export type UserTerm = {
-  id: number;
-  user_id: number;
-  code: string;
-  label: string;
-  starts_on: string;
-  ends_on: string;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-};
-
 export type DashboardUser = {
   id: number;
   email: string | null;
@@ -226,7 +218,6 @@ export type DashboardUser = {
   notify_email: string | null;
   calendar_delay_seconds: number;
   created_at: string;
-  terms: UserTerm[];
 };
 
 export type OnboardingStage = "needs_user" | "needs_ics" | "needs_baseline" | "ready";
@@ -254,12 +245,78 @@ export type OnboardingRegisterResponse = {
   changes_created: number;
 };
 
+export type EmailRoute = "drop" | "archive" | "notify" | "review";
+
+export type EmailQueueActionItem = {
+  action: string | null;
+  due_iso: string | null;
+  where: string | null;
+};
+
+export type EmailMatchedSnippet = {
+  rule: string;
+  snippet: string;
+};
+
+export type EmailQueueRuleAnalysis = {
+  event_flags: Record<string, boolean>;
+  matched_snippets: EmailMatchedSnippet[];
+  drop_reason_codes: string[];
+};
+
+export type EmailQueueFlags = {
+  viewed: boolean;
+  notified: boolean;
+  viewed_at: string | null;
+  notified_at: string | null;
+};
+
+export type EmailQueueItem = {
+  email_id: string;
+  from_addr: string | null;
+  subject: string | null;
+  date_rfc822: string | null;
+  route: EmailRoute;
+  event_type: string | null;
+  confidence: number;
+  reasons: string[];
+  course_hints: string[];
+  action_items: EmailQueueActionItem[];
+  rule_analysis: EmailQueueRuleAnalysis;
+  flags: EmailQueueFlags;
+};
+
+export type UpdateEmailRouteRequest = {
+  route: EmailRoute;
+};
+
+export type UpdateEmailRouteResponse = {
+  email_id: string;
+  route: EmailRoute;
+  routed_at: string;
+  notified_at: string | null;
+};
+
+export type MarkEmailViewedResponse = {
+  email_id: string;
+  viewed_at: string;
+};
+
+export type ApplyEmailReviewRequest = {
+  mode?: "create_new" | "update_existing";
+  target_input_id?: number;
+  target_event_uid?: string;
+  applied_due_at?: string | null;
+  note?: string | null;
+};
+
+export type ApplyEmailReviewResponse = {
+  task_id: number;
+  change_id: number;
+};
+
 export type ChangeFeedRecord = ChangeRecord & {
   input_type: string;
-  term_id: number | null;
-  term_code: string | null;
-  term_label: string | null;
-  term_scope: "term" | "global";
   priority_rank: number;
   priority_label: string;
   notification_state: string | null;

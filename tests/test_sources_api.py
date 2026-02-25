@@ -2,60 +2,44 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from app.db.models import Source, SourceType, SyncRun, SyncRunStatus, SyncTriggerType, User
+from app.db.models import Input, InputType, SyncRun, SyncRunStatus, SyncTriggerType, User
+from app.modules.inputs.schemas import InputCreateRequest
+from app.modules.inputs.service import create_ics_input
+from tests.helpers_inputs import create_ics_input_for_user
 
 
 def test_sources_api_requires_api_key(client) -> None:
-    response = client.post(
-        "/v1/inputs/ics",
-        json={"url": "https://example.com/feed.ics"},
-    )
+    response = client.get("/v1/inputs")
     assert response.status_code == 401
 
 
 def test_create_input_rejects_legacy_name_field(client, initialized_user) -> None:
     headers = {"X-API-Key": "test-api-key"}
 
-    no_name_required = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={"url": "https://example.com/feed.ics"},
-    )
-    assert no_name_required.status_code == 201
-
     legacy_name = client.post(
         "/v1/inputs/ics",
         headers=headers,
         json={"name": "   ", "url": "https://example.com/feed.ics"},
     )
-    assert legacy_name.status_code == 422
+    assert legacy_name.status_code == 404
 
 
-def test_create_and_list_sources_hides_url(client, initialized_user) -> None:
+def test_create_and_list_sources_hides_url(client, initialized_user, db_session) -> None:
     headers = {"X-API-Key": "test-api-key"}
-
-    create_response = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={
-            "url": "https://example.com/feed.ics",
-        },
+    source_id = create_ics_input_for_user(
+        db_session,
+        user_id=initialized_user["id"],
+        url="https://example.com/feed.ics",
     )
-    assert create_response.status_code == 201
-    payload = create_response.json()
-
-    assert payload["display_label"].startswith("Calendar")
-    assert payload["interval_minutes"] == 15
-    assert payload["notify_email"] is None
-    assert payload["upserted_existing"] is False
-    assert "url" not in payload
-    assert "encrypted_url" not in payload
 
     list_response = client.get("/v1/inputs", headers=headers)
     assert list_response.status_code == 200
 
     items = list_response.json()
     assert len(items) == 1
+    assert items[0]["id"] == source_id
+    assert items[0]["display_label"].startswith("Calendar")
+    assert items[0]["interval_minutes"] == 15
     assert items[0]["notify_email"] is None
     assert items[0]["provider"] is None
     assert items[0]["gmail_label"] is None
@@ -67,37 +51,29 @@ def test_create_and_list_sources_hides_url(client, initialized_user) -> None:
     assert "encrypted_url" not in items[0]
 
 
-def test_duplicate_identity_upserts_source_in_place(client, initialized_user) -> None:
-    headers = {"X-API-Key": "test-api-key"}
-
-    first = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={"url": "https://example.com/feed.ics"},
+def test_duplicate_identity_upserts_source_in_place(client, initialized_user, db_session) -> None:
+    first = create_ics_input(
+        db_session,
+        user_id=initialized_user["id"],
+        payload=InputCreateRequest(url="https://example.com/feed.ics"),
     )
-    assert first.status_code == 201
-    first_payload = first.json()
-    assert first_payload["upserted_existing"] is False
+    assert first.upserted_existing is False
 
-    second = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={
-            "url": "https://example.com/feed.ics",
-        },
+    second = create_ics_input(
+        db_session,
+        user_id=initialized_user["id"],
+        payload=InputCreateRequest(url="https://example.com/feed.ics"),
     )
-    assert second.status_code == 200
-    second_payload = second.json()
-    assert second_payload["upserted_existing"] is True
-    assert second_payload["id"] == first_payload["id"]
-    assert second_payload["notify_email"] is None
-    assert second_payload["interval_minutes"] == 15
+    assert second.upserted_existing is True
+    assert second.input.id == first.input.id
+    assert second.input.notify_email is None
+    assert second.input.interval_minutes == 15
 
-    list_response = client.get("/v1/inputs", headers=headers)
+    list_response = client.get("/v1/inputs", headers={"X-API-Key": "test-api-key"})
     assert list_response.status_code == 200
     items = list_response.json()
     assert len(items) == 1
-    assert items[0]["id"] == first_payload["id"]
+    assert items[0]["id"] == first.input.id
 
 
 def test_list_sources_includes_runtime_state_fields(client, db_session) -> None:
@@ -109,9 +85,9 @@ def test_list_sources_includes_runtime_state_fields(client, db_session) -> None:
     db_session.add(user)
     db_session.flush()
 
-    source = Source(
+    source = Input(
         user_id=user.id,
-        type=SourceType.ICS,
+        type=InputType.ICS,
         identity_key="ics-observed",
         encrypted_url="encrypted-source",
         interval_minutes=15,
@@ -157,9 +133,9 @@ def test_list_sources_applies_scheduler_lock_skipped_cooldown_to_next_check(clie
     db_session.add(user)
     db_session.flush()
 
-    source = Source(
+    source = Input(
         user_id=user.id,
-        type=SourceType.ICS,
+        type=InputType.ICS,
         identity_key="ics-cooldown",
         encrypted_url="encrypted-source",
         interval_minutes=15,
@@ -202,9 +178,9 @@ def test_source_runs_endpoint_returns_recent_timeline(client, db_session) -> Non
     db_session.add(user)
     db_session.flush()
 
-    source = Source(
+    source = Input(
         user_id=user.id,
-        type=SourceType.ICS,
+        type=InputType.ICS,
         identity_key="ics-run",
         encrypted_url="encrypted-source",
         interval_minutes=15,
