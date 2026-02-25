@@ -185,6 +185,7 @@ Removed from runtime surface:
 3. `POST /v1/user` (initialization now only via onboarding)
 4. `GET /v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/preview`
 5. `GET /v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/download`
+6. `POST /v1/dev/inject_notify`
 
 ### 6.3 Email Review APIs
 
@@ -222,3 +223,4 @@ Use change-scoped preview endpoint:
 1. keep `/v1/emails/*` as the only email review entrypoint
 2. keep term and review-candidate legacy symbols out of runtime code
 3. keep onboarding initialization through `/v1/onboarding/register` only
+4. keep UI surface minimal: `/ui/onboarding`, `/ui/processing`, `/ui/feed`, `/ui/emails/review`

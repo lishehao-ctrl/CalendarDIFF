@@ -12,7 +12,6 @@ import { useFeedData } from "@/lib/hooks/use-feed-data";
 export default function FeedPage() {
   const {
     configError,
-    showDevTools,
     toasts,
     needsOnboarding,
     activeSourceId,
@@ -48,7 +47,6 @@ export default function FeedPage() {
         description="Review aggregated changes across email and calendar inputs."
         current="feed"
         activeInputId={activeSourceId}
-        showDev={showDevTools}
       />
 
       {configError ? (

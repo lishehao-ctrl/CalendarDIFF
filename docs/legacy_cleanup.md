@@ -33,9 +33,16 @@ This file tracks what has been removed from runtime surface after the core simpl
 8. Scheduler lock config naming:
    - removed `source_lock_namespace`
    - replaced with `input_lock_namespace`
+9. Dev-only runtime inject endpoint:
+   - removed `POST /v1/dev/inject_notify` from mounted runtime surface
+10. Non-core UI pages:
+   - removed `/ui/inputs`
+   - removed `/ui/runs`
+   - removed `/ui/dev`
 
 ## Guardrails
 
 1. Runtime code uses `/v1/emails/*` as the only email review API.
 2. Runtime code has no `review_candidates`, `legacy_code`, `source_busy`, or `source_lock_namespace` symbols.
 3. Initialization path is onboarding-first (`POST /v1/onboarding/register`).
+4. UI entry surface is restricted to onboarding/processing/feed/email-review.

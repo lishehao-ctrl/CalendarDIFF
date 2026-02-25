@@ -26,7 +26,7 @@ export default function UiRootRedirectPage() {
           window.location.replace(target.pathname);
           return;
         }
-        const target = new URL("/ui/inputs", window.location.origin);
+        const target = new URL("/ui/processing", window.location.origin);
         target.search = window.location.search;
         target.hash = window.location.hash;
         window.location.replace(`${target.pathname}${target.search}${target.hash}`);

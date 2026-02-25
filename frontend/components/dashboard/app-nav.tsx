@@ -1,4 +1,4 @@
-import { BellRing, CalendarDays, ListChecks, Workflow, FlaskConical } from "lucide-react";
+import { BellRing, Workflow } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -7,31 +7,27 @@ import { cn } from "@/lib/utils";
 type AppNavProps = {
   current: AppNavCurrent;
   activeInputId: number | null;
-  showDev?: boolean;
   density?: AppNavDensity;
 };
 
-export type AppNavCurrent = "inputs" | "processing" | "feed" | "emails" | "runs" | "dev";
+export type AppNavCurrent = "processing" | "feed" | "emails";
 export type AppNavDensity = "comfortable" | "compact";
 
 type NavItem = {
   key: AppNavCurrent;
   label: string;
   icon: LucideIcon;
-  path: "/ui/inputs" | "/ui/processing" | "/ui/feed" | "/ui/runs" | "/ui/emails/review" | "/ui/dev";
+  path: "/ui/processing" | "/ui/feed" | "/ui/emails/review";
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { key: "inputs", label: "Inputs", icon: CalendarDays, path: "/ui/inputs" },
   { key: "processing", label: "Processing", icon: Workflow, path: "/ui/processing" },
   { key: "feed", label: "Feed", icon: BellRing, path: "/ui/feed" },
   { key: "emails", label: "Email Review", icon: BellRing, path: "/ui/emails/review" },
-  { key: "runs", label: "Runs", icon: ListChecks, path: "/ui/runs" },
-  { key: "dev", label: "Dev", icon: FlaskConical, path: "/ui/dev" },
 ];
 
-export function AppNav({ current, activeInputId, showDev = false, density = "comfortable" }: AppNavProps) {
-  const visibleItems = showDev ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.key !== "dev");
+export function AppNav({ current, activeInputId, density = "comfortable" }: AppNavProps) {
+  const visibleItems = NAV_ITEMS;
   return (
     <nav
       aria-label="Workspace navigation"

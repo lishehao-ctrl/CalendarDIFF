@@ -11,6 +11,10 @@ BLOCKED_TOKENS = (
     "before_raw_evidence_key",
     "after_raw_evidence_key",
     "/v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/preview",
+    "/ui/inputs",
+    "/ui/runs",
+    "/ui/dev",
+    "/v1/dev/inject_notify",
     "/v1/user/terms",
     "POST /v1/user",
 )
@@ -18,6 +22,8 @@ BLOCKED_TOKENS = (
 SCAN_ROOTS = (
     Path("app/modules"),
     Path("frontend/lib"),
+    Path("frontend/app"),
+    Path("frontend/components"),
 )
 
 

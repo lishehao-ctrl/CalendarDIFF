@@ -47,7 +47,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 - `http://localhost:8000/ui`
 - root UI routing:
   - onboarding `stage != ready` -> `/ui/onboarding`
-  - onboarding `stage = ready` -> `/ui/inputs`
+  - onboarding `stage = ready` -> `/ui/processing`
 
 Important:
 
@@ -77,10 +77,10 @@ docker rm -f calendardiff-mailhog 2>/dev/null || true
 docker run --name calendardiff-mailhog -d -p 1025:1025 -p 8025:8025 mailhog/mailhog:v1.0.1
 ```
 
-2. Set SMTP env in `.env`:
+2. Set SMTP env in `.env` (optional extended path; default demo can keep notifications off):
 
 ```env
-ENABLE_NOTIFICATIONS=true
+ENABLE_NOTIFICATIONS=false
 SMTP_HOST=127.0.0.1
 SMTP_PORT=1025
 SMTP_USER=
@@ -113,7 +113,7 @@ All require `X-API-Key`.
 
 This project supports `Input.type=email` with `provider=gmail`.
 
-### Required env vars
+### Optional env vars (for Gmail extension)
 
 ```env
 GMAIL_OAUTH_CLIENT_ID=...
@@ -129,7 +129,7 @@ APP_BASE_URL=http://localhost:8000
 2. Add redirect URI: `http://localhost:8000/v1/oauth/gmail/callback`.
 3. Restart backend after updating `.env`.
 4. Open `http://localhost:8000/ui`.
-5. Open `http://localhost:8000/ui/inputs`, then use input management to connect Gmail.
+5. Complete onboarding first, then run sync from `/ui/processing`.
 
 ### Runtime semantics
 
@@ -195,7 +195,6 @@ Onboarding completion contract:
    - `/v1/inputs/email/gmail/oauth/start`
    - `/v1/notification_prefs*`
    - `/v1/notifications/send_digest_now`
-   - `/v1/dev/inject_notify`
    - `/v1/emails*`
 
 ### Input Layer policy (fixed)
@@ -223,15 +222,12 @@ Onboarding completion contract:
 
 1. `/ui` -> onboarding gate:
    - `GET /v1/onboarding/status` then route by stage
-   - `stage=ready` -> `/ui/inputs`
+   - `stage=ready` -> `/ui/processing`
    - otherwise -> `/ui/onboarding`
 2. `/ui/onboarding` -> submit `notify_email + ics.url` to `POST /v1/onboarding/register`.
-3. `/ui/inputs` -> connect/manage Gmail inputs. ICS is configured only through onboarding.
-4. `/ui/processing` -> health, manual sync, ICS rename management.
-5. `/ui/feed` -> aggregated change feed (EMAIL > Calendar ordering); onboarding-incomplete direct access redirects to onboarding.
-6. `/ui/runs?input_id=<id>` -> input run timeline and refresh timestamp; onboarding-incomplete direct access redirects to onboarding.
-7. `/ui/emails/review` -> email review queue for Apply/Archive/Drop/Mark viewed operations.
-8. `/ui/dev` -> dev-only inject tool (enabled only when `APP_ENV=dev` and `ENABLE_DEV_ENDPOINTS=true`); onboarding-incomplete direct access redirects to onboarding.
+3. `/ui/processing` -> health, manual sync, and runtime diagnostics (primary control surface).
+4. `/ui/feed` -> aggregated change feed (EMAIL > Calendar ordering); onboarding-incomplete direct access redirects to onboarding.
+5. `/ui/emails/review` -> email review queue for Apply/Archive/Drop/Mark viewed operations.
 
 ## Notification Digest Schedule
 
@@ -258,29 +254,6 @@ Validation:
 1. `digest_times` format: `HH:MM` 24h.
 2. Allowed count: 1..6.
 3. Times are sorted and de-duplicated before persistence.
-
-## Dev Inject Notify
-
-Dev endpoint:
-
-- `POST /v1/dev/inject_notify`
-
-Gate:
-
-1. `APP_ENV=dev`
-2. `ENABLE_DEV_ENDPOINTS=true`
-
-Example payload:
-
-```json
-{
-  "subject": "[DEMO] Deadline moved",
-  "from": "staff@example.edu",
-  "date": "2026-02-24T10:00:00Z",
-  "body_text": "Homework deadline moved to Sunday 11:59pm.",
-  "event_type": "deadline"
-}
-```
 
 ## Health / Debug
 
@@ -324,17 +297,16 @@ Important:
 3. Busy error code is `input_busy`.
 4. UI handles busy lock contention with one auto retry after 10 seconds plus a `Retry now` action.
 5. Scheduler path is still non-blocking and uses a 30-second cooldown after scheduler `LOCK_SKIPPED`.
-6. Per-input run history page is available at `/ui/runs?input_id=<id>`.
-7. For LOCK_SKIPPED acceptance steps, use `docs/runbooks/scheduler_multi_instance_acceptance.md`.
-8. Input-centric API cutover is complete: use `/v1/inputs*` and `/v1/feed`.
-9. ICS input creation is onboarding-only (`POST /v1/onboarding/register`); `/v1/inputs/ics` is removed.
-10. Legacy `/v1/sources*` and `/v1/changes/feed` endpoints are removed.
-11. Change and snapshot detail routes are input-scoped:
+6. For LOCK_SKIPPED acceptance steps, use `docs/runbooks/scheduler_multi_instance_acceptance.md`.
+7. Input-centric API cutover is complete: use `/v1/inputs*` and `/v1/feed`.
+8. ICS input creation is onboarding-only (`POST /v1/onboarding/register`); `/v1/inputs/ics` is removed.
+9. Legacy `/v1/sources*` and `/v1/changes/feed` endpoints are removed.
+10. Change and snapshot detail routes are input-scoped:
     - `GET /v1/inputs/{input_id}/changes`
     - `PATCH /v1/inputs/{input_id}/changes/{change_id}/viewed`
     - `GET /v1/changes/{change_id}/evidence/{side}/preview`
     - `GET /v1/inputs/{input_id}/snapshots`
-12. Before onboarding is ready, protected endpoints return:
+11. Before onboarding is ready, protected endpoints return:
     - status `409`
     - `detail.code = "user_not_initialized"` or `"user_onboarding_incomplete"`
 

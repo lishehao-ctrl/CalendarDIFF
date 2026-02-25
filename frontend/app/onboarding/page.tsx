@@ -33,7 +33,7 @@ export default function OnboardingPage() {
         const status = await getOnboardingStatus(config);
         setStatusInfo(status);
         if (status.stage === "ready") {
-          window.location.replace("/ui/inputs");
+          window.location.replace("/ui/processing");
           return;
         }
       } catch (err) {
@@ -63,7 +63,7 @@ export default function OnboardingPage() {
           url: icsUrl.trim(),
         },
       });
-      window.location.replace("/ui/inputs");
+      window.location.replace("/ui/processing");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -81,7 +81,7 @@ export default function OnboardingPage() {
               Onboarding Required
             </CardTitle>
             <CardDescription>
-              Bind notify email + first ICS URL, then run the initial baseline sync before entering Inputs workspace.
+              Bind notify email + first ICS URL, then run the initial baseline sync before entering Processing workspace.
             </CardDescription>
           </CardHeader>
           <CardContent>

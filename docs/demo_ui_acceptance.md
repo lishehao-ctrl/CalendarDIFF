@@ -58,8 +58,8 @@ curl http://localhost:8000/ui/app-config.js
 访问 `http://localhost:8000/ui`。  
 期望：页面正常渲染，不出现 `Configuration Missing / Missing API key`。
 
-3. Inputs 列表与健康面板可读  
-期望：页面顶部健康卡片有 run 计数和 `next_expected_check` 信息；Inputs 区域可刷新。
+3. Processing 面板与健康面板可读  
+期望：页面顶部健康卡片有 run 计数和 `next_expected_check` 信息；Processing 区域可刷新并触发手动 sync。
 
 4. onboarding 建立 ICS 输入成功  
 在 onboarding 页填写 `notify_email + ICS url`。  
@@ -77,9 +77,9 @@ curl http://localhost:8000/ui/app-config.js
 展开 diff 卡片 `Evidence and metadata`。  
 期望：old/new 结构化预览自动加载，能看到 `UID/SUMMARY/DTSTART/DTEND/LOCATION/DESCRIPTION` 字段。
 
-8. Identity upsert 逻辑正常  
-用相同 ICS URL 再创建一次 Calendar input。  
-期望：提示 upsert existing，不新增第二条同身份 input，历史 runs/changes 保留。
+8. single-ICS 不变量正常  
+再次 onboarding 提交新的 ICS URL。  
+期望：旧 ICS 被替换，用户仍保持恰好 1 条 ICS 输入。
 
 9. 健康统计随操作变化  
 多次 sync 后刷新健康卡。  
@@ -110,5 +110,5 @@ curl http://localhost:8000/ui/app-config.js
 
 1. `http://localhost:8000/ui` 能稳定打开且无 `Configuration Missing`。  
 2. onboarding 建立 input、manual sync、baseline-first、diff review、evidence preview 全链路可用。  
-3. identity upsert 行为正确且不制造历史噪声。  
+3. single-ICS 替换语义正确且不产生并存 ICS。  
 4. `/health` 与页面健康卡显示 scheduler 字段且随操作变化。

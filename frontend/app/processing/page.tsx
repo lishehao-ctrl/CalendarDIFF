@@ -18,7 +18,6 @@ import { useProcessingData } from "@/lib/hooks/use-processing-data";
 export default function ProcessingPage() {
   const {
     configError,
-    showDevTools,
     toasts,
     needsOnboarding,
     sources,
@@ -104,7 +103,6 @@ export default function ProcessingPage() {
         description="Run manual sync, inspect runtime state, and manage ICS rename overrides for the selected input."
         current="processing"
         activeInputId={activeSourceId}
-        showDev={showDevTools}
       />
 
       {configError ? (

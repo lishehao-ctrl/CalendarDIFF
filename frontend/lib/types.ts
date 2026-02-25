@@ -1,8 +1,6 @@
 export type AppConfig = {
   apiBase: string;
   apiKey: string;
-  appEnv?: string;
-  enableDevEndpoints?: boolean;
 };
 
 export type Input = {

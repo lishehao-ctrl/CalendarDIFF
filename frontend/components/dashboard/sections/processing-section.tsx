@@ -1,4 +1,4 @@
-import { Clock3, Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 
 import { SectionState } from "@/components/dashboard/section-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -120,7 +120,7 @@ export function ProcessingSection({
             loadingRows={3}
             errorTitle="Input List Failed"
             emptyTitle="Empty Inputs"
-            emptyDescription="Create your first input in Inputs workspace."
+            emptyDescription="Finish onboarding to create the first ICS input."
           >
             <Table>
               <TableHeader>
@@ -160,12 +160,6 @@ export function ProcessingSection({
                         <Button size="sm" onClick={() => void onRunManualSync(source.id)} disabled={manualSyncingSourceId !== null}>
                           {manualSyncingSourceId === source.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                           {manualSyncingSourceId === source.id ? "Syncing..." : "Sync now"}
-                        </Button>
-                        <Button size="sm" variant="secondary" asChild>
-                          <a href={`/ui/runs?input_id=${source.id}`}>
-                            <Clock3 className="mr-2 h-4 w-4" />
-                            Run history
-                          </a>
                         </Button>
                       </div>
                       {source.last_error ? <div className="mt-2 text-xs text-rose-700">{source.last_error}</div> : null}

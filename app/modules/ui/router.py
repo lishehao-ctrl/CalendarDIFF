@@ -23,8 +23,6 @@ def ui_app_config() -> Response:
     payload = {
         "apiBase": "",
         "apiKey": settings.app_api_key,
-        "appEnv": settings.app_env,
-        "enableDevEndpoints": settings.enable_dev_endpoints,
     }
     content = f"window.__APP_CONFIG__ = {json.dumps(payload)};"
     return Response(content=content, media_type="application/javascript")
@@ -32,7 +30,10 @@ def ui_app_config() -> Response:
 
 @router.api_route("/ui/{path:path}", methods=["GET", "HEAD", "OPTIONS"])
 def ui_assets(path: str) -> Response:
-    if path.strip("/") == "profiles":
+    normalized = path.strip("/")
+    if normalized == "profiles":
+        raise HTTPException(status_code=404, detail="UI route not found")
+    if normalized in {"inputs", "runs", "dev"} or normalized.startswith(("inputs/", "runs/", "dev/")):
         raise HTTPException(status_code=404, detail="UI route not found")
     asset = _resolve_asset_path(path)
     if asset is not None:

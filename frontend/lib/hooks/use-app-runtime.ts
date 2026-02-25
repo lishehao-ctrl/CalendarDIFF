@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { apiRequest, getOnboardingStatus } from "@/lib/api";
 import { getRuntimeConfig } from "@/lib/config";
@@ -21,10 +21,6 @@ export function useAppRuntime() {
     }
     setConfig(runtimeConfig);
   }, []);
-
-  const showDevTools = useMemo(() => {
-    return Boolean(config?.enableDevEndpoints && (config?.appEnv ?? "").toLowerCase() === "dev");
-  }, [config]);
 
   const ensureOnboarded = useCallback(
     async (runtimeConfig?: AppConfig): Promise<boolean> => {
@@ -65,7 +61,6 @@ export function useAppRuntime() {
   return {
     config,
     configError,
-    showDevTools,
     needsOnboarding,
     setNeedsOnboarding,
     ensureOnboarded,
