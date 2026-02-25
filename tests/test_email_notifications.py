@@ -39,8 +39,7 @@ def test_notification_rows_marked_sent_on_success(db_session: Session) -> None:
     source = Input(
         user_id=user.id,
         type=InputType.ICS,
-        name="Course Deadlines",
-        normalized_name="course deadlines",
+        identity_key="Course Deadlines",
         encrypted_url="encrypted",
         interval_minutes=15,
         is_active=True,
@@ -93,8 +92,7 @@ def test_notification_rows_marked_failed_on_error(db_session: Session) -> None:
     source = Input(
         user_id=user.id,
         type=InputType.ICS,
-        name="Course Deadlines",
-        normalized_name="course deadlines",
+        identity_key="Course Deadlines",
         encrypted_url="encrypted",
         interval_minutes=15,
         is_active=True,
@@ -146,8 +144,7 @@ def test_notification_dispatch_is_idempotent_for_same_change(db_session: Session
     source = Input(
         user_id=user.id,
         type=InputType.ICS,
-        name="Course Deadlines",
-        normalized_name="course deadlines",
+        identity_key="Course Deadlines",
         encrypted_url="encrypted",
         interval_minutes=15,
         is_active=True,
@@ -200,8 +197,7 @@ def test_failed_notification_is_not_retried_automatically(db_session: Session) -
     source = Input(
         user_id=user.id,
         type=InputType.ICS,
-        name="Course Deadlines",
-        normalized_name="course deadlines",
+        identity_key="Course Deadlines",
         encrypted_url="encrypted",
         interval_minutes=15,
         is_active=True,
@@ -261,8 +257,7 @@ def test_notification_insert_race_results_in_single_row_and_single_send(db_sessi
     source = Input(
         user_id=user.id,
         type=InputType.ICS,
-        name="Race Input",
-        normalized_name="race source",
+        identity_key="Race Input",
         encrypted_url="encrypted",
         interval_minutes=15,
         is_active=True,

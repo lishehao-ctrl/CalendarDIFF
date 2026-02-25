@@ -116,9 +116,10 @@ export type ChangeRecord = {
   delta_seconds: number | null;
   before_snapshot_id: number | null;
   after_snapshot_id: number;
-  evidence_keys: Record<string, unknown> | null;
-  before_raw_evidence_key: Record<string, unknown> | null;
-  after_raw_evidence_key: Record<string, unknown> | null;
+  has_before_evidence: boolean;
+  has_after_evidence: boolean;
+  before_evidence_kind: string | null;
+  after_evidence_kind: string | null;
   viewed_at: string | null;
   viewed_note: string | null;
 };
@@ -143,9 +144,9 @@ export type EvidencePreviewEvent = {
 
 export type ChangeSummarySide = {
   value_time: string | null;
-  source_label: string | null;
-  source_type: "ics" | "email" | null;
-  source_observed_at: string | null;
+  input_label: string | null;
+  input_type: "ics" | "email" | null;
+  input_observed_at: string | null;
 };
 
 export type ChangeSummary = {
@@ -166,7 +167,7 @@ export type HealthResponse = {
     last_run_finished_at: string | null;
     last_error: string | null;
     last_skip_reason: string | null;
-    last_synced_sources: number;
+    last_synced_inputs: number;
     last_run_success_count: number;
     last_run_failed_count: number;
     last_run_notification_failed_count: number;
@@ -304,7 +305,6 @@ export type MarkEmailViewedResponse = {
 
 export type ApplyEmailReviewRequest = {
   mode?: "create_new" | "update_existing";
-  target_input_id?: number;
   target_event_uid?: string;
   applied_due_at?: string | null;
   note?: string | null;

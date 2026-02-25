@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
 from typing import Literal
 
 from datetime import datetime
@@ -19,18 +18,19 @@ class ChangeResponse(BaseModel):
     delta_seconds: int | None
     before_snapshot_id: int | None
     after_snapshot_id: int
-    evidence_keys: dict[str, Any] | None
-    before_raw_evidence_key: dict[str, Any] | None
-    after_raw_evidence_key: dict[str, Any] | None
+    has_before_evidence: bool
+    has_after_evidence: bool
+    before_evidence_kind: str | None
+    after_evidence_kind: str | None
     viewed_at: datetime | None
     viewed_note: str | None
 
 
 class ChangeSummarySide(BaseModel):
     value_time: datetime | None
-    source_label: str | None
-    source_type: Literal["ics", "email"] | None
-    source_observed_at: datetime | None
+    input_label: str | None
+    input_type: Literal["ics", "email"] | None
+    input_observed_at: datetime | None
 
 
 class ChangeSummary(BaseModel):
@@ -50,3 +50,21 @@ class ChangeFeedResponse(ChangeResponse):
 class ChangeViewedUpdateRequest(BaseModel):
     viewed: bool
     note: str | None = None
+
+
+class EvidencePreviewEvent(BaseModel):
+    uid: str | None
+    summary: str | None
+    dtstart: str | None
+    dtend: str | None
+    location: str | None
+    description: str | None
+
+
+class EvidencePreviewResponse(BaseModel):
+    side: Literal["before", "after"]
+    content_type: str
+    truncated: bool
+    filename: str
+    event_count: int
+    events: list[EvidencePreviewEvent]

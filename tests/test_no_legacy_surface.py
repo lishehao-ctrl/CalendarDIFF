@@ -6,6 +6,11 @@ BLOCKED_TOKENS = (
     "review_candidates",
     "legacy_code",
     "source_busy",
+    "source_lock_namespace",
+    "source_kind",
+    "before_raw_evidence_key",
+    "after_raw_evidence_key",
+    "/v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/preview",
     "/v1/user/terms",
     "POST /v1/user",
 )

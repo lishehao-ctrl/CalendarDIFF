@@ -8,6 +8,7 @@ from app.core.config import get_settings
 from app.db.models import EmailMessage, EmailRoute, EmailRuleLabel, User
 from app.modules.inputs.service import create_gmail_input_from_oauth
 from app.modules.sync.gmail_client import GmailHistoryResult, GmailMessageMetadata, GmailProfile
+from tests.helpers_inputs import create_ics_input_for_user
 
 
 def test_gmail_sync_creates_email_review_queue_item_and_is_idempotent(client, db_session, monkeypatch) -> None:
@@ -21,6 +22,7 @@ def test_gmail_sync_creates_email_review_queue_item_and_is_idempotent(client, db
     )
     db_session.add(user)
     db_session.flush()
+    create_ics_input_for_user(db_session, user_id=user.id, url="https://example.com/email-queue-gmail-sync.ics")
 
     input_row = create_gmail_input_from_oauth(
         db_session,

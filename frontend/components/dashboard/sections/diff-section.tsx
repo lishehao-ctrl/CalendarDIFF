@@ -24,7 +24,7 @@ type DiffSectionProps = {
   onChangeNote: (changeId: number, note: string) => void;
   onToggleViewed: (change: ChangeRecord) => void | Promise<void>;
   evidencePreviews: Record<string, EvidencePreviewState>;
-  onPreviewEvidence: (changeId: number, inputId: number, side: "before" | "after") => void | Promise<void>;
+  onPreviewEvidence: (changeId: number, side: "before" | "after") => void | Promise<void>;
   onRefreshChanges: () => void | Promise<void>;
   getTaskDisplayTitle: (uid: string, title: string) => string;
   getCourseDisplayLabel: (label: string) => string;
@@ -112,8 +112,6 @@ export function DiffSection({
                 const displayTitle = getTaskDisplayTitle(change.event_uid, rawTitle);
                 const displayCourse = getCourseDisplayLabel(rawCourse);
                 const viewed = change.viewed_at !== null;
-                const beforePath = readEvidencePath(change.before_raw_evidence_key);
-                const afterPath = readEvidencePath(change.after_raw_evidence_key);
                 const sourceType = readString((change as Record<string, unknown>).input_type) ?? "ics";
                 const priorityLabel = readString((change as Record<string, unknown>).priority_label) ?? (sourceType === "email" ? "high" : "normal");
                 const notificationState = readString((change as Record<string, unknown>).notification_state);
@@ -157,11 +155,11 @@ export function DiffSection({
                         if (isEmailChange || !event.currentTarget.open) {
                           return;
                         }
-                        if (beforePath) {
-                          void onPreviewEvidence(change.id, change.input_id, "before");
+                        if (change.has_before_evidence) {
+                          void onPreviewEvidence(change.id, "before");
                         }
-                        if (afterPath) {
-                          void onPreviewEvidence(change.id, change.input_id, "after");
+                        if (change.has_after_evidence) {
+                          void onPreviewEvidence(change.id, "after");
                         }
                       }}
                     >
@@ -184,7 +182,9 @@ export function DiffSection({
                                 before -&gt; after: {String((beforeJson.start_at_utc ?? "n/a") as string)} -&gt;{" "}
                                 {String((afterJson.start_at_utc ?? "n/a") as string)}
                               </div>
-                              <div className="md:col-span-2">after evidence: {afterPath ?? "n/a"}</div>
+                              <div className="md:col-span-2">
+                                after evidence: {change.has_after_evidence ? change.after_evidence_kind ?? "available" : "n/a"}
+                              </div>
                             </>
                           )}
                         </div>
@@ -246,14 +246,6 @@ function readString(value: unknown): string | null {
   return trimmed ? trimmed : null;
 }
 
-function readEvidencePath(raw: Record<string, unknown> | null): string | null {
-  if (!raw) {
-    return null;
-  }
-  const value = raw.path;
-  return typeof value === "string" && value ? value : null;
-}
-
 type SummarySideCardProps = {
   title: "Old" | "New";
   side: ChangeSummarySide;
@@ -262,9 +254,9 @@ type SummarySideCardProps = {
 
 function SummarySideCard({ title, side, emptyValueText }: SummarySideCardProps) {
   const valueText = side.value_time ? formatSummaryDate(side.value_time) : emptyValueText;
-  const sourceText = side.source_label ?? sourceTypeLabel(side.source_type);
-  const sourceBadge = sourceTypeBadge(side.source_type);
-  const observedText = side.source_observed_at ? formatSummaryDate(side.source_observed_at) : "n/a";
+  const inputText = side.input_label ?? sourceTypeLabel(side.input_type);
+  const inputBadge = sourceTypeBadge(side.input_type);
+  const observedText = side.input_observed_at ? formatSummaryDate(side.input_observed_at) : "n/a";
 
   return (
     <div className="rounded-lg border border-line bg-white p-3">
@@ -277,17 +269,17 @@ function SummarySideCard({ title, side, emptyValueText }: SummarySideCardProps) 
           </dd>
         </div>
         <div className="grid grid-cols-[90px_1fr] gap-2">
-          <dt>Source</dt>
+          <dt>Input</dt>
           <dd className="flex flex-wrap items-center gap-2 text-ink">
-            <Badge variant={sourceBadge.variant} title={`Source type: ${sourceBadge.label}`} aria-label={`Source type: ${sourceBadge.label}`}>
-              {sourceBadge.label}
+            <Badge variant={inputBadge.variant} title={`Input type: ${inputBadge.label}`} aria-label={`Input type: ${inputBadge.label}`}>
+              {inputBadge.label}
             </Badge>
-            <span>{sourceText}</span>
+            <span>{inputText}</span>
           </dd>
         </div>
         <div className="grid grid-cols-[90px_1fr] gap-2">
           <dt>Observed at</dt>
-          <dd title={side.source_observed_at ?? undefined}>{observedText}</dd>
+          <dd title={side.input_observed_at ?? undefined}>{observedText}</dd>
         </div>
       </dl>
     </div>
@@ -332,7 +324,7 @@ function EvidencePreviewPanel({ title, preview }: EvidencePreviewPanelProps) {
               <div className="space-y-2">
                 <p className="text-xs text-muted">
                   {data.filename}
-                  {data.truncated ? " · Source truncated for preview" : ""}
+                  {data.truncated ? " · Preview truncated" : ""}
                 </p>
                 {!data.events.length ? <p className="text-xs text-muted">No VEVENT entries found.</p> : null}
                 <div className="max-h-72 space-y-2 overflow-auto pr-1">

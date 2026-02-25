@@ -15,6 +15,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import get_settings
 from app.db.models import User
 from app.db.session import reset_engine
+from app.modules.inputs.schemas import InputCreateRequest
+from app.modules.inputs.service import create_ics_input
 from app.main import create_app
 from datetime import datetime, timezone
 
@@ -130,6 +132,12 @@ def initialized_user(client: TestClient, db_session: Session) -> dict[str, objec
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
+    db_session.flush()
+    create_ics_input(
+        db_session,
+        user_id=user.id,
+        payload=InputCreateRequest(url="https://example.com/initialized-user.ics"),
+    )
     db_session.commit()
     db_session.refresh(user)
     return {

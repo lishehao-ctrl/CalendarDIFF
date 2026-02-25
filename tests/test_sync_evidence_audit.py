@@ -74,8 +74,7 @@ def test_sync_persists_snapshot_evidence_and_links_changes(tmp_path, monkeypatch
     source = Input(
         user_id=user.id,
         type=InputType.ICS,
-        name="Audit Input",
-        normalized_name="audit source",
+        identity_key="Audit Input",
         encrypted_url=encrypt_secret("https://example.com/private.ics"),
         interval_minutes=15,
         is_active=True,
@@ -155,8 +154,7 @@ def test_sync_304_not_modified_skips_snapshot_and_diff(tmp_path, monkeypatch, db
     source = Input(
         user_id=user.id,
         type=InputType.ICS,
-        name="Not Modified Input",
-        normalized_name="not modified source",
+        identity_key="Not Modified Input",
         encrypted_url=encrypt_secret("https://example.com/private.ics"),
         interval_minutes=15,
         is_active=True,
@@ -231,8 +229,7 @@ def test_sync_same_normalized_hash_skips_snapshot_and_diff(tmp_path, monkeypatch
     source = Input(
         user_id=user.id,
         type=InputType.ICS,
-        name="Normalized Hash Input",
-        normalized_name="normalized hash source",
+        identity_key="Normalized Hash Input",
         encrypted_url=encrypt_secret("https://example.com/private.ics"),
         interval_minutes=15,
         is_active=True,

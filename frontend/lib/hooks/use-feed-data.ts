@@ -166,7 +166,7 @@ export function useFeedData() {
     }
   }
 
-  async function handlePreviewEvidence(changeId: number, inputId: number, side: "before" | "after") {
+  async function handlePreviewEvidence(changeId: number, side: "before" | "after") {
     if (!config) {
       return;
     }
@@ -182,7 +182,7 @@ export function useFeedData() {
     }));
 
     try {
-      const payload = await getEvidencePreview(config, inputId, changeId, side);
+      const payload = await getEvidencePreview(config, changeId, side);
       setEvidencePreviews((current) => ({
         ...current,
         [key]: { loading: false, error: null, data: payload },

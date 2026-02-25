@@ -61,9 +61,9 @@ curl http://localhost:8000/ui/app-config.js
 3. Inputs 列表与健康面板可读  
 期望：页面顶部健康卡片有 run 计数和 `next_expected_check` 信息；Inputs 区域可刷新。
 
-4. 创建 input 成功  
-先完成 onboarding；在 Input Layer 的 `Add Calendar Input` 卡片填写 `url`。  
-期望：toast 显示创建成功，input 出现在表格。
+4. onboarding 建立 ICS 输入成功  
+在 onboarding 页填写 `notify_email + ICS url`。  
+期望：完成后进入主界面，`/v1/inputs` 至少有 1 条 ICS 输入。
 
 5. 第一次手动同步是 baseline  
 点击 `Sync now`。  
@@ -73,9 +73,9 @@ curl http://localhost:8000/ui/app-config.js
 在有变化后，Unread 中点 `Mark Viewed`。  
 期望：该卡片立刻从 Unread 消失；切换 All 可看到其 viewed 状态；点 `Mark Unread` 后可回到 Unread。
 
-7. Evidence 下载可用  
-在 diff 卡片点击 `Download Before ICS` 和 `Download After ICS`。  
-期望：两份 `.ics` 文件都能下载且可打开。
+7. Evidence 预览可用  
+展开 diff 卡片 `Evidence and metadata`。  
+期望：old/new 结构化预览自动加载，能看到 `UID/SUMMARY/DTSTART/DTEND/LOCATION/DESCRIPTION` 字段。
 
 8. Identity upsert 逻辑正常  
 用相同 ICS URL 再创建一次 Calendar input。  
@@ -109,6 +109,6 @@ curl http://localhost:8000/ui/app-config.js
 ## 验收通过标准（最小集合）
 
 1. `http://localhost:8000/ui` 能稳定打开且无 `Configuration Missing`。  
-2. 创建 input、manual sync、baseline-first、diff review、evidence download 全链路可用。  
+2. onboarding 建立 input、manual sync、baseline-first、diff review、evidence preview 全链路可用。  
 3. identity upsert 行为正确且不制造历史噪声。  
 4. `/health` 与页面健康卡显示 scheduler 字段且随操作变化。

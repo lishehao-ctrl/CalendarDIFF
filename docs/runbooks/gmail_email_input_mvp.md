@@ -1,4 +1,4 @@
-# Gmail EMAIL Source MVP Runbook
+# Gmail EMAIL Input MVP Runbook
 
 ## 目标
 

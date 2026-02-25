@@ -116,13 +116,12 @@ export function applyEmailReview(
 
 export function getEvidencePreview(
   config: AppConfig,
-  inputId: number,
   changeId: number,
   side: "before" | "after"
 ): Promise<EvidencePreviewResponse> {
   return apiRequest<EvidencePreviewResponse>(
     config,
-    `/v1/inputs/${inputId}/changes/${changeId}/evidence/${side}/preview`
+    `/v1/changes/${changeId}/evidence/${side}/preview`
   );
 }
 

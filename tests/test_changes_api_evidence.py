@@ -74,13 +74,16 @@ def test_changes_and_snapshots_endpoints_include_evidence(client, initialized_us
     due_change = next(change for change in changes if change["change_type"] == "due_changed")
     assert due_change["before_snapshot_id"] is not None
     assert due_change["after_snapshot_id"] is not None
-    assert due_change["evidence_keys"]["after"]["kind"] == "ics"
-    assert due_change["after_raw_evidence_key"]["store"] == "fs"
+    assert due_change["has_before_evidence"] is True
+    assert due_change["has_after_evidence"] is True
+    assert due_change["before_evidence_kind"] == "ics"
+    assert due_change["after_evidence_kind"] == "ics"
 
     snapshots_response = client.get(f"/v1/inputs/{source_id}/snapshots", headers=headers)
     assert snapshots_response.status_code == 200
     snapshots = snapshots_response.json()
     assert len(snapshots) == 2
-    assert snapshots[0]["raw_evidence_key"]["kind"] == "ics"
+    assert snapshots[0]["has_evidence"] is True
+    assert snapshots[0]["evidence_kind"] == "ics"
 
     get_settings.cache_clear()

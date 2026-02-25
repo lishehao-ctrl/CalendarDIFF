@@ -68,7 +68,6 @@ class MarkEmailViewedResponse(BaseModel):
 
 class ApplyEmailReviewRequest(BaseModel):
     mode: Literal["create_new", "update_existing"] = "create_new"
-    target_input_id: int | None = Field(default=None, ge=1)
     target_event_uid: str | None = Field(default=None, min_length=1)
     applied_due_at: datetime | None = None
     note: str | None = Field(default=None, max_length=512)

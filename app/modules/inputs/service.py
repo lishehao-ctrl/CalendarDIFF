@@ -20,7 +20,7 @@ from app.db.models import (
     SyncTriggerType,
 )
 from app.modules.inputs.schemas import InputCreateRequest
-from app.modules.scheduler.runner import release_source_lock, try_acquire_source_lock
+from app.modules.scheduler.runner import release_input_lock, try_acquire_input_lock
 from app.modules.sync.deadline_engine import CourseDeadlineGroup, ICSDeadlineEngine
 from app.modules.sync.gmail_client import GmailClient
 from app.modules.sync.ics_client import ICSClient
@@ -449,7 +449,7 @@ def get_input_by_id(db: Session, input_id: int) -> Input | None:
 
 def run_manual_input_sync(db: Session, input: Input) -> SyncRunResult:
     settings = get_settings()
-    lock_acquired = try_acquire_source_lock(db, settings.source_lock_namespace, input.id)
+    lock_acquired = try_acquire_input_lock(db, settings.input_lock_namespace, input.id)
     if not lock_acquired:
         record_lock_skipped_run(
             db=db,
@@ -468,7 +468,7 @@ def run_manual_input_sync(db: Session, input: Input) -> SyncRunResult:
             trigger_type=SyncTriggerType.MANUAL,
         )
     finally:
-        release_source_lock(db, settings.source_lock_namespace, input.id)
+        release_input_lock(db, settings.input_lock_namespace, input.id)
 
 
 def preview_input_deadlines(
@@ -479,11 +479,11 @@ def preview_input_deadlines(
     if input.type != InputType.ICS:
         raise RuntimeError("input deadlines preview only supports ICS inputs")
 
-    source_url = decrypt_secret(input.encrypted_url)
+    input_url = decrypt_secret(input.encrypted_url)
     client = ics_client or ICSClient()
     engine = deadline_engine or ICSDeadlineEngine()
 
-    fetched = client.fetch(source_url, input.id)
+    fetched = client.fetch(input_url, input.id)
     if fetched.content is None:
         raise RuntimeError("ICS preview fetch returned empty content")
     courses = engine.parse_and_group(fetched.content)

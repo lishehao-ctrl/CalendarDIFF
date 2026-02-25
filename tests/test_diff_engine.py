@@ -97,8 +97,7 @@ def test_removed_requires_three_consecutive_missing_snapshots(db_session: Sessio
     source = Input(
         user_id=user.id,
         type=InputType.ICS,
-        name="Test",
-        normalized_name="test",
+        identity_key="Test",
         encrypted_url="encrypted",
         interval_minutes=15,
         is_active=True,

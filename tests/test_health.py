@@ -37,8 +37,7 @@ def test_health_reports_global_next_expected_check(client, db_session) -> None:
     source_early = Input(
         user_id=early_user.id,
         type=InputType.ICS,
-        name="Input Early",
-        normalized_name="source early",
+        identity_key="Input Early",
         encrypted_url="encrypted-1",
         interval_minutes=15,
         is_active=True,
@@ -47,8 +46,7 @@ def test_health_reports_global_next_expected_check(client, db_session) -> None:
     source_late = Input(
         user_id=late_user.id,
         type=InputType.ICS,
-        name="Input Late",
-        normalized_name="source late",
+        identity_key="Input Late",
         encrypted_url="encrypted-2",
         interval_minutes=15,
         is_active=True,

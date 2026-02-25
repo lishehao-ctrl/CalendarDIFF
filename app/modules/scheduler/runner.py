@@ -83,7 +83,7 @@ class SchedulerRunner:
             self._status.cumulative_run_executed_count += 1
             due_inputs = list_due_inputs(db)
             for input in due_inputs:
-                if not try_acquire_source_lock(db, settings.source_lock_namespace, input.id):
+                if not try_acquire_input_lock(db, settings.input_lock_namespace, input.id):
                     record_lock_skipped_run(
                         db,
                         input_id=input.id,
@@ -100,7 +100,7 @@ class SchedulerRunner:
                             lock_owner=self._status.instance_id,
                         )
                     except Exception as exc:
-                        _handle_source_sync_exception(
+                        _handle_input_sync_exception(
                             db,
                             input_id=input.id,
                             exc=exc,
@@ -121,11 +121,11 @@ class SchedulerRunner:
                         run_success_count += 1
                         run_synced_inputs += 1
                 finally:
-                    release_source_lock(db, settings.source_lock_namespace, input.id)
+                    release_input_lock(db, settings.input_lock_namespace, input.id)
 
             due_dispatch_result = dispatch_due_notifications(db, now=datetime.now(timezone.utc))
-            if due_dispatch_result.failed_by_source_id:
-                run_notification_failed_count += len(due_dispatch_result.failed_by_source_id)
+            if due_dispatch_result.failed_by_input_id:
+                run_notification_failed_count += len(due_dispatch_result.failed_by_input_id)
 
             digest_lock_acquired = try_acquire_global_lock(db, settings.digest_scheduler_lock_key)
             if digest_lock_acquired:
@@ -145,7 +145,7 @@ class SchedulerRunner:
             logger.error("scheduler tick failed error=%s", safe_error)
         finally:
             if lock_acquired:
-                self._status.last_synced_sources = run_synced_inputs
+                self._status.last_synced_inputs = run_synced_inputs
                 self._status.last_run_success_count = run_success_count
                 self._status.last_run_failed_count = run_failed_count
                 self._status.last_run_notification_failed_count = run_notification_failed_count
@@ -181,25 +181,25 @@ def release_global_lock(db: Session, lock_key: int) -> None:
     db.execute(stmt, {"lock_key": lock_key})
 
 
-def try_acquire_source_lock(db: Session, namespace: int, input_id: int) -> bool:
+def try_acquire_input_lock(db: Session, namespace: int, input_id: int) -> bool:
     _assert_postgres(db)
     stmt = text("SELECT pg_try_advisory_lock(:ns, :input_id)")
     return bool(db.execute(stmt, {"ns": namespace, "input_id": input_id}).scalar_one())
 
 
-def acquire_source_lock_blocking(db: Session, namespace: int, input_id: int) -> None:
+def acquire_input_lock_blocking(db: Session, namespace: int, input_id: int) -> None:
     _assert_postgres(db)
     stmt = text("SELECT pg_advisory_lock(:ns, :input_id)")
     db.execute(stmt, {"ns": namespace, "input_id": input_id})
 
 
-def release_source_lock(db: Session, namespace: int, input_id: int) -> None:
+def release_input_lock(db: Session, namespace: int, input_id: int) -> None:
     _assert_postgres(db)
     stmt = text("SELECT pg_advisory_unlock(:ns, :input_id)")
     db.execute(stmt, {"ns": namespace, "input_id": input_id})
 
 
-def _handle_source_sync_exception(db: Session, *, input_id: int, exc: Exception, lock_owner: str | None) -> None:
+def _handle_input_sync_exception(db: Session, *, input_id: int, exc: Exception, lock_owner: str | None) -> None:
     safe_error = sanitize_log_message(str(exc))
     logger.error("scheduler input sync failed input_id=%s error=%s", input_id, safe_error)
     db.rollback()

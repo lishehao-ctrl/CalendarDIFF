@@ -5,7 +5,8 @@ from urllib.parse import parse_qs, urlparse
 
 from app.core.config import get_settings
 from app.db.models import User
-from app.modules.inputs.service import build_gmail_oauth_start, parse_gmail_oauth_state
+from app.modules.inputs.schemas import InputCreateRequest
+from app.modules.inputs.service import build_gmail_oauth_start, create_ics_input, parse_gmail_oauth_state
 from app.modules.sync.gmail_client import GmailOAuthTokens, GmailProfile
 
 
@@ -17,6 +18,12 @@ def _init_user(client, db_session) -> None:
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
+    db_session.flush()
+    create_ics_input(
+        db_session,
+        user_id=user.id,
+        payload=InputCreateRequest(url="https://example.com/gmail-oauth-onboarded.ics"),
+    )
     db_session.commit()
 
 
@@ -163,8 +170,8 @@ def test_gmail_oauth_callback_creates_email_input_and_redirects(client, db_sessi
     inputs_response = client.get("/v1/inputs", headers={"X-API-Key": "test-api-key"})
     assert inputs_response.status_code == 200
     rows = inputs_response.json()
-    assert len(rows) == 1
-    input_row = rows[0]
+    assert len(rows) == 2
+    input_row = next(row for row in rows if row["type"] == "email")
     assert input_row["type"] == "email"
     assert input_row["provider"] == "gmail"
     assert input_row["gmail_label"] == "INBOX"

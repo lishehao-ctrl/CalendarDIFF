@@ -26,9 +26,16 @@ This file tracks what has been removed from runtime surface after the core simpl
    - `sync_source -> sync_input`
    - `_sync_email_source -> _sync_email_input`
    - `_handle_source_error -> _handle_input_error`
+7. Legacy evidence endpoints:
+   - removed `GET /v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/preview`
+   - removed `GET /v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/download`
+   - kept `GET /v1/changes/{change_id}/evidence/{side}/preview` as the only preview path
+8. Scheduler lock config naming:
+   - removed `source_lock_namespace`
+   - replaced with `input_lock_namespace`
 
 ## Guardrails
 
 1. Runtime code uses `/v1/emails/*` as the only email review API.
-2. Runtime code has no `review_candidates`, `legacy_code`, or `source_busy` symbols.
+2. Runtime code has no `review_candidates`, `legacy_code`, `source_busy`, or `source_lock_namespace` symbols.
 3. Initialization path is onboarding-first (`POST /v1/onboarding/register`).

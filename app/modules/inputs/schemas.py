@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
-
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 
@@ -143,21 +141,3 @@ class InputOverridesResponse(BaseModel):
     input_id: int
     courses: list[InputCourseOverrideResponse]
     tasks: list[InputTaskOverrideResponse]
-
-
-class EvidencePreviewEvent(BaseModel):
-    uid: str | None
-    summary: str | None
-    dtstart: str | None
-    dtend: str | None
-    location: str | None
-    description: str | None
-
-
-class EvidencePreviewResponse(BaseModel):
-    side: Literal["before", "after"]
-    content_type: str
-    truncated: bool
-    filename: str
-    event_count: int
-    events: list[EvidencePreviewEvent]

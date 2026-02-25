@@ -17,8 +17,7 @@ def test_dual_scheduler_runners_share_global_lock(db_session, db_session_factory
     source = Input(
         user_id=user.id,
         type=InputType.ICS,
-        name="multi-instance",
-        normalized_name="multi-instance",
+        identity_key="multi-instance",
         encrypted_url="encrypted",
         interval_minutes=15,
         is_active=True,

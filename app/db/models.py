@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import Enum
-from uuid import uuid4
 
 from sqlalchemy import (
     BigInteger,
@@ -134,35 +133,12 @@ class Input(Base):
     task_overrides: Mapped[list[TaskOverride]] = relationship(back_populates="input", cascade="all, delete-orphan")
     sync_runs: Mapped[list[SyncRun]] = relationship(back_populates="input", cascade="all, delete-orphan")
 
-    # Keep constructor backward-compatible while removing persisted name fields.
-    def __init__(self, **kwargs):  # type: ignore[no-untyped-def]
-        legacy_name = kwargs.pop("name", None)
-        kwargs.pop("normalized_name", None)
-        identity_key = kwargs.get("identity_key")
-        if not isinstance(identity_key, str) or not identity_key.strip():
-            kwargs["identity_key"] = f"legacy:{uuid4().hex}"
-        super().__init__(**kwargs)
-        if isinstance(legacy_name, str) and legacy_name.strip():
-            self._legacy_name = legacy_name.strip()
-
     @property
     def display_label(self) -> str:
         if self.type == InputType.EMAIL:
             account = (self.gmail_account_email or "").strip()
             return f"Gmail · {account}" if account else f"Gmail · input-{self.id}"
         return "Calendar · Primary"
-
-    # Compatibility alias for still-migrating call sites/tests.
-    @property
-    def name(self) -> str:
-        legacy_name = getattr(self, "_legacy_name", None)
-        if isinstance(legacy_name, str) and legacy_name.strip():
-            return legacy_name
-        return self.display_label
-
-    @name.setter
-    def name(self, value: str) -> None:
-        self._legacy_name = value
 
 
 class CourseOverride(Base):

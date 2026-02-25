@@ -40,7 +40,17 @@ def list_snapshots(
             retrieved_at=row.retrieved_at,
             content_hash=row.content_hash,
             event_count=row.event_count,
-            raw_evidence_key=row.raw_evidence_key,
+            has_evidence=isinstance(row.raw_evidence_key, dict),
+            evidence_kind=_extract_evidence_kind(row.raw_evidence_key),
         )
         for row in rows
     ]
+
+
+def _extract_evidence_kind(raw_evidence_key: object) -> str | None:
+    if not isinstance(raw_evidence_key, dict):
+        return None
+    value = raw_evidence_key.get("kind")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None

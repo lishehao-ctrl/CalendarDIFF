@@ -38,7 +38,7 @@ def test_manual_sync_endpoint_returns_sync_summary(client, initialized_user, db_
     }
 
 
-def test_manual_sync_endpoint_uses_non_blocking_source_lock(client, initialized_user, db_session, monkeypatch) -> None:
+def test_manual_sync_endpoint_uses_non_blocking_input_lock(client, initialized_user, db_session, monkeypatch) -> None:
     headers = {"X-API-Key": "test-api-key"}
     source_id = create_ics_input_for_user(
         db_session,
@@ -48,8 +48,8 @@ def test_manual_sync_endpoint_uses_non_blocking_source_lock(client, initialized_
 
     calls: list[tuple[int, int]] = []
 
-    def fake_try_acquire_source_lock(db, namespace: int, locked_source_id: int) -> bool:  # noqa: ANN001
-        calls.append((namespace, locked_source_id))
+    def fake_try_acquire_input_lock(db, namespace: int, locked_input_id: int) -> bool:  # noqa: ANN001
+        calls.append((namespace, locked_input_id))
         return True
 
     def fake_sync_input(*args, **kwargs):
@@ -62,8 +62,8 @@ def test_manual_sync_endpoint_uses_non_blocking_source_lock(client, initialized_
             is_baseline_sync=False,
         )
 
-    monkeypatch.setattr("app.modules.inputs.service.try_acquire_source_lock", fake_try_acquire_source_lock)
-    monkeypatch.setattr("app.modules.inputs.service.release_source_lock", lambda *args, **kwargs: None)
+    monkeypatch.setattr("app.modules.inputs.service.try_acquire_input_lock", fake_try_acquire_input_lock)
+    monkeypatch.setattr("app.modules.inputs.service.release_input_lock", lambda *args, **kwargs: None)
     monkeypatch.setattr("app.modules.inputs.service.sync_input", fake_sync_input)
 
     response = client.post(f"/v1/inputs/{source_id}/sync", headers=headers)
@@ -85,7 +85,7 @@ def test_manual_sync_returns_busy_and_records_lock_skipped_run(client, initializ
         url="https://example.com/feed.ics",
     )
 
-    monkeypatch.setattr("app.modules.inputs.service.try_acquire_source_lock", lambda *args, **kwargs: False)
+    monkeypatch.setattr("app.modules.inputs.service.try_acquire_input_lock", lambda *args, **kwargs: False)
 
     response = client.post(f"/v1/inputs/{source_id}/sync", headers=headers)
     assert response.status_code == 409

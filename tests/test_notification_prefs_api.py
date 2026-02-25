@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.db.models import User
+from tests.helpers_inputs import create_ics_input_for_user
 
 
 def _init_user(client, db_session) -> None:
@@ -13,6 +14,12 @@ def _init_user(client, db_session) -> None:
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
+    db_session.flush()
+    create_ics_input_for_user(
+        db_session,
+        user_id=user.id,
+        url="https://example.com/notification-prefs.ics",
+    )
     db_session.commit()
 
 

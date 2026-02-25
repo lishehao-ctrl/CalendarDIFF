@@ -332,7 +332,7 @@ Important:
 11. Change and snapshot detail routes are input-scoped:
     - `GET /v1/inputs/{input_id}/changes`
     - `PATCH /v1/inputs/{input_id}/changes/{change_id}/viewed`
-    - `GET /v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/preview`
+    - `GET /v1/changes/{change_id}/evidence/{side}/preview`
     - `GET /v1/inputs/{input_id}/snapshots`
 12. Before onboarding is ready, protected endpoints return:
     - status `409`
@@ -345,5 +345,5 @@ Important:
 - Legacy migration archive notes: `docs/legacy_migrations/README.md`
 - Demo acceptance: `docs/demo_ui_acceptance.md`
 - Manual email test: `docs/manual_email_test.md`
-- Gmail EMAIL source runbook: `docs/runbooks/gmail_email_source_mvp.md`
+- Gmail EMAIL input runbook: `docs/runbooks/gmail_email_input_mvp.md`
 - Scheduler multi-instance runbook: `docs/runbooks/scheduler_multi_instance_acceptance.md`

@@ -140,7 +140,6 @@ def post_apply_email_review(
             user_id=user_id,
             email_id=email_id,
             mode=payload.mode,
-            target_input_id=payload.target_input_id,
             target_event_uid=payload.target_event_uid,
             applied_due_at=payload.applied_due_at,
             note=payload.note,

@@ -98,7 +98,7 @@ def list_due_inputs(db: Session, now: datetime | None = None) -> list[Input]:
     ).all()
 
     cooldown_start = current - timedelta(seconds=LOCK_SKIPPED_COOLDOWN_SECONDS)
-    blocked_source_ids = {
+    blocked_input_ids = {
         input_id
         for input_id, run_status, trigger_type, started_at in latest_runs
         if run_status == SyncRunStatus.LOCK_SKIPPED
@@ -106,10 +106,10 @@ def list_due_inputs(db: Session, now: datetime | None = None) -> list[Input]:
         and started_at is not None
         and started_at >= cooldown_start
     }
-    if not blocked_source_ids:
+    if not blocked_input_ids:
         return due_inputs
 
-    return [input for input in due_inputs if input.id not in blocked_source_ids]
+    return [input for input in due_inputs if input.id not in blocked_input_ids]
 
 
 def record_lock_skipped_run(
@@ -179,9 +179,9 @@ def sync_input(
     parser = ics_parser or ICSParser()
 
     try:
-        source_url = decrypt_secret(input.encrypted_url)
+        input_url = decrypt_secret(input.encrypted_url)
         fetched = client.fetch(
-            source_url,
+            input_url,
             input.id,
             if_none_match=input.etag,
             if_modified_since=input.last_modified,
@@ -189,7 +189,7 @@ def sync_input(
 
         if fetched.not_modified:
             finished_at = datetime.now(timezone.utc)
-            _update_source_pull_cache(input, fetched, last_content_hash=input.last_content_hash)
+            _update_input_pull_cache(input, fetched, last_content_hash=input.last_content_hash)
             input.last_checked_at = finished_at
             input.last_ok_at = finished_at
             input.last_error = None
@@ -226,7 +226,7 @@ def sync_input(
         content_hash = _compute_normalized_content_hash(fetched.content)
         if input.last_content_hash is not None and input.last_content_hash == content_hash:
             finished_at = datetime.now(timezone.utc)
-            _update_source_pull_cache(input, fetched, last_content_hash=content_hash)
+            _update_input_pull_cache(input, fetched, last_content_hash=content_hash)
             input.last_checked_at = finished_at
             input.last_ok_at = finished_at
             input.last_error = None
@@ -355,7 +355,7 @@ def sync_input(
             input.last_checked_at = finished_at
             input.last_ok_at = finished_at
             input.last_error = None
-            _update_source_pull_cache(input, fetched, last_content_hash=content_hash)
+            _update_input_pull_cache(input, fetched, last_content_hash=content_hash)
             run = _build_sync_run(
                 input_id=input.id,
                 trigger_type=trigger_type,
@@ -465,7 +465,7 @@ def sync_input(
         finished_at = datetime.now(timezone.utc)
         input.last_checked_at = finished_at
         input.last_ok_at = finished_at
-        _update_source_pull_cache(input, fetched, last_content_hash=content_hash)
+        _update_input_pull_cache(input, fetched, last_content_hash=content_hash)
 
         run_status = SyncRunStatus.NO_CHANGE
         error_code: str | None = None
@@ -755,7 +755,7 @@ def _sync_email_input(
             )
         except Exception as exc:
             logger.error(
-                "failed to create review candidates input_id=%s error=%s",
+                "failed to create email review queue items input_id=%s error=%s",
                 input.id,
                 _sanitize_sync_error(str(exc)),
             )
@@ -906,8 +906,8 @@ def _handle_input_error(
         lock_owner=lock_owner,
     )
 
-    source_in_db = db.get(Input, input.id)
-    if source_in_db is None:
+    input_in_db = db.get(Input, input.id)
+    if input_in_db is None:
         db.add(run)
         db.commit()
         db.refresh(run)
@@ -926,9 +926,9 @@ def _handle_input_error(
             trigger_type=trigger_type,
         )
 
-    source_in_db.last_checked_at = finished_at
-    source_in_db.last_error_at = finished_at
-    source_in_db.last_error = safe_error
+    input_in_db.last_checked_at = finished_at
+    input_in_db.last_error_at = finished_at
+    input_in_db.last_error = safe_error
     db.add(run)
     db.commit()
     db.refresh(run)
@@ -1117,9 +1117,9 @@ def _enqueue_and_maybe_dispatch_notifications(
         input_id=input.id,
         notifier=notifier,
     )
-    if input.id in due_result.failed_by_source_id:
-        return False, due_result.failed_by_source_id[input.id], enqueue_result.dedup_skipped_count, "failed"
-    if due_result.sent_source_count > 0:
+    if input.id in due_result.failed_by_input_id:
+        return False, due_result.failed_by_input_id[input.id], enqueue_result.dedup_skipped_count, "failed"
+    if due_result.sent_input_count > 0:
         return True, None, enqueue_result.dedup_skipped_count, "sent"
     return False, None, enqueue_result.dedup_skipped_count, "queued"
 
@@ -1216,7 +1216,7 @@ def _normalize_ics_bytes(content: bytes) -> bytes:
     return joined.encode("utf-8")
 
 
-def _update_source_pull_cache(input: Input, fetched: FetchResult, *, last_content_hash: str | None) -> None:
+def _update_input_pull_cache(input: Input, fetched: FetchResult, *, last_content_hash: str | None) -> None:
     if fetched.etag is not None:
         input.etag = fetched.etag
     if fetched.last_modified is not None:

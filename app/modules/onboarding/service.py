@@ -3,15 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Input, InputType, SyncRunStatus, SyncTriggerType
+from app.db.models import Input, SyncRunStatus, SyncTriggerType
 from app.modules.inputs.schemas import InputCreateRequest
 from app.modules.inputs.service import create_ics_input
 from app.modules.notify.interface import ChangeDigestItem, Notifier, SendResult
 from app.modules.sync.service import SyncRunResult, sync_input
-from app.modules.users.service import create_or_initialize_user, get_registered_user
+from app.modules.users.service import create_or_initialize_user, get_registered_user, get_single_ics_input_for_user
 
 
 BASELINE_FAILURE_STATUSES = {
@@ -56,17 +55,12 @@ def get_onboarding_status(db: Session) -> OnboardingStatus:
             last_error=None,
         )
 
-    first_ics_input = db.scalar(
-        select(Input)
-        .where(Input.user_id == user.id, Input.type == InputType.ICS)
-        .order_by(Input.id.asc())
-        .limit(1)
-    )
+    first_ics_input = get_single_ics_input_for_user(db, user_id=user.id)
 
     if first_ics_input is None:
         return OnboardingStatus(
             stage="needs_ics",
-            message="Connect first ICS calendar source.",
+            message="Connect first ICS calendar input.",
             registered_user_id=user.id,
             first_input_id=None,
             last_error=None,

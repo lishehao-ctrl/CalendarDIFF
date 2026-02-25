@@ -329,7 +329,7 @@ def test_postgres_alembic_upgrade_head_bootstraps_current_schema(test_database_u
         assert "ix_email_messages_user_received_at_desc" in email_messages_indexes
         assert "uq_notifications_idempotency_key" in notification_constraints
         assert "uq_notifications_change_channel" in notification_constraints
-        assert revision == "0011_single_ics_per_user"
+        assert revision == "0012_ready_requires_single_ics"
     finally:
         _restore_runtime_env(runtime_env)
         _reset_runtime_state()

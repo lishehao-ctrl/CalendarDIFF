@@ -33,9 +33,9 @@ class NotificationDispatchResult:
 
 @dataclass(frozen=True)
 class DueDispatchResult:
-    attempted_source_count: int
-    sent_source_count: int
-    failed_by_source_id: dict[int, str]
+    attempted_input_count: int
+    sent_input_count: int
+    failed_by_input_id: dict[int, str]
 
 
 def enqueue_notifications_for_changes(
@@ -145,23 +145,23 @@ def dispatch_due_notifications(
 
     rows = db.execute(stmt).all()
     if not rows:
-        return DueDispatchResult(attempted_source_count=0, sent_source_count=0, failed_by_source_id={})
+        return DueDispatchResult(attempted_input_count=0, sent_input_count=0, failed_by_input_id={})
 
     grouped: OrderedDict[int, list[tuple[Notification, Change, Input]]] = OrderedDict()
     for notification, change, input in rows:
         grouped.setdefault(input.id, []).append((notification, change, input))
 
     notifier_impl = notifier or SMTPEmailNotifier()
-    failed_by_source_id: dict[int, str] = {}
-    sent_source_count = 0
+    failed_by_input_id: dict[int, str] = {}
+    sent_input_count = 0
 
-    for current_source_id, source_rows in grouped.items():
-        input = source_rows[0][2]
+    for current_input_id, input_rows in grouped.items():
+        input = input_rows[0][2]
         user_notify_email = input.user.notify_email if input.user is not None else None
         user_email = input.user.email if input.user is not None else None
         to_email = user_notify_email or user_email or get_settings().default_notify_email
-        notifications = [item[0] for item in source_rows]
-        changes = [item[1] for item in source_rows]
+        notifications = [item[0] for item in input_rows]
+        changes = [item[1] for item in input_rows]
 
         if not to_email:
             error_message = "No notification recipient configured"
@@ -169,7 +169,7 @@ def dispatch_due_notifications(
                 notification.status = NotificationStatus.FAILED
                 notification.error = error_message
                 notification.sent_at = None
-            failed_by_source_id[current_source_id] = error_message
+            failed_by_input_id[current_input_id] = error_message
             continue
 
         digest_items = [_to_digest_item(change) for change in changes]
@@ -180,7 +180,7 @@ def dispatch_due_notifications(
             digest_items,
         )
         if send_result.success:
-            sent_source_count += 1
+            sent_input_count += 1
             sent_at = datetime.now(timezone.utc)
             for notification in notifications:
                 notification.status = NotificationStatus.SENT
@@ -188,16 +188,16 @@ def dispatch_due_notifications(
                 notification.sent_at = sent_at
         else:
             error_message = send_result.error or "unknown send failure"
-            failed_by_source_id[current_source_id] = error_message
+            failed_by_input_id[current_input_id] = error_message
             for notification in notifications:
                 notification.status = NotificationStatus.FAILED
                 notification.error = error_message
                 notification.sent_at = None
 
     return DueDispatchResult(
-        attempted_source_count=len(grouped),
-        sent_source_count=sent_source_count,
-        failed_by_source_id=failed_by_source_id,
+        attempted_input_count=len(grouped),
+        sent_input_count=sent_input_count,
+        failed_by_input_id=failed_by_input_id,
     )
 
 
@@ -231,15 +231,15 @@ def dispatch_notifications_for_changes(
         input_id=input.id,
         notifier=notifier,
     )
-    source_error = due_result.failed_by_source_id.get(input.id)
-    source_sent = input.id not in due_result.failed_by_source_id and due_result.sent_source_count > 0
+    input_error = due_result.failed_by_input_id.get(input.id)
+    input_sent = input.id not in due_result.failed_by_input_id and due_result.sent_input_count > 0
     return NotificationDispatchResult(
-        email_sent=source_sent,
-        error=source_error,
+        email_sent=input_sent,
+        error=input_error,
         dedup_skipped_count=enqueue_result.dedup_skipped_count,
         attempted_count=enqueue_result.attempted_count,
         enqueued_count=enqueue_result.enqueued_count,
-        notification_state="sent" if source_sent else ("failed" if source_error else "queued"),
+        notification_state="sent" if input_sent else ("failed" if input_error else "queued"),
     )
 
 

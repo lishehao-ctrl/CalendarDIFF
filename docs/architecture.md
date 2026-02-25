@@ -104,7 +104,7 @@ Responsibilities:
 
 ## 4) Schema Baseline
 
-Active migration head: `0010_drop_review_candidates`.
+Active migration head: `0012_ready_requires_single_ics`.
 
 Notable state:
 
@@ -183,6 +183,8 @@ Removed from runtime surface:
 1. `/v1/review_candidates*`
 2. `/v1/user/terms*`
 3. `POST /v1/user` (initialization now only via onboarding)
+4. `GET /v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/preview`
+5. `GET /v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/download`
 
 ### 6.3 Email Review APIs
 
@@ -200,6 +202,14 @@ Manual sync contention returns `409` with:
 1. `detail.code = "input_busy"`
 2. `detail.status = "LOCK_SKIPPED"`
 3. `detail.retry_after_seconds`
+
+### 6.5 Evidence Preview Contract
+
+Use change-scoped preview endpoint:
+
+1. `GET /v1/changes/{change_id}/evidence/{side}/preview`
+2. `side = before|after`
+3. malformed ICS preview returns `422`, `detail.code = "evidence_parse_failed"`
 
 ## 7) Locking and Scheduling
 

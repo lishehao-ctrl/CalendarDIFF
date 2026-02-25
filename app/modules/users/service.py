@@ -5,7 +5,7 @@ import re
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import User
+from app.db.models import Input, InputType, User
 
 EMAIL_PATTERN = re.compile(r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$")
 USER_NOT_INITIALIZED_MESSAGE = "Initialize user via POST /v1/onboarding/register"
@@ -60,6 +60,8 @@ def get_onboarded_user(db: Session) -> User | None:
         return None
     if user.onboarding_completed_at is None:
         return None
+    if get_single_ics_input_for_user(db, user_id=user.id) is None:
+        return None
     return user
 
 
@@ -69,7 +71,29 @@ def require_onboarded_user(db: Session) -> User:
         raise UserNotInitializedError(USER_NOT_INITIALIZED_MESSAGE)
     if user.onboarding_completed_at is None:
         raise UserOnboardingIncompleteError(USER_ONBOARDING_INCOMPLETE_MESSAGE)
+    if get_single_ics_input_for_user(db, user_id=user.id) is None:
+        raise UserOnboardingIncompleteError(USER_ONBOARDING_INCOMPLETE_MESSAGE)
     return user
+
+
+def get_single_ics_input_for_user(
+    db: Session,
+    *,
+    user_id: int,
+    require_active: bool = False,
+    for_update: bool = False,
+) -> Input | None:
+    stmt = select(Input).where(Input.user_id == user_id, Input.type == InputType.ICS)
+    if require_active:
+        stmt = stmt.where(Input.is_active.is_(True))
+    stmt = stmt.order_by(Input.id.asc()).limit(2)
+    if for_update:
+        stmt = stmt.with_for_update()
+
+    rows = db.scalars(stmt).all()
+    if len(rows) != 1:
+        return None
+    return rows[0]
 
 
 def create_or_initialize_user(db: Session, *, notify_email: str) -> tuple[User, bool]:

@@ -155,11 +155,11 @@ def test_changes_feed_orders_email_before_calendar_and_exposes_notification_stat
     assert "user_id" not in rows[0]
     assert "user_notify_email" not in rows[0]
     assert rows[0]["change_summary"]["old"]["value_time"] is None
-    assert rows[0]["change_summary"]["old"]["source_observed_at"] is None
+    assert rows[0]["change_summary"]["old"]["input_observed_at"] is None
     assert _parse_utc(rows[0]["change_summary"]["new"]["value_time"]) == datetime(2026, 3, 1, 15, 30, tzinfo=timezone.utc)
-    assert rows[0]["change_summary"]["new"]["source_type"] == "email"
-    assert rows[0]["change_summary"]["new"]["source_label"] == "Gmail · student-a@school.edu"
-    assert _parse_utc(rows[0]["change_summary"]["new"]["source_observed_at"]) == email_snapshot.retrieved_at
+    assert rows[0]["change_summary"]["new"]["input_type"] == "email"
+    assert rows[0]["change_summary"]["new"]["input_label"] == "Gmail · student-a@school.edu"
+    assert _parse_utc(rows[0]["change_summary"]["new"]["input_observed_at"]) == email_snapshot.retrieved_at
 
     assert rows[1]["input_type"] == "ics"
     assert rows[1]["priority_rank"] == 1
@@ -170,15 +170,15 @@ def test_changes_feed_orders_email_before_calendar_and_exposes_notification_stat
     assert "user_notify_email" not in rows[1]
     assert _parse_utc(rows[1]["change_summary"]["old"]["value_time"]) == datetime(2026, 3, 2, 18, 0, tzinfo=timezone.utc)
     assert _parse_utc(rows[1]["change_summary"]["new"]["value_time"]) == datetime(2026, 3, 2, 20, 0, tzinfo=timezone.utc)
-    assert rows[1]["change_summary"]["old"]["source_type"] == "ics"
-    assert rows[1]["change_summary"]["new"]["source_type"] == "ics"
-    assert rows[1]["change_summary"]["old"]["source_label"] == ics_source.display_label
-    assert rows[1]["change_summary"]["new"]["source_label"] == ics_source.display_label
-    assert _parse_utc(rows[1]["change_summary"]["old"]["source_observed_at"]) == ics_before_snapshot.retrieved_at
-    assert _parse_utc(rows[1]["change_summary"]["new"]["source_observed_at"]) == ics_after_snapshot.retrieved_at
+    assert rows[1]["change_summary"]["old"]["input_type"] == "ics"
+    assert rows[1]["change_summary"]["new"]["input_type"] == "ics"
+    assert rows[1]["change_summary"]["old"]["input_label"] == ics_source.display_label
+    assert rows[1]["change_summary"]["new"]["input_label"] == ics_source.display_label
+    assert _parse_utc(rows[1]["change_summary"]["old"]["input_observed_at"]) == ics_before_snapshot.retrieved_at
+    assert _parse_utc(rows[1]["change_summary"]["new"]["input_observed_at"]) == ics_after_snapshot.retrieved_at
 
 
-def test_changes_feed_source_type_filter(client, db_session) -> None:
+def test_changes_feed_input_type_filter(client, db_session) -> None:
     user = User(email="owner@example.com", notify_email="student-a@example.com", onboarding_completed_at=datetime.now(timezone.utc))
     db_session.add(user)
     db_session.flush()

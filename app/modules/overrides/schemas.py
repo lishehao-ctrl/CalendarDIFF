@@ -32,7 +32,7 @@ class TaskOverrideResponse(BaseModel):
     updated_at: datetime
 
 
-class SourceOverridesResponse(BaseModel):
+class InputOverridesResponse(BaseModel):
     input_id: int
     courses: list[CourseOverrideResponse]
     tasks: list[TaskOverrideResponse]

@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     app_base_url: str | None = None
 
     global_scheduler_lock_key: int = Field(default=947123)
-    source_lock_namespace: int = Field(default=947124)
+    input_lock_namespace: int = Field(default=947124)
     digest_scheduler_lock_key: int = Field(default=947125)
 
     default_changes_limit: int = 50

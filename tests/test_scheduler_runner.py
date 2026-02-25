@@ -20,8 +20,7 @@ def test_list_due_inputs_respects_interval_minutes(db_session) -> None:
     due_never_checked = Input(
         user_id=user_never.id,
         type=InputType.ICS,
-        name="due-never",
-        normalized_name="due-never",
+        identity_key="due-never",
         encrypted_url="encrypted-1",
         interval_minutes=15,
         is_active=True,
@@ -30,8 +29,7 @@ def test_list_due_inputs_respects_interval_minutes(db_session) -> None:
     not_due_yet = Input(
         user_id=user_not_due.id,
         type=InputType.ICS,
-        name="not-due",
-        normalized_name="not-due",
+        identity_key="not-due",
         encrypted_url="encrypted-2",
         interval_minutes=15,
         is_active=True,
@@ -40,8 +38,7 @@ def test_list_due_inputs_respects_interval_minutes(db_session) -> None:
     due_by_elapsed_time = Input(
         user_id=user_elapsed.id,
         type=InputType.ICS,
-        name="due-elapsed",
-        normalized_name="due-elapsed",
+        identity_key="due-elapsed",
         encrypted_url="encrypted-3",
         interval_minutes=15,
         is_active=True,
@@ -68,8 +65,7 @@ def test_list_due_inputs_skips_recent_scheduler_lock_skipped_source(db_session) 
     source = Input(
         user_id=user.id,
         type=InputType.ICS,
-        name="locked-recently",
-        normalized_name="locked-recently",
+        identity_key="locked-recently",
         encrypted_url="encrypted-locked",
         interval_minutes=15,
         is_active=True,
@@ -127,8 +123,7 @@ def test_scheduler_tick_tracks_success_failure_and_notification_failure(db_sessi
     source_sync_failed = Input(
         user_id=user_sync_failed.id,
         type=InputType.ICS,
-        name="sync-failed",
-        normalized_name="sync-failed",
+        identity_key="sync-failed",
         encrypted_url="encrypted-1",
         interval_minutes=15,
         is_active=True,
@@ -136,8 +131,7 @@ def test_scheduler_tick_tracks_success_failure_and_notification_failure(db_sessi
     source_notification_failed = Input(
         user_id=user_notification_failed.id,
         type=InputType.ICS,
-        name="notification-failed",
-        normalized_name="notification-failed",
+        identity_key="notification-failed",
         encrypted_url="encrypted-2",
         interval_minutes=15,
         is_active=True,
@@ -145,8 +139,7 @@ def test_scheduler_tick_tracks_success_failure_and_notification_failure(db_sessi
     source_success = Input(
         user_id=user_success.id,
         type=InputType.ICS,
-        name="success",
-        normalized_name="success",
+        identity_key="success",
         encrypted_url="encrypted-3",
         interval_minutes=15,
         is_active=True,
@@ -161,8 +154,8 @@ def test_scheduler_tick_tracks_success_failure_and_notification_failure(db_sessi
 
     monkeypatch.setattr("app.modules.scheduler.runner.try_acquire_global_lock", lambda db, key: True)
     monkeypatch.setattr("app.modules.scheduler.runner.release_global_lock", lambda db, key: None)
-    monkeypatch.setattr("app.modules.scheduler.runner.try_acquire_source_lock", lambda db, ns, source_id: True)
-    monkeypatch.setattr("app.modules.scheduler.runner.release_source_lock", lambda db, ns, source_id: None)
+    monkeypatch.setattr("app.modules.scheduler.runner.try_acquire_input_lock", lambda db, ns, source_id: True)
+    monkeypatch.setattr("app.modules.scheduler.runner.release_input_lock", lambda db, ns, source_id: None)
     monkeypatch.setattr("app.modules.scheduler.runner.list_due_inputs", lambda db: due_sources)
 
     def fake_sync_input(db, source, **kwargs):  # noqa: ANN001, ARG001
@@ -204,7 +197,7 @@ def test_scheduler_tick_tracks_success_failure_and_notification_failure(db_sessi
     assert status.last_run_success_count == 1
     assert status.last_run_failed_count == 1
     assert status.last_run_notification_failed_count == 1
-    assert status.last_synced_sources == 2
+    assert status.last_synced_inputs == 2
     assert status.cumulative_success_count == 1
     assert status.cumulative_failed_count == 1
     assert status.cumulative_notification_failed_count == 1
@@ -221,7 +214,7 @@ def test_scheduler_tick_lock_skip_increments_skip_counter(db_session_factory, mo
         last_run_success_count=7,
         last_run_failed_count=2,
         last_run_notification_failed_count=1,
-        last_synced_sources=8,
+        last_synced_inputs=8,
     )
     runner = SchedulerRunner(db_session_factory, status)
 
@@ -236,7 +229,7 @@ def test_scheduler_tick_lock_skip_increments_skip_counter(db_session_factory, mo
     assert status.last_run_success_count == 7
     assert status.last_run_failed_count == 2
     assert status.last_run_notification_failed_count == 1
-    assert status.last_synced_sources == 8
+    assert status.last_synced_inputs == 8
 
 
 def test_scheduler_tick_records_lock_skipped_run_for_source_conflict(db_session, db_session_factory, monkeypatch) -> None:
@@ -247,8 +240,7 @@ def test_scheduler_tick_records_lock_skipped_run_for_source_conflict(db_session,
     source = Input(
         user_id=user.id,
         type=InputType.ICS,
-        name="locked-source",
-        normalized_name="locked-source",
+        identity_key="locked-source",
         encrypted_url="encrypted-locked",
         interval_minutes=15,
         is_active=True,
@@ -262,7 +254,7 @@ def test_scheduler_tick_records_lock_skipped_run_for_source_conflict(db_session,
     monkeypatch.setattr("app.modules.scheduler.runner.try_acquire_global_lock", lambda db, key: True)
     monkeypatch.setattr("app.modules.scheduler.runner.release_global_lock", lambda db, key: None)
     monkeypatch.setattr("app.modules.scheduler.runner.list_due_inputs", lambda db: [source])
-    monkeypatch.setattr("app.modules.scheduler.runner.try_acquire_source_lock", lambda db, ns, source_id: False)
+    monkeypatch.setattr("app.modules.scheduler.runner.try_acquire_input_lock", lambda db, ns, source_id: False)
 
     runner._tick()
 
@@ -285,8 +277,7 @@ def test_scheduler_tick_isolates_unexpected_source_exception(db_session, db_sess
     source_broken = Input(
         user_id=user_broken.id,
         type=InputType.ICS,
-        name="broken",
-        normalized_name="broken",
+        identity_key="broken",
         encrypted_url="encrypted-broken",
         interval_minutes=15,
         is_active=True,
@@ -294,8 +285,7 @@ def test_scheduler_tick_isolates_unexpected_source_exception(db_session, db_sess
     source_success = Input(
         user_id=user_success.id,
         type=InputType.ICS,
-        name="success",
-        normalized_name="success",
+        identity_key="success",
         encrypted_url="encrypted-success",
         interval_minutes=15,
         is_active=True,
@@ -310,8 +300,8 @@ def test_scheduler_tick_isolates_unexpected_source_exception(db_session, db_sess
 
     monkeypatch.setattr("app.modules.scheduler.runner.try_acquire_global_lock", lambda db, key: True)
     monkeypatch.setattr("app.modules.scheduler.runner.release_global_lock", lambda db, key: None)
-    monkeypatch.setattr("app.modules.scheduler.runner.try_acquire_source_lock", lambda db, ns, source_id: True)
-    monkeypatch.setattr("app.modules.scheduler.runner.release_source_lock", lambda db, ns, source_id: None)
+    monkeypatch.setattr("app.modules.scheduler.runner.try_acquire_input_lock", lambda db, ns, source_id: True)
+    monkeypatch.setattr("app.modules.scheduler.runner.release_input_lock", lambda db, ns, source_id: None)
     monkeypatch.setattr("app.modules.scheduler.runner.list_due_inputs", lambda db: due_sources)
 
     def fake_sync_input(db, source, **kwargs):  # noqa: ANN001, ARG001
@@ -331,7 +321,7 @@ def test_scheduler_tick_isolates_unexpected_source_exception(db_session, db_sess
 
     assert status.last_run_success_count == 1
     assert status.last_run_failed_count == 1
-    assert status.last_synced_sources == 1
+    assert status.last_synced_inputs == 1
 
     db_session.expire_all()
     broken = db_session.get(Input, source_broken.id)
@@ -347,8 +337,7 @@ def test_scheduler_tick_cleans_up_old_sync_runs_once_per_day(db_session, db_sess
     source = Input(
         user_id=user.id,
         type=InputType.ICS,
-        name="cleanup-source",
-        normalized_name="cleanup-source",
+        identity_key="cleanup-source",
         encrypted_url="encrypted-cleanup",
         interval_minutes=15,
         is_active=True,

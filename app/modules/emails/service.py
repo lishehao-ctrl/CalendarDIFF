@@ -29,6 +29,7 @@ from app.modules.notify.prefs_service import get_or_create_notification_prefs
 from app.modules.notify.service import enqueue_notifications_for_changes
 from app.modules.sync.email_rules import ACTIONABLE_EVENT_TYPES, RULE_VERSION, evaluate_email_rule
 from app.modules.sync.gmail_client import GmailMessageMetadata
+from app.modules.users.service import get_single_ics_input_for_user
 
 
 class EmailQueueItemNotFoundError(RuntimeError):
@@ -277,7 +278,6 @@ def apply_email_review(
     user_id: int,
     email_id: str,
     mode: str,
-    target_input_id: int | None,
     target_event_uid: str | None,
     applied_due_at: datetime | None,
     note: str | None,
@@ -335,7 +335,6 @@ def apply_email_review(
             user_id=user_id,
             message=message,
             route_row=route_row,
-            target_input_id=target_input_id,
             target_event_uid=target_event_uid,
             note=note,
             due_at=due_at,
@@ -410,7 +409,7 @@ def _apply_email_create_new(
         "due_at": event.start_at_utc.isoformat(),
         "where": where_text,
         "email_id": message.email_id,
-        "source_kind": "email_review_apply",
+        "input_kind": "email_review_apply",
     }
     change = Change(
         input_id=target_input.id,
@@ -422,7 +421,7 @@ def _apply_email_create_new(
         delta_seconds=None,
         before_snapshot_id=previous_snapshot.id if previous_snapshot is not None else None,
         after_snapshot_id=snapshot.id,
-        evidence_keys={"after": evidence_ref, "source": {"kind": "email", "email_id": message.email_id}},
+        evidence_keys={"after": evidence_ref, "input_ref": {"kind": "email", "email_id": message.email_id}},
     )
     db.add(change)
     db.flush()
@@ -438,28 +437,17 @@ def _apply_email_update_existing(
     user_id: int,
     message: EmailMessage,
     route_row: EmailRoute,
-    target_input_id: int | None,
     target_event_uid: str | None,
     note: str | None,
     due_at: datetime,
     now: datetime,
 ) -> tuple[int, int]:
-    if target_input_id is None or target_event_uid is None or not target_event_uid.strip():
-        raise EmailQueueApplyError("target_input_id and target_event_uid are required for mode=update_existing")
+    if target_event_uid is None or not target_event_uid.strip():
+        raise EmailQueueApplyError("target_event_uid is required for mode=update_existing")
 
-    target_input = db.scalar(
-        select(Input)
-        .where(
-            Input.id == target_input_id,
-            Input.user_id == user_id,
-            Input.type == InputType.ICS,
-            Input.is_active.is_(True),
-        )
-        .with_for_update()
-        .limit(1)
-    )
+    target_input = _select_apply_target_ics_input(db, user_id=user_id)
     if target_input is None:
-        raise EmailQueueApplyError("target_input_id must refer to an active ICS input owned by current user")
+        raise EmailQueueApplyError("No active ICS input is available for apply")
 
     event = db.scalar(
         select(Event)
@@ -508,7 +496,7 @@ def _apply_email_update_existing(
         "end_at_utc": event.end_at_utc.isoformat(),
         "due_at": event.start_at_utc.isoformat(),
         "email_id": message.email_id,
-        "source_kind": "email_review_update_existing",
+        "input_kind": "email_review_update_existing",
     }
     evidence_ref = message.evidence_key if isinstance(message.evidence_key, dict) else {"kind": "email", "email_id": message.email_id}
     change = Change(
@@ -696,16 +684,11 @@ def _resolve_where_text(*, action_items: list[EmailActionItem], raw_extract: dic
 
 
 def _select_apply_target_ics_input(db: Session, *, user_id: int) -> Input | None:
-    return db.scalar(
-        select(Input)
-        .where(
-            Input.user_id == user_id,
-            Input.type == InputType.ICS,
-            Input.is_active.is_(True),
-        )
-        .order_by(Input.created_at.asc(), Input.id.asc())
-        .with_for_update()
-        .limit(1)
+    return get_single_ics_input_for_user(
+        db,
+        user_id=user_id,
+        require_active=True,
+        for_update=True,
     )
 
 
@@ -722,15 +705,11 @@ def _select_notify_target_input(db: Session, *, user_id: int) -> Input | None:
     )
     if input_row is not None:
         return input_row
-    return db.scalar(
-        select(Input)
-        .where(
-            Input.user_id == user_id,
-            Input.type == InputType.ICS,
-            Input.is_active.is_(True),
-        )
-        .order_by(Input.created_at.asc(), Input.id.asc())
-        .limit(1)
+    return get_single_ics_input_for_user(
+        db,
+        user_id=user_id,
+        require_active=True,
+        for_update=False,
     )
 
 
@@ -818,7 +797,7 @@ def _get_or_create_notify_change(
             "from": message.from_addr,
             "date": message.date_rfc822,
             "email_id": message.email_id,
-            "source_kind": "email_route_notify",
+            "input_kind": "email_route_notify",
         },
         delta_seconds=None,
         before_snapshot_id=None,

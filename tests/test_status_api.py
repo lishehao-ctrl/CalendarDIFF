@@ -20,8 +20,7 @@ def test_status_api_returns_scheduler_and_source_observability(client, db_sessio
     due_source = Input(
         user_id=due_user.id,
         type=InputType.ICS,
-        name="due-source",
-        normalized_name="due-source",
+        identity_key="due-source",
         encrypted_url="encrypted-1",
         interval_minutes=15,
         is_active=True,
@@ -30,8 +29,7 @@ def test_status_api_returns_scheduler_and_source_observability(client, db_sessio
     checked_source = Input(
         user_id=checked_user.id,
         type=InputType.ICS,
-        name="checked-source",
-        normalized_name="checked-source",
+        identity_key="checked-source",
         encrypted_url="encrypted-2",
         interval_minutes=15,
         is_active=True,
@@ -95,8 +93,7 @@ def test_status_api_due_inputs_count_skips_recent_scheduler_lock_skipped_source(
     source = Input(
         user_id=user.id,
         type=InputType.ICS,
-        name="locked-source",
-        normalized_name="locked-source",
+        identity_key="locked-source",
         encrypted_url="encrypted-locked",
         interval_minutes=15,
         is_active=True,

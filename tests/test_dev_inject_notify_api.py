@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.db.models import Notification, User
+from tests.helpers_inputs import create_ics_input_for_user
 
 
 def test_dev_inject_notify_respects_gate(client, monkeypatch) -> None:
@@ -55,6 +56,12 @@ def test_dev_inject_notify_creates_digest_eligible_row(client, db_session, monke
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
+    db_session.flush()
+    create_ics_input_for_user(
+        db_session,
+        user_id=user.id,
+        url="https://example.com/dev-inject-notify.ics",
+    )
     db_session.commit()
 
     response = client.post(

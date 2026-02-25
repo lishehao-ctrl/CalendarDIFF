@@ -6,11 +6,11 @@ from sqlalchemy.orm import Session
 from app.db.models import CourseOverride, Input, TaskOverride
 
 
-def source_exists(db: Session, input_id: int) -> bool:
+def input_exists(db: Session, input_id: int) -> bool:
     return db.get(Input, input_id) is not None
 
 
-def list_source_overrides(db: Session, input_id: int) -> tuple[list[CourseOverride], list[TaskOverride]]:
+def list_input_overrides(db: Session, input_id: int) -> tuple[list[CourseOverride], list[TaskOverride]]:
     course_rows = db.scalars(
         select(CourseOverride).where(CourseOverride.input_id == input_id).order_by(CourseOverride.original_course_label)
     ).all()

@@ -11,6 +11,7 @@ from app.modules.sync.gmail_client import (
     GmailMessageMetadata,
     GmailProfile,
 )
+from tests.helpers_inputs import create_ics_input_for_user
 
 
 def test_email_input_first_sync_is_baseline_without_notification(client, db_session, monkeypatch) -> None:
@@ -24,6 +25,7 @@ def test_email_input_first_sync_is_baseline_without_notification(client, db_sess
     )
     db_session.add(user)
     db_session.flush()
+    create_ics_input_for_user(db_session, user_id=user.id, url="https://example.com/email-source-sync-1.ics")
 
     input_row = create_gmail_input_from_oauth(
         db_session,
@@ -73,6 +75,7 @@ def test_email_input_changed_sync_creates_changes_and_deduplicates(client, db_se
     )
     db_session.add(user)
     db_session.flush()
+    create_ics_input_for_user(db_session, user_id=user.id, url="https://example.com/email-source-sync-2.ics")
 
     input_row = create_gmail_input_from_oauth(
         db_session,
@@ -161,6 +164,7 @@ def test_email_input_history_expired_resets_cursor_without_notifying(client, db_
     )
     db_session.add(user)
     db_session.flush()
+    create_ics_input_for_user(db_session, user_id=user.id, url="https://example.com/email-source-sync-3.ics")
 
     input_row = create_gmail_input_from_oauth(
         db_session,
