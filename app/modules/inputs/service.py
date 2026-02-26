@@ -21,9 +21,7 @@ from app.db.models import (
 )
 from app.modules.inputs.schemas import InputCreateRequest
 from app.modules.scheduler.runner import release_input_lock, try_acquire_input_lock
-from app.modules.sync.deadline_engine import CourseDeadlineGroup, ICSDeadlineEngine
 from app.modules.sync.gmail_client import GmailClient
-from app.modules.sync.ics_client import ICSClient
 from app.modules.sync.service import (
     LOCK_SKIPPED_COOLDOWN_SECONDS,
     SyncRunResult,
@@ -34,15 +32,6 @@ from app.modules.sync.service import (
 MANUAL_SYNC_RETRY_AFTER_SECONDS = 10
 GMAIL_OAUTH_STATE_TTL_MINUTES = 10
 FIXED_INPUT_INTERVAL_MINUTES = 15
-
-
-@dataclass(frozen=True)
-class InputDeadlinesPreview:
-    input_id: int
-    input_label: str | None
-    fetched_at_utc: datetime
-    total_deadlines: int
-    courses: list[CourseDeadlineGroup]
 
 
 @dataclass(frozen=True)
@@ -63,10 +52,6 @@ class GmailOAuthStatePayload:
     from_contains: str | None
     subject_keywords: list[str] | None
     expires_at: datetime
-
-
-class InputReplaceConflictError(RuntimeError):
-    """Legacy compatibility exception type for older imports."""
 
 
 class InputBusyError(RuntimeError):
@@ -411,16 +396,6 @@ def list_inputs_with_runtime_state(
     return normalized_rows
 
 
-def list_input_runs(db: Session, input_id: int, *, limit: int) -> list[SyncRun]:
-    stmt = (
-        select(SyncRun)
-        .where(SyncRun.input_id == input_id)
-        .order_by(SyncRun.started_at.desc(), SyncRun.id.desc())
-        .limit(limit)
-    )
-    return db.scalars(stmt).all()
-
-
 def list_latest_run_status_map(db: Session, input_ids: list[int]) -> dict[int, str]:
     if not input_ids:
         return {}
@@ -469,33 +444,6 @@ def run_manual_input_sync(db: Session, input: Input) -> SyncRunResult:
         )
     finally:
         release_input_lock(db, settings.input_lock_namespace, input.id)
-
-
-def preview_input_deadlines(
-    input: Input,
-    ics_client: ICSClient | None = None,
-    deadline_engine: ICSDeadlineEngine | None = None,
-) -> InputDeadlinesPreview:
-    if input.type != InputType.ICS:
-        raise RuntimeError("input deadlines preview only supports ICS inputs")
-
-    input_url = decrypt_secret(input.encrypted_url)
-    client = ics_client or ICSClient()
-    engine = deadline_engine or ICSDeadlineEngine()
-
-    fetched = client.fetch(input_url, input.id)
-    if fetched.content is None:
-        raise RuntimeError("ICS preview fetch returned empty content")
-    courses = engine.parse_and_group(fetched.content)
-    total_deadlines = sum(len(course.deadlines) for course in courses)
-
-    return InputDeadlinesPreview(
-        input_id=input.id,
-        input_label=input.display_label,
-        fetched_at_utc=fetched.fetched_at_utc,
-        total_deadlines=total_deadlines,
-        courses=courses,
-    )
 
 
 def _canonicalize_ics_url(raw_url: str) -> str:

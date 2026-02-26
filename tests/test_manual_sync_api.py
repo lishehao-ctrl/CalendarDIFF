@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from sqlalchemy import select
+
+from app.db.models import SyncRun
 from app.modules.sync.service import SyncRunResult
 from tests.helpers_inputs import create_ics_input_for_user
 
@@ -99,9 +102,15 @@ def test_manual_sync_returns_busy_and_records_lock_skipped_run(client, initializ
     assert response.headers["Retry-After"] == "10"
 
     runs_response = client.get(f"/v1/inputs/{source_id}/runs?limit=1", headers=headers)
-    assert runs_response.status_code == 200
-    runs = runs_response.json()
-    assert len(runs) == 1
-    assert runs[0]["status"] == "LOCK_SKIPPED"
-    assert runs[0]["trigger_type"] == "manual"
-    assert runs[0]["error_code"] == "input_lock_not_acquired"
+    assert runs_response.status_code == 404
+
+    run = db_session.scalar(
+        select(SyncRun)
+        .where(SyncRun.input_id == source_id)
+        .order_by(SyncRun.id.desc())
+        .limit(1)
+    )
+    assert run is not None
+    assert run.status.value == "LOCK_SKIPPED"
+    assert run.trigger_type.value == "manual"
+    assert run.error_code == "input_lock_not_acquired"

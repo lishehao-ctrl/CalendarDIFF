@@ -37,7 +37,7 @@ END:VCALENDAR
 """
 
 
-def test_manual_sync_sends_single_digest_per_changed_run(client, initialized_user, db_session, monkeypatch) -> None:
+def test_manual_sync_changed_run_queues_digest_instead_of_immediate_send(client, initialized_user, db_session, monkeypatch) -> None:
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "true")
     monkeypatch.setenv("DEFAULT_NOTIFY_EMAIL", "notify@example.com")
     get_settings.cache_clear()
@@ -48,12 +48,6 @@ def test_manual_sync_sends_single_digest_per_changed_run(client, initialized_use
         user_id=initialized_user["id"],
         url="https://example.com/feed.ics",
     )
-    prefs_response = client.put(
-        "/v1/notification_prefs",
-        headers=headers,
-        json={"digest_enabled": False},
-    )
-    assert prefs_response.status_code == 200
 
     responses = [
         FetchResult(content=ICS_V1, etag="v1", fetched_at_utc=datetime(2026, 2, 20, 10, 0, tzinfo=timezone.utc)),
@@ -91,7 +85,7 @@ def test_manual_sync_sends_single_digest_per_changed_run(client, initialized_use
     assert first_payload["email_sent"] is False
     assert first_payload["is_baseline_sync"] is True
     assert second_payload["changes_created"] == 1
-    assert second_payload["email_sent"] is True
+    assert second_payload["email_sent"] is False
     assert second_payload["is_baseline_sync"] is False
     assert third_payload["changes_created"] == 0
     assert third_payload["email_sent"] is False
@@ -102,15 +96,13 @@ def test_manual_sync_sends_single_digest_per_changed_run(client, initialized_use
     # third run returned identical feed, so snapshot creation is skipped.
     assert len(snapshots_response.json()) == 2
 
-    # Baseline sync must not notify; only changed rerun sends one digest.
-    assert len(send_calls) == 1
-    assert send_calls[0][0] == "student@example.com"
-    assert send_calls[0][3] == 1
+    # Digest-only mode: manual sync queues digest notifications and does not send immediately.
+    assert len(send_calls) == 0
 
     get_settings.cache_clear()
 
 
-def test_manual_sync_prefers_user_notify_email_over_global(client, initialized_user, db_session, monkeypatch) -> None:
+def test_manual_sync_does_not_send_immediately_even_with_user_notify_email(client, initialized_user, db_session, monkeypatch) -> None:
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "true")
     monkeypatch.setenv("DEFAULT_NOTIFY_EMAIL", "global@example.com")
     get_settings.cache_clear()
@@ -131,12 +123,6 @@ def test_manual_sync_prefers_user_notify_email_over_global(client, initialized_u
         user_id=initialized_user["id"],
         url="https://example.com/feed.ics",
     )
-    prefs_response = client.put(
-        "/v1/notification_prefs",
-        headers=headers,
-        json={"digest_enabled": False},
-    )
-    assert prefs_response.status_code == 200
 
     responses = [
         FetchResult(content=ICS_V1, etag="v1", fetched_at_utc=datetime(2026, 2, 20, 10, 0, tzinfo=timezone.utc)),
@@ -162,9 +148,9 @@ def test_manual_sync_prefers_user_notify_email_over_global(client, initialized_u
     assert second_sync_response.status_code == 200
     assert first_sync_response.json()["email_sent"] is False
     assert first_sync_response.json()["is_baseline_sync"] is True
-    assert second_sync_response.json()["email_sent"] is True
+    assert second_sync_response.json()["email_sent"] is False
     assert second_sync_response.json()["is_baseline_sync"] is False
-    assert sent_to == ["profile-specific@example.com"]
+    assert sent_to == []
 
     get_settings.cache_clear()
 

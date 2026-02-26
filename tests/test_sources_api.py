@@ -192,7 +192,7 @@ def test_list_sources_applies_scheduler_lock_skipped_cooldown_to_next_check(clie
     assert row["last_result"] == "LOCK_SKIPPED"
 
 
-def test_source_runs_endpoint_returns_recent_timeline(client, db_session) -> None:
+def test_source_runs_endpoint_removed(client, db_session) -> None:
     user = User(
         email="owner@example.com",
         notify_email="student@example.com",
@@ -234,9 +234,4 @@ def test_source_runs_endpoint_returns_recent_timeline(client, db_session) -> Non
     db_session.commit()
 
     response = client.get(f"/v1/inputs/{source.id}/runs?limit=1", headers={"X-API-Key": "test-api-key"})
-    assert response.status_code == 200
-    payload = response.json()
-    assert len(payload) == 1
-    assert payload[0]["status"] == "CHANGED"
-    assert payload[0]["trigger_type"] == "manual"
-    assert payload[0]["changes_count"] == 2
+    assert response.status_code == 404

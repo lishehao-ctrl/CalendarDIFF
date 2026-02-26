@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.db.models import Input, SyncRun
-from app.modules.inputs.schemas import InputCreateResponse, InputResponse, InputRunResponse
+from app.db.models import Input
+from app.modules.inputs.schemas import InputCreateResponse, InputResponse
 
 
 def to_input_response(input: Input, *, next_check_at: datetime | None, last_result: str | None) -> InputResponse:
@@ -34,19 +34,3 @@ def to_input_response(input: Input, *, next_check_at: datetime | None, last_resu
 def to_input_create_response(input: Input, *, upserted_existing: bool) -> InputCreateResponse:
     base = to_input_response(input, next_check_at=input.last_checked_at, last_result=None)
     return InputCreateResponse(**base.model_dump(), upserted_existing=upserted_existing)
-
-
-def to_input_run_response(run: SyncRun) -> InputRunResponse:
-    return InputRunResponse(
-        id=run.id,
-        input_id=run.input_id,
-        trigger_type=run.trigger_type.value,
-        started_at=run.started_at,
-        finished_at=run.finished_at,
-        status=run.status.value,
-        changes_count=run.changes_count,
-        error_code=run.error_code,
-        error_message=run.error_message,
-        duration_ms=run.duration_ms,
-        lock_owner=run.lock_owner,
-    )

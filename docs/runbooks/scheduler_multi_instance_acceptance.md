@@ -45,7 +45,9 @@ Expected terminal output:
    - one instance should report lock skips over time
 3. Check changes:
    - `curl -H "X-API-Key: <APP_API_KEY>" "http://127.0.0.1:8000/v1/inputs/<id>/changes"`
-4. Check notification dedup in DB:
+4. Check input list runtime state:
+   - `curl -H "X-API-Key: <APP_API_KEY>" "http://127.0.0.1:8000/v1/inputs"`
+5. Check notification dedup in DB:
    - no duplicate rows per `change_id` in `notifications`
 
 ## LOCK_SKIPPED UX/UAT (Manual Sync Contention)
@@ -72,9 +74,10 @@ Goal: verify lock contention is recoverable and user-facing behavior stays neutr
    - show neutral busy hint (`Sync in progress`)
    - auto retry once after 10 seconds
    - if still busy, keep `Retry now` action available
-3. Expected runs timeline:
-   - `GET /v1/inputs/{id}/runs?limit=20` includes `LOCK_SKIPPED`
-   - followed by a later successful run once lock is acquired
+3. Expected behavior:
+   - one request receives `409 code=input_busy`
+   - another request succeeds
+   - health and input list runtime fields advance after lock is released
 
 ## Failure Hints
 

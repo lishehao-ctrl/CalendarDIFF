@@ -1,48 +1,35 @@
-# Legacy Cleanup Matrix (Core Simplified)
-
-This file tracks what has been removed from runtime surface after the core simplification pass.
+# Legacy Cleanup Matrix
 
 ## Removed
 
-1. Term runtime data model:
-   - `user_terms`
-   - `input_term_baselines`
-   - `inputs.user_term_id`
-   - `changes.user_term_id`
-2. Feed term contract:
-   - removed query params `term_scope`, `term_id`
-   - removed response fields `term_id`, `term_code`, `term_label`, `term_scope`
-3. Legacy review-candidate domain:
-   - dropped table `email_rule_candidates`
-   - removed API `/v1/review_candidates*`
-4. Legacy user initialization/term endpoints:
-   - removed `POST /v1/user`
-   - removed `/v1/user/terms*`
-5. Busy compatibility bridge:
-   - removed `legacy_code=source_busy`
-   - manual sync contention keeps only `detail.code=input_busy`
-6. Legacy source naming in sync runtime:
-   - `list_due_sources -> list_due_inputs`
-   - `sync_source -> sync_input`
-   - `_sync_email_source -> _sync_email_input`
-   - `_handle_source_error -> _handle_input_error`
-7. Legacy evidence endpoints:
-   - removed `GET /v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/preview`
-   - removed `GET /v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/download`
-   - kept `GET /v1/changes/{change_id}/evidence/{side}/preview` as the only preview path
-8. Scheduler lock config naming:
-   - removed `source_lock_namespace`
-   - replaced with `input_lock_namespace`
-9. Dev-only runtime inject endpoint:
-   - removed `POST /v1/dev/inject_notify` from mounted runtime surface
-10. Non-core UI pages:
-   - removed `/ui/inputs`
-   - removed `/ui/runs`
-   - removed `/ui/dev`
+1. `/v1/review_candidates*`
+2. `email_rule_candidates` table
+3. `/v1/user/terms*`
+4. `/v1/status`
+5. `/v1/notification_prefs*`
+6. `/v1/notifications/send_digest_now`
+7. `/v1/inputs/{input_id}/runs`
+8. `/v1/inputs/{input_id}/deadlines`
+9. `/v1/inputs/{input_id}/overrides`
+10. `/v1/inputs/ics`
+11. evidence download route
+12. input-scoped preview route
+13. `/ui/inputs`
+14. `/ui/runs`
+15. `/ui/dev`
 
-## Guardrails
+## Kept (Core)
 
-1. Runtime code uses `/v1/emails/*` as the only email review API.
-2. Runtime code has no `review_candidates`, `legacy_code`, `source_busy`, or `source_lock_namespace` symbols.
-3. Initialization path is onboarding-first (`POST /v1/onboarding/register`).
-4. UI entry surface is restricted to onboarding/processing/feed/email-review.
+1. onboarding flow (`/v1/onboarding/*`)
+2. input list + manual sync (`/v1/inputs`, `/v1/inputs/{id}/sync`)
+3. feed + viewed update
+4. change-scoped evidence preview
+5. email review queue + apply
+6. health probe (`/health`)
+
+## Runtime Guardrails
+
+1. `ready` user must have exactly one ICS input row
+2. Gmail sync is queue-first, no direct feed change creation
+3. only `created|removed|due_changed` are emitted as reminder changes
+4. digest-only notification strategy with fixed slots

@@ -57,6 +57,7 @@ def test_gmail_sync_creates_email_review_queue_item_and_is_idempotent(client, db
         return GmailMessageMetadata(
             message_id="m1",
             snippet="Homework deadline moved to 2026-03-01T23:59:00-08:00",
+            body_text="Deadline moved to 2026-03-01T23:59:00-08:00",
             internal_date="2026-02-22T10:00:00+00:00",
             subject="[CSE 100] homework deadline extension",
             from_header="instructor@school.edu",

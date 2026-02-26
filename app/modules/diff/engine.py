@@ -70,41 +70,22 @@ def compute_diff(
         before = canonical_events[uid]
         after = snapshot_events[uid]
 
-        fields_changed: list[str] = []
         due_changed = (before.start_at_utc != after.start_at_utc) or (before.end_at_utc != after.end_at_utc)
-        if due_changed:
-            fields_changed.extend(["start_at_utc", "end_at_utc"])
-
-        title_changed = before.title != after.title
-        if title_changed:
-            fields_changed.append("title")
-
-        course_changed = before.course_label != after.course_label
-        if course_changed:
-            fields_changed.append("course_label")
-
-        if not fields_changed:
+        if not due_changed:
             continue
 
         updated_events.append(after)
 
-        if due_changed:
-            change_type = ChangeType.DUE_CHANGED
-            delta_seconds = int((after.start_at_utc - before.start_at_utc).total_seconds())
-        elif title_changed:
-            change_type = ChangeType.TITLE_CHANGED
-            delta_seconds = None
-        else:
-            change_type = ChangeType.COURSE_CHANGED
-            delta_seconds = None
-
-        before_json: dict[str, object] = {}
-        after_json: dict[str, object] = {}
-        for field in sorted(set(fields_changed)):
-            before_value = getattr(before, field)
-            after_value = getattr(after, field)
-            before_json[field] = _json_value(before_value)
-            after_json[field] = _json_value(after_value)
+        change_type = ChangeType.DUE_CHANGED
+        delta_seconds = int((after.start_at_utc - before.start_at_utc).total_seconds())
+        before_json: dict[str, object] = {
+            "start_at_utc": _json_value(before.start_at_utc),
+            "end_at_utc": _json_value(before.end_at_utc),
+        }
+        after_json: dict[str, object] = {
+            "start_at_utc": _json_value(after.start_at_utc),
+            "end_at_utc": _json_value(after.end_at_utc),
+        }
 
         changes.append(
             ChangePayload(

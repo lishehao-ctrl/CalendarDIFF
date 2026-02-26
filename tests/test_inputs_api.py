@@ -31,7 +31,7 @@ def test_inputs_require_initialized_user(client) -> None:
     assert feed_response.json()["detail"]["code"] == "user_not_initialized"
 
 
-def test_inputs_list_and_runs_endpoints(client, initialized_user, db_session) -> None:
+def test_inputs_list_endpoint_and_runs_removed(client, initialized_user, db_session) -> None:
     headers = {"X-API-Key": "test-api-key"}
     input_id = _create_ics_input_for_user(
         db_session=db_session,
@@ -47,8 +47,7 @@ def test_inputs_list_and_runs_endpoints(client, initialized_user, db_session) ->
     assert any(item["id"] == input_id for item in rows)
 
     runs_response = client.get(f"/v1/inputs/{input_id}/runs?limit=20", headers=headers)
-    assert runs_response.status_code == 200
-    assert isinstance(runs_response.json(), list)
+    assert runs_response.status_code == 404
 
 
 def test_input_sync_endpoint_uses_existing_manual_sync_flow(client, initialized_user, db_session, monkeypatch) -> None:

@@ -101,10 +101,6 @@ def test_gate_returns_onboarding_incomplete_until_ready(client, db_session) -> N
     assert inputs.status_code == 409
     assert inputs.json()["detail"]["code"] == "user_onboarding_incomplete"
 
-    prefs = client.get("/v1/notification_prefs", headers={"X-API-Key": "test-api-key"})
-    assert prefs.status_code == 409
-    assert prefs.json()["detail"]["code"] == "user_onboarding_incomplete"
-
 
 def test_onboarding_reconfigure_keeps_single_ics_record(client, monkeypatch, db_session) -> None:
     def fake_sync_input(db, input, notifier=None, trigger_type=SyncTriggerType.MANUAL, lock_owner=None):  # noqa: ANN001

@@ -1,63 +1,41 @@
-# CalendarDIFF Backend Architecture (Core Simplified)
+# CalendarDIFF Architecture (Demo Converged v3)
 
-## 1) Scope and Principles
+## 1) Runtime Intent
 
-CalendarDIFF runtime is organized around one canonical pipeline:
+Single stable loop:
 
-1. ingest input data (`ics` / `email`)
-2. update canonical timeline (`events`)
-3. generate auditable diffs (`changes`)
-4. enqueue/send notifications (`notifications`)
+1. ingest `ICS + Gmail`
+2. compute canonical diffs on ICS timeline
+3. route Gmail signals into review queue
+4. apply reviewed items into canonical changes
+5. deliver digest notifications on fixed schedule
 
-Current cleanup phase priorities:
+## 2) Domain Boundaries
 
-1. remove term runtime complexity from main flow
-2. keep onboarding strict and deterministic
-3. keep a single email review domain (`/v1/emails/*`)
-
-## 2) Runtime Stack
-
-1. API host: FastAPI
-2. Database: PostgreSQL + SQLAlchemy + Alembic
-3. Scheduler: APScheduler + Postgres advisory locks
-4. UI host: Next.js static export served at `/ui`
-5. External integrations:
-   - ICS HTTP fetch + parser
-   - Gmail OAuth + Gmail REST metadata/history
-   - SMTP notification delivery
-
-## 3) Core Domain Boundaries
-
-### 3.1 User / Onboarding Domain
+### User / Onboarding
 
 Owns:
 
 1. `users`
-2. onboarding stage resolution (`needs_user | needs_ics | needs_baseline | ready`)
+2. onboarding stage (`needs_user|needs_ics|needs_baseline|ready`)
 
-Responsibilities:
+Rule:
 
-1. define registration vs onboarding completion
-2. gate protected APIs until onboarding is complete
+1. `ready` requires `onboarding_completed_at` and exactly one ICS row.
 
-Key invariant:
-
-1. onboarding completion is written only after first ICS baseline sync succeeds (`users.onboarding_completed_at`)
-
-### 3.2 Input Ingestion Domain
+### Input Ingestion
 
 Owns:
 
-1. `inputs` (`type=ics|email`)
-2. sync orchestration and run records (`sync_runs`)
+1. `inputs`
+2. `sync_runs`
 
-Responsibilities:
+Rule:
 
-1. input identity upsert
-2. baseline-first semantics on first successful sync
-3. per-input lock and error shaping (`input_busy`)
+1. input type is only `ics|email`
+2. sync lock contention returns `409 code=input_busy`
 
-### 3.3 Canonical Timeline + Diff/Audit Domain
+### Canonical Timeline + Audit
 
 Owns:
 
@@ -65,162 +43,97 @@ Owns:
 2. `snapshots`
 3. `changes`
 
-Responsibilities:
+Rule:
 
-1. preserve canonical state and audit history
-2. ensure every user-visible diff comes from `changes`
-3. keep evidence links (`evidence_keys`) for traceability
+1. user-facing diff is change-driven (`changes` is the audit surface)
+2. runtime reminder types are `created|removed|due_changed`
 
-### 3.4 Notification / Digest Domain
+### Notification / Digest
 
 Owns:
 
 1. `notifications`
-2. `user_notification_prefs`
-3. `digest_send_log`
+2. `digest_send_log`
 
-Responsibilities:
+Rule:
 
-1. queue or dispatch notification events from `changes`
-2. apply digest and idempotency policy
-3. enforce user-level priority (EMAIL before Calendar)
+1. digest-only send path
+2. fixed schedule slots from config (default `09:00`, `18:00`)
 
-### 3.5 Email Review Domain
+### Email Review
 
-Single runtime domain:
+Owns:
 
 1. `email_messages`
 2. `email_rule_labels`
 3. `email_action_items`
 4. `email_rule_analysis`
 5. `email_routes`
-6. API: `/v1/emails/*`
 
-Responsibilities:
+Rule:
 
-1. ingest deterministic rule extraction results
-2. expose review queue actions (apply/archive/drop/notify/viewed)
-3. convert approved review actions into canonical `changes`
+1. Gmail sync writes review queue only
+2. canonical mutation requires explicit `POST /v1/emails/{email_id}/apply`
 
-## 4) Schema Baseline
+## 3) Request Flow
 
-Active migration head: `0012_ready_requires_single_ics`.
+### Onboarding
 
-Notable state:
+1. `POST /v1/onboarding/register`
+2. upsert user
+3. replace/create single ICS input
+4. run baseline sync
+5. success -> set `onboarding_completed_at`
+6. baseline failure -> clear ICS row and return to `needs_ics`
 
-1. term runtime structures are removed from operational path:
-   - no `user_terms`
-   - no `input_term_baselines`
-   - no `inputs.user_term_id`
-   - no `changes.user_term_id`
-2. onboarding baseline and email review queue are first-class runtime features
-3. legacy review-candidate table is removed (`email_rule_candidates`)
+### ICS Sync
 
-## 5) Core Runtime Flows
+1. fetch + parse ICS
+2. normalize deadline-like events
+3. baseline run seeds canonical without user changes
+4. later runs write `created|removed|due_changed` changes
+5. enqueue digest notifications
 
-### 5.1 Onboarding
+### Gmail Sync
 
-1. `POST /v1/onboarding/register` with `notify_email + ics.url`
-2. create/update user + single ICS input (hard invariant: one ICS row per user)
-3. onboarding reconfiguration uses delete-old + create-new semantics for ICS URL replacement
-4. run immediate first sync
-5. if baseline succeeds:
-   - write `users.onboarding_completed_at`
-   - return `status=ready`
-6. if baseline fails:
-   - replacement ICS row is removed
-   - onboarding downgrades to `needs_ics`
-   - protected APIs stay gated
+1. load history window
+2. fetch metadata + plain text body in-memory
+3. evaluate deterministic rule
+4. write actionable rows into `email_*`
+5. do not write feed changes directly
 
-### 5.2 ICS Sync
+### Email Apply
 
-1. lock input
-2. fetch/parse ICS
-3. first successful run is baseline-only (`changes_created=0`)
-4. later runs produce `changes` against canonical `events`
-5. notifications follow normal queue/dispatch policy
+1. allowed only when `route=review`
+2. modes:
+   - `create_new` -> `ChangeType.CREATED`
+   - `update_existing` -> `ChangeType.DUE_CHANGED`
+   - `remove_existing` -> `ChangeType.REMOVED`
+3. apply success -> route becomes `archive`
 
-### 5.3 Gmail Sync
+## 4) Public Surface (Minimal)
 
-1. first successful run initializes cursor (no changes)
-2. incremental runs read new message metadata
-3. each new message creates a Change record for traceability
-4. actionable messages are also ingested into email review queue tables
-5. no automatic canonical mutation from rules
+1. `/v1/onboarding/*`
+2. `/v1/inputs` + `/v1/inputs/{input_id}/sync`
+3. `/v1/feed`
+4. `/v1/changes/{change_id}/evidence/{side}/preview`
+5. `/v1/emails/*`
+6. `/health`
 
-### 5.4 Email Review Apply
-
-Endpoint: `POST /v1/emails/{email_id}/apply`
-
-Modes:
-
-1. `create_new` -> create a new canonical event/task + emit `ChangeType.CREATED`
-2. `update_existing` -> modify selected canonical event + emit `ChangeType.DUE_CHANGED`
-
-Post-apply behavior:
-
-1. route moves to `archive`
-2. enqueue notification via existing notify pipeline
-
-## 6) Public API Contract (Current)
-
-### 6.1 Feed
-
-`GET /v1/feed` query:
-
-1. `input_id?`
-2. `view=all|unread`
-3. `input_types=email,ics`
-4. `limit`
-5. `offset`
-
-No term filters or term fields remain in feed contract.
-
-### 6.2 Removed APIs
-
-Removed from runtime surface:
+## 5) Removed Surface
 
 1. `/v1/review_candidates*`
-2. `/v1/user/terms*`
-3. `POST /v1/user` (initialization now only via onboarding)
-4. `GET /v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/preview`
-5. `GET /v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/download`
-6. `POST /v1/dev/inject_notify`
+2. `/v1/notification_prefs*`
+3. `/v1/notifications/send_digest_now`
+4. `/v1/status`
+5. `/v1/inputs/{input_id}/runs`
+6. `/v1/inputs/{input_id}/deadlines`
+7. `/v1/inputs/{input_id}/overrides`
+8. input-scoped and download evidence routes
+9. `/ui/inputs`, `/ui/runs`, `/ui/dev`
 
-### 6.3 Email Review APIs
+## 6) Migration Head
 
-Available:
+Current Alembic head:
 
-1. `GET /v1/emails/queue`
-2. `POST /v1/emails/{email_id}/route`
-3. `POST /v1/emails/{email_id}/mark_viewed`
-4. `POST /v1/emails/{email_id}/apply`
-
-### 6.4 Busy Error Contract
-
-Manual sync contention returns `409` with:
-
-1. `detail.code = "input_busy"`
-2. `detail.status = "LOCK_SKIPPED"`
-3. `detail.retry_after_seconds`
-
-### 6.5 Evidence Preview Contract
-
-Use change-scoped preview endpoint:
-
-1. `GET /v1/changes/{change_id}/evidence/{side}/preview`
-2. `side = before|after`
-3. malformed ICS preview returns `422`, `detail.code = "evidence_parse_failed"`
-
-## 7) Locking and Scheduling
-
-1. global scheduler lock: one runner executes each tick
-2. per-input lock: same input cannot be processed concurrently
-3. lock skip is recoverable and does not mutate canonical state
-
-## 8) Guardrails
-
-1. keep `/v1/emails/*` as the only email review entrypoint
-2. keep term and review-candidate legacy symbols out of runtime code
-3. keep onboarding initialization through `/v1/onboarding/register` only
-4. keep UI surface minimal: `/ui/onboarding`, `/ui/processing`, `/ui/feed`, `/ui/emails/review`
+1. `0013_core_runtime_ddl_alert`

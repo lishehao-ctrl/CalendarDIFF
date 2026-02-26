@@ -213,6 +213,21 @@ def test_postgres_alembic_upgrade_head_bootstraps_current_schema(test_database_u
                         )
                     ).scalars()
                 )
+                changes_check_defs = set(
+                    conn.execute(
+                        text(
+                            """
+                            SELECT pg_get_constraintdef(c.oid)
+                            FROM pg_constraint c
+                            JOIN pg_class t ON c.conrelid = t.oid
+                            JOIN pg_namespace n ON n.oid = t.relnamespace
+                            WHERE n.nspname = 'public'
+                              AND t.relname = 'changes'
+                              AND c.contype = 'c'
+                            """
+                        )
+                    ).scalars()
+                )
                 profiles_exists = conn.execute(text("SELECT to_regclass('public.profiles') IS NOT NULL")).scalar_one()
                 profile_terms_exists = conn.execute(text("SELECT to_regclass('public.profile_terms') IS NOT NULL")).scalar_one()
                 input_term_baselines_exists = conn.execute(
@@ -235,6 +250,18 @@ def test_postgres_alembic_upgrade_head_bootstraps_current_schema(test_database_u
                 ).scalar_one()
                 email_routes_exists = conn.execute(
                     text("SELECT to_regclass('public.email_routes') IS NOT NULL")
+                ).scalar_one()
+                course_overrides_exists = conn.execute(
+                    text("SELECT to_regclass('public.course_overrides') IS NOT NULL")
+                ).scalar_one()
+                task_overrides_exists = conn.execute(
+                    text("SELECT to_regclass('public.task_overrides') IS NOT NULL")
+                ).scalar_one()
+                notification_prefs_exists = conn.execute(
+                    text("SELECT to_regclass('public.user_notification_prefs') IS NOT NULL")
+                ).scalar_one()
+                changes_legacy_archive_exists = conn.execute(
+                    text("SELECT to_regclass('public.changes_legacy_archive') IS NOT NULL")
                 ).scalar_one()
                 email_routes_indexes = set(
                     conn.execute(
@@ -315,6 +342,17 @@ def test_postgres_alembic_upgrade_head_bootstraps_current_schema(test_database_u
         assert "ix_sync_runs_status_started_at" in sync_run_indexes
         assert "uq_inputs_user_type_identity_key" in input_constraints
         assert any("interval_minutes" in definition and "= 15" in definition for definition in input_check_defs)
+        assert any(
+            "change_type" in definition
+            and "CREATED" in definition
+            and "REMOVED" in definition
+            and "DUE_CHANGED" in definition
+            for definition in changes_check_defs
+        )
+        assert all("title_changed" not in definition for definition in changes_check_defs)
+        assert all("course_changed" not in definition for definition in changes_check_defs)
+        assert all("TITLE_CHANGED" not in definition for definition in changes_check_defs)
+        assert all("COURSE_CHANGED" not in definition for definition in changes_check_defs)
         assert profiles_exists is False
         assert profile_terms_exists is False
         assert input_term_baselines_exists is False
@@ -324,12 +362,16 @@ def test_postgres_alembic_upgrade_head_bootstraps_current_schema(test_database_u
         assert email_action_items_exists is True
         assert email_rule_analysis_exists is True
         assert email_routes_exists is True
+        assert course_overrides_exists is False
+        assert task_overrides_exists is False
+        assert notification_prefs_exists is False
+        assert changes_legacy_archive_exists is True
         assert "ix_email_routes_route_routed_at_desc" in email_routes_indexes
         assert "ix_email_rule_labels_event_type" in email_rule_labels_indexes
         assert "ix_email_messages_user_received_at_desc" in email_messages_indexes
         assert "uq_notifications_idempotency_key" in notification_constraints
         assert "uq_notifications_change_channel" in notification_constraints
-        assert revision == "0012_ready_requires_single_ics"
+        assert revision == "0014_archive_legacy_change_types"
     finally:
         _restore_runtime_env(runtime_env)
         _reset_runtime_state()

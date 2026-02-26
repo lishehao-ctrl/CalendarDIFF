@@ -59,8 +59,8 @@ def test_diff_priority_due_over_title_and_course() -> None:
     change = result.changes[0]
     assert change.change_type == ChangeType.DUE_CHANGED
     assert change.delta_seconds == 7200
-    assert set(change.before_json or {}) == {"course_label", "end_at_utc", "start_at_utc", "title"}
-    assert set(change.after_json or {}) == {"course_label", "end_at_utc", "start_at_utc", "title"}
+    assert set(change.before_json or {}) == {"end_at_utc", "start_at_utc"}
+    assert set(change.after_json or {}) == {"end_at_utc", "start_at_utc"}
 
 
 def test_diff_noop_when_event_unchanged() -> None:

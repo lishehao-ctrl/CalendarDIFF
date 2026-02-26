@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import func, select
+
 from app.core.config import get_settings
-from app.db.models import Input, User
+from app.db.models import Change, EmailMessage, Input, User
 from app.modules.inputs.service import create_gmail_input_from_oauth
 from app.modules.sync.gmail_client import (
     GmailHistoryExpiredError,
@@ -55,16 +57,11 @@ def test_email_input_first_sync_is_baseline_without_notification(client, db_sess
     assert payload["email_sent"] is False
 
     runs_response = client.get(f"/v1/inputs/{input_row.id}/runs?limit=1", headers=headers)
-    assert runs_response.status_code == 200
-    runs = runs_response.json()
-    assert len(runs) == 1
-    assert runs[0]["status"] == "NO_CHANGE"
-    assert runs[0]["trigger_type"] == "manual"
-
+    assert runs_response.status_code == 404
     get_settings.cache_clear()
 
 
-def test_email_input_changed_sync_creates_changes_and_deduplicates(client, db_session, monkeypatch) -> None:
+def test_email_input_changed_sync_queues_review_items_without_feed_changes(client, db_session, monkeypatch) -> None:
     monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")
     get_settings.cache_clear()
 
@@ -109,6 +106,7 @@ def test_email_input_changed_sync_creates_changes_and_deduplicates(client, db_se
         return GmailMessageMetadata(
             message_id=message_id,
             snippet=f"Snippet for {message_id}",
+            body_text="Deadline moved to 2026-03-01T23:59:00-08:00",
             internal_date="2026-02-22T10:00:00+00:00",
             subject=f"Subject {message_id}",
             from_header="instructor@school.edu",
@@ -125,31 +123,17 @@ def test_email_input_changed_sync_creates_changes_and_deduplicates(client, db_se
     assert first_sync.status_code == 200
     assert second_sync.status_code == 200
 
-    first_payload = first_sync.json()
-    second_payload = second_sync.json()
-    assert first_payload["is_baseline_sync"] is False
-    assert first_payload["changes_created"] == 2
-    assert second_payload["changes_created"] == 0
+    assert first_sync.json()["changes_created"] == 2
+    assert second_sync.json()["changes_created"] == 0
 
-    changes_response = client.get(f"/v1/inputs/{input_row.id}/changes?limit=20", headers=headers)
-    assert changes_response.status_code == 200
-    changes = changes_response.json()
-    assert len(changes) == 2
-    after_json = changes[0]["after_json"]
-    assert after_json["subject"].startswith("Subject ")
-    assert after_json["snippet"].startswith("Snippet for ")
-    assert after_json["internal_date"] == "2026-02-22T10:00:00+00:00"
-    assert after_json["from"] == "instructor@school.edu"
-    assert after_json["gmail_message_id"] in {"m1", "m2"}
-    assert after_json["open_in_gmail_url"].endswith(after_json["gmail_message_id"])
+    # Queue-first: gmail sync no longer writes directly into feed change rows.
+    change_count = db_session.scalar(select(func.count(Change.id)).where(Change.input_id == input_row.id))
+    assert change_count == 0
+    assert db_session.scalar(select(EmailMessage).where(EmailMessage.email_id == "m1")) is not None
+    assert db_session.scalar(select(EmailMessage).where(EmailMessage.email_id == "m2")) is not None
 
     runs_response = client.get(f"/v1/inputs/{input_row.id}/runs?limit=2", headers=headers)
-    assert runs_response.status_code == 200
-    runs = runs_response.json()
-    assert len(runs) == 2
-    assert runs[0]["status"] == "NO_CHANGE"
-    assert runs[1]["status"] == "CHANGED"
-
+    assert runs_response.status_code == 404
     get_settings.cache_clear()
 
 
@@ -205,7 +189,5 @@ def test_email_input_history_expired_resets_cursor_without_notifying(client, db_
     assert updated_input.gmail_history_id == "999"
 
     runs_response = client.get(f"/v1/inputs/{input_row.id}/runs?limit=1", headers=headers)
-    assert runs_response.status_code == 200
-    assert runs_response.json()[0]["status"] == "NO_CHANGE"
-
+    assert runs_response.status_code == 404
     get_settings.cache_clear()

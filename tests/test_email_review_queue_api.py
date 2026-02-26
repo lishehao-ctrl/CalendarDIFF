@@ -2,19 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import select
-
 from app.db.models import (
-    Change,
     EmailActionItem,
     EmailMessage,
     EmailRoute,
     EmailRuleAnalysis,
     EmailRuleLabel,
-    Notification,
-    NotificationStatus,
 )
-from tests.helpers_inputs import create_ics_input_for_user
 
 
 def _seed_email_queue_row(db_session, *, user_id: int, email_id: str = "email-review-1", route: str = "review") -> None:
@@ -76,27 +70,8 @@ def test_email_queue_returns_expected_shape_without_body(client, initialized_use
     assert "body_text" not in row
 
 
-def test_email_route_notify_and_cancel_pending_notifications(client, initialized_user, db_session) -> None:
+def test_email_route_archive_drop_and_mark_viewed(client, initialized_user, db_session) -> None:
     _seed_email_queue_row(db_session, user_id=1)
-    create_ics_input_for_user(
-        db_session,
-        user_id=initialized_user["id"],
-        url="https://example.com/calendar.ics",
-    )
-
-    to_notify = client.post(
-        "/v1/emails/email-review-1/route",
-        headers={"X-API-Key": "test-api-key"},
-        json={"route": "notify"},
-    )
-    assert to_notify.status_code == 200
-    assert to_notify.json()["route"] == "notify"
-
-    synthetic_change = db_session.scalar(select(Change).where(Change.event_uid == "email-route:email-review-1"))
-    assert synthetic_change is not None
-    pending = db_session.scalar(select(Notification).where(Notification.change_id == synthetic_change.id))
-    assert pending is not None
-    assert pending.status == NotificationStatus.PENDING
 
     to_archive = client.post(
         "/v1/emails/email-review-1/route",
@@ -106,10 +81,13 @@ def test_email_route_notify_and_cancel_pending_notifications(client, initialized
     assert to_archive.status_code == 200
     assert to_archive.json()["route"] == "archive"
 
-    db_session.expire_all()
-    cancelled = db_session.scalar(select(Notification).where(Notification.id == pending.id))
-    assert cancelled is not None
-    assert cancelled.status == NotificationStatus.FAILED
+    to_drop = client.post(
+        "/v1/emails/email-review-1/route",
+        headers={"X-API-Key": "test-api-key"},
+        json={"route": "drop"},
+    )
+    assert to_drop.status_code == 200
+    assert to_drop.json()["route"] == "drop"
 
     viewed = client.post("/v1/emails/email-review-1/mark_viewed", headers={"X-API-Key": "test-api-key"})
     assert viewed.status_code == 200

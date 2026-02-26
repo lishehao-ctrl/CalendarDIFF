@@ -34,8 +34,6 @@ class ChangeType(str, Enum):
     CREATED = "created"
     REMOVED = "removed"
     DUE_CHANGED = "due_changed"
-    TITLE_CHANGED = "title_changed"
-    COURSE_CHANGED = "course_changed"
 
 
 class NotificationChannel(str, Enum):
@@ -74,7 +72,6 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     inputs: Mapped[list[Input]] = relationship(back_populates="user")
-    notification_prefs: Mapped[UserNotificationPrefs | None] = relationship(back_populates="user", uselist=False)
     digest_send_logs: Mapped[list[DigestSendLog]] = relationship(back_populates="user", cascade="all, delete-orphan")
     email_messages: Mapped[list[EmailMessage]] = relationship(
         back_populates="user",
@@ -127,10 +124,6 @@ class Input(Base):
     events: Mapped[list[Event]] = relationship(back_populates="input", cascade="all, delete-orphan")
     snapshots: Mapped[list[Snapshot]] = relationship(back_populates="input", cascade="all, delete-orphan")
     changes: Mapped[list[Change]] = relationship(back_populates="input", cascade="all, delete-orphan")
-    course_overrides: Mapped[list[CourseOverride]] = relationship(
-        back_populates="input", cascade="all, delete-orphan"
-    )
-    task_overrides: Mapped[list[TaskOverride]] = relationship(back_populates="input", cascade="all, delete-orphan")
     sync_runs: Mapped[list[SyncRun]] = relationship(back_populates="input", cascade="all, delete-orphan")
 
     @property
@@ -139,38 +132,6 @@ class Input(Base):
             account = (self.gmail_account_email or "").strip()
             return f"Gmail · {account}" if account else f"Gmail · input-{self.id}"
         return "Calendar · Primary"
-
-
-class CourseOverride(Base):
-    __tablename__ = "course_overrides"
-    __table_args__ = (UniqueConstraint("input_id", "original_course_label", name="uq_course_overrides_input_label"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    input_id: Mapped[int] = mapped_column(ForeignKey("inputs.id", ondelete="CASCADE"), nullable=False)
-    original_course_label: Mapped[str] = mapped_column(String(64), nullable=False)
-    display_course_label: Mapped[str] = mapped_column(String(64), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
-    )
-
-    input: Mapped[Input] = relationship(back_populates="course_overrides")
-
-
-class TaskOverride(Base):
-    __tablename__ = "task_overrides"
-    __table_args__ = (UniqueConstraint("input_id", "event_uid", name="uq_task_overrides_input_uid"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    input_id: Mapped[int] = mapped_column(ForeignKey("inputs.id", ondelete="CASCADE"), nullable=False)
-    event_uid: Mapped[str] = mapped_column(String(255), nullable=False)
-    display_title: Mapped[str] = mapped_column(String(512), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
-    )
-
-    input: Mapped[Input] = relationship(back_populates="task_overrides")
 
 
 class Event(Base):
@@ -372,7 +333,7 @@ class EmailRuleAnalysis(Base):
 class EmailRoute(Base):
     __tablename__ = "email_routes"
     __table_args__ = (
-        CheckConstraint("route IN ('drop', 'archive', 'notify', 'review')", name="ck_email_routes_route"),
+        CheckConstraint("route IN ('drop', 'archive', 'review')", name="ck_email_routes_route"),
         Index("ix_email_routes_route_routed_at_desc", "route", "routed_at"),
     )
 
@@ -447,21 +408,6 @@ class Notification(Base):
     enqueue_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     change: Mapped[Change] = relationship(back_populates="notifications")
-
-
-class UserNotificationPrefs(Base):
-    __tablename__ = "user_notification_prefs"
-
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    digest_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
-    timezone: Mapped[str] = mapped_column(String(128), nullable=False, default="America/Los_Angeles", server_default="America/Los_Angeles")
-    digest_times: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default='["09:00"]')
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
-    )
-
-    user: Mapped[User] = relationship(back_populates="notification_prefs")
 
 
 class DigestSendLog(Base):
