@@ -1,13 +1,13 @@
 import { ApiError, apiRequest } from "@/lib/api";
 import { ToastTone } from "@/lib/hooks/use-toast";
-import { AppConfig, ManualSyncResponse, SourceBusyDetail } from "@/lib/types";
+import { AppConfig, InputBusyDetail, ManualSyncResponse } from "@/lib/types";
 
 export const MIN_MANUAL_SYNC_ANIMATION_MS = 800;
 export const MANUAL_SYNC_BUSY_RETRY_SECONDS = 10;
 
 export type ManualSyncRequestResult =
   | { kind: "success"; result: ManualSyncResponse }
-  | { kind: "busy"; detail: SourceBusyDetail }
+  | { kind: "busy"; detail: InputBusyDetail }
   | { kind: "error"; message: string };
 
 export function toErrorMessage(error: unknown): string {
@@ -102,7 +102,7 @@ export async function requestManualSync(config: AppConfig, inputId: number): Pro
   }
 }
 
-function readInputBusyDetail(error: unknown): SourceBusyDetail | null {
+function readInputBusyDetail(error: unknown): InputBusyDetail | null {
   if (!(error instanceof ApiError) || error.status !== 409) {
     return null;
   }

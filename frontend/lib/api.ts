@@ -67,7 +67,7 @@ export function registerOnboarding(
 export function getEmailQueue(
   config: AppConfig,
   params: {
-    route?: "drop" | "archive" | "notify" | "review";
+    route?: "drop" | "archive" | "review";
     limit?: number;
     cursor?: string | null;
   } = {}

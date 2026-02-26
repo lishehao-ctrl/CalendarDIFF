@@ -9,7 +9,7 @@ import {
   toErrorMessage,
 } from "@/lib/hooks/runtime-utils";
 import { useAppRuntime } from "@/lib/hooks/use-app-runtime";
-import { ChangeFeedRecord, ChangeRecord, EvidencePreviewResponse, Input, InputOverrides } from "@/lib/types";
+import { ChangeFeedRecord, ChangeRecord, EvidencePreviewResponse, Input } from "@/lib/types";
 
 export type ChangeFilter = "all" | "unread";
 
@@ -25,7 +25,6 @@ export function useFeedData() {
 
   const [activeSourceId, setActiveSourceId] = useState<number | null>(null);
   const [sources, setSources] = useState<Input[]>([]);
-  const [overrides, setOverrides] = useState<InputOverrides>({ input_id: 0, courses: [], tasks: [] });
 
   const [changes, setChanges] = useState<ChangeRecord[]>([]);
   const [changesLoading, setChangesLoading] = useState(false);
@@ -65,27 +64,6 @@ export function useFeedData() {
     }
     syncSelectionQuery(activeSourceId);
   }, [config, activeSourceId]);
-
-  useEffect(() => {
-    if (!config || !activeSourceId) {
-      setOverrides({ input_id: 0, courses: [], tasks: [] });
-      return;
-    }
-    const inputType = sources.find((row) => row.id === activeSourceId)?.type ?? null;
-    if (inputType === "email") {
-      setOverrides({ input_id: activeSourceId, courses: [], tasks: [] });
-      return;
-    }
-
-    void (async () => {
-      try {
-        const payload = await apiRequest<InputOverrides>(config, `/v1/inputs/${activeSourceId}/overrides`);
-        setOverrides(payload);
-      } catch {
-        setOverrides({ input_id: activeSourceId, courses: [], tasks: [] });
-      }
-    })();
-  }, [config, activeSourceId, sources]);
 
   async function boot(runtimeConfig: NonNullable<typeof config>) {
     const onboarded = await ensureOnboarded(runtimeConfig);
@@ -209,20 +187,13 @@ export function useFeedData() {
     return changes;
   }, [changeFilter, changes]);
 
-  const courseLabelMap = useMemo(() => {
-    return new Map(overrides.courses.map((item) => [item.original_course_label, item.display_course_label]));
-  }, [overrides.courses]);
-
-  const taskLabelMap = useMemo(() => {
-    return new Map(overrides.tasks.map((item) => [item.event_uid, item.display_title]));
-  }, [overrides.tasks]);
-
   function getCourseDisplayLabel(label: string) {
-    return courseLabelMap.get(label) ?? label;
+    return label;
   }
 
   function getTaskDisplayTitle(uid: string, title: string) {
-    return taskLabelMap.get(uid) ?? title;
+    void uid;
+    return title;
   }
 
   return {

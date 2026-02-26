@@ -21,10 +21,12 @@ export default function EmailReviewPage() {
     error,
     busyEmailId,
     lastAppliedChangeId,
+    applyDrafts,
     loadQueue,
     handleApply,
     handleRoute,
     handleMarkViewed,
+    updateApplyDraft,
   } = useEmailReviewQueue();
 
   useEffect(() => {
@@ -71,10 +73,12 @@ export default function EmailReviewPage() {
         refreshing={refreshing}
         error={error}
         busyEmailId={busyEmailId}
+        applyDrafts={applyDrafts}
         onRefresh={loadQueue}
         onApply={handleApply}
         onRoute={handleRoute}
         onMarkViewed={handleMarkViewed}
+        onUpdateApplyDraft={updateApplyDraft}
       />
 
       <DashboardToastStack toasts={toasts} />

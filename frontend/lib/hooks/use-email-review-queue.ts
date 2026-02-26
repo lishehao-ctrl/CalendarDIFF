@@ -9,8 +9,22 @@ import {
   updateEmailRoute,
 } from "@/lib/api";
 import { getRuntimeConfig } from "@/lib/config";
-import { AppConfig, EmailQueueItem, EmailRoute } from "@/lib/types";
+import { AppConfig, ApplyEmailReviewMode, EmailQueueItem, EmailRoute } from "@/lib/types";
 import { useToast } from "@/lib/hooks/use-toast";
+
+type ApplyDraft = {
+  mode: ApplyEmailReviewMode;
+  target_event_uid: string;
+  applied_due_at: string;
+  note: string;
+};
+
+const DEFAULT_APPLY_DRAFT: ApplyDraft = {
+  mode: "create_new",
+  target_event_uid: "",
+  applied_due_at: "",
+  note: "",
+};
 
 export function useEmailReviewQueue() {
   const { toasts, pushToast } = useToast();
@@ -24,6 +38,7 @@ export function useEmailReviewQueue() {
   const [refreshing, setRefreshing] = useState(false);
   const [busyEmailId, setBusyEmailId] = useState<string | null>(null);
   const [lastAppliedChangeId, setLastAppliedChangeId] = useState<number | null>(null);
+  const [applyDrafts, setApplyDrafts] = useState<Record<string, ApplyDraft>>({});
 
   useEffect(() => {
     const runtime = getRuntimeConfig();
@@ -69,6 +84,13 @@ export function useEmailReviewQueue() {
     try {
       const rows = await getEmailQueue(runtime, { route: "review", limit: 50 });
       setItems(rows);
+      setApplyDrafts((current) => {
+        const next: Record<string, ApplyDraft> = {};
+        for (const row of rows) {
+          next[row.email_id] = current[row.email_id] ?? { ...DEFAULT_APPLY_DRAFT };
+        }
+        return next;
+      });
     } catch (err) {
       if (isOnboardingRequiredError(err)) {
         setNeedsOnboarding(true);
@@ -133,17 +155,43 @@ export function useEmailReviewQueue() {
     if (!config) {
       return;
     }
+    const draft = applyDrafts[emailId] ?? DEFAULT_APPLY_DRAFT;
+    const targetEventUid = draft.target_event_uid.trim();
+    if ((draft.mode === "update_existing" || draft.mode === "remove_existing") && !targetEventUid) {
+      pushToast("target_event_uid is required for update/remove mode", "error");
+      return;
+    }
     setBusyEmailId(emailId);
     try {
-      const result = await applyEmailReview(config, emailId, {});
+      const result = await applyEmailReview(config, emailId, {
+        mode: draft.mode,
+        target_event_uid: targetEventUid || undefined,
+        applied_due_at: draft.applied_due_at.trim() || undefined,
+        note: draft.note.trim() || undefined,
+      });
       setLastAppliedChangeId(result.change_id);
       setItems((current) => current.filter((item) => item.email_id !== emailId));
+      setApplyDrafts((current) => {
+        const next = { ...current };
+        delete next[emailId];
+        return next;
+      });
       pushToast(`Applied to timeline (change #${result.change_id})`, "success");
     } catch (err) {
       pushToast(toErrorMessage(err), "error");
     } finally {
       setBusyEmailId(null);
     }
+  }
+
+  function updateApplyDraft(emailId: string, patch: Partial<ApplyDraft>) {
+    setApplyDrafts((current) => ({
+      ...current,
+      [emailId]: {
+        ...(current[emailId] ?? DEFAULT_APPLY_DRAFT),
+        ...patch,
+      },
+    }));
   }
 
   return {
@@ -156,10 +204,12 @@ export function useEmailReviewQueue() {
     error,
     busyEmailId,
     lastAppliedChangeId,
+    applyDrafts,
     loadQueue,
     handleApply,
     handleRoute,
     handleMarkViewed,
+    updateApplyDraft,
   };
 }
 

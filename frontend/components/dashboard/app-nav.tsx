@@ -10,17 +10,18 @@ type AppNavProps = {
   density?: AppNavDensity;
 };
 
-export type AppNavCurrent = "processing" | "feed" | "emails";
+export type AppNavCurrent = "onboarding" | "processing" | "feed" | "emails";
 export type AppNavDensity = "comfortable" | "compact";
 
 type NavItem = {
   key: AppNavCurrent;
   label: string;
   icon: LucideIcon;
-  path: "/ui/processing" | "/ui/feed" | "/ui/emails/review";
+  path: "/ui/onboarding" | "/ui/processing" | "/ui/feed" | "/ui/emails/review";
 };
 
 const NAV_ITEMS: NavItem[] = [
+  { key: "onboarding", label: "Onboarding", icon: Workflow, path: "/ui/onboarding" },
   { key: "processing", label: "Processing", icon: Workflow, path: "/ui/processing" },
   { key: "feed", label: "Feed", icon: BellRing, path: "/ui/feed" },
   { key: "emails", label: "Email Review", icon: BellRing, path: "/ui/emails/review" },

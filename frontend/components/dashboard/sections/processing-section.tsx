@@ -11,38 +11,38 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/lib/types";
 
 type ProcessingSectionProps = {
-  sources: Input[];
-  activeSourceId: number | null;
-  sourcesLoading: boolean;
-  sourcesError: string | null;
-  manualSyncingSourceId: number | null;
-  manualSyncBusySourceId: number | null;
+  inputs: Input[];
+  activeInputId: number | null;
+  inputsLoading: boolean;
+  inputsError: string | null;
+  manualSyncingInputId: number | null;
+  manualSyncBusyInputId: number | null;
   manualSyncBusyMessage: string | null;
   manualSyncRetryAfterSeconds: number | null;
   manualSyncAutoRetried: boolean;
-  onActiveSourceChange: (sourceId: number) => void | Promise<void>;
-  onRefreshSources: () => void | Promise<void>;
-  onRunManualSync: (sourceId: number) => void | Promise<void>;
+  onActiveInputChange: (inputId: number) => void | Promise<void>;
+  onRefreshInputs: () => void | Promise<void>;
+  onRunManualSync: (inputId: number) => void | Promise<void>;
   onRetryManualSyncBusy: () => void | Promise<void>;
 };
 
 export function ProcessingSection({
-  sources,
-  activeSourceId,
-  sourcesLoading,
-  sourcesError,
-  manualSyncingSourceId,
-  manualSyncBusySourceId,
+  inputs,
+  activeInputId,
+  inputsLoading,
+  inputsError,
+  manualSyncingInputId,
+  manualSyncBusyInputId,
   manualSyncBusyMessage,
   manualSyncRetryAfterSeconds,
   manualSyncAutoRetried,
-  onActiveSourceChange,
-  onRefreshSources,
+  onActiveInputChange,
+  onRefreshInputs,
   onRunManualSync,
   onRetryManualSyncBusy,
 }: ProcessingSectionProps) {
-  const syncingSource = manualSyncingSourceId ? sources.find((source) => source.id === manualSyncingSourceId) : null;
-  const busySource = manualSyncBusySourceId ? sources.find((source) => source.id === manualSyncBusySourceId) : null;
+  const syncingInput = manualSyncingInputId ? inputs.find((input) => input.id === manualSyncingInputId) : null;
+  const busyInput = manualSyncBusyInputId ? inputs.find((input) => input.id === manualSyncBusyInputId) : null;
 
   return (
     <section id="processing" className="section-anchor">
@@ -57,55 +57,55 @@ export function ProcessingSection({
               <Label htmlFor="active-source">Active Input</Label>
               <Select
                 id="active-source"
-                value={activeSourceId ? String(activeSourceId) : ""}
+                value={activeInputId ? String(activeInputId) : ""}
                 onChange={(event) => {
                   const value = Number(event.target.value);
                   if (Number.isInteger(value) && value > 0) {
-                    void onActiveSourceChange(value);
+                    void onActiveInputChange(value);
                   }
                 }}
-                disabled={!sources.length}
+                disabled={!inputs.length}
               >
                 <option value="">Select an input</option>
-                {sources.map((source) => (
-                  <option key={source.id} value={String(source.id)}>
-                    {source.id} - {source.display_label}
+                {inputs.map((input) => (
+                  <option key={input.id} value={String(input.id)}>
+                    {input.id} - {input.display_label}
                   </option>
                 ))}
               </Select>
             </div>
-            <Button variant="secondary" onClick={() => void onRefreshSources()} disabled={sourcesLoading}>
-              {sourcesLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            <Button variant="secondary" onClick={() => void onRefreshInputs()} disabled={inputsLoading}>
+              {inputsLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               Refresh Inputs
             </Button>
           </div>
 
-          {manualSyncingSourceId !== null ? (
+          {manualSyncingInputId !== null ? (
             <Alert>
               <AlertTitle className="flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Attempting sync...
               </AlertTitle>
               <AlertDescription>
-                {syncingSource ? `Input "${syncingSource.display_label}" is synchronizing.` : "Manual sync is in progress."}
+                {syncingInput ? `Input "${syncingInput.display_label}" is synchronizing.` : "Manual sync is in progress."}
               </AlertDescription>
             </Alert>
           ) : null}
 
-          {manualSyncBusySourceId !== null ? (
+          {manualSyncBusyInputId !== null ? (
             <Alert>
               <AlertTitle>Sync in progress</AlertTitle>
               <AlertDescription>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <span>
                     {manualSyncAutoRetried
-                      ? `${busySource ? `Input "${busySource.display_label}"` : "This input"} is still syncing. Click Retry now.`
-                      : `${busySource ? `Input "${busySource.display_label}"` : "This input"} is syncing. Auto retry in ${
+                      ? `${busyInput ? `Input "${busyInput.display_label}"` : "This input"} is still syncing. Click Retry now.`
+                      : `${busyInput ? `Input "${busyInput.display_label}"` : "This input"} is syncing. Auto retry in ${
                           manualSyncRetryAfterSeconds ?? 10
                         }s.`}
                     {manualSyncBusyMessage ? ` (${manualSyncBusyMessage})` : ""}
                   </span>
-                  <Button size="sm" variant="secondary" onClick={() => void onRetryManualSyncBusy()} disabled={manualSyncingSourceId !== null}>
+                  <Button size="sm" variant="secondary" onClick={() => void onRetryManualSyncBusy()} disabled={manualSyncingInputId !== null}>
                     Retry now
                   </Button>
                 </div>
@@ -114,9 +114,9 @@ export function ProcessingSection({
           ) : null}
 
           <SectionState
-            isLoading={sourcesLoading}
-            error={sourcesError}
-            isEmpty={!sourcesLoading && !sourcesError && sources.length === 0}
+            isLoading={inputsLoading}
+            error={inputsError}
+            isEmpty={!inputsLoading && !inputsError && inputs.length === 0}
             loadingRows={3}
             errorTitle="Input List Failed"
             emptyTitle="Empty Inputs"
@@ -136,33 +136,33 @@ export function ProcessingSection({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sources.map((source) => (
-                  <TableRow key={source.id}>
+                {inputs.map((input) => (
+                  <TableRow key={input.id}>
                     <TableCell className="font-medium">
-                      <div>{source.display_label}</div>
+                      <div>{input.display_label}</div>
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                        <span>{`input-${source.id}`}</span>
-                        <Badge variant="muted">{source.type === "email" ? "Global" : "Primary"}</Badge>
+                        <span>{`input-${input.id}`}</span>
+                        <Badge variant="muted">{input.type === "email" ? "Global" : "Primary"}</Badge>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={readSourceHealthVariant(source)}>{readSourceHealthLabel(source)}</Badge>
+                      <Badge variant={readInputHealthVariant(input)}>{readInputHealthLabel(input)}</Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={source.type === "email" ? "warning" : "muted"}>{source.type.toUpperCase()}</Badge>
+                      <Badge variant={input.type === "email" ? "warning" : "muted"}>{input.type.toUpperCase()}</Badge>
                     </TableCell>
-                    <TableCell>{source.interval_minutes} min</TableCell>
-                    <TableCell>{source.last_result ?? "-"}</TableCell>
-                    <TableCell>{source.next_check_at ?? "-"}</TableCell>
-                    <TableCell>{source.last_checked_at ?? "-"}</TableCell>
+                    <TableCell>{input.interval_minutes} min</TableCell>
+                    <TableCell>{input.last_result ?? "-"}</TableCell>
+                    <TableCell>{input.next_check_at ?? "-"}</TableCell>
+                    <TableCell>{input.last_checked_at ?? "-"}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-2">
-                        <Button size="sm" onClick={() => void onRunManualSync(source.id)} disabled={manualSyncingSourceId !== null}>
-                          {manualSyncingSourceId === source.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                          {manualSyncingSourceId === source.id ? "Syncing..." : "Sync now"}
+                        <Button size="sm" onClick={() => void onRunManualSync(input.id)} disabled={manualSyncingInputId !== null}>
+                          {manualSyncingInputId === input.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                          {manualSyncingInputId === input.id ? "Syncing..." : "Sync now"}
                         </Button>
                       </div>
-                      {source.last_error ? <div className="mt-2 text-xs text-rose-700">{source.last_error}</div> : null}
+                      {input.last_error ? <div className="mt-2 text-xs text-rose-700">{input.last_error}</div> : null}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -175,19 +175,19 @@ export function ProcessingSection({
   );
 }
 
-function readSourceHealthVariant(source: Input): "success" | "warning" | "danger" {
+function readInputHealthVariant(input: Input): "success" | "warning" | "danger" {
   const failedStatuses = new Set(["FETCH_FAILED", "PARSE_FAILED", "DIFF_FAILED", "EMAIL_FAILED"]);
-  if ((source.last_result && failedStatuses.has(source.last_result)) || source.last_error) {
+  if ((input.last_result && failedStatuses.has(input.last_result)) || input.last_error) {
     return "danger";
   }
-  if (isSourceStale(source)) {
+  if (isInputStale(input)) {
     return "warning";
   }
   return "success";
 }
 
-function readSourceHealthLabel(source: Input): string {
-  const variant = readSourceHealthVariant(source);
+function readInputHealthLabel(input: Input): string {
+  const variant = readInputHealthVariant(input);
   if (variant === "danger") {
     return "failed";
   }
@@ -197,14 +197,14 @@ function readSourceHealthLabel(source: Input): string {
   return "healthy";
 }
 
-function isSourceStale(source: Input): boolean {
-  if (!source.last_checked_at) {
+function isInputStale(input: Input): boolean {
+  if (!input.last_checked_at) {
     return false;
   }
-  const checkedTs = Date.parse(source.last_checked_at);
+  const checkedTs = Date.parse(input.last_checked_at);
   if (Number.isNaN(checkedTs)) {
     return false;
   }
-  const thresholdMs = source.interval_minutes * 2 * 60 * 1000;
+  const thresholdMs = input.interval_minutes * 2 * 60 * 1000;
   return Date.now() - checkedTs > thresholdMs;
 }

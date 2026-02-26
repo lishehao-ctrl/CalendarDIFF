@@ -4,7 +4,10 @@ import { SectionState } from "@/components/dashboard/section-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmailQueueItem, EmailRoute } from "@/lib/types";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { ApplyEmailReviewMode, EmailQueueItem, EmailRoute } from "@/lib/types";
 
 type EmailReviewSectionProps = {
   items: EmailQueueItem[];
@@ -12,10 +15,28 @@ type EmailReviewSectionProps = {
   error: string | null;
   refreshing: boolean;
   busyEmailId: string | null;
+  applyDrafts: Record<
+    string,
+    {
+      mode: ApplyEmailReviewMode;
+      target_event_uid: string;
+      applied_due_at: string;
+      note: string;
+    }
+  >;
   onRefresh: () => void | Promise<void>;
   onApply: (emailId: string) => void | Promise<void>;
   onRoute: (emailId: string, route: EmailRoute) => void | Promise<void>;
   onMarkViewed: (emailId: string) => void | Promise<void>;
+  onUpdateApplyDraft: (
+    emailId: string,
+    patch: Partial<{
+      mode: ApplyEmailReviewMode;
+      target_event_uid: string;
+      applied_due_at: string;
+      note: string;
+    }>
+  ) => void;
 };
 
 export function EmailReviewSection({
@@ -24,10 +45,12 @@ export function EmailReviewSection({
   error,
   refreshing,
   busyEmailId,
+  applyDrafts,
   onRefresh,
   onApply,
   onRoute,
   onMarkViewed,
+  onUpdateApplyDraft,
 }: EmailReviewSectionProps) {
   return (
     <section className="section-anchor">
@@ -59,6 +82,13 @@ export function EmailReviewSection({
             <div className="stagger-fade space-y-3">
               {items.map((item) => {
                 const busy = busyEmailId === item.email_id;
+                const draft = applyDrafts[item.email_id] ?? {
+                  mode: "create_new",
+                  target_event_uid: "",
+                  applied_due_at: "",
+                  note: "",
+                };
+                const requiresTargetUid = draft.mode === "update_existing" || draft.mode === "remove_existing";
                 return (
                   <article key={item.email_id} className="rounded-2xl border border-line bg-white p-4 shadow-card">
                     <div className="flex flex-wrap items-start justify-between gap-2">
@@ -142,6 +172,74 @@ export function EmailReviewSection({
                         </div>
                       </div>
                     </details>
+
+                    <div className="mt-3 rounded-xl border border-line bg-slate-50/70 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted">Apply Mode</p>
+                      <div className="mt-2 grid gap-3 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor={`apply-mode-${item.email_id}`}>Mode</Label>
+                          <Select
+                            id={`apply-mode-${item.email_id}`}
+                            value={draft.mode}
+                            onChange={(event) =>
+                              onUpdateApplyDraft(item.email_id, {
+                                mode: event.target.value as ApplyEmailReviewMode,
+                              })
+                            }
+                            disabled={busy}
+                          >
+                            <option value="create_new">create_new (new task)</option>
+                            <option value="update_existing">update_existing (reschedule)</option>
+                            <option value="remove_existing">remove_existing (remove task)</option>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`target-event-${item.email_id}`}>target_event_uid</Label>
+                          <Input
+                            id={`target-event-${item.email_id}`}
+                            value={draft.target_event_uid}
+                            onChange={(event) =>
+                              onUpdateApplyDraft(item.email_id, {
+                                target_event_uid: event.target.value,
+                              })
+                            }
+                            placeholder="required for update/remove"
+                            disabled={busy}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`due-at-${item.email_id}`}>applied_due_at (optional)</Label>
+                          <Input
+                            id={`due-at-${item.email_id}`}
+                            value={draft.applied_due_at}
+                            onChange={(event) =>
+                              onUpdateApplyDraft(item.email_id, {
+                                applied_due_at: event.target.value,
+                              })
+                            }
+                            placeholder="2026-03-01T23:59:00Z"
+                            disabled={busy}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`apply-note-${item.email_id}`}>note (optional)</Label>
+                          <Input
+                            id={`apply-note-${item.email_id}`}
+                            value={draft.note}
+                            onChange={(event) =>
+                              onUpdateApplyDraft(item.email_id, {
+                                note: event.target.value,
+                              })
+                            }
+                            placeholder="Applied from email review"
+                            disabled={busy}
+                          />
+                        </div>
+                      </div>
+                      {requiresTargetUid ? (
+                        <p className="mt-2 text-xs text-muted">`update_existing` and `remove_existing` require `target_event_uid`.</p>
+                      ) : null}
+                    </div>
 
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <Button onClick={() => void onApply(item.email_id)} disabled={busy}>

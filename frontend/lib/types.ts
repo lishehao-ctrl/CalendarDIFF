@@ -5,7 +5,7 @@ export type AppConfig = {
 
 export type Input = {
   id: number;
-  type: string;
+  type: "ics" | "email" | string;
   display_label: string;
   provider: string | null;
   gmail_label: string | null;
@@ -24,10 +24,6 @@ export type Input = {
   last_result: string | null;
   last_error: string | null;
   created_at: string;
-};
-
-export type InputCreateResponse = Input & {
-  upserted_existing: boolean;
 };
 
 export type GmailOAuthStartRequest = {
@@ -50,7 +46,7 @@ export type ManualSyncResponse = {
   notification_state: string | null;
 };
 
-export type SourceBusyDetail = {
+export type InputBusyDetail = {
   status?: "LOCK_SKIPPED";
   code: "input_busy";
   message: string;
@@ -58,56 +54,11 @@ export type SourceBusyDetail = {
   recoverable: boolean;
 };
 
-export type DeadlineItem = {
-  uid: string;
-  title: string;
-  ddl_type: string;
-  start_at_utc: string;
-  end_at_utc: string;
-};
-
-export type CourseDeadlines = {
-  course_label: string;
-  deadlines: DeadlineItem[];
-};
-
-export type InputDeadlines = {
-  input_id: number;
-  input_label: string | null;
-  fetched_at_utc: string;
-  total_deadlines: number;
-  courses: CourseDeadlines[];
-};
-
-export type CourseOverride = {
-  id: number;
-  input_id: number;
-  original_course_label: string;
-  display_course_label: string;
-  created_at: string;
-  updated_at: string;
-};
-
-export type TaskOverride = {
-  id: number;
-  input_id: number;
-  event_uid: string;
-  display_title: string;
-  created_at: string;
-  updated_at: string;
-};
-
-export type InputOverrides = {
-  input_id: number;
-  courses: CourseOverride[];
-  tasks: TaskOverride[];
-};
-
 export type ChangeRecord = {
   id: number;
   input_id: number;
   event_uid: string;
-  change_type: string;
+  change_type: "created" | "removed" | "due_changed" | string;
   detected_at: string;
   before_json: Record<string, unknown> | null;
   after_json: Record<string, unknown> | null;
@@ -122,15 +73,6 @@ export type ChangeRecord = {
   viewed_note: string | null;
 };
 
-export type EvidencePreviewResponse = {
-  side: "before" | "after";
-  content_type: string;
-  truncated: boolean;
-  filename: string;
-  event_count: number;
-  events: EvidencePreviewEvent[];
-};
-
 export type EvidencePreviewEvent = {
   uid: string | null;
   summary: string | null;
@@ -138,6 +80,15 @@ export type EvidencePreviewEvent = {
   dtend: string | null;
   location: string | null;
   description: string | null;
+};
+
+export type EvidencePreviewResponse = {
+  side: "before" | "after";
+  content_type: string;
+  truncated: boolean;
+  filename: string;
+  event_count: number;
+  events: EvidencePreviewEvent[];
 };
 
 export type ChangeSummarySide = {
@@ -150,6 +101,15 @@ export type ChangeSummarySide = {
 export type ChangeSummary = {
   old: ChangeSummarySide;
   new: ChangeSummarySide;
+};
+
+export type ChangeFeedRecord = ChangeRecord & {
+  input_type: "ics" | "email" | string;
+  priority_rank: number;
+  priority_label: string;
+  notification_state: string | null;
+  deliver_after: string | null;
+  change_summary?: ChangeSummary | null;
 };
 
 export type HealthResponse = {
@@ -185,35 +145,10 @@ export type HealthResponse = {
   };
 };
 
-export type StatusResponse = {
-  scheduler_last_tick_at: string | null;
-  scheduler_lock_acquired: boolean | null;
-  due_inputs_count: number;
-  checked_in_last_5m_count: number;
-  failed_in_last_1h_count: number;
-  pending_delayed_notifications_count: number;
-  schema_guard_blocked: boolean;
-  schema_guard_message: string | null;
-};
-
-export type InputRun = {
-  id: number;
-  input_id: number;
-  trigger_type: string;
-  started_at: string;
-  finished_at: string | null;
-  status: string;
-  changes_count: number;
-  error_code: string | null;
-  error_message: string | null;
-  duration_ms: number | null;
-  lock_owner: string | null;
-};
-
 export type DashboardUser = {
   id: number;
   email: string | null;
-  name: string;
+  name?: string;
   notify_email: string | null;
   calendar_delay_seconds: number;
   created_at: string;
@@ -244,7 +179,7 @@ export type OnboardingRegisterResponse = {
   changes_created: number;
 };
 
-export type EmailRoute = "drop" | "archive" | "notify" | "review";
+export type EmailRoute = "drop" | "archive" | "review";
 
 export type EmailQueueActionItem = {
   action: string | null;
@@ -301,8 +236,10 @@ export type MarkEmailViewedResponse = {
   viewed_at: string;
 };
 
+export type ApplyEmailReviewMode = "create_new" | "update_existing" | "remove_existing";
+
 export type ApplyEmailReviewRequest = {
-  mode?: "create_new" | "update_existing";
+  mode?: ApplyEmailReviewMode;
   target_event_uid?: string;
   applied_due_at?: string | null;
   note?: string | null;
@@ -311,13 +248,4 @@ export type ApplyEmailReviewRequest = {
 export type ApplyEmailReviewResponse = {
   task_id: number;
   change_id: number;
-};
-
-export type ChangeFeedRecord = ChangeRecord & {
-  input_type: string;
-  priority_rank: number;
-  priority_label: string;
-  notification_state: string | null;
-  deliver_after: string | null;
-  change_summary?: ChangeSummary | null;
 };
