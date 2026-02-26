@@ -63,6 +63,14 @@ class InputBusyError(RuntimeError):
         super().__init__("another instance is syncing this input")
 
 
+class InputDeactivateError(RuntimeError):
+    """Raised when input deactivation violates runtime invariants."""
+
+    def __init__(self, *, code: str, message: str) -> None:
+        self.code = code
+        super().__init__(message)
+
+
 class GmailOAuthStateError(RuntimeError):
     """Raised when Gmail OAuth state is invalid or expired."""
 
@@ -420,6 +428,30 @@ def list_latest_run_status_map(db: Session, input_ids: list[int]) -> dict[int, s
 
 def get_input_by_id(db: Session, input_id: int) -> Input | None:
     return db.get(Input, input_id)
+
+
+def deactivate_input(db: Session, input: Input) -> bool:
+    if not input.is_active:
+        return False
+
+    if input.type == InputType.ICS:
+        active_ics_count = db.scalar(
+            select(func.count(Input.id)).where(
+                Input.user_id == input.user_id,
+                Input.type == InputType.ICS,
+                Input.is_active.is_(True),
+            )
+        )
+        if int(active_ics_count or 0) <= 1:
+            raise InputDeactivateError(
+                code="cannot_deactivate_primary_ics",
+                message="Cannot deactivate the only active ICS input",
+            )
+
+    input.is_active = False
+    db.commit()
+    db.refresh(input)
+    return True
 
 
 def run_manual_input_sync(db: Session, input: Input) -> SyncRunResult:

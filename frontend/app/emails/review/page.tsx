@@ -44,6 +44,7 @@ export default function EmailReviewPage() {
         description="Review rule-derived email candidates before applying them into your canonical timeline."
         current="emails"
         activeInputId={null}
+        showOnboardingNav={needsOnboarding}
         actions={
           <Button variant="secondary" asChild>
             <a href="/ui/feed">Open Feed</a>

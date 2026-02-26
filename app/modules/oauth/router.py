@@ -81,6 +81,6 @@ def _redirect_with_status(status_value: str, *, input_id: int | None = None, mes
         query["input_id"] = str(input_id)
     if message:
         query["message"] = message[:256]
-    target_path = f"/ui?{urlencode(query)}"
+    target_path = f"/ui/inputs?{urlencode(query)}"
     target = f"{app_base_url}{target_path}" if app_base_url else target_path
     return RedirectResponse(url=target, status_code=302)

@@ -78,7 +78,7 @@ export function useFeedData() {
 
   async function loadSources(runtimeConfig: NonNullable<typeof config>) {
     try {
-      const rows = await apiRequest<Input[]>(runtimeConfig, "/v1/inputs");
+      const rows = (await apiRequest<Input[]>(runtimeConfig, "/v1/inputs")).filter((item) => item.is_active);
       setSources(rows);
       setActiveSourceId((current) => {
         if (current && rows.some((item) => item.id === current)) {

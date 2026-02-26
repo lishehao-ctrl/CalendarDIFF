@@ -22,18 +22,18 @@ CalendarDIFF is a deadline-diff demo focused on one core job:
 3. APScheduler + Postgres advisory locks
 4. Next.js static UI (served by backend at `/ui`)
 
-## UI Surface (Minimal 4 Pages)
+## UI Surface (Minimal)
 
 1. `/ui/onboarding`
-2. `/ui/processing`
-3. `/ui/feed`
-4. `/ui/emails/review`
+2. `/ui/inputs`
+3. `/ui/processing`
+4. `/ui/feed`
+5. `/ui/emails/review`
 
 Removed UI routes:
 
-1. `/ui/inputs`
-2. `/ui/runs`
-3. `/ui/dev`
+1. `/ui/runs`
+2. `/ui/dev`
 
 ## Quick Start
 
@@ -88,10 +88,11 @@ Gmail OAuth and SMTP can be added later. ICS-only flow still runs end-to-end.
 
 ## Main Demo Flow
 
-1. `Onboarding`: submit `notify_email + ics.url`.
-2. `Processing`: run manual sync (`POST /v1/inputs/{input_id}/sync`).
-3. `Feed`: inspect canonical diff cards and evidence preview.
-4. `Email Review`: route/apply email queue items.
+1. `Onboarding` (first-time only): submit `notify_email + ics.url`.
+2. `Inputs`: connect/deactivate Gmail inputs and inspect canonical events.
+3. `Processing`: run manual sync (`POST /v1/inputs/{input_id}/sync`).
+4. `Feed`: inspect canonical diff cards and evidence preview.
+5. `Email Review`: route/apply email queue items.
 
 ## Public API (Current Core)
 
@@ -104,11 +105,13 @@ Gmail OAuth and SMTP can be added later. ICS-only flow still runs end-to-end.
 
 1. `GET /v1/inputs`
 2. `POST /v1/inputs/email/gmail/oauth/start`
-3. `POST /v1/inputs/{input_id}/sync`
-4. `GET /v1/inputs/{input_id}/changes`
-5. `PATCH /v1/inputs/{input_id}/changes/{change_id}/viewed`
-6. `GET /v1/inputs/{input_id}/snapshots`
-7. `GET /health`
+3. `DELETE /v1/inputs/{input_id}` (soft delete, blocks sole active ICS)
+4. `POST /v1/inputs/{input_id}/sync`
+5. `GET /v1/events`
+6. `GET /v1/inputs/{input_id}/changes`
+7. `PATCH /v1/inputs/{input_id}/changes/{change_id}/viewed`
+8. `GET /v1/inputs/{input_id}/snapshots`
+9. `GET /health`
 
 ### Feed / Evidence
 

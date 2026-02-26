@@ -47,6 +47,7 @@ export default function FeedPage() {
         description="Review aggregated changes across email and calendar inputs."
         current="feed"
         activeInputId={activeSourceId}
+        showOnboardingNav={needsOnboarding}
       />
 
       {configError ? (

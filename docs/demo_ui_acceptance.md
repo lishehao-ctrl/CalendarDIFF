@@ -14,32 +14,33 @@ Open:
 
 ## 2) Expected Page Set
 
-Only these routes are valid:
+Core workspace routes:
 
 1. `/ui/onboarding`
-2. `/ui/processing`
-3. `/ui/feed`
-4. `/ui/emails/review`
+2. `/ui/inputs`
+3. `/ui/processing`
+4. `/ui/feed`
+5. `/ui/emails/review`
 
 Removed pages should 404:
 
-1. `/ui/inputs`
-2. `/ui/runs`
-3. `/ui/dev`
+1. `/ui/runs`
+2. `/ui/dev`
 
 ## 3) Core Flow Acceptance
 
 1. onboarding register with `notify_email + ics.url`
-2. redirected to processing on success
-3. processing can run manual sync
-4. feed shows canonical changes only
-5. evidence panel auto-loads structured preview (old/new)
-6. email review queue supports:
+2. ready user visiting `/ui/onboarding` is redirected to `/ui/processing`
+3. `/ui/inputs` can connect Gmail, soft-delete email inputs, and list canonical events
+4. processing can run manual sync for active inputs
+5. feed shows canonical changes only
+6. evidence panel auto-loads structured preview (old/new)
+7. email review queue supports:
    - apply
    - archive
    - drop
    - mark viewed
-7. apply creates canonical change visible in feed
+8. apply creates canonical change visible in feed
 
 ## 4) Evidence Preview Checks
 

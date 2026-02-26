@@ -19,7 +19,6 @@ BLOCKED_TOKENS = (
     "/v1/inputs/{input_id}/overrides",
     'json={"route": "notify"}',
     'route="notify"',
-    "/ui/inputs",
     "/ui/runs",
     "/ui/dev",
     "/v1/dev/inject_notify",

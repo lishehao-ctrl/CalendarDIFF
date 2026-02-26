@@ -33,7 +33,7 @@ def ui_assets(path: str) -> Response:
     normalized = path.strip("/")
     if normalized == "profiles":
         raise HTTPException(status_code=404, detail="UI route not found")
-    if normalized in {"inputs", "runs", "dev"} or normalized.startswith(("inputs/", "runs/", "dev/")):
+    if normalized in {"runs", "dev"} or normalized.startswith(("runs/", "dev/")):
         raise HTTPException(status_code=404, detail="UI route not found")
     asset = _resolve_asset_path(path)
     if asset is not None:

@@ -26,6 +26,10 @@ def _write_ui_fixture(root: Path) -> None:
         "<html><body><h1>Onboarding</h1><div id='onboarding-page'></div></body></html>",
         encoding="utf-8",
     )
+    (root / "inputs.html").write_text(
+        "<html><body><h1>Inputs</h1><div id='inputs-page'></div></body></html>",
+        encoding="utf-8",
+    )
     (root / "emails").mkdir(parents=True, exist_ok=True)
     (root / "emails" / "review.html").write_text(
         "<html><body><h1>Email Review</h1><div id='email-review-page'></div></body></html>",
@@ -100,7 +104,9 @@ def test_ui_named_page_path_is_served(client, monkeypatch, tmp_path) -> None:
     assert "onboarding-page" in response_onboarding.text
 
     response_inputs = client.get("/ui/inputs")
-    assert response_inputs.status_code == 404
+    assert response_inputs.status_code == 200
+    assert "Inputs" in response_inputs.text
+    assert "inputs-page" in response_inputs.text
 
     response_runs = client.get("/ui/runs")
     assert response_runs.status_code == 404

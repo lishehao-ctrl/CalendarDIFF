@@ -94,7 +94,7 @@ export function useProcessingData() {
     setInputsLoading(true);
     setInputsError(null);
     try {
-      const rows = await apiRequest<Input[]>(runtimeConfig, "/v1/inputs");
+      const rows = (await apiRequest<Input[]>(runtimeConfig, "/v1/inputs")).filter((row) => row.is_active);
       setInputs(rows);
       setActiveInputId((current) => {
         if (current && rows.some((row) => row.id === current)) {

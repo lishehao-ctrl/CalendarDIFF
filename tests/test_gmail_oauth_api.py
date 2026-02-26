@@ -163,7 +163,9 @@ def test_gmail_oauth_callback_creates_email_input_and_redirects(client, db_sessi
     assert response.status_code == 302
 
     redirect_url = response.headers["location"]
-    redirect_query = parse_qs(urlparse(redirect_url).query)
+    redirect_parsed = urlparse(redirect_url)
+    assert redirect_parsed.path == "/ui/inputs"
+    redirect_query = parse_qs(redirect_parsed.query)
     assert redirect_query["gmail_oauth_status"] == ["success"]
     assert "input_id" in redirect_query
 

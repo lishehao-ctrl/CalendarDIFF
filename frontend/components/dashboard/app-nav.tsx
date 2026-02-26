@@ -1,4 +1,4 @@
-import { BellRing, Workflow } from "lucide-react";
+import { BellRing, Inbox, MailSearch, Workflow } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -8,27 +8,29 @@ type AppNavProps = {
   current: AppNavCurrent;
   activeInputId: number | null;
   density?: AppNavDensity;
+  showOnboarding?: boolean;
 };
 
-export type AppNavCurrent = "onboarding" | "processing" | "feed" | "emails";
+export type AppNavCurrent = "onboarding" | "inputs" | "processing" | "feed" | "emails";
 export type AppNavDensity = "comfortable" | "compact";
 
 type NavItem = {
   key: AppNavCurrent;
   label: string;
   icon: LucideIcon;
-  path: "/ui/onboarding" | "/ui/processing" | "/ui/feed" | "/ui/emails/review";
+  path: "/ui/onboarding" | "/ui/inputs" | "/ui/processing" | "/ui/feed" | "/ui/emails/review";
 };
 
 const NAV_ITEMS: NavItem[] = [
   { key: "onboarding", label: "Onboarding", icon: Workflow, path: "/ui/onboarding" },
+  { key: "inputs", label: "Inputs", icon: Inbox, path: "/ui/inputs" },
   { key: "processing", label: "Processing", icon: Workflow, path: "/ui/processing" },
   { key: "feed", label: "Feed", icon: BellRing, path: "/ui/feed" },
-  { key: "emails", label: "Email Review", icon: BellRing, path: "/ui/emails/review" },
+  { key: "emails", label: "Email Review", icon: MailSearch, path: "/ui/emails/review" },
 ];
 
-export function AppNav({ current, activeInputId, density = "comfortable" }: AppNavProps) {
-  const visibleItems = NAV_ITEMS;
+export function AppNav({ current, activeInputId, density = "comfortable", showOnboarding = false }: AppNavProps) {
+  const visibleItems = showOnboarding ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.key !== "onboarding");
   return (
     <nav
       aria-label="Workspace navigation"

@@ -20,7 +20,9 @@ from app.modules.inputs.schemas import (
 )
 from app.modules.inputs.service import (
     InputBusyError,
+    InputDeactivateError,
     build_gmail_oauth_start,
+    deactivate_input,
     get_input_by_id,
     list_inputs_with_runtime_state,
     run_manual_input_sync,
@@ -81,11 +83,24 @@ def start_input_gmail_oauth(
     )
 
 
+@router.post("/ics", include_in_schema=False)
+def create_ics_input_route_removed() -> None:
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+
 @router.post("/{input_id}/sync", response_model=ManualInputSyncResponse)
 def sync_input_now(input_id: int, db: Session = Depends(get_db)) -> ManualInputSyncResponse:
     input = get_input_by_id(db, input_id)
     if input is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Input not found")
+    if not input.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "input_inactive",
+                "message": "Input is inactive",
+            },
+        )
 
     try:
         result = run_manual_input_sync(db, input)
@@ -112,6 +127,23 @@ def sync_input_now(input_id: int, db: Session = Depends(get_db)) -> ManualInputS
     if result.notification_state is not None:
         payload["notification_state"] = result.notification_state
     return ManualInputSyncResponse.model_validate(payload)
+
+
+@router.delete("/{input_id}", status_code=status.HTTP_204_NO_CONTENT)
+def deactivate_input_by_id(input_id: int, db: Session = Depends(get_db)) -> None:
+    input_row = get_input_by_id(db, input_id)
+    if input_row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Input not found")
+    try:
+        deactivate_input(db, input_row)
+    except InputDeactivateError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": exc.code,
+                "message": str(exc),
+            },
+        ) from exc
 
 
 @router.get("/{input_id}/changes", response_model=list[ChangeResponse])

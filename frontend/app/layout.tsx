@@ -11,7 +11,7 @@ const rootFontVars: CSSProperties = {
 
 export const metadata: Metadata = {
   title: "Deadline Diff Watcher UI",
-  description: "Operational dashboard for input sync, overrides, and diff review.",
+  description: "Operational dashboard for inputs, sync control, diff feed, and email review.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

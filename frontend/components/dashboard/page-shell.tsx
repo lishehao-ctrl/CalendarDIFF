@@ -15,6 +15,7 @@ type DashboardPageHeaderProps = {
   description: string;
   current: AppNavCurrent;
   activeInputId: number | null;
+  showOnboardingNav?: boolean;
   navDensity?: AppNavDensity;
   actions?: ReactNode;
 };
@@ -33,6 +34,7 @@ export function DashboardPageHeader({
   description,
   current,
   activeInputId,
+  showOnboardingNav = false,
   navDensity = "comfortable",
   actions,
 }: DashboardPageHeaderProps) {
@@ -49,7 +51,7 @@ export function DashboardPageHeader({
           </div>
           {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
         </div>
-        <AppNav current={current} activeInputId={activeInputId} density={navDensity} />
+        <AppNav current={current} activeInputId={activeInputId} density={navDensity} showOnboarding={showOnboardingNav} />
       </div>
     </Card>
   );

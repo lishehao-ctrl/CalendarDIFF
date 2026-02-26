@@ -54,6 +54,24 @@ export type InputBusyDetail = {
   recoverable: boolean;
 };
 
+export type InputInactiveDetail = {
+  code: "input_inactive";
+  message: string;
+};
+
+export type EventListItem = {
+  id: number;
+  input_id: number;
+  uid: string;
+  course_label: string;
+  title: string;
+  start_at_utc: string;
+  end_at_utc: string;
+  updated_at: string;
+  input_label: string;
+  input_type: "ics" | "email";
+};
+
 export type ChangeRecord = {
   id: number;
   input_id: number;

@@ -64,6 +64,7 @@ export default function ProcessingPage() {
         description="Manual sync control and runtime health for ICS + Gmail inputs."
         current="processing"
         activeInputId={activeInputId}
+        showOnboardingNav={needsOnboarding}
       />
 
       {configError ? (

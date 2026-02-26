@@ -14,6 +14,7 @@ from app.db.schema_guard import SchemaNotReadyError, ensure_schema_ready, is_sch
 from app.db.session import get_engine, get_session_factory
 from app.modules.changes.router import router as changes_router
 from app.modules.emails.router import router as emails_router
+from app.modules.events.router import router as events_router
 from app.modules.health.router import router as health_router
 from app.modules.inputs.router import router as inputs_router
 from app.modules.onboarding.router import router as onboarding_router
@@ -106,6 +107,7 @@ def create_app() -> FastAPI:
     app.include_router(users_router)
     app.include_router(onboarding_router)
     app.include_router(changes_router)
+    app.include_router(events_router)
     app.include_router(inputs_router)
     app.include_router(oauth_router)
     app.include_router(emails_router)

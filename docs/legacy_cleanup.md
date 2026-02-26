@@ -14,18 +14,18 @@
 10. `/v1/inputs/ics`
 11. evidence download route
 12. input-scoped preview route
-13. `/ui/inputs`
-14. `/ui/runs`
-15. `/ui/dev`
+13. `/ui/runs`
+14. `/ui/dev`
 
 ## Kept (Core)
 
 1. onboarding flow (`/v1/onboarding/*`)
-2. input list + manual sync (`/v1/inputs`, `/v1/inputs/{id}/sync`)
+2. input list + management + manual sync (`/v1/inputs`, `DELETE /v1/inputs/{id}`, `/v1/inputs/{id}/sync`)
 3. feed + viewed update
 4. change-scoped evidence preview
 5. email review queue + apply
-6. health probe (`/health`)
+6. events query (`/v1/events`)
+7. health probe (`/health`)
 
 ## Runtime Guardrails
 

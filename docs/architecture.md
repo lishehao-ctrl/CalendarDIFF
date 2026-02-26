@@ -34,6 +34,7 @@ Rule:
 
 1. input type is only `ics|email`
 2. sync lock contention returns `409 code=input_busy`
+3. input soft-delete is `is_active=false` (`DELETE /v1/inputs/{input_id}`)
 
 ### Canonical Timeline + Audit
 
@@ -114,11 +115,12 @@ Rule:
 ## 4) Public Surface (Minimal)
 
 1. `/v1/onboarding/*`
-2. `/v1/inputs` + `/v1/inputs/{input_id}/sync`
-3. `/v1/feed`
-4. `/v1/changes/{change_id}/evidence/{side}/preview`
-5. `/v1/emails/*`
-6. `/health`
+2. `/v1/inputs` + `/v1/inputs/{input_id}/sync` + `/v1/inputs/{input_id}` (DELETE)
+3. `/v1/events`
+4. `/v1/feed`
+5. `/v1/changes/{change_id}/evidence/{side}/preview`
+6. `/v1/emails/*`
+7. `/health`
 
 ## 5) Removed Surface
 
@@ -130,10 +132,10 @@ Rule:
 6. `/v1/inputs/{input_id}/deadlines`
 7. `/v1/inputs/{input_id}/overrides`
 8. input-scoped and download evidence routes
-9. `/ui/inputs`, `/ui/runs`, `/ui/dev`
+9. `/ui/runs`, `/ui/dev`
 
 ## 6) Migration Head
 
 Current Alembic head:
 
-1. `0013_core_runtime_ddl_alert`
+1. `0014_archive_legacy_change_types`

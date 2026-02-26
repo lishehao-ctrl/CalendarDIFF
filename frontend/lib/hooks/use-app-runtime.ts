@@ -4,7 +4,7 @@ import { apiRequest, getOnboardingStatus } from "@/lib/api";
 import { getRuntimeConfig } from "@/lib/config";
 import { useToast } from "@/lib/hooks/use-toast";
 import { isOnboardingRequiredError, toErrorMessage } from "@/lib/hooks/runtime-utils";
-import { AppConfig } from "@/lib/types";
+import { AppConfig, OnboardingStage } from "@/lib/types";
 
 export function useAppRuntime() {
   const { toasts, pushToast } = useToast();
@@ -12,6 +12,7 @@ export function useAppRuntime() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [onboardingStage, setOnboardingStage] = useState<OnboardingStage | null>(null);
 
   useEffect(() => {
     const runtimeConfig = getRuntimeConfig();
@@ -31,6 +32,7 @@ export function useAppRuntime() {
 
       try {
         const onboarding = await getOnboardingStatus(runtime);
+        setOnboardingStage(onboarding.stage);
         if (onboarding.stage !== "ready") {
           setNeedsOnboarding(true);
           return false;
@@ -45,10 +47,12 @@ export function useAppRuntime() {
         }>(runtime, "/v1/user");
         setNeedsOnboarding(false);
         setConfigError(null);
+        setOnboardingStage("ready");
         return true;
       } catch (error) {
         if (isOnboardingRequiredError(error)) {
           setNeedsOnboarding(true);
+          setOnboardingStage(null);
           return false;
         }
         setConfigError(toErrorMessage(error));
@@ -62,6 +66,8 @@ export function useAppRuntime() {
     config,
     configError,
     needsOnboarding,
+    onboardingStage,
+    isReady: onboardingStage === "ready",
     setNeedsOnboarding,
     ensureOnboarded,
     toasts,

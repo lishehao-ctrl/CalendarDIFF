@@ -2,8 +2,12 @@ import {
   ApplyEmailReviewRequest,
   ApplyEmailReviewResponse,
   AppConfig,
+  EventListItem,
   EvidencePreviewResponse,
   EmailQueueItem,
+  GmailOAuthStartRequest,
+  GmailOAuthStartResponse,
+  Input,
   MarkEmailViewedResponse,
   OnboardingRegisterRequest,
   OnboardingRegisterResponse,
@@ -62,6 +66,56 @@ export function registerOnboarding(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function getInputs(config: AppConfig): Promise<Input[]> {
+  return apiRequest<Input[]>(config, "/v1/inputs");
+}
+
+export function startGmailOAuth(
+  config: AppConfig,
+  payload: GmailOAuthStartRequest = {}
+): Promise<GmailOAuthStartResponse> {
+  return apiRequest<GmailOAuthStartResponse>(config, "/v1/inputs/email/gmail/oauth/start", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteInput(config: AppConfig, inputId: number): Promise<null> {
+  return apiRequest<null>(config, `/v1/inputs/${inputId}`, {
+    method: "DELETE",
+  });
+}
+
+export function getEvents(
+  config: AppConfig,
+  params: {
+    input_id?: number;
+    input_type?: "ics" | "email";
+    q?: string;
+    limit?: number;
+    offset?: number;
+  } = {}
+): Promise<EventListItem[]> {
+  const search = new URLSearchParams();
+  if (typeof params.input_id === "number") {
+    search.set("input_id", String(params.input_id));
+  }
+  if (params.input_type) {
+    search.set("input_type", params.input_type);
+  }
+  if (params.q && params.q.trim()) {
+    search.set("q", params.q.trim());
+  }
+  if (typeof params.limit === "number") {
+    search.set("limit", String(params.limit));
+  }
+  if (typeof params.offset === "number") {
+    search.set("offset", String(params.offset));
+  }
+  const query = search.toString();
+  return apiRequest<EventListItem[]>(config, `/v1/events${query ? `?${query}` : ""}`);
 }
 
 export function getEmailQueue(
