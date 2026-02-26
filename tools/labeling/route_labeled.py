@@ -44,7 +44,7 @@ class ParsedRow:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Deterministic router/filter for labeled email JSONL.")
     parser.add_argument("--input", required=True, help="Input labeled JSONL path.")
-    parser.add_argument("--outdir", required=True, help="Output route directory (drop/archive/notify/review/stats).")
+    parser.add_argument("--outdir", required=True, help="Output route directory (drop/archive/review/stats).")
     parser.add_argument(
         "--review-threshold",
         type=float,
@@ -335,7 +335,9 @@ def derive_primary_route(payload: dict[str, Any], review_threshold: float) -> st
     if review_hit:
         return "review"
     if should_notify:
-        return "notify"
+        # Runtime no longer supports route=notify; non-review actionable rows
+        # are archived and only become canonical changes after explicit apply.
+        return "archive"
     return "archive"
 
 

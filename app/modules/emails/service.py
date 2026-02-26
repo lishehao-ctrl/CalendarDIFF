@@ -8,7 +8,7 @@ from typing import Any, Iterable
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.logging import sanitize_log_message
+from app.core.config import get_settings
 from app.db.models import (
     Change,
     ChangeType,
@@ -19,15 +19,10 @@ from app.db.models import (
     EmailRuleLabel,
     Event,
     Input,
-    InputType,
-    Notification,
-    NotificationChannel,
-    NotificationStatus,
     Snapshot,
 )
-from app.modules.notify.prefs_service import get_or_create_notification_prefs
 from app.modules.notify.service import enqueue_notifications_for_changes
-from app.modules.sync.email_rules import ACTIONABLE_EVENT_TYPES, RULE_VERSION, evaluate_email_rule
+from app.modules.sync.email_rules import ACTIONABLE_EVENT_TYPES, evaluate_email_rule
 from app.modules.sync.gmail_client import GmailMessageMetadata
 from app.modules.users.service import get_single_ics_input_for_user
 
@@ -48,41 +43,28 @@ def create_review_queue_from_email_changes(
     db: Session,
     *,
     user_id: int,
-    input_id: int,
-    changes: Iterable[Change],
-    message_by_id: dict[str, GmailMessageMetadata],
+    messages: Iterable[GmailMessageMetadata],
     timezone_name: str = "UTC",
 ) -> int:
-    del input_id
-    inserted = 0
+    actionable_count = 0
     now = datetime.now(timezone.utc)
     event_keys = sorted(ACTIONABLE_EVENT_TYPES | {"announcement", "grade", "other"})
 
-    for change in changes:
-        message_id = getattr(change, "event_uid", None)
-        if not isinstance(message_id, str) or not message_id:
-            continue
-        metadata = message_by_id.get(message_id)
-        if metadata is None:
-            continue
-
+    for metadata in messages:
         decision = evaluate_email_rule(
             subject=metadata.subject,
             snippet=metadata.snippet,
+            body_text=metadata.body_text,
             from_header=metadata.from_header,
             internal_date=metadata.internal_date,
             timezone_name=timezone_name,
         )
         if not decision.actionable:
             continue
+        actionable_count += 1
 
         email_row = db.get(EmailMessage, metadata.message_id)
-        evidence_key = (
-            change.evidence_keys.get("after")
-            if isinstance(getattr(change, "evidence_keys", None), dict)
-            and isinstance(change.evidence_keys.get("after"), dict)
-            else {"kind": "gmail", "message_id": metadata.message_id}
-        )
+        evidence_key = {"kind": "gmail", "message_id": metadata.message_id}
         if email_row is None:
             email_row = EmailMessage(
                 email_id=metadata.message_id,
@@ -94,7 +76,6 @@ def create_review_queue_from_email_changes(
                 evidence_key=evidence_key,
             )
             db.add(email_row)
-            inserted += 1
         else:
             email_row.user_id = user_id
             email_row.from_addr = metadata.from_header
@@ -149,11 +130,10 @@ def create_review_queue_from_email_changes(
                 notified_at=None,
             )
             db.add(route_row)
-            inserted += 1
         elif route_row.route == "review":
             route_row.routed_at = now
 
-    return inserted
+    return actionable_count
 
 
 def list_email_queue(
@@ -229,23 +209,9 @@ def update_email_route(
     if route_row is None:
         raise EmailQueueItemNotFoundError("Email queue item not found")
 
-    message = db.scalar(
-        select(EmailMessage)
-        .where(EmailMessage.email_id == email_id, EmailMessage.user_id == user_id)
-        .with_for_update()
-    )
-    if message is None:
-        raise EmailQueueItemNotFoundError("Email message not found")
-
-    previous_route = route_row.route
-    if previous_route != route:
+    if route_row.route != route:
         route_row.route = route
         route_row.routed_at = now
-
-    if route == "notify":
-        _handle_notify_route_side_effect(db, user_id=user_id, message=message, route_row=route_row, now=now)
-    elif previous_route == "notify" and route != "notify":
-        _cancel_pending_notify_side_effect(db, user_id=user_id, email_id=email_id, now=now)
 
     db.commit()
     db.refresh(route_row)
@@ -306,15 +272,18 @@ def apply_email_review(
     action_items = db.scalars(
         select(EmailActionItem).where(EmailActionItem.email_id == email_id).order_by(EmailActionItem.id.asc())
     ).all()
-    due_at = (
-        _as_utc(applied_due_at)
-        if applied_due_at is not None
-        else _resolve_due_at(action_items=action_items, raw_extract=label.raw_extract if label is not None else None)
-    )
-    if due_at is None:
-        raise EmailQueueApplyError("No parseable due/time; keep in review")
+    due_at = None
+    if mode in {"create_new", "update_existing"}:
+        due_at = (
+            _as_utc(applied_due_at)
+            if applied_due_at is not None
+            else _resolve_due_at(action_items=action_items, raw_extract=label.raw_extract if label is not None else None)
+        )
+        if due_at is None:
+            raise EmailQueueApplyError("No parseable due/time; keep in review")
 
     if mode == "create_new":
+        assert due_at is not None
         task_id, change_id = _apply_email_create_new(
             db,
             user_id=user_id,
@@ -330,6 +299,7 @@ def apply_email_review(
         return task_id, change_id
 
     if mode == "update_existing":
+        assert due_at is not None
         task_id, change_id = _apply_email_update_existing(
             db,
             user_id=user_id,
@@ -338,6 +308,19 @@ def apply_email_review(
             target_event_uid=target_event_uid,
             note=note,
             due_at=due_at,
+            now=now,
+        )
+        db.commit()
+        return task_id, change_id
+
+    if mode == "remove_existing":
+        task_id, change_id = _apply_email_remove_existing(
+            db,
+            user_id=user_id,
+            message=message,
+            route_row=route_row,
+            target_event_uid=target_event_uid,
+            note=note,
             now=now,
         )
         db.commit()
@@ -519,6 +502,78 @@ def _apply_email_update_existing(
     return event.id, change.id
 
 
+def _apply_email_remove_existing(
+    db: Session,
+    *,
+    user_id: int,
+    message: EmailMessage,
+    route_row: EmailRoute,
+    target_event_uid: str | None,
+    note: str | None,
+    now: datetime,
+) -> tuple[int, int]:
+    if target_event_uid is None or not target_event_uid.strip():
+        raise EmailQueueApplyError("target_event_uid is required for mode=remove_existing")
+
+    target_input = _select_apply_target_ics_input(db, user_id=user_id)
+    if target_input is None:
+        raise EmailQueueApplyError("No active ICS input is available for apply")
+
+    event = db.scalar(
+        select(Event)
+        .where(Event.input_id == target_input.id, Event.uid == target_event_uid.strip())
+        .with_for_update()
+        .limit(1)
+    )
+    if event is None:
+        raise EmailQueueApplyError("target_event_uid not found in target input")
+
+    previous_snapshot = db.scalar(
+        select(Snapshot).where(Snapshot.input_id == target_input.id).order_by(Snapshot.id.desc()).limit(1)
+    )
+    before_json = {
+        "uid": event.uid,
+        "course_label": event.course_label,
+        "title": event.title,
+        "start_at_utc": _as_utc(event.start_at_utc).isoformat(),
+        "end_at_utc": _as_utc(event.end_at_utc).isoformat(),
+        "email_id": message.email_id,
+        "input_kind": "email_review_remove_existing",
+    }
+    removed_event_id = event.id
+    db.delete(event)
+    db.flush()
+
+    snapshot = _create_apply_snapshot(
+        db,
+        input_id=target_input.id,
+        now=now,
+        note=note,
+        payload_key=f"email-remove|{message.email_id}|{target_input.id}|{target_event_uid.strip()}",
+        evidence_kind="email_review_remove_existing",
+        evidence_ref_id=message.email_id,
+    )
+    evidence_ref = message.evidence_key if isinstance(message.evidence_key, dict) else {"kind": "email", "email_id": message.email_id}
+    change = Change(
+        input_id=target_input.id,
+        event_uid=target_event_uid.strip(),
+        change_type=ChangeType.REMOVED,
+        detected_at=now,
+        before_json=before_json,
+        after_json=None,
+        delta_seconds=None,
+        before_snapshot_id=previous_snapshot.id if previous_snapshot is not None else None,
+        after_snapshot_id=snapshot.id,
+        evidence_keys={"before": previous_snapshot.raw_evidence_key if previous_snapshot is not None else None, "after": evidence_ref},
+    )
+    db.add(change)
+    db.flush()
+
+    _enqueue_change_notification_if_enabled(db, user_id=user_id, input_row=target_input, change=change, now=now)
+    _mark_route_archived(route_row, now=now)
+    return removed_event_id, change.id
+
+
 def _create_apply_snapshot(
     db: Session,
     *,
@@ -552,15 +607,17 @@ def _enqueue_change_notification_if_enabled(
     change: Change,
     now: datetime,
 ) -> None:
-    prefs = get_or_create_notification_prefs(db, user_id=user_id)
-    if prefs.digest_enabled:
-        enqueue_notifications_for_changes(
-            db,
-            input_row,
-            [change],
-            deliver_after=now,
-            enqueue_reason="digest_queue",
-        )
+    del user_id
+    settings = get_settings()
+    if not settings.enable_notifications:
+        return
+    enqueue_notifications_for_changes(
+        db,
+        input_row,
+        [change],
+        deliver_after=now,
+        enqueue_reason="digest_queue",
+    )
 
 
 def _mark_route_archived(route_row: EmailRoute, *, now: datetime) -> None:
@@ -690,150 +747,3 @@ def _select_apply_target_ics_input(db: Session, *, user_id: int) -> Input | None
         require_active=True,
         for_update=True,
     )
-
-
-def _select_notify_target_input(db: Session, *, user_id: int) -> Input | None:
-    input_row = db.scalar(
-        select(Input)
-        .where(
-            Input.user_id == user_id,
-            Input.type == InputType.EMAIL,
-            Input.is_active.is_(True),
-        )
-        .order_by(Input.created_at.asc(), Input.id.asc())
-        .limit(1)
-    )
-    if input_row is not None:
-        return input_row
-    return get_single_ics_input_for_user(
-        db,
-        user_id=user_id,
-        require_active=True,
-        for_update=False,
-    )
-
-
-def _handle_notify_route_side_effect(
-    db: Session,
-    *,
-    user_id: int,
-    message: EmailMessage,
-    route_row: EmailRoute,
-    now: datetime,
-) -> None:
-    target_input = _select_notify_target_input(db, user_id=user_id)
-    if target_input is None:
-        raise EmailQueueStateError("No active input available for notify route")
-
-    change = _get_or_create_notify_change(
-        db,
-        message=message,
-        target_input=target_input,
-        detected_at=now,
-    )
-    prefs = get_or_create_notification_prefs(db, user_id=user_id)
-    if not prefs.digest_enabled:
-        return
-
-    enqueue_result = enqueue_notifications_for_changes(
-        db,
-        target_input,
-        [change],
-        deliver_after=now,
-        enqueue_reason="digest_queue",
-    )
-    if enqueue_result.enqueued_count > 0 or enqueue_result.dedup_skipped_count > 0:
-        route_row.notified_at = now
-
-
-def _get_or_create_notify_change(
-    db: Session,
-    *,
-    message: EmailMessage,
-    target_input: Input,
-    detected_at: datetime,
-) -> Change:
-    event_uid = f"email-route:{message.email_id}"
-    existing = db.scalar(
-        select(Change)
-        .where(Change.input_id == target_input.id, Change.event_uid == event_uid)
-        .order_by(Change.id.desc())
-        .limit(1)
-    )
-    if existing is not None:
-        return existing
-
-    label = db.scalar(select(EmailRuleLabel).where(EmailRuleLabel.email_id == message.email_id))
-    course_hints = _as_string_list(label.course_hints if label is not None else [])
-    course_label = course_hints[0] if course_hints else "Unknown"
-    title = (message.subject or message.email_id).strip() or message.email_id
-
-    event_count = int(db.scalar(select(func.count(Event.id)).where(Event.input_id == target_input.id)) or 0)
-    snapshot_hash = hashlib.sha256(
-        f"email-route-notify|{message.email_id}|{target_input.id}|{detected_at.isoformat()}".encode("utf-8")
-    ).hexdigest()
-    snapshot = Snapshot(
-        input_id=target_input.id,
-        retrieved_at=detected_at,
-        etag=None,
-        content_hash=snapshot_hash,
-        event_count=event_count,
-        raw_evidence_key={"kind": "email_route_notify", "email_id": message.email_id},
-    )
-    db.add(snapshot)
-    db.flush()
-
-    evidence_ref = message.evidence_key if isinstance(message.evidence_key, dict) else {"kind": "email", "email_id": message.email_id}
-    change = Change(
-        input_id=target_input.id,
-        event_uid=event_uid,
-        change_type=ChangeType.CREATED,
-        detected_at=detected_at,
-        before_json=None,
-        after_json={
-            "title": title[:512],
-            "course_label": course_label[:64],
-            "subject": message.subject,
-            "from": message.from_addr,
-            "date": message.date_rfc822,
-            "email_id": message.email_id,
-            "input_kind": "email_route_notify",
-        },
-        delta_seconds=None,
-        before_snapshot_id=None,
-        after_snapshot_id=snapshot.id,
-        evidence_keys={"after": evidence_ref},
-    )
-    db.add(change)
-    db.flush()
-    return change
-
-
-def _cancel_pending_notify_side_effect(
-    db: Session,
-    *,
-    user_id: int,
-    email_id: str,
-    now: datetime,
-) -> None:
-    event_uid = f"email-route:{email_id}"
-    change_ids = db.scalars(
-        select(Change.id)
-        .join(Input, Input.id == Change.input_id)
-        .where(Input.user_id == user_id, Change.event_uid == event_uid)
-    ).all()
-    if not change_ids:
-        return
-
-    notifications = db.scalars(
-        select(Notification).where(
-            Notification.change_id.in_(change_ids),
-            Notification.channel == NotificationChannel.EMAIL,
-            Notification.status == NotificationStatus.PENDING,
-        )
-    ).all()
-    for row in notifications:
-        row.status = NotificationStatus.FAILED
-        row.error = sanitize_log_message("email route moved away from notify before send")
-        row.sent_at = None
-        row.notified_at = now

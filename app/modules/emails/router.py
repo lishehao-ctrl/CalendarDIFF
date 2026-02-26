@@ -59,9 +59,9 @@ def _parse_route_filter(route: str | None) -> str | None:
     if route is None:
         return "review"
     value = route.strip().lower()
-    if value in {"drop", "archive", "notify", "review"}:
+    if value in {"drop", "archive", "review"}:
         return value
-    raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="route must be one of: drop, archive, notify, review")
+    raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="route must be one of: drop, archive, review")
 
 
 @router.get("/queue", response_model=list[EmailQueueItemResponse])

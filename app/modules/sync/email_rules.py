@@ -45,14 +45,16 @@ def evaluate_email_rule(
     *,
     subject: str | None,
     snippet: str | None,
+    body_text: str | None,
     from_header: str | None,
     internal_date: str | None,
     timezone_name: str = "UTC",
 ) -> EmailRuleDecision:
     subject_text = (subject or "").strip()
     snippet_text = (snippet or "").strip()
+    body_plain = (body_text or "").strip()
     from_text = (from_header or "").strip()
-    combined = "\n".join(item for item in [subject_text, snippet_text, from_text] if item).lower()
+    combined = "\n".join(item for item in [subject_text, snippet_text, body_plain, from_text] if item).lower()
 
     event_type = _detect_event_type(combined)
     due_at = _extract_due_at(combined, timezone_name=timezone_name)

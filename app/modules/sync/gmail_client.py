@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
@@ -38,6 +39,7 @@ class GmailHistoryResult:
 class GmailMessageMetadata:
     message_id: str
     snippet: str
+    body_text: str | None
     internal_date: str | None
     subject: str
     from_header: str
@@ -169,10 +171,7 @@ class GmailClient:
         payload = self._get_json(
             f"/messages/{message_id}",
             access_token=access_token,
-            params={
-                "format": "metadata",
-                "metadataHeaders": ["From", "Subject"],
-            },
+            params={"format": "full"},
         )
         snippet = str(payload.get("snippet") or "")
         internal_date_raw = payload.get("internalDate")
@@ -186,6 +185,7 @@ class GmailClient:
         subject = ""
         from_header = ""
         payload_obj = payload.get("payload")
+        body_text: str | None = None
         if isinstance(payload_obj, dict):
             for header in payload_obj.get("headers", []) or []:
                 if not isinstance(header, dict):
@@ -196,10 +196,12 @@ class GmailClient:
                     subject = value
                 if name.lower() == "from":
                     from_header = value
+            body_text = _extract_plain_text_from_payload(payload_obj)
 
         return GmailMessageMetadata(
             message_id=message_id,
             snippet=snippet,
+            body_text=body_text,
             internal_date=internal_date,
             subject=subject,
             from_header=from_header,
@@ -289,3 +291,52 @@ def _internal_date_ms_to_iso8601(value: object) -> str | None:
     except Exception:
         return None
     return datetime.fromtimestamp(milliseconds / 1000.0, tz=timezone.utc).isoformat()
+
+
+def _extract_plain_text_from_payload(payload: dict) -> str | None:
+    # Prefer plain-text body without persisting raw email content anywhere.
+    text = _extract_plain_text_from_part(payload)
+    if text is None:
+        return None
+    cleaned = text.strip()
+    if not cleaned:
+        return None
+    return cleaned[:20000]
+
+
+def _extract_plain_text_from_part(part: dict) -> str | None:
+    mime_type = str(part.get("mimeType") or "").lower()
+    body = part.get("body")
+    if mime_type.startswith("text/plain") and isinstance(body, dict):
+        data = body.get("data")
+        decoded = _decode_base64url_to_text(data)
+        if decoded is not None and decoded.strip():
+            return decoded
+
+    parts = part.get("parts")
+    if isinstance(parts, list):
+        for child in parts:
+            if not isinstance(child, dict):
+                continue
+            extracted = _extract_plain_text_from_part(child)
+            if extracted is not None and extracted.strip():
+                return extracted
+
+    if isinstance(body, dict):
+        data = body.get("data")
+        decoded = _decode_base64url_to_text(data)
+        if decoded is not None and decoded.strip():
+            return decoded
+    return None
+
+
+def _decode_base64url_to_text(value: object) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        # Gmail uses URL-safe base64 without padding.
+        padded = value + "=" * (-len(value) % 4)
+        decoded_bytes = base64.urlsafe_b64decode(padded.encode("utf-8"))
+        return decoded_bytes.decode("utf-8", errors="replace")
+    except Exception:
+        return None

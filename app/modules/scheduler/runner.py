@@ -11,7 +11,6 @@ from app.core.config import get_settings
 from app.core.logging import sanitize_log_message
 from app.db.models import Input, SyncRun, SyncRunStatus, SyncTriggerType
 from app.modules.notify.digest_service import process_due_digests
-from app.modules.notify.service import dispatch_due_notifications
 from app.modules.sync.service import list_due_inputs, record_lock_skipped_run, sync_input
 from app.state import SchedulerStatus
 
@@ -122,10 +121,6 @@ class SchedulerRunner:
                         run_synced_inputs += 1
                 finally:
                     release_input_lock(db, settings.input_lock_namespace, input.id)
-
-            due_dispatch_result = dispatch_due_notifications(db, now=datetime.now(timezone.utc))
-            if due_dispatch_result.failed_by_input_id:
-                run_notification_failed_count += len(due_dispatch_result.failed_by_input_id)
 
             digest_lock_acquired = try_acquire_global_lock(db, settings.digest_scheduler_lock_key)
             if digest_lock_acquired:

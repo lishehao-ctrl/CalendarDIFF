@@ -9,6 +9,13 @@ from app.modules.sync.types import CanonicalEventInput, RawICSEvent
 SECTION_TAG_PATTERN = re.compile(r"\[([A-Z]{2,6}\d{1,4}[A-Z]?)(?:_[A-Z0-9]+){1,4}\]")
 SUMMARY_COURSE_PATTERN = re.compile(r"\b([A-Z]{2,6})\s?(\d{1,4}[A-Z]?)\b")
 COMPACT_COURSE_PATTERN = re.compile(r"^([A-Z]{2,6})(\d{1,4}[A-Z]?)$")
+DEADLINE_LIKE_PATTERN = re.compile(
+    r"\b("
+    r"assignment|homework|project|milestone|pset|lab|discussion|quiz|exam|test|midterm|final|"
+    r"deadline|due|submit|deliverable|report|presentation"
+    r")\b",
+    re.IGNORECASE,
+)
 
 COURSE_PREFIX_BLACKLIST = {
     "ASSIGNMENT",
@@ -48,6 +55,8 @@ def normalize_events(raw_events: list[RawICSEvent]) -> list[CanonicalEventInput]
     normalized_by_uid: dict[str, CanonicalEventInput] = {}
 
     for raw in raw_events:
+        if not is_deadline_like_event(raw.summary, raw.description):
+            continue
         start_utc = _ensure_utc(raw.dtstart)
         end_utc = _ensure_utc(raw.dtend)
         title = raw.summary.strip() or "Untitled"
@@ -124,3 +133,8 @@ def _ensure_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def is_deadline_like_event(summary: str, description: str) -> bool:
+    text = f"{summary}\n{description}"
+    return DEADLINE_LIKE_PATTERN.search(text) is not None

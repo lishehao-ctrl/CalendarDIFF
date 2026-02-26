@@ -15,6 +15,7 @@ from app.core.security import decrypt_secret, encrypt_secret
 from app.db.models import (
     Change,
     ChangeType,
+    EmailMessage,
     Event,
     Snapshot,
     SnapshotEvent,
@@ -28,8 +29,7 @@ from app.modules.diff.engine import EventState, compute_diff
 from app.modules.evidence.store import save_ics
 from app.modules.emails.service import create_review_queue_from_email_changes
 from app.modules.notify.interface import Notifier
-from app.modules.notify.prefs_service import get_or_create_notification_prefs
-from app.modules.notify.service import dispatch_due_notifications, enqueue_notifications_for_changes
+from app.modules.notify.service import enqueue_notifications_for_changes
 from app.modules.sync.ics_client import ICSClient
 from app.modules.sync.gmail_client import GmailAPIError, GmailClient, GmailHistoryExpiredError
 from app.modules.sync.ics_parser import ICSParser
@@ -634,9 +634,9 @@ def _sync_email_input(
         if candidate_message_ids:
             existing_message_ids = set(
                 db.scalars(
-                    select(Change.event_uid).where(
-                        Change.input_id == input.id,
-                        Change.event_uid.in_(candidate_message_ids),
+                    select(EmailMessage.email_id).where(
+                        EmailMessage.email_id.in_(candidate_message_ids),
+                        EmailMessage.user_id == input.user_id,
                     )
                 ).all()
             )
@@ -696,62 +696,14 @@ def _sync_email_input(
                 trigger_type=trigger_type,
             )
 
-        snapshot_retrieved_at = datetime.now(timezone.utc)
-        snapshot_hash_payload = "|".join(sorted(item.message_id for item in matched_messages)) + f"|{next_history_id or ''}"
-        snapshot = Snapshot(
-            input_id=input.id,
-            retrieved_at=snapshot_retrieved_at,
-            etag=None,
-            content_hash=hashlib.sha256(snapshot_hash_payload.encode("utf-8")).hexdigest(),
-            event_count=len(matched_messages),
-            raw_evidence_key={
-                "kind": "gmail",
-                "history_id": next_history_id,
-                "message_count": len(matched_messages),
-            },
-        )
-        db.add(snapshot)
-        db.flush()
-
-        detected_at = datetime.now(timezone.utc)
-        change_rows: list[Change] = []
-        for metadata in matched_messages:
-            change = Change(
-                input_id=input.id,
-                event_uid=metadata.message_id,
-                change_type=ChangeType.CREATED,
-                detected_at=detected_at,
-                before_json=None,
-                after_json={
-                    "subject": metadata.subject,
-                    "snippet": metadata.snippet,
-                    "internal_date": metadata.internal_date,
-                    "from": metadata.from_header,
-                    "gmail_message_id": metadata.message_id,
-                    "open_in_gmail_url": _build_open_in_gmail_url(metadata.message_id),
-                    "title": metadata.subject or metadata.message_id,
-                    "course_label": "Gmail",
-                },
-                delta_seconds=None,
-                before_snapshot_id=None,
-                after_snapshot_id=snapshot.id,
-                evidence_keys={"after": {"kind": "gmail", "message_id": metadata.message_id}},
-            )
-            db.add(change)
-            change_rows.append(change)
-
-        db.flush()
-
-        message_by_id = {item.message_id: item for item in matched_messages}
+        settings = get_settings()
+        review_items_count = 0
         try:
-            prefs_for_tz = get_or_create_notification_prefs(db, user_id=input.user_id)
-            create_review_queue_from_email_changes(
+            review_items_count = create_review_queue_from_email_changes(
                 db,
                 user_id=input.user_id,
-                input_id=input.id,
-                changes=change_rows,
-                message_by_id=message_by_id,
-                timezone_name=prefs_for_tz.timezone,
+                messages=matched_messages,
+                timezone_name=settings.digest_fixed_timezone,
             )
         except Exception as exc:
             logger.error(
@@ -760,55 +712,24 @@ def _sync_email_input(
                 _sanitize_sync_error(str(exc)),
             )
 
-        email_sent = False
-        notify_error: str | None = None
-        notify_dedup_skipped = 0
-        notification_state: str | None = None
-        settings = get_settings()
-        if settings.enable_notifications:
-            (
-                email_sent,
-                notify_error,
-                notify_dedup_skipped,
-                notification_state,
-            ) = _enqueue_and_maybe_dispatch_notifications(
-                db=db,
-                input=input,
-                changes=change_rows,
-                notifier=notifier,
-                now=datetime.now(timezone.utc),
-            )
-
         finished_at = datetime.now(timezone.utc)
         input.gmail_history_id = next_history_id
         input.gmail_account_email = profile.email_address
         input.last_checked_at = finished_at
         input.last_ok_at = finished_at
-        input.last_change_detected_at = finished_at
-
-        run_status = SyncRunStatus.CHANGED
-        error_code: str | None = None
-        safe_notify_error: str | None = None
-        if notify_error is not None:
-            safe_notify_error = _sanitize_sync_error(notify_error)
-            input.last_error = safe_notify_error
-            input.last_error_at = finished_at
-            run_status = SyncRunStatus.EMAIL_FAILED
-            error_code = _classify_email_error(notify_error)
-        else:
-            input.last_error = None
-        if email_sent:
-            input.last_email_sent_at = finished_at
+        input.last_error = None
+        if review_items_count > 0:
+            input.last_change_detected_at = finished_at
 
         run = _build_sync_run(
             input_id=input.id,
             trigger_type=trigger_type,
             started_at=run_started_at,
             finished_at=finished_at,
-            status=run_status,
-            changes_count=len(change_rows),
-            error_code=error_code,
-            error_message=safe_notify_error,
+            status=SyncRunStatus.CHANGED if review_items_count > 0 else SyncRunStatus.NO_CHANGE,
+            changes_count=review_items_count,
+            error_code=None,
+            error_message=None,
             lock_owner=lock_owner,
         )
         db.add(run)
@@ -816,18 +737,18 @@ def _sync_email_input(
         db.refresh(run)
         return SyncRunResult(
             input_id=input.id,
-            changes_created=len(change_rows),
-            email_sent=email_sent,
-            last_error=safe_notify_error,
+            changes_created=review_items_count,
+            email_sent=False,
+            last_error=None,
             is_baseline_sync=False,
             sync_failed=False,
-            notification_failed=notify_error is not None,
-            notification_skipped_duplicate=notify_dedup_skipped > 0,
-            status=run_status,
-            error_code=error_code,
+            notification_failed=False,
+            notification_skipped_duplicate=False,
+            status=SyncRunStatus.CHANGED if review_items_count > 0 else SyncRunStatus.NO_CHANGE,
+            error_code=None,
             run_id=run.id,
             trigger_type=trigger_type,
-            notification_state=notification_state,
+            notification_state=None,
         )
     except Exception as exc:
         return _handle_input_error(
@@ -1065,10 +986,6 @@ def _matches_gmail_filters(
     return True
 
 
-def _build_open_in_gmail_url(message_id: str) -> str:
-    return f"https://mail.google.com/mail/u/0/#all/{message_id}"
-
-
 def _enqueue_and_maybe_dispatch_notifications(
     *,
     db: Session,
@@ -1077,79 +994,18 @@ def _enqueue_and_maybe_dispatch_notifications(
     notifier: Notifier | None,
     now: datetime,
 ) -> tuple[bool, str | None, int, str | None]:
-    prefs = get_or_create_notification_prefs(db, user_id=input.user_id)
-    if prefs.digest_enabled:
-        enqueue_result = enqueue_notifications_for_changes(
-            db,
-            input,
-            changes,
-            deliver_after=now,
-            enqueue_reason="digest_queue",
-        )
-        if enqueue_result.enqueued_count == 0:
-            state = "skipped_duplicate" if enqueue_result.dedup_skipped_count > 0 else None
-            return False, None, enqueue_result.dedup_skipped_count, state
-        return False, None, enqueue_result.dedup_skipped_count, "queued_for_digest"
-
-    delay_seconds = _resolve_notification_delay_seconds(
-        db,
-        input,
-        now=now,
-    )
-    enqueue_reason = "email_priority_delay" if delay_seconds > 0 else None
+    del notifier
     enqueue_result = enqueue_notifications_for_changes(
         db,
         input,
         changes,
-        deliver_after=now + timedelta(seconds=delay_seconds),
-        enqueue_reason=enqueue_reason,
+        deliver_after=now,
+        enqueue_reason="digest_queue",
     )
     if enqueue_result.enqueued_count == 0:
         state = "skipped_duplicate" if enqueue_result.dedup_skipped_count > 0 else None
         return False, None, enqueue_result.dedup_skipped_count, state
-
-    if delay_seconds > 0:
-        return False, None, enqueue_result.dedup_skipped_count, "queued_delayed_by_email_priority"
-
-    due_result = dispatch_due_notifications(
-        db,
-        now=now,
-        input_id=input.id,
-        notifier=notifier,
-    )
-    if input.id in due_result.failed_by_input_id:
-        return False, due_result.failed_by_input_id[input.id], enqueue_result.dedup_skipped_count, "failed"
-    if due_result.sent_input_count > 0:
-        return True, None, enqueue_result.dedup_skipped_count, "sent"
-    return False, None, enqueue_result.dedup_skipped_count, "queued"
-
-
-def _resolve_notification_delay_seconds(
-    db: Session,
-    input: Input,
-    *,
-    now: datetime,
-) -> int:
-    if input.type != InputType.ICS:
-        return 0
-
-    delay_seconds = max(int(input.user.calendar_delay_seconds if input.user is not None else 0), 0)
-    if delay_seconds <= 0:
-        return 0
-
-    window_start = now - timedelta(seconds=delay_seconds)
-    recent_email_changes = int(
-        db.scalar(
-            select(func.count(Input.id)).where(
-                Input.user_id == input.user_id,
-                Input.type == InputType.EMAIL,
-                Input.last_change_detected_at.is_not(None),
-                Input.last_change_detected_at >= window_start,
-            )
-        )
-        or 0
-    )
-    return delay_seconds if recent_email_changes > 0 else 0
+    return False, None, enqueue_result.dedup_skipped_count, "queued_for_digest"
 
 
 def _classify_fetch_error(exc: Exception) -> str:

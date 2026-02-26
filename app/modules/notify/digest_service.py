@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timezone
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,7 +17,6 @@ from app.db.models import (
     NotificationChannel,
     NotificationStatus,
     User,
-    UserNotificationPrefs,
 )
 from app.modules.notify.email import SMTPEmailNotifier
 from app.modules.notify.service import _to_digest_item
@@ -48,12 +47,15 @@ def compute_due_slots(
 
 def process_due_digests(db: Session, *, now: datetime | None = None) -> int:
     current = now or datetime.now(timezone.utc)
-    prefs_rows = db.scalars(select(UserNotificationPrefs).where(UserNotificationPrefs.digest_enabled.is_(True))).all()
+    settings = get_settings()
+    digest_times = _parse_fixed_digest_times(settings.digest_fixed_times)
+    if not digest_times:
+        return 0
 
     processed_slots = 0
-    for prefs in prefs_rows:
-        user = db.get(User, prefs.user_id)
-        if user is None:
+    users = db.scalars(select(User).where(User.onboarding_completed_at.is_not(None))).all()
+    for user in users:
+        if _resolve_recipient(user) is None:
             continue
 
         sent_rows = db.scalars(
@@ -64,8 +66,8 @@ def process_due_digests(db: Session, *, now: datetime | None = None) -> int:
         sent_keys = {f"{row.scheduled_local_date.isoformat()}|{row.scheduled_local_time}" for row in sent_rows}
         local_date, due_times = compute_due_slots(
             now_utc=current,
-            timezone_name=prefs.timezone,
-            digest_times=_as_str_list(prefs.digest_times),
+            timezone_name=settings.digest_fixed_timezone,
+            digest_times=digest_times,
             sent_slots=sent_keys,
         )
         for slot_time in due_times:
@@ -211,12 +213,6 @@ def _insert_digest_log(
         db.rollback()
 
 
-def _as_str_list(value: object) -> list[str]:
-    if isinstance(value, list):
-        return [item for item in value if isinstance(item, str)]
-    return []
-
-
 def _parse_hhmm(value: str) -> time | None:
     parts = value.split(":")
     if len(parts) != 2:
@@ -229,6 +225,19 @@ def _parse_hhmm(value: str) -> time | None:
     if hour < 0 or hour > 23 or minute < 0 or minute > 59:
         return None
     return time(hour=hour, minute=minute)
+
+
+def _parse_fixed_digest_times(raw: str) -> list[str]:
+    values: list[str] = []
+    for part in raw.split(","):
+        token = part.strip()
+        if not token:
+            continue
+        if _parse_hhmm(token) is None:
+            continue
+        values.append(token)
+    unique_sorted = sorted(set(values))
+    return unique_sorted
 
 
 def _resolve_timezone(name: str) -> ZoneInfo:

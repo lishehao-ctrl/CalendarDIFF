@@ -296,7 +296,7 @@ def run_import(
         "inserted": 0,
         "updated": 0,
         "errors": len(ingest_errors),
-        "route_counts": {"drop": 0, "archive": 0, "notify": 0, "review": 0},
+        "route_counts": {"drop": 0, "archive": 0, "review": 0},
         "ingest_errors": ingest_errors[:20],
     }
     try:
@@ -305,8 +305,9 @@ def run_import(
 
         for record in records:
             stats["processed"] += 1
-            if record.route in stats["route_counts"]:
-                stats["route_counts"][record.route] += 1
+            normalized_route = "archive" if record.route == "notify" else record.route
+            if normalized_route in stats["route_counts"]:
+                stats["route_counts"][normalized_route] += 1
             if dry_run:
                 continue
 
@@ -372,14 +373,14 @@ def run_import(
             if route_row is None:
                 route_row = EmailRoute(
                     email_id=record.email_id,
-                    route=record.route,
+                    route=normalized_route,
                     routed_at=now,
                     viewed_at=None,
                     notified_at=None,
                 )
                 db_session.add(route_row)
-            elif route_row.route != record.route:
-                route_row.route = record.route
+            elif route_row.route != normalized_route:
+                route_row.route = normalized_route
                 route_row.routed_at = now
 
         if dry_run:

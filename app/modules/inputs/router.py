@@ -1,49 +1,31 @@
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import get_settings
-from app.core.logging import sanitize_log_message
 from app.core.security import require_api_key
 from app.db.models import Change, Snapshot
 from app.db.session import get_db
 from app.modules.changes.schemas import ChangeResponse, ChangeViewedUpdateRequest
-from app.modules.inputs.presenters import to_input_response, to_input_run_response
+from app.modules.inputs.presenters import to_input_response
 from app.modules.inputs.schemas import (
-    CourseDeadlinesResponse,
-    DeadlineItemResponse,
     GmailOAuthStartRequest,
     GmailOAuthStartResponse,
-    InputCourseOverrideResponse,
-    InputDeadlinesPreviewResponse,
-    InputOverridesResponse,
     InputResponse,
-    InputRunResponse,
-    InputTaskOverrideResponse,
     ManualInputSyncResponse,
 )
 from app.modules.inputs.service import (
     InputBusyError,
     build_gmail_oauth_start,
     get_input_by_id,
-    list_input_runs,
     list_inputs_with_runtime_state,
-    preview_input_deadlines,
     run_manual_input_sync,
 )
-from app.modules.overrides.schemas import CourseRenameRequest, TaskRenameRequest
-from app.modules.overrides.service import (
-    delete_course_override,
-    delete_task_override,
-    list_input_overrides,
-    upsert_course_override,
-    upsert_task_override,
-)
+from app.modules.snapshots.schemas import SnapshotResponse
 from app.modules.users.service import (
     UserNotInitializedError,
     UserOnboardingIncompleteError,
@@ -51,7 +33,6 @@ from app.modules.users.service import (
     user_onboarding_incomplete_detail,
     user_not_initialized_detail,
 )
-from app.modules.snapshots.schemas import SnapshotResponse
 
 
 def _require_onboarded_user_or_409(db: Session = Depends(get_db)) -> None:
@@ -68,7 +49,6 @@ router = APIRouter(
     tags=["inputs"],
     dependencies=[Depends(require_api_key), Depends(_require_onboarded_user_or_409)],
 )
-logger = logging.getLogger(__name__)
 
 
 @router.get("", response_model=list[InputResponse])
@@ -132,53 +112,6 @@ def sync_input_now(input_id: int, db: Session = Depends(get_db)) -> ManualInputS
     if result.notification_state is not None:
         payload["notification_state"] = result.notification_state
     return ManualInputSyncResponse.model_validate(payload)
-
-
-@router.get("/{input_id}/deadlines", response_model=InputDeadlinesPreviewResponse)
-def get_input_deadlines(input_id: int, db: Session = Depends(get_db)) -> InputDeadlinesPreviewResponse:
-    input = get_input_by_id(db, input_id)
-    if input is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Input not found")
-
-    try:
-        preview = preview_input_deadlines(input=input)
-    except Exception as exc:
-        logger.error("failed to preview input_id=%s deadlines error=%s", input_id, sanitize_log_message(str(exc)))
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to fetch or parse ICS feed") from exc
-
-    return InputDeadlinesPreviewResponse(
-        input_id=preview.input_id,
-        input_label=preview.input_label,
-        fetched_at_utc=preview.fetched_at_utc,
-        total_deadlines=preview.total_deadlines,
-        courses=[
-            CourseDeadlinesResponse(
-                course_label=course_group.course_label,
-                deadlines=[
-                    DeadlineItemResponse(
-                        uid=item.uid,
-                        title=item.title,
-                        ddl_type=item.ddl_type.value,
-                        start_at_utc=item.start_at_utc,
-                        end_at_utc=item.end_at_utc,
-                    )
-                    for item in course_group.deadlines
-                ],
-            )
-            for course_group in preview.courses
-        ],
-    )
-
-
-@router.get("/{input_id}/runs", response_model=list[InputRunResponse])
-def get_input_runs(
-    input_id: int,
-    limit: int = Query(default=20, ge=1, le=200),
-    db: Session = Depends(get_db),
-) -> list[InputRunResponse]:
-    _ensure_input_exists(db, input_id)
-    runs = list_input_runs(db, input_id, limit=limit)
-    return [to_input_run_response(run) for run in runs]
 
 
 @router.get("/{input_id}/changes", response_model=list[ChangeResponse])
@@ -266,101 +199,10 @@ def list_input_snapshots(
     ]
 
 
-@router.get("/{input_id}/overrides", response_model=InputOverridesResponse)
-def get_input_overrides(input_id: int, db: Session = Depends(get_db)) -> InputOverridesResponse:
-    _ensure_input_exists(db, input_id)
-    courses, tasks = list_input_overrides(db, input_id)
-    return InputOverridesResponse(
-        input_id=input_id,
-        courses=[_to_course_response(row) for row in courses],
-        tasks=[_to_task_response(row) for row in tasks],
-    )
-
-
-@router.put("/{input_id}/courses/rename", response_model=InputCourseOverrideResponse)
-def rename_input_course(
-    input_id: int,
-    payload: CourseRenameRequest,
-    db: Session = Depends(get_db),
-) -> InputCourseOverrideResponse:
-    _ensure_input_exists(db, input_id)
-    row = upsert_course_override(
-        db=db,
-        input_id=input_id,
-        original_course_label=payload.original_course_label.strip(),
-        display_course_label=payload.display_course_label.strip(),
-    )
-    return _to_course_response(row)
-
-
-@router.put("/{input_id}/tasks/{event_uid}/rename", response_model=InputTaskOverrideResponse)
-def rename_input_task(
-    input_id: int,
-    event_uid: str,
-    payload: TaskRenameRequest,
-    db: Session = Depends(get_db),
-) -> InputTaskOverrideResponse:
-    _ensure_input_exists(db, input_id)
-    row = upsert_task_override(
-        db=db,
-        input_id=input_id,
-        event_uid=event_uid.strip(),
-        display_title=payload.display_title.strip(),
-    )
-    return _to_task_response(row)
-
-
-@router.delete("/{input_id}/courses/rename", status_code=status.HTTP_204_NO_CONTENT)
-def remove_input_course_rename(
-    input_id: int,
-    original_course_label: str = Query(..., min_length=1),
-    db: Session = Depends(get_db),
-) -> Response:
-    _ensure_input_exists(db, input_id)
-    deleted = delete_course_override(db, input_id, original_course_label.strip())
-    if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course override not found")
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.delete("/{input_id}/tasks/{event_uid}/rename", status_code=status.HTTP_204_NO_CONTENT)
-def remove_input_task_rename(
-    input_id: int,
-    event_uid: str,
-    db: Session = Depends(get_db),
-) -> Response:
-    _ensure_input_exists(db, input_id)
-    deleted = delete_task_override(db, input_id, event_uid.strip())
-    if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task override not found")
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
 def _ensure_input_exists(db: Session, input_id: int) -> None:
-    if get_input_by_id(db, input_id) is None:
+    input_row = get_input_by_id(db, input_id)
+    if input_row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Input not found")
-
-
-def _to_course_response(row) -> InputCourseOverrideResponse:
-    return InputCourseOverrideResponse(
-        id=row.id,
-        input_id=row.input_id,
-        original_course_label=row.original_course_label,
-        display_course_label=row.display_course_label,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
-    )
-
-
-def _to_task_response(row) -> InputTaskOverrideResponse:
-    return InputTaskOverrideResponse(
-        id=row.id,
-        input_id=row.input_id,
-        event_uid=row.event_uid,
-        display_title=row.display_title,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
-    )
 
 
 def _to_change_response(row: Change) -> ChangeResponse:
@@ -395,7 +237,7 @@ def _extract_snapshot_evidence_key(raw_evidence_key: object) -> dict | None:
 def _extract_evidence_kind(raw_evidence_key: dict | None) -> str | None:
     if raw_evidence_key is None:
         return None
-    value = raw_evidence_key.get("kind")
-    if isinstance(value, str) and value.strip():
-        return value.strip()
+    kind = raw_evidence_key.get("kind")
+    if isinstance(kind, str) and kind.strip():
+        return kind.strip()
     return None

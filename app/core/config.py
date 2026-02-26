@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     global_scheduler_lock_key: int = Field(default=947123)
     input_lock_namespace: int = Field(default=947124)
     digest_scheduler_lock_key: int = Field(default=947125)
+    digest_fixed_timezone: str = "America/Los_Angeles"
+    digest_fixed_times: str = "09:00,18:00"
 
     default_changes_limit: int = 50
     max_changes_limit: int = 200
