@@ -58,6 +58,12 @@ class SyncRunResult:
     notification_state: str | None = None
 
 
+class GmailAuthTokenError(RuntimeError):
+    def __init__(self, *, error_code: str, message: str) -> None:
+        self.error_code = error_code
+        super().__init__(message)
+
+
 def list_due_inputs(db: Session, now: datetime | None = None) -> list[Input]:
     current = now or datetime.now(timezone.utc)
     interval_expr = Input.last_checked_at + func.make_interval(0, 0, 0, 0, 0, Input.interval_minutes, 0)
@@ -912,7 +918,10 @@ def _sanitize_sync_error(message: str | None) -> str:
 
 def _resolve_gmail_access_token(input: Input, gmail_client: GmailClient) -> str:
     if not input.encrypted_access_token:
-        raise RuntimeError("Missing Gmail access token")
+        raise GmailAuthTokenError(
+            error_code="fetch_gmail_auth_missing_access_token",
+            message="Missing Gmail access token. Reconnect Gmail input.",
+        )
 
     access_token = decrypt_secret(input.encrypted_access_token)
     expires_at = input.access_token_expires_at
@@ -921,10 +930,19 @@ def _resolve_gmail_access_token(input: Input, gmail_client: GmailClient) -> str:
         return access_token
 
     if not input.encrypted_refresh_token:
-        raise RuntimeError("Gmail access token expired and refresh token is missing")
+        raise GmailAuthTokenError(
+            error_code="fetch_gmail_auth_refresh_token_missing",
+            message="Gmail access token expired and refresh token is missing. Reconnect Gmail input.",
+        )
 
     refresh_token = decrypt_secret(input.encrypted_refresh_token)
-    refreshed = gmail_client.refresh_access_token(refresh_token=refresh_token)
+    try:
+        refreshed = gmail_client.refresh_access_token(refresh_token=refresh_token)
+    except Exception as exc:
+        raise GmailAuthTokenError(
+            error_code="fetch_gmail_auth_refresh_failed",
+            message="Gmail token refresh failed. Reconnect Gmail input.",
+        ) from exc
     input.encrypted_access_token = encrypt_secret(refreshed.access_token)
     if refreshed.refresh_token:
         input.encrypted_refresh_token = encrypt_secret(refreshed.refresh_token)
@@ -1025,6 +1043,8 @@ def _classify_fetch_error(exc: Exception) -> str:
 
 
 def _classify_gmail_fetch_error(exc: Exception) -> str:
+    if isinstance(exc, GmailAuthTokenError):
+        return exc.error_code
     if isinstance(exc, GmailHistoryExpiredError):
         return "fetch_gmail_history_expired"
     if isinstance(exc, GmailAPIError):

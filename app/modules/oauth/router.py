@@ -35,15 +35,18 @@ def gmail_oauth_callback(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     if error:
-        message = sanitize_log_message(error_description or error)
+        message = _build_oauth_user_message(error_description or error)
         return _redirect_with_status("error", message=message)
     if not code or not state:
-        return _redirect_with_status("error", message="Missing OAuth callback parameters")
+        return _redirect_with_status(
+            "error",
+            message="Gmail authorization callback is missing required parameters. Reconnect Gmail and try again.",
+        )
 
     try:
         oauth_state = parse_gmail_oauth_state(state)
     except GmailOAuthStateError as exc:
-        return _redirect_with_status("error", message=sanitize_log_message(str(exc)))
+        return _redirect_with_status("error", message=_build_oauth_user_message(str(exc)))
 
     gmail_client = GmailClient()
     try:
@@ -68,7 +71,7 @@ def gmail_oauth_callback(
         return _redirect_with_status("error", message=user_onboarding_incomplete_detail()["message"])
     except Exception as exc:
         db.rollback()
-        return _redirect_with_status("error", message=sanitize_log_message(str(exc)))
+        return _redirect_with_status("error", message=_build_oauth_user_message(str(exc)))
 
     return _redirect_with_status("success", input_id=result.input.id)
 
@@ -84,3 +87,26 @@ def _redirect_with_status(status_value: str, *, input_id: int | None = None, mes
     target_path = f"/ui/inputs?{urlencode(query)}"
     target = f"{app_base_url}{target_path}" if app_base_url else target_path
     return RedirectResponse(url=target, status_code=302)
+
+
+def _build_oauth_user_message(raw_message: str | None) -> str:
+    safe_message = sanitize_log_message(raw_message or "").strip()
+    if "client secrets file is not configured" in safe_message:
+        return "Gmail OAuth client secrets file is not configured. Add it in .env and reconnect."
+    if "client secrets file was not found" in safe_message:
+        return "Gmail OAuth client secrets file was not found. Check the configured file path and reconnect."
+    if "must be outside the repository" in safe_message:
+        return "Gmail OAuth client secrets file must be stored outside the repository."
+    if "permissions are too open" in safe_message:
+        return "Gmail OAuth client secrets file permissions are too open. Run chmod 600 and reconnect."
+    if "content is invalid" in safe_message or "missing web client configuration" in safe_message:
+        return "Gmail OAuth client secrets file content is invalid. Download a fresh client secrets file and reconnect."
+    if "missing required fields" in safe_message:
+        return "Gmail OAuth client secrets file is missing required fields. Re-export the OAuth client credentials."
+    if "Missing Gmail refresh token" in safe_message:
+        return "Gmail authorization did not return a refresh token. Reconnect Gmail and grant offline access."
+    if "Invalid OAuth state" in safe_message or "OAuth state expired" in safe_message:
+        return "Gmail authorization state is invalid or expired. Reconnect Gmail and try again."
+    if safe_message:
+        return f"Gmail authorization failed: {safe_message}"
+    return "Gmail authorization failed. Reconnect Gmail and try again."

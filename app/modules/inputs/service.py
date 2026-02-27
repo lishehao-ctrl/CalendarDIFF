@@ -270,7 +270,10 @@ def create_gmail_input_from_oauth(
 
     encrypted_url = encrypt_secret("email://gmail")
     encrypted_access_token = encrypt_secret(access_token)
-    encrypted_refresh_token = encrypt_secret(refresh_token) if refresh_token else None
+    refresh_token_normalized = refresh_token.strip() if isinstance(refresh_token, str) else None
+    if refresh_token_normalized == "":
+        refresh_token_normalized = None
+    encrypted_refresh_token = encrypt_secret(refresh_token_normalized) if refresh_token_normalized else None
     applied_interval = FIXED_INPUT_INTERVAL_MINUTES
 
     existing_input = db.scalar(
@@ -295,11 +298,17 @@ def create_gmail_input_from_oauth(
             existing_input.gmail_history_id = history_id
         existing_input.gmail_account_email = account_email_norm
         existing_input.encrypted_access_token = encrypted_access_token
-        existing_input.encrypted_refresh_token = encrypted_refresh_token
+        if encrypted_refresh_token is not None:
+            existing_input.encrypted_refresh_token = encrypted_refresh_token
+        elif existing_input.encrypted_refresh_token is None:
+            raise RuntimeError("Missing Gmail refresh token")
         existing_input.access_token_expires_at = access_token_expires_at
         db.commit()
         db.refresh(existing_input)
         return InputCreateResult(input=existing_input, upserted_existing=True)
+
+    if encrypted_refresh_token is None:
+        raise RuntimeError("Missing Gmail refresh token")
 
     input = Input(
         user_id=user_id,
@@ -349,7 +358,10 @@ def create_gmail_input_from_oauth(
             existing_input.gmail_history_id = history_id
         existing_input.gmail_account_email = account_email_norm
         existing_input.encrypted_access_token = encrypted_access_token
-        existing_input.encrypted_refresh_token = encrypted_refresh_token
+        if encrypted_refresh_token is not None:
+            existing_input.encrypted_refresh_token = encrypted_refresh_token
+        elif existing_input.encrypted_refresh_token is None:
+            raise RuntimeError("Missing Gmail refresh token")
         existing_input.access_token_expires_at = access_token_expires_at
         db.commit()
         db.refresh(existing_input)

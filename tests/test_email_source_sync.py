@@ -8,6 +8,7 @@ from app.core.config import get_settings
 from app.db.models import Change, EmailMessage, Input, User
 from app.modules.inputs.service import create_gmail_input_from_oauth
 from app.modules.sync.gmail_client import (
+    GmailAPIError,
     GmailHistoryExpiredError,
     GmailHistoryResult,
     GmailMessageMetadata,
@@ -190,4 +191,92 @@ def test_email_input_history_expired_resets_cursor_without_notifying(client, db_
 
     runs_response = client.get(f"/v1/inputs/{input_row.id}/runs?limit=1", headers=headers)
     assert runs_response.status_code == 404
+    get_settings.cache_clear()
+
+
+def test_email_input_expired_token_without_refresh_token_returns_reconnect_error_code(client, db_session, monkeypatch) -> None:
+    monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")
+    get_settings.cache_clear()
+
+    user = User(
+        email="owner@example.com",
+        notify_email="student@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
+    )
+    db_session.add(user)
+    db_session.flush()
+    create_ics_input_for_user(db_session, user_id=user.id, url="https://example.com/email-source-sync-4.ics")
+
+    input_row = create_gmail_input_from_oauth(
+        db_session,
+        user_id=user.id,
+        label=None,
+        from_contains=None,
+        subject_keywords=None,
+        account_email="student@example.com",
+        history_id="101",
+        access_token="access-token",
+        refresh_token="refresh-token",
+        access_token_expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+    ).input
+    input_row.encrypted_refresh_token = None
+    db_session.commit()
+
+    headers = {"X-API-Key": "test-api-key"}
+    sync_response = client.post(f"/v1/inputs/{input_row.id}/sync", headers=headers)
+    assert sync_response.status_code == 200
+    payload = sync_response.json()
+    assert payload["error_code"] == "fetch_gmail_auth_refresh_token_missing"
+    assert "refresh token is missing" in (payload["last_error"] or "").lower()
+
+    db_session.expire_all()
+    updated_input = db_session.get(Input, input_row.id)
+    assert updated_input is not None
+    assert updated_input.is_active is True
+    get_settings.cache_clear()
+
+
+def test_email_input_refresh_failure_returns_reconnect_error_code(client, db_session, monkeypatch) -> None:
+    monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")
+    get_settings.cache_clear()
+
+    user = User(
+        email="owner@example.com",
+        notify_email="student@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
+    )
+    db_session.add(user)
+    db_session.flush()
+    create_ics_input_for_user(db_session, user_id=user.id, url="https://example.com/email-source-sync-5.ics")
+
+    input_row = create_gmail_input_from_oauth(
+        db_session,
+        user_id=user.id,
+        label=None,
+        from_contains=None,
+        subject_keywords=None,
+        account_email="student@example.com",
+        history_id="101",
+        access_token="access-token",
+        refresh_token="refresh-token",
+        access_token_expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+    ).input
+
+    def fake_refresh_access_token(self, *, refresh_token: str):  # noqa: ANN001
+        assert refresh_token == "refresh-token"
+        raise GmailAPIError(status_code=400, message="invalid_grant")
+
+    monkeypatch.setattr("app.modules.sync.service.GmailClient.refresh_access_token", fake_refresh_access_token)
+
+    headers = {"X-API-Key": "test-api-key"}
+    sync_response = client.post(f"/v1/inputs/{input_row.id}/sync", headers=headers)
+    assert sync_response.status_code == 200
+    payload = sync_response.json()
+    assert payload["error_code"] == "fetch_gmail_auth_refresh_failed"
+    assert "reconnect gmail input" in (payload["last_error"] or "").lower()
+
+    db_session.expire_all()
+    updated_input = db_session.get(Input, input_row.id)
+    assert updated_input is not None
+    assert updated_input.is_active is True
     get_settings.cache_clear()

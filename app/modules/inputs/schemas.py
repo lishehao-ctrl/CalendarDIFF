@@ -80,5 +80,6 @@ class ManualInputSyncResponse(BaseModel):
     changes_created: int
     email_sent: bool
     last_error: str | None
+    error_code: str | None = None
     is_baseline_sync: bool
     notification_state: str | None = None

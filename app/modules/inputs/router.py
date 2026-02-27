@@ -122,6 +122,7 @@ def sync_input_now(input_id: int, db: Session = Depends(get_db)) -> ManualInputS
         "changes_created": result.changes_created,
         "email_sent": result.email_sent,
         "last_error": result.last_error,
+        "error_code": result.error_code,
         "is_baseline_sync": result.is_baseline_sync,
     }
     if result.notification_state is not None:

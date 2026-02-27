@@ -36,6 +36,7 @@ def test_manual_sync_endpoint_returns_sync_summary(client, initialized_user, db_
         "changes_created": 2,
         "email_sent": True,
         "last_error": None,
+        "error_code": None,
         "is_baseline_sync": False,
         "notification_state": None,
     }

@@ -28,9 +28,7 @@ class Settings(BaseSettings):
     http_read_timeout_seconds: float = 20.0
     http_max_retries: int = 2
 
-    gmail_oauth_client_id: str | None = None
-    gmail_oauth_client_secret: str | None = None
-    gmail_oauth_redirect_uri: str | None = None
+    gmail_oauth_client_secrets_file: str | None = None
     gmail_oauth_scope: str = "https://www.googleapis.com/auth/gmail.readonly"
 
     smtp_host: str = "localhost"
