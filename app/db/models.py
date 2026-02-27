@@ -19,6 +19,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text as sa_text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -83,6 +84,7 @@ class Input(Base):
     __table_args__ = (
         Index("ix_inputs_active_last_checked", "is_active", "last_checked_at"),
         Index("ix_inputs_due_lookup", "is_active", "last_checked_at", "interval_minutes"),
+        Index("ux_inputs_user_single_ics", "user_id", unique=True, postgresql_where=sa_text("lower(type) = 'ics'")),
         UniqueConstraint("user_id", "type", "identity_key", name="uq_inputs_user_type_identity_key"),
         CheckConstraint("interval_minutes = 15", name="ck_inputs_interval_minutes_fixed_15"),
     )

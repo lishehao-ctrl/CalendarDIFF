@@ -22,11 +22,6 @@ Core workspace routes:
 4. `/ui/feed`
 5. `/ui/emails/review`
 
-Removed pages should 404:
-
-1. `/ui/runs`
-2. `/ui/dev`
-
 ## 3) Core Flow Acceptance
 
 1. onboarding register with `notify_email + ics.url`

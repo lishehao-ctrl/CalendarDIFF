@@ -102,9 +102,6 @@ def test_manual_sync_returns_busy_and_records_lock_skipped_run(client, initializ
     assert payload["detail"]["recoverable"] is True
     assert response.headers["Retry-After"] == "10"
 
-    runs_response = client.get(f"/v1/inputs/{source_id}/runs?limit=1", headers=headers)
-    assert runs_response.status_code == 404
-
     run = db_session.scalar(
         select(SyncRun)
         .where(SyncRun.input_id == source_id)

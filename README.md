@@ -213,26 +213,12 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/deadline
 2. `update_existing` (requires `target_event_uid`)
 3. `remove_existing` (requires `target_event_uid`)
 
-## Removed API Surface
+## Migration Policy
 
-1. `/v1/review_candidates*`
-2. `/v1/user/terms*`
-3. `/v1/status`
-4. `/v1/notification_prefs*`
-5. `/v1/notifications/send_digest_now`
-6. `/v1/inputs/{input_id}/runs`
-7. `/v1/inputs/{input_id}/deadlines`
-8. `/v1/inputs/{input_id}/overrides`
-9. `/v1/inputs/{input_id}/changes`
-10. `/v1/inputs/{input_id}/snapshots`
-11. `/v1/inputs/{input_id}/changes/{change_id}/viewed`
-12. `/v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/download`
-13. `/v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/preview`
-14. `/v1/emails/queue`
-15. `/v1/emails/{email_id}/route`
-16. `/v1/emails/{email_id}/mark_viewed`
-17. `/v1/emails/{email_id}/apply`
-18. `/v1/inputs/ics`
+1. the active Alembic chain is a clean baseline (`20260227_0001_baseline_runtime`)
+2. this repo does not support in-place upgrades from archived legacy revision chains
+3. local upgrades should reset PostgreSQL first (`scripts/reset_postgres_db.sh`), then run `alembic upgrade head`
+4. schema guard returns `503` with reset instructions when a stale/legacy revision is detected
 
 ## One-ICS Invariant
 
@@ -252,9 +238,7 @@ cd frontend && npm run typecheck && npm run lint && npm run build
 
 1. `docs/architecture.md`
 2. `docs/api_surface_current.md`
-3. `docs/api_surface_target.md`
-4. `docs/demo_ui_acceptance.md`
-5. `docs/legacy_cleanup.md`
-6. `docs/manual_email_test.md`
-7. `docs/runbooks/gmail_email_input_mvp.md`
-8. `docs/runbooks/scheduler_multi_instance_acceptance.md`
+3. `docs/demo_ui_acceptance.md`
+4. `docs/manual_email_test.md`
+5. `docs/runbooks/gmail_email_input_mvp.md`
+6. `docs/runbooks/scheduler_multi_instance_acceptance.md`

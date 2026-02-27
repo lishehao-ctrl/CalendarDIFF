@@ -13,17 +13,6 @@ def test_sources_api_requires_api_key(client) -> None:
     assert response.status_code == 401
 
 
-def test_create_input_rejects_legacy_name_field(client, initialized_user) -> None:
-    headers = {"X-API-Key": "test-api-key"}
-
-    legacy_name = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={"name": "   ", "url": "https://example.com/feed.ics"},
-    )
-    assert legacy_name.status_code in {404, 405}
-
-
 def test_create_and_list_sources_hides_url(client, initialized_user, db_session) -> None:
     headers = {"X-API-Key": "test-api-key"}
     source_id = create_ics_input_for_user(
@@ -191,47 +180,3 @@ def test_list_sources_applies_scheduler_lock_skipped_cooldown_to_next_check(clie
     assert next_check_at >= expected_cooldown_until
     assert row["last_result"] == "LOCK_SKIPPED"
 
-
-def test_source_runs_endpoint_removed(client, db_session) -> None:
-    user = User(
-        email="owner@example.com",
-        notify_email="student@example.com",
-        onboarding_completed_at=datetime.now(timezone.utc),
-    )
-    db_session.add(user)
-    db_session.flush()
-
-    source = Input(
-        user_id=user.id,
-        type=InputType.ICS,
-        identity_key="ics-run",
-        encrypted_url="encrypted-source",
-        interval_minutes=15,
-        is_active=True,
-    )
-    db_session.add(source)
-    db_session.flush()
-
-    older = SyncRun(
-        input_id=source.id,
-        trigger_type=SyncTriggerType.SCHEDULER,
-        started_at=datetime.now(timezone.utc) - timedelta(minutes=10),
-        finished_at=datetime.now(timezone.utc) - timedelta(minutes=10),
-        status=SyncRunStatus.NO_CHANGE,
-        changes_count=0,
-        duration_ms=88,
-    )
-    newer = SyncRun(
-        input_id=source.id,
-        trigger_type=SyncTriggerType.MANUAL,
-        started_at=datetime.now(timezone.utc) - timedelta(minutes=2),
-        finished_at=datetime.now(timezone.utc) - timedelta(minutes=2),
-        status=SyncRunStatus.CHANGED,
-        changes_count=2,
-        duration_ms=144,
-    )
-    db_session.add_all([older, newer])
-    db_session.commit()
-
-    response = client.get(f"/v1/inputs/{source.id}/runs?limit=1", headers={"X-API-Key": "test-api-key"})
-    assert response.status_code == 404

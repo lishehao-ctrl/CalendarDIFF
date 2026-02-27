@@ -124,24 +124,14 @@ Rule:
 8. `/v1/review/emails/*`
 9. `/health`
 
-## 5) Removed Surface
-
-1. `/v1/review_candidates*`
-2. `/v1/notification_prefs*`
-3. `/v1/notifications/send_digest_now`
-4. `/v1/status`
-5. `/v1/inputs/{input_id}/runs`
-6. `/v1/inputs/{input_id}/deadlines`
-7. `/v1/inputs/{input_id}/overrides`
-8. `/v1/inputs/{input_id}/changes`
-9. `/v1/inputs/{input_id}/snapshots`
-10. `/v1/inputs/{input_id}/changes/{change_id}/viewed`
-11. `/v1/emails/*` (legacy review namespace)
-12. input-scoped download evidence routes
-13. `/ui/runs`, `/ui/dev`
-
-## 6) Migration Head
+## 5) Migration Baseline
 
 Current Alembic head:
 
-1. `0014_archive_legacy_change_types`
+1. `20260227_0001_baseline_runtime`
+
+Policy:
+
+1. the runtime migration chain is reset-db oriented and targets fresh PostgreSQL databases
+2. in-place upgrades from archived legacy revision chains are not supported
+3. use `scripts/reset_postgres_db.sh` then `alembic upgrade head` for local reset/upgrade

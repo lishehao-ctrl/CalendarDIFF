@@ -33,7 +33,7 @@ def test_inputs_require_initialized_user(client) -> None:
     assert feed_response.json()["detail"]["code"] == "user_not_initialized"
 
 
-def test_inputs_list_endpoint_and_runs_removed(client, initialized_user, db_session) -> None:
+def test_inputs_list_endpoint_returns_workspace_inputs(client, initialized_user, db_session) -> None:
     headers = {"X-API-Key": "test-api-key"}
     input_id = _create_ics_input_for_user(
         db_session=db_session,
@@ -47,9 +47,6 @@ def test_inputs_list_endpoint_and_runs_removed(client, initialized_user, db_sess
     assert rows
     assert "user_id" not in rows[0]
     assert any(item["id"] == input_id for item in rows)
-
-    runs_response = client.get(f"/v1/inputs/{input_id}/runs?limit=20", headers=headers)
-    assert runs_response.status_code == 404
 
 
 def test_input_sync_endpoint_uses_existing_manual_sync_flow(client, initialized_user, db_session, monkeypatch) -> None:
@@ -77,30 +74,6 @@ def test_input_sync_endpoint_uses_existing_manual_sync_flow(client, initialized_
     payload = sync_response.json()
     assert payload["input_id"] == input_id
     assert payload["is_baseline_sync"] is True
-
-
-def test_legacy_source_routes_are_removed(client) -> None:
-    headers = {"X-API-Key": "test-api-key"}
-
-    source_list = client.get("/v1/sources", headers=headers)
-    legacy_feed = client.get("/v1/changes/feed", headers=headers)
-    legacy_changes = client.get("/v1/changes?input_id=1", headers=headers)
-    legacy_snapshots = client.get("/v1/snapshots?input_id=1", headers=headers)
-
-    assert source_list.status_code == 404
-    assert legacy_feed.status_code == 404
-    assert legacy_changes.status_code == 404
-    assert legacy_snapshots.status_code == 404
-
-
-def test_ics_input_create_route_removed(client, initialized_user) -> None:
-    headers = {"X-API-Key": "test-api-key"}
-    response = client.post(
-        "/v1/inputs/ics",
-        headers=headers,
-        json={"url": "https://example.com/input-legacy.ics"},
-    )
-    assert response.status_code in {404, 405}
 
 
 def test_delete_email_input_soft_deactivates_row(client, initialized_user, db_session) -> None:

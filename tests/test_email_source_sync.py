@@ -57,8 +57,6 @@ def test_email_input_first_sync_is_baseline_without_notification(client, db_sess
     assert payload["changes_created"] == 0
     assert payload["email_sent"] is False
 
-    runs_response = client.get(f"/v1/inputs/{input_row.id}/runs?limit=1", headers=headers)
-    assert runs_response.status_code == 404
     get_settings.cache_clear()
 
 
@@ -133,8 +131,6 @@ def test_email_input_changed_sync_queues_review_items_without_feed_changes(clien
     assert db_session.scalar(select(EmailMessage).where(EmailMessage.email_id == "m1")) is not None
     assert db_session.scalar(select(EmailMessage).where(EmailMessage.email_id == "m2")) is not None
 
-    runs_response = client.get(f"/v1/inputs/{input_row.id}/runs?limit=2", headers=headers)
-    assert runs_response.status_code == 404
     get_settings.cache_clear()
 
 
@@ -189,8 +185,6 @@ def test_email_input_history_expired_resets_cursor_without_notifying(client, db_
     assert updated_input is not None
     assert updated_input.gmail_history_id == "999"
 
-    runs_response = client.get(f"/v1/inputs/{input_row.id}/runs?limit=1", headers=headers)
-    assert runs_response.status_code == 404
     get_settings.cache_clear()
 
 

@@ -262,12 +262,6 @@ def test_preview_change_evidence_truncated_flag(client, initialized_user, db_ses
     get_settings.cache_clear()
 
 
-def test_preview_change_evidence_route_removed_from_inputs_scope(client, initialized_user) -> None:
-    headers = {"X-API-Key": "test-api-key"}
-    response = client.get("/v1/inputs/1/changes/1/evidence/before/preview", headers=headers)
-    assert response.status_code == 404
-
-
 def test_preview_change_evidence_parse_failure_returns_422(client, db_session: Session, monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("EVIDENCE_DIR", "./evidence")

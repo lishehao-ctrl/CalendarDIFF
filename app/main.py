@@ -13,6 +13,7 @@ from app.core.logging import configure_logging, sanitize_log_message
 from app.db.schema_guard import SchemaNotReadyError, ensure_schema_ready, is_schema_mismatch_error
 from app.db.session import get_engine, get_session_factory
 from app.modules.changes.router import router as changes_router
+from app.modules.deprecated.router import router as deprecated_router
 from app.modules.emails.router import router as emails_router
 from app.modules.events.router import router as events_router
 from app.modules.health.router import router as health_router
@@ -89,8 +90,9 @@ def _database_exception_handler(_: Request, exc: Exception) -> JSONResponse:
             content={
                 "detail": (
                     "Database schema is not ready for this app version. "
+                    "In-place upgrades from legacy migration chains are not supported. "
                     "Run `scripts/reset_postgres_db.sh` for local PostgreSQL reset, "
-                    "or run `alembic upgrade head` against a fresh database."
+                    "then run `alembic upgrade head` against a fresh database."
                 )
             },
         )
@@ -113,6 +115,7 @@ def create_app() -> FastAPI:
     app.include_router(oauth_router)
     app.include_router(emails_router)
     app.include_router(workspace_router)
+    app.include_router(deprecated_router)
     app.include_router(ui_router)
     return app
 

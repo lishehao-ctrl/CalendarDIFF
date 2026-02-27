@@ -93,9 +93,3 @@ def test_gmail_sync_creates_email_review_queue_item_and_is_idempotent(client, db
     assert rows[0]["action_items"][0]["due_iso"] == "2026-03-02T07:59:00+00:00"
 
     get_settings.cache_clear()
-
-
-def test_review_candidates_endpoint_removed(client) -> None:
-    headers = {"X-API-Key": "test-api-key"}
-    response = client.get("/v1/review_candidates", headers=headers)
-    assert response.status_code == 404
