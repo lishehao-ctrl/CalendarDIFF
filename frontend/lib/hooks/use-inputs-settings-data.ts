@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 
 import { ApiError, deleteInput, getEvents, getInputs, startGmailOAuth } from "@/lib/api";
 import {
+  isGmailReconnectErrorCode,
   isOnboardingRequiredError,
   parsePositiveInt,
+  requestManualSync,
   syncSelectionQuery,
   toErrorMessage,
 } from "@/lib/hooks/runtime-utils";
@@ -47,25 +49,60 @@ export function useInputsSettingsData() {
     const oauthInputId = parsePositiveInt(params.get("input_id"));
     const oauthMessage = params.get("message");
 
-    if (oauthStatus === "success") {
-      pushToast(
-        oauthInputId ? `Gmail connected (input-${oauthInputId})` : "Gmail connected",
-        "success"
-      );
-      if (oauthInputId !== null) {
-        setActiveInputId(oauthInputId);
-      }
-    } else if (oauthStatus === "error") {
-      pushToast(`Gmail connect failed: ${oauthMessage || "unknown error"}`, "error");
-    }
-
-    if (oauthStatus) {
+    const clearOauthQuery = () => {
       params.delete("gmail_oauth_status");
       params.delete("message");
       const query = params.toString();
       window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+    };
+
+    if (oauthStatus === "error") {
+      const detail = oauthMessage?.trim() ? oauthMessage.trim() : "Unknown error";
+      pushToast(`Gmail connect failed: ${detail}. Reconnect Gmail and try again.`, "error");
+      clearOauthQuery();
+      setOauthQueryHandled(true);
+      return;
     }
-    setOauthQueryHandled(true);
+
+    if (oauthStatus !== "success") {
+      setOauthQueryHandled(true);
+      return;
+    }
+
+    pushToast(
+      oauthInputId ? `Gmail connected successfully (input-${oauthInputId})` : "Gmail connected successfully",
+      "success"
+    );
+    if (oauthInputId === null) {
+      clearOauthQuery();
+      setOauthQueryHandled(true);
+      return;
+    }
+
+    setActiveInputId(oauthInputId);
+    void (async () => {
+      const result = await requestManualSync(config, oauthInputId);
+      if (result.kind === "success") {
+        if (isGmailReconnectErrorCode(result.result.error_code)) {
+          pushToast("Gmail authorization is invalid. Reconnect Gmail in Inputs.", "error");
+        } else if (result.result.last_error) {
+          pushToast(`Gmail connected, but initial sync failed: ${result.result.last_error}`, "error");
+        } else if (result.result.changes_created > 0) {
+          pushToast("Gmail synced. New items entered review queue.", "success");
+        } else {
+          pushToast("Gmail connected and synced. No new email changes yet.", "info");
+        }
+      } else if (result.kind === "busy") {
+        pushToast("Gmail connected. Initial sync is already in progress.", "info");
+      } else {
+        pushToast(`Gmail connected, but initial sync failed: ${result.message}`, "error");
+      }
+
+      await Promise.all([loadInputs(config), loadEvents(config)]);
+      clearOauthQuery();
+      setOauthQueryHandled(true);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config, oauthQueryHandled, pushToast]);
 
   useEffect(() => {
@@ -199,7 +236,7 @@ export function useInputsSettingsData() {
       const response = await startGmailOAuth(config, {});
       window.location.assign(response.authorization_url);
     } catch (error) {
-      pushToast(`Gmail OAuth start failed: ${toErrorMessage(error)}`, "error");
+      pushToast(`Gmail OAuth start failed: ${toErrorMessage(error)}. Check OAuth config and retry.`, "error");
       setConnectingGmail(false);
     }
   }

@@ -116,7 +116,7 @@ Reconnect flow:
 
 1. open `/ui/inputs`
 2. click `Connect Gmail`
-3. authorize and return to `/ui/inputs`
+3. authorize and return to `/ui/inputs` (the page auto-runs one initial sync for the connected input)
 
 ### 3) SMTP Digest (optional, only for real email delivery)
 
@@ -145,7 +145,10 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/deadline
 
 1. First-time Gmail connect requires `refresh_token`; if Google does not return it, reconnect and grant offline access.
 2. Repeated authorize may return only `access_token`; runtime keeps existing stored `refresh_token`.
-3. On token-refresh failure, sync marks the input failed and asks for reconnect (input is not auto-deactivated).
+3. OAuth success callback triggers one automatic sync in `/ui/inputs` for immediate connectivity check.
+4. The first Gmail sync initializes the history cursor and does not backfill historical mailbox messages.
+5. On token-refresh failure, sync marks the input failed and asks for reconnect (input is not auto-deactivated).
+6. Scheduler default remains 15 minutes; scheduler sync and manual sync use the same backend path.
 
 ### OAuth Troubleshooting
 

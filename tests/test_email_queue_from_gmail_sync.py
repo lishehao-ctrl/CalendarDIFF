@@ -56,8 +56,8 @@ def test_gmail_sync_creates_email_review_queue_item_and_is_idempotent(client, db
         assert message_id == "m1"
         return GmailMessageMetadata(
             message_id="m1",
-            snippet="Homework deadline moved to 2026-03-01T23:59:00-08:00",
-            body_text="Deadline moved to 2026-03-01T23:59:00-08:00",
+            snippet="Homework deadline moved to Mar 1 11:59 PM PT",
+            body_text="Deadline moved to Mar 1 11:59 PM PT",
             internal_date="2026-02-22T10:00:00+00:00",
             subject="[CSE 100] homework deadline extension",
             from_header="instructor@school.edu",
@@ -90,6 +90,7 @@ def test_gmail_sync_creates_email_review_queue_item_and_is_idempotent(client, db
     rows = queue_response.json()
     assert len(rows) == 1
     assert rows[0]["email_id"] == "m1"
+    assert rows[0]["action_items"][0]["due_iso"] == "2026-03-02T07:59:00+00:00"
 
     get_settings.cache_clear()
 

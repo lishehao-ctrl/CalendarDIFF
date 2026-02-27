@@ -10,6 +10,16 @@ export type ManualSyncRequestResult =
   | { kind: "busy"; detail: InputBusyDetail }
   | { kind: "error"; message: string };
 
+const GMAIL_RECONNECT_ERROR_CODES = new Set([
+  "fetch_gmail_auth_missing_access_token",
+  "fetch_gmail_auth_refresh_token_missing",
+  "fetch_gmail_auth_refresh_failed",
+]);
+
+export function isGmailReconnectErrorCode(code: string | null | undefined): boolean {
+  return typeof code === "string" && GMAIL_RECONNECT_ERROR_CODES.has(code);
+}
+
 export function toErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     return error.message;
@@ -74,6 +84,11 @@ export function handleManualSyncResult(
   result: ManualSyncResponse,
   pushToast: (message: string, tone: ToastTone) => void,
 ): void {
+  if (isGmailReconnectErrorCode(result.error_code)) {
+    pushToast("Gmail authorization is invalid. Reconnect Gmail in Inputs.", "error");
+    return;
+  }
+
   if (result.last_error) {
     pushToast(`Sync failed: ${result.last_error}`, "error");
   } else if (result.notification_state === "queued_delayed_by_email_priority") {

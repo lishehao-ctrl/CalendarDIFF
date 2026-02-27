@@ -42,6 +42,7 @@ export type ManualSyncResponse = {
   changes_created: number;
   email_sent: boolean;
   last_error: string | null;
+  error_code: string | null;
   is_baseline_sync: boolean;
   notification_state: string | null;
 };

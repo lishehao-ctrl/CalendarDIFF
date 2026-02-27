@@ -36,7 +36,8 @@ GMAIL_OAUTH_SCOPE=https://www.googleapis.com/auth/gmail.readonly
 
 1. complete onboarding first
 2. open `/ui/inputs` and click `Connect Gmail`
-3. run manual sync on the Gmail input
+3. after OAuth callback returns to `/ui/inputs`, verify automatic initial sync runs once
+4. optional: run manual sync on the Gmail input to force an immediate follow-up check
 
 ## OAuth Token Behavior
 
@@ -49,14 +50,16 @@ GMAIL_OAUTH_SCOPE=https://www.googleapis.com/auth/gmail.readonly
 ### First Gmail sync
 
 1. cursor is initialized
-2. `changes_created=0`
-3. no feed changes
+2. historical mailbox messages are not backfilled
+3. `changes_created=0`
+4. no feed changes
 
 ### Incremental Gmail sync
 
 1. new actionable messages create review queue rows
 2. queue visible in `/ui/emails/review` and `/v1/emails/queue`
 3. feed still unchanged until apply
+4. scheduler (15m default) and manual sync follow the same backend ingestion path
 
 ### Review apply
 

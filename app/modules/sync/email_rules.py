@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
+from tools.labeling.rules_extract import _extract_due_iso
+
 
 RULE_VERSION = "email-rules-v1"
 ACTIONABLE_EVENT_TYPES = {"schedule_change", "deadline", "exam", "assignment", "action_required"}
@@ -54,10 +56,11 @@ def evaluate_email_rule(
     snippet_text = (snippet or "").strip()
     body_plain = (body_text or "").strip()
     from_text = (from_header or "").strip()
-    combined = "\n".join(item for item in [subject_text, snippet_text, body_plain, from_text] if item).lower()
+    combined_raw = "\n".join(item for item in [subject_text, snippet_text, body_plain, from_text] if item)
+    combined = combined_raw.lower()
 
     event_type = _detect_event_type(combined)
-    due_at = _extract_due_at(combined, timezone_name=timezone_name)
+    due_at, due_text = _extract_due_at(combined_raw, internal_date=internal_date, timezone_name=timezone_name)
     course_hint = _extract_first_course_hint((subject_text + "\n" + snippet_text).upper())
 
     if event_type in ACTIONABLE_EVENT_TYPES:
@@ -83,7 +86,7 @@ def evaluate_email_rule(
         course_hint=course_hint,
         reasons=reasons[:3],
         raw_extract={
-            "deadline_text": ISO_DT_RE.search(combined).group(0) if ISO_DT_RE.search(combined) else None,
+            "deadline_text": due_text,
             "time_text": due_at.isoformat() if due_at is not None else None,
             "location_text": None,
         },
@@ -105,22 +108,28 @@ def _detect_event_type(text: str) -> str | None:
     return None
 
 
-def _extract_due_at(text: str, *, timezone_name: str) -> datetime | None:
-    match = ISO_DT_RE.search(text)
-    if match is None:
-        return None
-    raw = match.group(0)
-    normalized = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
+def _extract_due_at(text: str, *, internal_date: str | None, timezone_name: str) -> tuple[datetime | None, str | None]:
+    timezone_obj = _resolve_timezone(timezone_name)
     try:
-        parsed = datetime.fromisoformat(normalized)
+        due_iso, due_text = _extract_due_iso(text, date_hint=internal_date, timezone=timezone_obj)
+    except Exception:
+        return None, None
+    if not due_iso:
+        return None, due_text
+    try:
+        parsed = datetime.fromisoformat(due_iso)
     except ValueError:
-        return None
+        return None, due_text
     if parsed.tzinfo is None:
-        try:
-            parsed = parsed.replace(tzinfo=ZoneInfo(timezone_name))
-        except Exception:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        parsed = parsed.replace(tzinfo=timezone_obj)
+    return parsed.astimezone(timezone.utc), due_text
+
+
+def _resolve_timezone(timezone_name: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(timezone_name)
+    except Exception:
+        return ZoneInfo("UTC")
 
 
 def _extract_first_course_hint(text: str) -> str | None:
