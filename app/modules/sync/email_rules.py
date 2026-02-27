@@ -37,6 +37,8 @@ class EmailRuleDecision:
     reasons: list[str]
     raw_extract: dict[str, str | None]
     proposed_title: str | None
+    score: float
+    decision_origin: str = "rule"
 
     @property
     def actionable(self) -> bool:
@@ -69,6 +71,7 @@ def evaluate_email_rule(
     else:
         label = "DROP"
         confidence = 0.72
+    score = _compute_rule_score(event_type=event_type, due_at=due_at, course_hint=course_hint)
 
     reasons: list[str] = []
     if label == "KEEP":
@@ -91,6 +94,8 @@ def evaluate_email_rule(
             "location_text": None,
         },
         proposed_title=subject_text or None,
+        score=score,
+        decision_origin="rule",
     )
 
 
@@ -137,3 +142,12 @@ def _extract_first_course_hint(text: str) -> str | None:
     if match is None:
         return None
     return f"{match.group(1).upper()} {match.group(2).upper()}"
+
+
+def _compute_rule_score(*, event_type: str | None, due_at: datetime | None, course_hint: str | None) -> float:
+    strong_actionable_event_types = {"deadline", "exam", "assignment", "schedule_change"}
+    if event_type in strong_actionable_event_types and due_at is not None:
+        return 1.0
+    if event_type is None and due_at is None and course_hint is None:
+        return -1.0
+    return 0.0

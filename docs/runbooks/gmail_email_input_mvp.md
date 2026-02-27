@@ -32,6 +32,21 @@ GMAIL_OAUTH_SCOPE=https://www.googleapis.com/auth/gmail.readonly
    - recommended permission: `chmod 600 /path/to/client_secret.jsonl`
    - file extension can be `.json` or `.jsonl`; content must be Google client secrets JSON (`web` object)
 
+7. optional LLM fallback profile (only for ambiguous emails):
+
+```env
+EMAIL_LLM_FALLBACK_ENABLED=true
+EMAIL_LLM_BASE_URL=http://localhost:11434/v1
+EMAIL_LLM_API_KEY=sk-xxx
+EMAIL_LLM_MODEL=gpt-5.3-codex
+EMAIL_LLM_TIMEOUT_SECONDS=8
+EMAIL_LLM_MAX_RETRIES=1
+EMAIL_LLM_AMBIGUOUS_LOW=-0.2
+EMAIL_LLM_AMBIGUOUS_HIGH=0.2
+EMAIL_LLM_CONFIDENCE_THRESHOLD=0.85
+EMAIL_LLM_MAX_BODY_CHARS=4000
+```
+
 ## Setup
 
 1. complete onboarding first
@@ -60,6 +75,7 @@ GMAIL_OAUTH_SCOPE=https://www.googleapis.com/auth/gmail.readonly
 2. queue visible in `/ui/emails/review` and `/v1/review/emails`
 3. feed still unchanged until apply
 4. scheduler (15m default) and manual sync follow the same backend ingestion path
+5. if LLM fallback is enabled, only ambiguous rule-score emails call LLM; strong rule decisions skip LLM
 
 ### Review apply
 
@@ -89,3 +105,8 @@ GMAIL_OAUTH_SCOPE=https://www.googleapis.com/auth/gmail.readonly
    - reconnect Gmail in `/ui/inputs`; if it persists, revoke app access in Google account and reconnect.
 6. Sync error code `fetch_gmail_auth_refresh_token_missing`
    - reconnect Gmail and ensure offline access consent is granted.
+7. LLM fallback enabled but almost no calls
+   - verify `EMAIL_LLM_AMBIGUOUS_LOW/HIGH`; only scores inside this band trigger LLM.
+8. LLM fallback always drops
+   - inspect `/v1/review/emails?route=drop`; check `rule_analysis.drop_reason_codes` for:
+     `llm_fallback_timeout`, `llm_fallback_invalid_json`, `llm_fallback_schema_invalid`, `llm_fallback_low_confidence`, `llm_fallback_drop`.

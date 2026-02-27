@@ -13,6 +13,8 @@ def test_evaluate_email_rule_parses_iso_due_datetime() -> None:
         timezone_name="America/Los_Angeles",
     )
     assert decision.event_type == "schedule_change"
+    assert decision.score == 1.0
+    assert decision.decision_origin == "rule"
     assert decision.due_at is not None
     assert decision.due_at.isoformat() == "2026-03-02T07:59:00+00:00"
     assert decision.raw_extract["deadline_text"] == "2026-03-01T23:59:00-08:00"
@@ -28,6 +30,7 @@ def test_evaluate_email_rule_parses_month_day_with_internal_date_year_fallback()
         timezone_name="America/Los_Angeles",
     )
     assert decision.event_type == "deadline"
+    assert decision.score == 1.0
     assert decision.due_at is not None
     assert decision.due_at.isoformat() == "2027-03-04T07:59:00+00:00"
     assert decision.raw_extract["deadline_text"] == "Mar 3 11:59 PM PT"
@@ -43,6 +46,7 @@ def test_evaluate_email_rule_parses_mdy_and_prefers_tz_abbreviation() -> None:
         timezone_name="America/Los_Angeles",
     )
     assert decision.event_type == "deadline"
+    assert decision.score == 1.0
     assert decision.due_at is not None
     assert decision.due_at.isoformat() == "2026-03-04T04:59:00+00:00"
     assert decision.raw_extract["deadline_text"] == "3/3/2026 11:59 PM ET"
@@ -57,6 +61,7 @@ def test_evaluate_email_rule_preserves_event_priority() -> None:
         internal_date="2026-02-10T10:00:00+00:00",
     )
     assert decision.event_type == "schedule_change"
+    assert decision.score == 0.0
 
 
 def test_evaluate_email_rule_returns_none_due_when_no_date_detected() -> None:
@@ -68,6 +73,20 @@ def test_evaluate_email_rule_returns_none_due_when_no_date_detected() -> None:
         internal_date="2026-02-10T10:00:00+00:00",
     )
     assert decision.event_type == "assignment"
+    assert decision.score == 0.0
     assert decision.due_at is None
     assert decision.raw_extract["deadline_text"] is None
     assert decision.raw_extract["time_text"] is None
+
+
+def test_evaluate_email_rule_assigns_negative_score_for_strong_non_actionable() -> None:
+    decision = evaluate_email_rule(
+        subject="Weekly campus bulletin",
+        snippet="Community updates",
+        body_text="Welcome to this week's campus newsletter",
+        from_header="news@school.edu",
+        internal_date="2026-02-10T10:00:00+00:00",
+    )
+    assert decision.label == "DROP"
+    assert decision.event_type is None
+    assert decision.score == -1.0

@@ -118,7 +118,31 @@ Reconnect flow:
 2. click `Connect Gmail`
 3. authorize and return to `/ui/inputs` (the page auto-runs one initial sync for the connected input)
 
-### 3) SMTP Digest (optional, only for real email delivery)
+### 3) Email LLM Fallback (optional, only for ambiguous Gmail messages)
+
+Deterministic rules stay primary. LLM is only used when rule score falls in an ambiguous band.
+
+```env
+EMAIL_LLM_FALLBACK_ENABLED=true
+EMAIL_LLM_BASE_URL=http://localhost:11434/v1
+EMAIL_LLM_API_KEY=sk-xxx
+EMAIL_LLM_MODEL=gpt-5.3-codex
+EMAIL_LLM_TIMEOUT_SECONDS=8
+EMAIL_LLM_MAX_RETRIES=1
+EMAIL_LLM_AMBIGUOUS_LOW=-0.2
+EMAIL_LLM_AMBIGUOUS_HIGH=0.2
+EMAIL_LLM_CONFIDENCE_THRESHOLD=0.85
+EMAIL_LLM_MAX_BODY_CHARS=4000
+```
+
+Runtime semantics:
+
+1. strong rule signals (`score=+1.0` or `score=-1.0`) never call LLM
+2. only ambiguous score emails call LLM
+3. only structured `KEEP` with `confidence >= 0.85` enters review queue
+4. timeout / invalid JSON / schema errors fail closed (email does not enter review queue)
+
+### 4) SMTP Digest (optional, only for real email delivery)
 
 Enable notifications and append SMTP config when you want actual digest emails:
 
@@ -149,6 +173,7 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/deadline
 4. The first Gmail sync initializes the history cursor and does not backfill historical mailbox messages.
 5. On token-refresh failure, sync marks the input failed and asks for reconnect (input is not auto-deactivated).
 6. Scheduler default remains 15 minutes; scheduler sync and manual sync use the same backend path.
+7. If Email LLM fallback is enabled, LLM only runs for ambiguous rule-score emails and does not bypass review-first flow.
 
 ### OAuth Troubleshooting
 

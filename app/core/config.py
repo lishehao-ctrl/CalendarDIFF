@@ -30,6 +30,16 @@ class Settings(BaseSettings):
 
     gmail_oauth_client_secrets_file: str | None = None
     gmail_oauth_scope: str = "https://www.googleapis.com/auth/gmail.readonly"
+    email_llm_fallback_enabled: bool = False
+    email_llm_base_url: str | None = None
+    email_llm_api_key: str | None = None
+    email_llm_model: str = "gpt-5.3-codex"
+    email_llm_timeout_seconds: float = 8.0
+    email_llm_max_retries: int = 1
+    email_llm_ambiguous_low: float = -0.2
+    email_llm_ambiguous_high: float = 0.2
+    email_llm_confidence_threshold: float = 0.85
+    email_llm_max_body_chars: int = 4000
 
     smtp_host: str = "localhost"
     smtp_port: int = 25
