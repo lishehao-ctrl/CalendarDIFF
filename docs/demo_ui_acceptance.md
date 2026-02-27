@@ -31,7 +31,7 @@ Removed pages should 404:
 
 1. onboarding register with `notify_email + ics.url`
 2. ready user visiting `/ui/onboarding` is redirected to `/ui/processing`
-3. `/ui/inputs` can connect Gmail, soft-delete email inputs, and list canonical events
+3. `/ui/inputs` can connect Gmail and soft-delete email inputs
 4. processing can run manual sync for active inputs
 5. feed shows canonical changes only
 6. evidence panel auto-loads structured preview (old/new)

@@ -10,9 +10,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useInputsSettingsData } from "@/lib/hooks/use-inputs-settings-data";
 
@@ -24,17 +21,9 @@ export default function InputsPage() {
     inputs,
     inputsLoading,
     inputsError,
-    events,
-    eventsLoading,
-    eventsError,
     activeInputId,
-    eventTypeFilter,
-    eventSearch,
     deletingInputId,
     connectingGmail,
-    setActiveInputId,
-    setEventTypeFilter,
-    setEventSearch,
     handleRefresh,
     handleDeleteInput,
     handleConnectGmail,
@@ -55,7 +44,7 @@ export default function InputsPage() {
       <DashboardPageHeader
         icon={Inbox}
         title="Inputs"
-        description="Manage Gmail input sources and browse canonical events. ICS is configured via onboarding."
+        description="Manage Gmail input sources. ICS is configured via onboarding."
         current="inputs"
         activeInputId={activeInputId}
         showOnboardingNav={needsOnboarding}
@@ -81,8 +70,8 @@ export default function InputsPage() {
               <CardDescription>Connect multiple Gmail mailboxes and deactivate unused inputs.</CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="secondary" onClick={() => void handleRefresh()} disabled={inputsLoading || eventsLoading}>
-                {inputsLoading || eventsLoading ? (
+              <Button variant="secondary" onClick={() => void handleRefresh()} disabled={inputsLoading}>
+                {inputsLoading ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <RefreshCw className="mr-2 h-4 w-4" />
@@ -170,112 +159,7 @@ export default function InputsPage() {
         </CardContent>
       </Card>
 
-      <Card className="animate-in">
-        <CardHeader>
-          <CardTitle>Canonical Events</CardTitle>
-          <CardDescription>Query current canonical events by input and keyword.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="events-input-filter">Input</Label>
-              <Select
-                id="events-input-filter"
-                value={activeInputId ? String(activeInputId) : ""}
-                onChange={(event) => {
-                  const parsed = Number(event.target.value);
-                  if (!event.target.value) {
-                    setActiveInputId(null);
-                    return;
-                  }
-                  if (Number.isInteger(parsed) && parsed > 0) {
-                    setActiveInputId(parsed);
-                  }
-                }}
-              >
-                <option value="">All active inputs</option>
-                {activeInputs.map((row) => (
-                  <option key={row.id} value={String(row.id)}>
-                    {`input-${row.id} · ${row.display_label}`}
-                  </option>
-                ))}
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="events-type-filter">Input type</Label>
-              <Select
-                id="events-type-filter"
-                value={eventTypeFilter}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  if (value === "ics" || value === "email" || value === "all") {
-                    setEventTypeFilter(value);
-                  }
-                }}
-              >
-                <option value="all">All types</option>
-                <option value="ics">ICS</option>
-                <option value="email">Email</option>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="events-search">Keyword</Label>
-              <Input
-                id="events-search"
-                value={eventSearch}
-                onChange={(event) => setEventSearch(event.target.value)}
-                placeholder="Search title/course"
-              />
-            </div>
-          </div>
-
-          <SectionState
-            isLoading={eventsLoading}
-            error={eventsError}
-            isEmpty={!eventsLoading && !eventsError && events.length === 0}
-            loadingRows={4}
-            errorTitle="Failed to Load Events"
-            emptyTitle="No Matching Events"
-            emptyDescription="No canonical events matched current filters."
-          >
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Course</TableHead>
-                  <TableHead>Input</TableHead>
-                  <TableHead>Start</TableHead>
-                  <TableHead>End</TableHead>
-                  <TableHead>Updated</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {events.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell className="font-medium">
-                      <div>{row.title}</div>
-                      <div className="mt-1 text-xs text-muted">{row.uid}</div>
-                    </TableCell>
-                    <TableCell>{row.course_label}</TableCell>
-                    <TableCell>
-                      <div>{row.input_label}</div>
-                      <div className="mt-1 text-xs text-muted">{row.input_type.toUpperCase()}</div>
-                    </TableCell>
-                    <TableCell>{row.start_at_utc}</TableCell>
-                    <TableCell>{row.end_at_utc}</TableCell>
-                    <TableCell>{row.updated_at}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </SectionState>
-        </CardContent>
-      </Card>
-
       <DashboardToastStack toasts={toasts} />
     </DashboardPage>
   );
 }
-
