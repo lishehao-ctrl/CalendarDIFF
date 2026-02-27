@@ -30,7 +30,7 @@ Core workspace routes:
 4. `/ui/inputs` can connect Gmail and soft-delete email inputs
 5. processing can run manual sync for active inputs
 6. feed shows canonical changes only
-7. evidence panel auto-loads structured preview (old/new)
+7. feed renders diff-only cards (`Added / Removed / Modified`) without full old/new snapshot event lists
 8. email review queue supports:
    - apply
    - archive
@@ -38,9 +38,9 @@ Core workspace routes:
    - mark viewed
 9. apply creates canonical change visible in feed
 
-## 4) Evidence Preview Checks
+## 4) Optional Evidence API Checks
 
-1. endpoint used is `/v1/changes/{change_id}/evidence/{side}/preview`
+1. endpoint available is `/v1/changes/{change_id}/evidence/{side}/preview`
 2. no download button
 3. malformed ICS returns `422 detail.code=evidence_parse_failed`
 4. missing evidence returns `404`

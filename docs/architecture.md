@@ -120,9 +120,14 @@ Rule:
 4. `/v1/events` (debug/query endpoint)
 5. `/v1/feed`
 6. `/v1/changes/{change_id}/viewed`
-7. `/v1/changes/{change_id}/evidence/{side}/preview`
+7. `/v1/changes/{change_id}/evidence/{side}/preview` (debug/inspection endpoint, not Feed default UI path)
 8. `/v1/review/emails/*`
 9. `/health`
+
+Feed UI note:
+
+1. `/ui/feed` renders event-level diff summaries from `changes` only (`added|removed|modified`)
+2. `/ui/feed` does not render full before/after snapshot event lists
 
 ## 5) Migration Baseline
 

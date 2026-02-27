@@ -24,12 +24,8 @@ export default function FeedPage() {
     changesError,
     handleRefreshChanges,
     handleToggleViewed,
-    evidencePreviews,
-    handlePreviewEvidence,
     changeNotes,
     setChangeNote,
-    getTaskDisplayTitle,
-    getCourseDisplayLabel,
   } = useFeedData();
 
   useEffect(() => {
@@ -68,11 +64,7 @@ export default function FeedPage() {
         changeNotes={changeNotes}
         onChangeNote={setChangeNote}
         onToggleViewed={handleToggleViewed}
-        evidencePreviews={evidencePreviews}
-        onPreviewEvidence={handlePreviewEvidence}
         onRefreshChanges={handleRefreshChanges}
-        getTaskDisplayTitle={getTaskDisplayTitle}
-        getCourseDisplayLabel={getCourseDisplayLabel}
       />
 
       <DashboardToastStack toasts={toasts} />

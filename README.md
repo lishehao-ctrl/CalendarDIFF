@@ -170,7 +170,7 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/deadline
 1. `Onboarding` (first-time only): submit `notify_email + ics.url`.
 2. `Inputs`: connect/deactivate Gmail inputs and manage input runtime status.
 3. `Processing`: run manual sync (`POST /v1/inputs/{input_id}/sync`) and check health.
-4. `Feed`: inspect canonical diff cards and evidence preview.
+4. `Feed`: inspect canonical event-level diff cards (added/removed/modified only).
 5. `Email Review`: route/apply email queue items.
 6. UI bootstrap uses `GET /v1/workspace/bootstrap` to load onboarding/user/inputs/config summary in one request.
 
@@ -198,7 +198,7 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/deadline
 
 1. `GET /v1/feed`
 2. `PATCH /v1/changes/{change_id}/viewed`
-3. `GET /v1/changes/{change_id}/evidence/{side}/preview`
+3. `GET /v1/changes/{change_id}/evidence/{side}/preview` (retained API; not used by Feed main UI)
 
 ### Email Review
 

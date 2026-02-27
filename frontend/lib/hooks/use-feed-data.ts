@@ -1,23 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { getEvidencePreview, getFeed, patchChangeViewed } from "@/lib/api";
+import { getFeed, patchChangeViewed } from "@/lib/api";
 import {
   isOnboardingRequiredError,
   parsePositiveInt,
-  previewCacheKey,
   syncSelectionQuery,
   toErrorMessage,
 } from "@/lib/hooks/runtime-utils";
 import { useAppRuntime } from "@/lib/hooks/use-app-runtime";
-import { ChangeFeedRecord, ChangeRecord, EvidencePreviewResponse } from "@/lib/types";
+import { ChangeFeedRecord } from "@/lib/types";
 
 export type ChangeFilter = "all" | "unread";
-
-export type EvidencePreviewState = {
-  loading: boolean;
-  error: string | null;
-  data: EvidencePreviewResponse | null;
-};
 
 export function useFeedData() {
   const runtime = useAppRuntime();
@@ -25,13 +18,12 @@ export function useFeedData() {
 
   const [activeSourceId, setActiveSourceId] = useState<number | null>(null);
 
-  const [changes, setChanges] = useState<ChangeRecord[]>([]);
+  const [changes, setChanges] = useState<ChangeFeedRecord[]>([]);
   const [changesLoading, setChangesLoading] = useState(false);
   const [changesError, setChangesError] = useState<string | null>(null);
   const [changeFilter, setChangeFilter] = useState<ChangeFilter>("all");
   const [changeSourceTypeFilter, setChangeSourceTypeFilter] = useState<"all" | "email" | "ics">("all");
   const [changeNotes, setChangeNotes] = useState<Record<number, string>>({});
-  const [evidencePreviews, setEvidencePreviews] = useState<Record<string, EvidencePreviewState>>({});
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -117,7 +109,7 @@ export function useFeedData() {
     }
   }
 
-  async function handleToggleViewed(change: ChangeRecord) {
+  async function handleToggleViewed(change: ChangeFeedRecord) {
     if (!config) {
       return;
     }
@@ -131,35 +123,6 @@ export function useFeedData() {
       await handleRefreshChanges();
     } catch (error) {
       pushToast(`Update viewed failed: ${toErrorMessage(error)}`, "error");
-    }
-  }
-
-  async function handlePreviewEvidence(changeId: number, side: "before" | "after") {
-    if (!config) {
-      return;
-    }
-    const key = previewCacheKey(changeId, side);
-    const existing = evidencePreviews[key];
-    if (existing?.loading || existing?.data) {
-      return;
-    }
-
-    setEvidencePreviews((current) => ({
-      ...current,
-      [key]: { loading: true, error: null, data: null },
-    }));
-
-    try {
-      const payload = await getEvidencePreview(config, changeId, side);
-      setEvidencePreviews((current) => ({
-        ...current,
-        [key]: { loading: false, error: null, data: payload },
-      }));
-    } catch (error) {
-      setEvidencePreviews((current) => ({
-        ...current,
-        [key]: { loading: false, error: toErrorMessage(error), data: null },
-      }));
     }
   }
 
@@ -177,15 +140,6 @@ export function useFeedData() {
     return changes;
   }, [changeFilter, changes]);
 
-  function getCourseDisplayLabel(label: string) {
-    return label;
-  }
-
-  function getTaskDisplayTitle(uid: string, title: string) {
-    void uid;
-    return title;
-  }
-
   return {
     ...runtime,
     activeSourceId,
@@ -198,11 +152,7 @@ export function useFeedData() {
     changesError,
     handleRefreshChanges,
     handleToggleViewed,
-    evidencePreviews,
-    handlePreviewEvidence,
     changeNotes,
     setChangeNote,
-    getTaskDisplayTitle,
-    getCourseDisplayLabel,
   };
 }
