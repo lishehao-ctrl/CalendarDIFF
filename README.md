@@ -169,9 +169,10 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/deadline
 
 1. `Onboarding` (first-time only): submit `notify_email + ics.url`.
 2. `Inputs`: connect/deactivate Gmail inputs and manage input runtime status.
-3. `Processing`: run manual sync (`POST /v1/inputs/{input_id}/sync`).
+3. `Processing`: run manual sync (`POST /v1/inputs/{input_id}/sync`) and check health.
 4. `Feed`: inspect canonical diff cards and evidence preview.
 5. `Email Review`: route/apply email queue items.
+6. UI bootstrap uses `GET /v1/workspace/bootstrap` to load onboarding/user/inputs/config summary in one request.
 
 ## Public API (Current Core)
 
@@ -180,29 +181,31 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/deadline
 1. `GET /v1/onboarding/status`
 2. `POST /v1/onboarding/register`
 
+### Workspace
+
+1. `GET /v1/workspace/bootstrap`
+2. `GET /health`
+
 ### Inputs / Processing
 
 1. `GET /v1/inputs`
 2. `POST /v1/inputs/email/gmail/oauth/start`
 3. `DELETE /v1/inputs/{input_id}` (soft delete, blocks sole active ICS)
 4. `POST /v1/inputs/{input_id}/sync`
-5. `GET /v1/events`
-6. `GET /v1/inputs/{input_id}/changes`
-7. `PATCH /v1/inputs/{input_id}/changes/{change_id}/viewed`
-8. `GET /v1/inputs/{input_id}/snapshots`
-9. `GET /health`
+5. `GET /v1/events` (debug/non-main UI endpoint)
 
 ### Feed / Evidence
 
 1. `GET /v1/feed`
-2. `GET /v1/changes/{change_id}/evidence/{side}/preview`
+2. `PATCH /v1/changes/{change_id}/viewed`
+3. `GET /v1/changes/{change_id}/evidence/{side}/preview`
 
 ### Email Review
 
-1. `GET /v1/emails/queue`
-2. `POST /v1/emails/{email_id}/route` (`drop|archive|review`)
-3. `POST /v1/emails/{email_id}/mark_viewed`
-4. `POST /v1/emails/{email_id}/apply`
+1. `GET /v1/review/emails`
+2. `PATCH /v1/review/emails/{email_id}/route` (`drop|archive|review`)
+3. `POST /v1/review/emails/{email_id}/viewed`
+4. `POST /v1/review/emails/{email_id}/apply`
 
 `apply.mode`:
 
@@ -220,9 +223,16 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/deadline
 6. `/v1/inputs/{input_id}/runs`
 7. `/v1/inputs/{input_id}/deadlines`
 8. `/v1/inputs/{input_id}/overrides`
-9. `/v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/download`
-10. `/v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/preview`
-11. `/v1/inputs/ics`
+9. `/v1/inputs/{input_id}/changes`
+10. `/v1/inputs/{input_id}/snapshots`
+11. `/v1/inputs/{input_id}/changes/{change_id}/viewed`
+12. `/v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/download`
+13. `/v1/inputs/{input_id}/changes/{change_id}/evidence/{side}/preview`
+14. `/v1/emails/queue`
+15. `/v1/emails/{email_id}/route`
+16. `/v1/emails/{email_id}/mark_viewed`
+17. `/v1/emails/{email_id}/apply`
+18. `/v1/inputs/ics`
 
 ## One-ICS Invariant
 
@@ -241,8 +251,10 @@ cd frontend && npm run typecheck && npm run lint && npm run build
 ## More Docs
 
 1. `docs/architecture.md`
-2. `docs/demo_ui_acceptance.md`
-3. `docs/legacy_cleanup.md`
-4. `docs/manual_email_test.md`
-5. `docs/runbooks/gmail_email_input_mvp.md`
-6. `docs/runbooks/scheduler_multi_instance_acceptance.md`
+2. `docs/api_surface_current.md`
+3. `docs/api_surface_target.md`
+4. `docs/demo_ui_acceptance.md`
+5. `docs/legacy_cleanup.md`
+6. `docs/manual_email_test.md`
+7. `docs/runbooks/gmail_email_input_mvp.md`
+8. `docs/runbooks/scheduler_multi_instance_acceptance.md`

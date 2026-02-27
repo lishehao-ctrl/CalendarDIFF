@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import require_api_key
 from app.db.session import get_db
+from app.modules.common.deps import get_onboarded_user_or_409
 from app.modules.emails.schemas import (
     ApplyEmailReviewRequest,
     ApplyEmailReviewResponse,
@@ -22,25 +23,7 @@ from app.modules.emails.service import (
     mark_email_viewed,
     update_email_route,
 )
-from app.modules.users.service import (
-    UserNotInitializedError,
-    UserOnboardingIncompleteError,
-    require_onboarded_user,
-    user_onboarding_incomplete_detail,
-    user_not_initialized_detail,
-)
-
-
-router = APIRouter(prefix="/v1/emails", tags=["emails"], dependencies=[Depends(require_api_key)])
-
-
-def _require_onboarded_user_id(db: Session) -> int:
-    try:
-        return require_onboarded_user(db).id
-    except UserNotInitializedError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=user_not_initialized_detail()) from exc
-    except UserOnboardingIncompleteError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=user_onboarding_incomplete_detail()) from exc
+router = APIRouter(prefix="/v1/review/emails", tags=["review"], dependencies=[Depends(require_api_key)])
 
 
 def _parse_offset_cursor(cursor: str | None) -> int:
@@ -64,17 +47,17 @@ def _parse_route_filter(route: str | None) -> str | None:
     raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="route must be one of: drop, archive, review")
 
 
-@router.get("/queue", response_model=list[EmailQueueItemResponse])
+@router.get("", response_model=list[EmailQueueItemResponse])
 def get_email_queue(
     route: str | None = Query(default="review"),
     limit: int = Query(default=50, ge=1, le=200),
     cursor: str | None = Query(default=None),
     db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
 ) -> list[EmailQueueItemResponse]:
-    user_id = _require_onboarded_user_id(db)
     rows = list_email_queue(
         db,
-        user_id=user_id,
+        user_id=user.id,
         route=_parse_route_filter(route),
         limit=limit,
         offset=_parse_offset_cursor(cursor),
@@ -82,17 +65,17 @@ def get_email_queue(
     return [EmailQueueItemResponse(**row) for row in rows]
 
 
-@router.post("/{email_id}/route", response_model=UpdateEmailRouteResponse)
+@router.patch("/{email_id}/route", response_model=UpdateEmailRouteResponse)
 def post_email_route(
     email_id: str,
     payload: UpdateEmailRouteRequest,
     db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
 ) -> UpdateEmailRouteResponse:
-    user_id = _require_onboarded_user_id(db)
     try:
         route_row = update_email_route(
             db,
-            user_id=user_id,
+            user_id=user.id,
             email_id=email_id,
             route=payload.route,
         )
@@ -109,16 +92,16 @@ def post_email_route(
     )
 
 
-@router.post("/{email_id}/mark_viewed", response_model=MarkEmailViewedResponse)
+@router.post("/{email_id}/viewed", response_model=MarkEmailViewedResponse)
 def post_mark_email_viewed(
     email_id: str,
     db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
 ) -> MarkEmailViewedResponse:
-    user_id = _require_onboarded_user_id(db)
     try:
         route_row = mark_email_viewed(
             db,
-            user_id=user_id,
+            user_id=user.id,
             email_id=email_id,
         )
     except EmailQueueItemNotFoundError as exc:
@@ -132,12 +115,12 @@ def post_apply_email_review(
     email_id: str,
     payload: ApplyEmailReviewRequest,
     db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
 ) -> ApplyEmailReviewResponse:
-    user_id = _require_onboarded_user_id(db)
     try:
         task_id, change_id = apply_email_review(
             db,
-            user_id=user_id,
+            user_id=user.id,
             email_id=email_id,
             mode=payload.mode,
             target_event_uid=payload.target_event_uid,

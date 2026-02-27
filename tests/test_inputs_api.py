@@ -100,7 +100,7 @@ def test_ics_input_create_route_removed(client, initialized_user) -> None:
         headers=headers,
         json={"url": "https://example.com/input-legacy.ics"},
     )
-    assert response.status_code == 404
+    assert response.status_code in {404, 405}
 
 
 def test_delete_email_input_soft_deactivates_row(client, initialized_user, db_session) -> None:

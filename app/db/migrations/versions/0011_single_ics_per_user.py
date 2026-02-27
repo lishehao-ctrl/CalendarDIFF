@@ -33,7 +33,7 @@ def upgrade() -> None:
                         ORDER BY created_at DESC, id DESC
                     ) AS rn
                 FROM inputs
-                WHERE type = 'ICS'
+                WHERE lower(type) = 'ics'
             )
             DELETE FROM inputs i
             USING ranked r
@@ -48,10 +48,9 @@ def upgrade() -> None:
         "inputs",
         ["user_id"],
         unique=True,
-        postgresql_where=sa.text("type = 'ICS'"),
+        postgresql_where=sa.text("lower(type) = 'ics'"),
     )
 
 
 def downgrade() -> None:
     op.drop_index(UNIQUE_ICS_PER_USER_INDEX, table_name="inputs")
-

@@ -71,7 +71,9 @@ def test_preview_change_evidence_before_and_after_success(client, initialized_us
     assert first_sync.status_code == 200
     assert second_sync.status_code == 200
 
-    changes = client.get(f"/v1/inputs/{input_id}/changes", headers=headers).json()
+    changes_response = client.get(f"/v1/feed?input_id={input_id}", headers=headers)
+    assert changes_response.status_code == 200
+    changes = changes_response.json()
     assert len(changes) == 1
     change_id = changes[0]["id"]
 
@@ -241,7 +243,9 @@ def test_preview_change_evidence_truncated_flag(client, initialized_user, db_ses
     assert first_sync.status_code == 200
     assert second_sync.status_code == 200
 
-    changes = client.get(f"/v1/inputs/{input_id}/changes", headers=headers).json()
+    changes_response = client.get(f"/v1/feed?input_id={input_id}", headers=headers)
+    assert changes_response.status_code == 200
+    changes = changes_response.json()
     assert len(changes) == 1
     change_id = changes[0]["id"]
 

@@ -31,16 +31,17 @@ Removed pages should 404:
 
 1. onboarding register with `notify_email + ics.url`
 2. ready user visiting `/ui/onboarding` is redirected to `/ui/processing`
-3. `/ui/inputs` can connect Gmail and soft-delete email inputs
-4. processing can run manual sync for active inputs
-5. feed shows canonical changes only
-6. evidence panel auto-loads structured preview (old/new)
-7. email review queue supports:
+3. pages bootstrap via `GET /v1/workspace/bootstrap` (onboarding/user/inputs/config summary)
+4. `/ui/inputs` can connect Gmail and soft-delete email inputs
+5. processing can run manual sync for active inputs
+6. feed shows canonical changes only
+7. evidence panel auto-loads structured preview (old/new)
+8. email review queue supports:
    - apply
    - archive
    - drop
    - mark viewed
-8. apply creates canonical change visible in feed
+9. apply creates canonical change visible in feed
 
 ## 4) Evidence Preview Checks
 

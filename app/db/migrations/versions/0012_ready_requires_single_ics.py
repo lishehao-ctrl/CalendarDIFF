@@ -26,7 +26,7 @@ def upgrade() -> None:
             WITH ics_counts AS (
                 SELECT
                     u.id AS user_id,
-                    COUNT(i.id) FILTER (WHERE i.type = 'ICS') AS ics_count
+                    COUNT(i.id) FILTER (WHERE lower(i.type) = 'ics') AS ics_count
                 FROM users u
                 LEFT JOIN inputs i ON i.user_id = u.id
                 GROUP BY u.id

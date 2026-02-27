@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.core.config import get_settings
+from app.db.models import Snapshot
 from app.modules.inputs.schemas import InputCreateRequest
 from app.modules.inputs.service import create_ics_input
 from app.modules.notify.interface import SendResult
@@ -91,10 +92,9 @@ def test_manual_sync_changed_run_queues_digest_instead_of_immediate_send(client,
     assert third_payload["email_sent"] is False
     assert third_payload["is_baseline_sync"] is False
 
-    snapshots_response = client.get(f"/v1/inputs/{source_id}/snapshots", headers=headers)
-    assert snapshots_response.status_code == 200
+    snapshots = list(db_session.query(Snapshot).filter(Snapshot.input_id == source_id).all())
     # third run returned identical feed, so snapshot creation is skipped.
-    assert len(snapshots_response.json()) == 2
+    assert len(snapshots) == 2
 
     # Digest-only mode: manual sync queues digest notifications and does not send immediately.
     assert len(send_calls) == 0
@@ -189,7 +189,7 @@ def test_identity_upsert_keeps_history_and_baseline(client, initialized_user, db
     assert first_sync.json()["is_baseline_sync"] is True
     assert second_sync.json()["changes_created"] == 1
 
-    before_replace_changes = client.get(f"/v1/inputs/{source_id}/changes", headers=headers)
+    before_replace_changes = client.get(f"/v1/feed?input_id={source_id}", headers=headers)
     assert before_replace_changes.status_code == 200
     assert len(before_replace_changes.json()) == 1
 
@@ -202,7 +202,7 @@ def test_identity_upsert_keeps_history_and_baseline(client, initialized_user, db
     assert upserted.input.id == source_id
     assert upserted.input.interval_minutes == 15
 
-    after_upsert_changes = client.get(f"/v1/inputs/{source_id}/changes", headers=headers)
+    after_upsert_changes = client.get(f"/v1/feed?input_id={source_id}", headers=headers)
     assert after_upsert_changes.status_code == 200
     assert len(after_upsert_changes.json()) == 1
 

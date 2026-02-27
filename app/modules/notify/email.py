@@ -48,9 +48,9 @@ def _build_email_body(input_id: int, input_label: str, items: list[ChangeDigestI
         grouped[item.course_label].append(item)
 
     if settings.app_base_url:
-        link = f"{settings.app_base_url.rstrip('/')}/v1/inputs/{input_id}/changes"
+        link = f"{settings.app_base_url.rstrip('/')}/ui/feed?input_id={input_id}"
     else:
-        link = f"/v1/inputs/{input_id}/changes"
+        link = f"/ui/feed?input_id={input_id}"
 
     lines: list[str] = [f"Input: {input_label}", f"Changes: {len(items)}", ""]
 

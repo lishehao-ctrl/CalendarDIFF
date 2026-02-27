@@ -164,6 +164,31 @@ export type HealthResponse = {
   };
 };
 
+export type WorkspaceConfigStatus = {
+  notifications_enabled: boolean;
+  gmail_oauth_configured: boolean;
+  schema_guard_enabled: boolean;
+};
+
+export type WorkspaceDefaults = {
+  default_changes_limit: number;
+  max_changes_limit: number;
+  default_sync_interval_minutes: number;
+  scheduler_tick_seconds: number;
+  manual_sync_retry_seconds: number;
+};
+
+export type WorkspaceHealthSummary = {
+  status: string;
+  db_ok: boolean;
+  db_error: string | null;
+  scheduler_running: boolean;
+  scheduler_last_error: string | null;
+  scheduler_instance_id: string | null;
+  next_expected_input_id: number | null;
+  next_expected_check_at: string | null;
+};
+
 export type DashboardUser = {
   id: number;
   email: string | null;
@@ -171,6 +196,15 @@ export type DashboardUser = {
   notify_email: string | null;
   calendar_delay_seconds: number;
   created_at: string;
+};
+
+export type WorkspaceBootstrapResponse = {
+  config_status: WorkspaceConfigStatus;
+  onboarding: OnboardingStatus;
+  user: DashboardUser | null;
+  inputs: Input[];
+  health_summary: WorkspaceHealthSummary;
+  defaults: WorkspaceDefaults;
 };
 
 export type OnboardingStage = "needs_user" | "needs_ics" | "needs_baseline" | "ready";

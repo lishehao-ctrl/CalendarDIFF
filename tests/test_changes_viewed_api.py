@@ -57,14 +57,14 @@ def test_patch_change_viewed_status(client, initialized_user, db_session, monkey
     assert first_sync.json()["is_baseline_sync"] is True
     assert second_sync.json()["is_baseline_sync"] is False
 
-    list_response = client.get(f"/v1/inputs/{source_id}/changes", headers=headers)
+    list_response = client.get(f"/v1/feed?input_id={source_id}", headers=headers)
     assert list_response.status_code == 200
     changes = list_response.json()
     assert len(changes) == 1
     target_change = changes[0]
 
     mark_read = client.patch(
-        f"/v1/inputs/{source_id}/changes/{target_change['id']}/viewed",
+        f"/v1/changes/{target_change['id']}/viewed",
         headers=headers,
         json={"viewed": True, "note": "reviewed in ui"},
     )
@@ -73,14 +73,14 @@ def test_patch_change_viewed_status(client, initialized_user, db_session, monkey
     assert payload["viewed_at"] is not None
     assert payload["viewed_note"] == "reviewed in ui"
 
-    refreshed = client.get(f"/v1/inputs/{source_id}/changes", headers=headers)
+    refreshed = client.get(f"/v1/feed?input_id={source_id}", headers=headers)
     assert refreshed.status_code == 200
     refreshed_change = refreshed.json()[0]
     assert refreshed_change["viewed_at"] is not None
     assert refreshed_change["viewed_note"] == "reviewed in ui"
 
     mark_unread = client.patch(
-        f"/v1/inputs/{source_id}/changes/{target_change['id']}/viewed",
+        f"/v1/changes/{target_change['id']}/viewed",
         headers=headers,
         json={"viewed": False},
     )

@@ -1,4 +1,4 @@
-import { ApiError, apiRequest } from "@/lib/api";
+import { ApiError, syncInput } from "@/lib/api";
 import { ToastTone } from "@/lib/hooks/use-toast";
 import { AppConfig, InputBusyDetail, ManualSyncResponse } from "@/lib/types";
 
@@ -104,9 +104,7 @@ export function handleManualSyncResult(
 
 export async function requestManualSync(config: AppConfig, inputId: number): Promise<ManualSyncRequestResult> {
   try {
-    const result = await apiRequest<ManualSyncResponse>(config, `/v1/inputs/${inputId}/sync`, {
-      method: "POST",
-    });
+    const result = await syncInput(config, inputId);
     return { kind: "success", result };
   } catch (error) {
     const busy = readInputBusyDetail(error);

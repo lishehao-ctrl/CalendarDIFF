@@ -56,7 +56,7 @@ def _seed_email_queue_row(db_session, *, user_id: int, email_id: str = "email-re
 def test_email_queue_returns_expected_shape_without_body(client, initialized_user, db_session) -> None:
     _seed_email_queue_row(db_session, user_id=1)
 
-    response = client.get("/v1/emails/queue?route=review", headers={"X-API-Key": "test-api-key"})
+    response = client.get("/v1/review/emails?route=review", headers={"X-API-Key": "test-api-key"})
     assert response.status_code == 200
     rows = response.json()
     assert len(rows) == 1
@@ -73,23 +73,23 @@ def test_email_queue_returns_expected_shape_without_body(client, initialized_use
 def test_email_route_archive_drop_and_mark_viewed(client, initialized_user, db_session) -> None:
     _seed_email_queue_row(db_session, user_id=1)
 
-    to_archive = client.post(
-        "/v1/emails/email-review-1/route",
+    to_archive = client.patch(
+        "/v1/review/emails/email-review-1/route",
         headers={"X-API-Key": "test-api-key"},
         json={"route": "archive"},
     )
     assert to_archive.status_code == 200
     assert to_archive.json()["route"] == "archive"
 
-    to_drop = client.post(
-        "/v1/emails/email-review-1/route",
+    to_drop = client.patch(
+        "/v1/review/emails/email-review-1/route",
         headers={"X-API-Key": "test-api-key"},
         json={"route": "drop"},
     )
     assert to_drop.status_code == 200
     assert to_drop.json()["route"] == "drop"
 
-    viewed = client.post("/v1/emails/email-review-1/mark_viewed", headers={"X-API-Key": "test-api-key"})
+    viewed = client.post("/v1/review/emails/email-review-1/viewed", headers={"X-API-Key": "test-api-key"})
     assert viewed.status_code == 200
     route_row = db_session.get(EmailRoute, "email-review-1")
     assert route_row is not None

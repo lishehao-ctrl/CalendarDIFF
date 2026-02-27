@@ -23,8 +23,10 @@ from app.db.models import (
     NotificationStatus,
 )
 from app.db.session import get_db
+from app.modules.common.deps import get_onboarded_user_or_409
 from app.modules.changes.schemas import (
     ChangeFeedResponse,
+    ChangeViewedUpdateRequest,
     ChangeResponse,
     ChangeSummary,
     ChangeSummarySide,
@@ -32,13 +34,6 @@ from app.modules.changes.schemas import (
     EvidencePreviewResponse,
 )
 from app.modules.evidence import EvidencePathError, resolve_evidence_file_path
-from app.modules.users.service import (
-    UserNotInitializedError,
-    UserOnboardingIncompleteError,
-    require_onboarded_user,
-    user_onboarding_incomplete_detail,
-    user_not_initialized_detail,
-)
 
 router = APIRouter(prefix="/v1", tags=["changes"], dependencies=[Depends(require_api_key)])
 SUMMARY_TIME_FIELDS = ("start_at_utc", "internal_date", "due_at", "end_at_utc")
@@ -55,6 +50,7 @@ def list_feed(
     limit: int | None = Query(default=None, ge=1),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
 ) -> list[ChangeFeedResponse]:
     settings = get_settings()
     applied_limit = limit or settings.default_changes_limit
@@ -62,12 +58,7 @@ def list_feed(
 
     requested_types = _parse_input_types(input_types)
 
-    try:
-        current_user_id = require_onboarded_user(db).id
-    except UserNotInitializedError as exc:
-        raise HTTPException(status_code=409, detail=user_not_initialized_detail()) from exc
-    except UserOnboardingIncompleteError as exc:
-        raise HTTPException(status_code=409, detail=user_onboarding_incomplete_detail()) from exc
+    current_user_id = user.id
 
     priority_rank_expr = case((Input.type == InputType.EMAIL, 0), else_=1)
 
@@ -116,20 +107,42 @@ def list_feed(
     return result
 
 
+@router.patch("/changes/{change_id}/viewed", response_model=ChangeResponse)
+def mark_change_viewed(
+    change_id: int,
+    payload: ChangeViewedUpdateRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> ChangeResponse:
+    row = db.scalar(
+        select(Change)
+        .join(Input, Input.id == Change.input_id)
+        .options(joinedload(Change.before_snapshot), joinedload(Change.after_snapshot))
+        .where(Change.id == change_id, Input.user_id == user.id)
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Change not found")
+
+    if payload.viewed:
+        row.viewed_at = datetime.now(timezone.utc)
+        row.viewed_note = payload.note
+    else:
+        row.viewed_at = None
+        row.viewed_note = None
+
+    db.commit()
+    db.refresh(row)
+    return _to_response(row)
+
+
 @router.get("/changes/{change_id}/evidence/{side}/preview", response_model=EvidencePreviewResponse)
 def preview_change_evidence(
     change_id: int,
     side: Literal["before", "after"],
     db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
 ) -> EvidencePreviewResponse:
-    try:
-        current_user_id = require_onboarded_user(db).id
-    except UserNotInitializedError as exc:
-        raise HTTPException(status_code=409, detail=user_not_initialized_detail()) from exc
-    except UserOnboardingIncompleteError as exc:
-        raise HTTPException(status_code=409, detail=user_onboarding_incomplete_detail()) from exc
-
-    row, resolved = _resolve_change_evidence_file(db, user_id=current_user_id, change_id=change_id, side=side)
+    row, resolved = _resolve_change_evidence_file(db, user_id=user.id, change_id=change_id, side=side)
     try:
         content_bytes = resolved.read_bytes()
     except FileNotFoundError:

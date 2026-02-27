@@ -23,6 +23,7 @@ from app.modules.users.router import router as users_router
 from app.modules.scheduler.runner import SchedulerRunner
 from app.modules.ui.router import router as ui_router
 from app.state import SchedulerStatus
+from app.modules.workspace.router import router as workspace_router
 
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,7 @@ def create_app() -> FastAPI:
     app.include_router(inputs_router)
     app.include_router(oauth_router)
     app.include_router(emails_router)
+    app.include_router(workspace_router)
     app.include_router(ui_router)
     return app
 

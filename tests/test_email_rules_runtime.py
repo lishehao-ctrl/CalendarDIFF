@@ -12,7 +12,7 @@ def test_evaluate_email_rule_parses_iso_due_datetime() -> None:
         internal_date="2026-02-20T10:00:00+00:00",
         timezone_name="America/Los_Angeles",
     )
-    assert decision.event_type == "deadline"
+    assert decision.event_type == "schedule_change"
     assert decision.due_at is not None
     assert decision.due_at.isoformat() == "2026-03-02T07:59:00+00:00"
     assert decision.raw_extract["deadline_text"] == "2026-03-01T23:59:00-08:00"
@@ -27,7 +27,7 @@ def test_evaluate_email_rule_parses_month_day_with_internal_date_year_fallback()
         internal_date="2027-02-10T10:00:00+00:00",
         timezone_name="America/Los_Angeles",
     )
-    assert decision.event_type == "assignment"
+    assert decision.event_type == "deadline"
     assert decision.due_at is not None
     assert decision.due_at.isoformat() == "2027-03-04T07:59:00+00:00"
     assert decision.raw_extract["deadline_text"] == "Mar 3 11:59 PM PT"

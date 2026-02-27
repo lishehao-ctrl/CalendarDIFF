@@ -135,7 +135,7 @@ def upgrade() -> None:
     op.create_check_constraint(
         "ck_changes_change_type",
         "changes",
-        "change_type IN ('CREATED', 'REMOVED', 'DUE_CHANGED')",
+        "lower(change_type) IN ('created', 'removed', 'due_changed')",
     )
 
 
@@ -144,7 +144,7 @@ def downgrade() -> None:
     op.create_check_constraint(
         "ck_changes_change_type",
         "changes",
-        "change_type IN ('CREATED', 'REMOVED', 'DUE_CHANGED', 'TITLE_CHANGED', 'COURSE_CHANGED')",
+        "lower(change_type) IN ('created', 'removed', 'due_changed', 'title_changed', 'course_changed')",
     )
 
     if _table_exists("changes_legacy_archive"):
@@ -170,7 +170,7 @@ def downgrade() -> None:
                     a.original_change_id,
                     a.input_id,
                     a.event_uid,
-                    upper(a.change_type),
+                    lower(a.change_type),
                     a.detected_at,
                     a.before_json,
                     a.after_json,

@@ -74,7 +74,7 @@ Owns:
 Rule:
 
 1. Gmail sync writes review queue only
-2. canonical mutation requires explicit `POST /v1/emails/{email_id}/apply`
+2. canonical mutation requires explicit `POST /v1/review/emails/{email_id}/apply`
 
 ## 3) Request Flow
 
@@ -115,12 +115,14 @@ Rule:
 ## 4) Public Surface (Minimal)
 
 1. `/v1/onboarding/*`
-2. `/v1/inputs` + `/v1/inputs/{input_id}/sync` + `/v1/inputs/{input_id}` (DELETE)
-3. `/v1/events`
-4. `/v1/feed`
-5. `/v1/changes/{change_id}/evidence/{side}/preview`
-6. `/v1/emails/*`
-7. `/health`
+2. `/v1/workspace/bootstrap`
+3. `/v1/inputs` + `/v1/inputs/{input_id}/sync` + `/v1/inputs/{input_id}` (DELETE)
+4. `/v1/events` (debug/query endpoint)
+5. `/v1/feed`
+6. `/v1/changes/{change_id}/viewed`
+7. `/v1/changes/{change_id}/evidence/{side}/preview`
+8. `/v1/review/emails/*`
+9. `/health`
 
 ## 5) Removed Surface
 
@@ -131,8 +133,12 @@ Rule:
 5. `/v1/inputs/{input_id}/runs`
 6. `/v1/inputs/{input_id}/deadlines`
 7. `/v1/inputs/{input_id}/overrides`
-8. input-scoped and download evidence routes
-9. `/ui/runs`, `/ui/dev`
+8. `/v1/inputs/{input_id}/changes`
+9. `/v1/inputs/{input_id}/snapshots`
+10. `/v1/inputs/{input_id}/changes/{change_id}/viewed`
+11. `/v1/emails/*` (legacy review namespace)
+12. input-scoped download evidence routes
+13. `/ui/runs`, `/ui/dev`
 
 ## 6) Migration Head
 

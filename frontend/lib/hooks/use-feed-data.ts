@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { apiRequest, getEvidencePreview } from "@/lib/api";
+import { getEvidencePreview, getFeed, patchChangeViewed } from "@/lib/api";
 import {
   isOnboardingRequiredError,
   parsePositiveInt,
@@ -9,7 +9,7 @@ import {
   toErrorMessage,
 } from "@/lib/hooks/runtime-utils";
 import { useAppRuntime } from "@/lib/hooks/use-app-runtime";
-import { ChangeFeedRecord, ChangeRecord, EvidencePreviewResponse, Input } from "@/lib/types";
+import { ChangeFeedRecord, ChangeRecord, EvidencePreviewResponse } from "@/lib/types";
 
 export type ChangeFilter = "all" | "unread";
 
@@ -21,10 +21,9 @@ export type EvidencePreviewState = {
 
 export function useFeedData() {
   const runtime = useAppRuntime();
-  const { config, ensureOnboarded, needsOnboarding, setNeedsOnboarding, pushToast } = runtime;
+  const { config, ensureOnboarded, needsOnboarding, setNeedsOnboarding, pushToast, bootstrap } = runtime;
 
   const [activeSourceId, setActiveSourceId] = useState<number | null>(null);
-  const [sources, setSources] = useState<Input[]>([]);
 
   const [changes, setChanges] = useState<ChangeRecord[]>([]);
   const [changesLoading, setChangesLoading] = useState(false);
@@ -41,6 +40,19 @@ export function useFeedData() {
       setActiveSourceId(inputId);
     }
   }, []);
+
+  useEffect(() => {
+    if (!bootstrap) {
+      return;
+    }
+    const rows = bootstrap.inputs.filter((item) => item.is_active);
+    setActiveSourceId((current) => {
+      if (current && rows.some((item) => item.id === current)) {
+        return current;
+      }
+      return rows[0]?.id ?? null;
+    });
+  }, [bootstrap]);
 
   useEffect(() => {
     if (!config) {
@@ -70,35 +82,16 @@ export function useFeedData() {
     if (!onboarded) {
       setChanges([]);
       setChangeNotes({});
-      setSources([]);
       return;
     }
-    await Promise.all([loadSources(runtimeConfig), loadChangesFeed(runtimeConfig)]);
-  }
-
-  async function loadSources(runtimeConfig: NonNullable<typeof config>) {
-    try {
-      const rows = (await apiRequest<Input[]>(runtimeConfig, "/v1/inputs")).filter((item) => item.is_active);
-      setSources(rows);
-      setActiveSourceId((current) => {
-        if (current && rows.some((item) => item.id === current)) {
-          return current;
-        }
-        return rows[0]?.id ?? null;
-      });
-    } catch {
-      setSources([]);
-      setActiveSourceId(null);
-    }
+    await loadChangesFeed(runtimeConfig);
   }
 
   async function loadChangesFeed(runtimeConfig: NonNullable<typeof config>): Promise<ChangeFeedRecord[]> {
-    const params = new URLSearchParams();
-    params.set("limit", "200");
-    if (changeSourceTypeFilter !== "all") {
-      params.set("input_types", changeSourceTypeFilter);
-    }
-    const rows = await apiRequest<ChangeFeedRecord[]>(runtimeConfig, `/v1/feed?${params.toString()}`);
+    const rows = await getFeed(runtimeConfig, {
+      limit: 200,
+      input_types: changeSourceTypeFilter === "all" ? undefined : changeSourceTypeFilter,
+    });
     setChanges(rows);
     setChangeNotes(Object.fromEntries(rows.map((item) => [item.id, item.viewed_note ?? ""])));
     return rows;
@@ -133,10 +126,7 @@ export function useFeedData() {
     const note = nextViewed ? (changeNotes[change.id] || "").trim() || null : null;
 
     try {
-      await apiRequest(config, `/v1/inputs/${change.input_id}/changes/${change.id}/viewed`, {
-        method: "PATCH",
-        body: JSON.stringify({ viewed: nextViewed, note }),
-      });
+      await patchChangeViewed(config, change.id, { viewed: nextViewed, note });
       pushToast("Change viewed status updated", "success");
       await handleRefreshChanges();
     } catch (error) {

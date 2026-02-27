@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { apiRequest } from "@/lib/api";
+import { getHealth } from "@/lib/api";
 import {
   handleManualSyncResult,
   isOnboardingRequiredError,
@@ -17,7 +17,7 @@ import { HealthResponse, Input } from "@/lib/types";
 
 export function useProcessingData() {
   const runtime = useAppRuntime();
-  const { config, ensureOnboarded, pushToast, needsOnboarding, setNeedsOnboarding } = runtime;
+  const { config, ensureOnboarded, pushToast, needsOnboarding, setNeedsOnboarding, bootstrap, refreshBootstrap } = runtime;
 
   const [inputs, setInputs] = useState<Input[]>([]);
   const [activeInputId, setActiveInputId] = useState<number | null>(null);
@@ -52,6 +52,13 @@ export function useProcessingData() {
   }, [config]);
 
   useEffect(() => {
+    if (!bootstrap) {
+      return;
+    }
+    applyBootstrapInputs(bootstrap.inputs);
+  }, [bootstrap]);
+
+  useEffect(() => {
     if (!config) {
       return;
     }
@@ -65,19 +72,34 @@ export function useProcessingData() {
       setActiveInputId(null);
       return;
     }
-    await Promise.all([loadInputs(runtimeConfig), loadHealth()]);
+    const payload = await refreshBootstrap(runtimeConfig);
+    if (payload) {
+      applyBootstrapInputs(payload.inputs);
+    }
+    await loadHealth(runtimeConfig);
   }
 
-  async function loadHealth() {
+  function applyBootstrapInputs(rows: Input[]) {
+    const activeRows = rows.filter((row) => row.is_active);
+    setInputs(activeRows);
+    setActiveInputId((current) => {
+      if (current && activeRows.some((row) => row.id === current)) {
+        return current;
+      }
+      return activeRows[0]?.id ?? null;
+    });
+  }
+
+  async function loadHealth(runtimeConfig?: NonNullable<typeof config>) {
+    const activeConfig = runtimeConfig ?? config;
+    if (!activeConfig) {
+      return;
+    }
     setHealthLoading(true);
     setHealthError(null);
     try {
-      const response = await fetch("/health");
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`${response.status} ${response.statusText} - ${text}`);
-      }
-      setHealth((await response.json()) as HealthResponse);
+      const payload = await getHealth(activeConfig);
+      setHealth(payload as HealthResponse);
     } catch (error) {
       setHealthError(toErrorMessage(error));
     } finally {
@@ -94,14 +116,8 @@ export function useProcessingData() {
     setInputsLoading(true);
     setInputsError(null);
     try {
-      const rows = (await apiRequest<Input[]>(runtimeConfig, "/v1/inputs")).filter((row) => row.is_active);
-      setInputs(rows);
-      setActiveInputId((current) => {
-        if (current && rows.some((row) => row.id === current)) {
-          return current;
-        }
-        return rows[0]?.id ?? null;
-      });
+      const payload = await refreshBootstrap(runtimeConfig);
+      applyBootstrapInputs(payload?.inputs ?? []);
     } catch (error) {
       if (isOnboardingRequiredError(error)) {
         setNeedsOnboarding(true);
@@ -123,7 +139,7 @@ export function useProcessingData() {
     if (!onboarded) {
       return;
     }
-    await Promise.all([loadInputs(config), loadHealth()]);
+    await Promise.all([loadInputs(config), loadHealth(config)]);
   }
 
   async function handleActiveInputChange(inputId: number) {
@@ -146,7 +162,7 @@ export function useProcessingData() {
       const firstAttempt = await requestManualSync(config, inputId);
       if (firstAttempt.kind === "success") {
         handleManualSyncResult(firstAttempt.result, pushToast);
-        await Promise.all([loadInputs(config), loadHealth()]);
+        await Promise.all([loadInputs(config), loadHealth(config)]);
         return;
       }
 
@@ -170,7 +186,7 @@ export function useProcessingData() {
           setManualSyncRetryAfterSeconds(null);
           setManualSyncAutoRetried(false);
           handleManualSyncResult(secondAttempt.result, pushToast);
-          await Promise.all([loadInputs(config), loadHealth()]);
+          await Promise.all([loadInputs(config), loadHealth(config)]);
           return;
         }
 

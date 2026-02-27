@@ -343,10 +343,10 @@ def test_postgres_alembic_upgrade_head_bootstraps_current_schema(test_database_u
         assert "uq_inputs_user_type_identity_key" in input_constraints
         assert any("interval_minutes" in definition and "= 15" in definition for definition in input_check_defs)
         assert any(
-            "change_type" in definition
-            and "CREATED" in definition
-            and "REMOVED" in definition
-            and "DUE_CHANGED" in definition
+            "change_type" in definition.lower()
+            and "created" in definition.lower()
+            and "removed" in definition.lower()
+            and "due_changed" in definition.lower()
             for definition in changes_check_defs
         )
         assert all("title_changed" not in definition for definition in changes_check_defs)

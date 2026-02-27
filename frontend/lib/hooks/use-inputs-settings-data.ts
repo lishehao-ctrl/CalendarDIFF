@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { ApiError, deleteInput, getEvents, getInputs, startGmailOAuth } from "@/lib/api";
+import { ApiError, deleteInput, startGmailOAuth } from "@/lib/api";
 import {
   isGmailReconnectErrorCode,
   isOnboardingRequiredError,
@@ -10,23 +10,16 @@ import {
   toErrorMessage,
 } from "@/lib/hooks/runtime-utils";
 import { useAppRuntime } from "@/lib/hooks/use-app-runtime";
-import { EventListItem, Input } from "@/lib/types";
+import { Input } from "@/lib/types";
 
 export function useInputsSettingsData() {
   const runtime = useAppRuntime();
-  const { config, ensureOnboarded, needsOnboarding, setNeedsOnboarding, pushToast } = runtime;
+  const { config, ensureOnboarded, needsOnboarding, setNeedsOnboarding, pushToast, bootstrap, refreshBootstrap } = runtime;
 
   const [inputs, setInputs] = useState<Input[]>([]);
   const [inputsLoading, setInputsLoading] = useState(false);
   const [inputsError, setInputsError] = useState<string | null>(null);
-
-  const [events, setEvents] = useState<EventListItem[]>([]);
-  const [eventsLoading, setEventsLoading] = useState(false);
-  const [eventsError, setEventsError] = useState<string | null>(null);
-
   const [activeInputId, setActiveInputId] = useState<number | null>(null);
-  const [eventTypeFilter, setEventTypeFilter] = useState<"all" | "ics" | "email">("all");
-  const [eventSearch, setEventSearch] = useState("");
 
   const [deletingInputId, setDeletingInputId] = useState<number | null>(null);
   const [connectingGmail, setConnectingGmail] = useState(false);
@@ -39,6 +32,13 @@ export function useInputsSettingsData() {
       setActiveInputId(inputId);
     }
   }, []);
+
+  useEffect(() => {
+    if (!bootstrap) {
+      return;
+    }
+    applyInputs(bootstrap.inputs);
+  }, [bootstrap]);
 
   useEffect(() => {
     if (!config || oauthQueryHandled) {
@@ -98,7 +98,7 @@ export function useInputsSettingsData() {
         pushToast(`Gmail connected, but initial sync failed: ${result.message}`, "error");
       }
 
-      await Promise.all([loadInputs(config), loadEvents(config)]);
+      await loadInputs(config);
       clearOauthQuery();
       setOauthQueryHandled(true);
     })();
@@ -120,23 +120,25 @@ export function useInputsSettingsData() {
     syncSelectionQuery(activeInputId);
   }, [config, activeInputId]);
 
-  useEffect(() => {
-    if (!config || needsOnboarding) {
-      return;
-    }
-    void loadEvents(config);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config, needsOnboarding, activeInputId, eventTypeFilter, eventSearch]);
+  function applyInputs(rows: Input[]) {
+    setInputs(rows);
+    const firstActive = rows.find((row) => row.is_active) ?? rows[0] ?? null;
+    setActiveInputId((current) => {
+      if (current && rows.some((row) => row.id === current)) {
+        return current;
+      }
+      return firstActive?.id ?? null;
+    });
+  }
 
   async function boot(runtimeConfig: NonNullable<typeof config>) {
     const onboarded = await ensureOnboarded(runtimeConfig);
     if (!onboarded) {
       setInputs([]);
-      setEvents([]);
       setActiveInputId(null);
       return;
     }
-    await Promise.all([loadInputs(runtimeConfig), loadEvents(runtimeConfig)]);
+    await loadInputs(runtimeConfig);
   }
 
   async function loadInputs(runtimeConfig: NonNullable<typeof config>) {
@@ -149,15 +151,8 @@ export function useInputsSettingsData() {
     setInputsLoading(true);
     setInputsError(null);
     try {
-      const rows = await getInputs(runtimeConfig);
-      setInputs(rows);
-      const firstActive = rows.find((row) => row.is_active) ?? rows[0] ?? null;
-      setActiveInputId((current) => {
-        if (current && rows.some((row) => row.id === current)) {
-          return current;
-        }
-        return firstActive?.id ?? null;
-      });
+      const payload = await refreshBootstrap(runtimeConfig);
+      applyInputs(payload?.inputs ?? []);
     } catch (error) {
       if (isOnboardingRequiredError(error)) {
         setNeedsOnboarding(true);
@@ -171,34 +166,6 @@ export function useInputsSettingsData() {
     }
   }
 
-  async function loadEvents(runtimeConfig: NonNullable<typeof config>) {
-    if (needsOnboarding) {
-      setEvents([]);
-      return;
-    }
-    setEventsLoading(true);
-    setEventsError(null);
-    try {
-      const rows = await getEvents(runtimeConfig, {
-        input_id: activeInputId ?? undefined,
-        input_type: eventTypeFilter === "all" ? undefined : eventTypeFilter,
-        q: eventSearch.trim() || undefined,
-        limit: 200,
-        offset: 0,
-      });
-      setEvents(rows);
-    } catch (error) {
-      if (isOnboardingRequiredError(error)) {
-        setNeedsOnboarding(true);
-        setEvents([]);
-        return;
-      }
-      setEventsError(toErrorMessage(error));
-    } finally {
-      setEventsLoading(false);
-    }
-  }
-
   async function handleRefresh() {
     if (!config) {
       return;
@@ -207,7 +174,7 @@ export function useInputsSettingsData() {
     if (!onboarded) {
       return;
     }
-    await Promise.all([loadInputs(config), loadEvents(config)]);
+    await loadInputs(config);
   }
 
   async function handleDeleteInput(inputId: number) {
@@ -218,7 +185,7 @@ export function useInputsSettingsData() {
     try {
       await deleteInput(config, inputId);
       pushToast(`Input input-${inputId} deactivated`, "success");
-      await Promise.all([loadInputs(config), loadEvents(config)]);
+      await loadInputs(config);
     } catch (error) {
       const inactiveDetail = readApiDetailMessage(error);
       pushToast(inactiveDetail ?? toErrorMessage(error), "error");
@@ -246,17 +213,10 @@ export function useInputsSettingsData() {
     inputs,
     inputsLoading,
     inputsError,
-    events,
-    eventsLoading,
-    eventsError,
     activeInputId,
-    eventTypeFilter,
-    eventSearch,
     deletingInputId,
     connectingGmail,
     setActiveInputId,
-    setEventTypeFilter,
-    setEventSearch,
     handleRefresh,
     handleDeleteInput,
     handleConnectGmail,

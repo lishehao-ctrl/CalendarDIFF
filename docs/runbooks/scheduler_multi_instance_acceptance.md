@@ -44,7 +44,7 @@ Expected terminal output:
 2. Check scheduler lock skip behavior:
    - one instance should report lock skips over time
 3. Check changes:
-   - `curl -H "X-API-Key: <APP_API_KEY>" "http://127.0.0.1:8000/v1/inputs/<id>/changes"`
+   - `curl -H "X-API-Key: <APP_API_KEY>" "http://127.0.0.1:8000/v1/feed?input_id=<id>"`
 4. Check input list runtime state:
    - `curl -H "X-API-Key: <APP_API_KEY>" "http://127.0.0.1:8000/v1/inputs"`
 5. Check notification dedup in DB:

@@ -85,7 +85,7 @@ def test_gmail_sync_creates_email_review_queue_item_and_is_idempotent(client, db
     label_row = db_session.scalar(select(EmailRuleLabel).where(EmailRuleLabel.email_id == "m1"))
     assert label_row is not None
 
-    queue_response = client.get("/v1/emails/queue?route=review", headers=headers)
+    queue_response = client.get("/v1/review/emails?route=review", headers=headers)
     assert queue_response.status_code == 200
     rows = queue_response.json()
     assert len(rows) == 1

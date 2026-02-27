@@ -3,6 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 BLOCKED_TOKENS = (
+    "/v1/emails/queue",
+    "/v1/emails/{email_id}/route",
+    "/v1/emails/{email_id}/mark_viewed",
+    "/v1/emails/{email_id}/apply",
+    "/v1/inputs/{input_id}/changes/{change_id}/viewed",
+    "/v1/inputs/{input_id}/changes",
+    "/v1/inputs/{input_id}/snapshots",
     "review_candidates",
     "legacy_code",
     "source_busy",

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { apiRequest, getOnboardingStatus } from "@/lib/api";
+import { getWorkspaceBootstrap } from "@/lib/api";
 import { getRuntimeConfig } from "@/lib/config";
 import { useToast } from "@/lib/hooks/use-toast";
-import { isOnboardingRequiredError, toErrorMessage } from "@/lib/hooks/runtime-utils";
-import { AppConfig, OnboardingStage } from "@/lib/types";
+import { toErrorMessage } from "@/lib/hooks/runtime-utils";
+import { AppConfig, OnboardingStage, WorkspaceBootstrapResponse } from "@/lib/types";
 
 export function useAppRuntime() {
   const { toasts, pushToast } = useToast();
@@ -13,6 +13,7 @@ export function useAppRuntime() {
   const [configError, setConfigError] = useState<string | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [onboardingStage, setOnboardingStage] = useState<OnboardingStage | null>(null);
+  const [bootstrap, setBootstrap] = useState<WorkspaceBootstrapResponse | null>(null);
 
   useEffect(() => {
     const runtimeConfig = getRuntimeConfig();
@@ -21,45 +22,40 @@ export function useAppRuntime() {
       return;
     }
     setConfig(runtimeConfig);
+    void loadBootstrap(runtimeConfig);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const ensureOnboarded = useCallback(
-    async (runtimeConfig?: AppConfig): Promise<boolean> => {
+  const loadBootstrap = useCallback(
+    async (runtimeConfig?: AppConfig): Promise<WorkspaceBootstrapResponse | null> => {
       const runtime = runtimeConfig ?? config;
       if (!runtime) {
-        return false;
+        return null;
       }
-
       try {
-        const onboarding = await getOnboardingStatus(runtime);
-        setOnboardingStage(onboarding.stage);
-        if (onboarding.stage !== "ready") {
-          setNeedsOnboarding(true);
-          return false;
-        }
-
-        await apiRequest<{
-          id: number;
-          email: string | null;
-          notify_email: string | null;
-          calendar_delay_seconds: number;
-          created_at: string;
-        }>(runtime, "/v1/user");
-        setNeedsOnboarding(false);
+        const payload = await getWorkspaceBootstrap(runtime);
+        setBootstrap(payload);
+        setOnboardingStage(payload.onboarding.stage);
+        setNeedsOnboarding(payload.onboarding.stage !== "ready");
         setConfigError(null);
-        setOnboardingStage("ready");
-        return true;
+        return payload;
       } catch (error) {
-        if (isOnboardingRequiredError(error)) {
-          setNeedsOnboarding(true);
-          setOnboardingStage(null);
-          return false;
-        }
         setConfigError(toErrorMessage(error));
-        return false;
+        return null;
       }
     },
     [config]
+  );
+
+  const ensureOnboarded = useCallback(
+    async (runtimeConfig?: AppConfig): Promise<boolean> => {
+      const payload = bootstrap ?? (await loadBootstrap(runtimeConfig));
+      if (!payload) {
+        return false;
+      }
+      return payload.onboarding.stage === "ready";
+    },
+    [bootstrap, loadBootstrap]
   );
 
   return {
@@ -68,8 +64,10 @@ export function useAppRuntime() {
     needsOnboarding,
     onboardingStage,
     isReady: onboardingStage === "ready",
+    bootstrap,
     setNeedsOnboarding,
     ensureOnboarded,
+    refreshBootstrap: loadBootstrap,
     toasts,
     pushToast,
   };

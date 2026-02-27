@@ -77,7 +77,7 @@ def test_apply_email_review_creates_event_and_change_on_single_ics(client, initi
     _seed_apply_row(db_session, user_id=1, email_id="email-apply-1", with_due=True)
 
     response = client.post(
-        "/v1/emails/email-apply-1/apply",
+        "/v1/review/emails/email-apply-1/apply",
         headers={"X-API-Key": "test-api-key"},
         json={},
     )
@@ -111,7 +111,7 @@ def test_apply_email_review_without_due_returns_400_and_keeps_review_route(clien
     _seed_apply_row(db_session, user_id=1, email_id="email-apply-no-due", with_due=False)
 
     response = client.post(
-        "/v1/emails/email-apply-no-due/apply",
+        "/v1/review/emails/email-apply-no-due/apply",
         headers={"X-API-Key": "test-api-key"},
         json={},
     )

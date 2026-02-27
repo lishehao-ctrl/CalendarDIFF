@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.core.config import get_settings
+from app.db.models import Snapshot
 from app.modules.sync.types import FetchResult
 from tests.helpers_inputs import create_ics_input_for_user
 
@@ -66,7 +67,7 @@ def test_changes_and_snapshots_endpoints_include_evidence(client, initialized_us
     assert second_sync.status_code == 200
     assert second_sync.json()["is_baseline_sync"] is False
 
-    changes_response = client.get(f"/v1/inputs/{source_id}/changes", headers=headers)
+    changes_response = client.get(f"/v1/feed?input_id={source_id}", headers=headers)
     assert changes_response.status_code == 200
     changes = changes_response.json()
     assert len(changes) == 1
@@ -79,11 +80,14 @@ def test_changes_and_snapshots_endpoints_include_evidence(client, initialized_us
     assert due_change["before_evidence_kind"] == "ics"
     assert due_change["after_evidence_kind"] == "ics"
 
-    snapshots_response = client.get(f"/v1/inputs/{source_id}/snapshots", headers=headers)
-    assert snapshots_response.status_code == 200
-    snapshots = snapshots_response.json()
+    snapshots = list(
+        db_session.query(Snapshot)
+        .filter(Snapshot.input_id == source_id)
+        .order_by(Snapshot.retrieved_at.desc(), Snapshot.id.desc())
+        .all()
+    )
     assert len(snapshots) == 2
-    assert snapshots[0]["has_evidence"] is True
-    assert snapshots[0]["evidence_kind"] == "ics"
+    assert isinstance(snapshots[0].raw_evidence_key, dict)
+    assert snapshots[0].raw_evidence_key.get("kind") == "ics"
 
     get_settings.cache_clear()

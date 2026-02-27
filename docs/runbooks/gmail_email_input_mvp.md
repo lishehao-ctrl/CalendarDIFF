@@ -57,7 +57,7 @@ GMAIL_OAUTH_SCOPE=https://www.googleapis.com/auth/gmail.readonly
 ### Incremental Gmail sync
 
 1. new actionable messages create review queue rows
-2. queue visible in `/ui/emails/review` and `/v1/emails/queue`
+2. queue visible in `/ui/emails/review` and `/v1/review/emails`
 3. feed still unchanged until apply
 4. scheduler (15m default) and manual sync follow the same backend ingestion path
 
@@ -71,8 +71,8 @@ GMAIL_OAUTH_SCOPE=https://www.googleapis.com/auth/gmail.readonly
 
 1. `GET /v1/inputs`
 2. `POST /v1/inputs/{input_id}/sync`
-3. `GET /v1/emails/queue?route=review`
-4. `POST /v1/emails/{email_id}/apply`
+3. `GET /v1/review/emails?route=review`
+4. `POST /v1/review/emails/{email_id}/apply`
 5. `GET /v1/feed`
 
 ## Troubleshooting

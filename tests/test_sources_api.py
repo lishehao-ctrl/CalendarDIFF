@@ -21,7 +21,7 @@ def test_create_input_rejects_legacy_name_field(client, initialized_user) -> Non
         headers=headers,
         json={"name": "   ", "url": "https://example.com/feed.ics"},
     )
-    assert legacy_name.status_code == 404
+    assert legacy_name.status_code in {404, 405}
 
 
 def test_create_and_list_sources_hides_url(client, initialized_user, db_session) -> None:

@@ -376,6 +376,7 @@ def list_inputs_with_runtime_state(
     db: Session,
     *,
     now: datetime | None = None,
+    user_id: int | None = None,
 ) -> list[tuple[Input, datetime | None, str | None]]:
     current = now or datetime.now(timezone.utc)
     next_check_expr = func.coalesce(
@@ -396,8 +397,10 @@ def list_inputs_with_runtime_state(
         select(Input, next_check_expr, SyncRun.status, SyncRun.trigger_type, SyncRun.started_at)
         .outerjoin(latest_run_subquery, latest_run_subquery.c.input_id == Input.id)
         .outerjoin(SyncRun, SyncRun.id == latest_run_subquery.c.latest_run_id)
-        .order_by(Input.id.asc())
     )
+    if user_id is not None:
+        stmt = stmt.where(Input.user_id == user_id)
+    stmt = stmt.order_by(Input.id.asc())
 
     rows = db.execute(stmt).all()
     cooldown_window = timedelta(seconds=LOCK_SKIPPED_COOLDOWN_SECONDS)

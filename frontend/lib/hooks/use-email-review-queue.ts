@@ -1,16 +1,14 @@
 import { useEffect, useState } from "react";
 
 import {
-  ApiError,
   applyEmailReview,
-  getEmailQueue,
-  getOnboardingStatus,
+  getEmailReviewQueue,
   markEmailViewed,
   updateEmailRoute,
 } from "@/lib/api";
-import { getRuntimeConfig } from "@/lib/config";
-import { AppConfig, ApplyEmailReviewMode, EmailQueueItem, EmailRoute } from "@/lib/types";
-import { useToast } from "@/lib/hooks/use-toast";
+import { toErrorMessage } from "@/lib/hooks/runtime-utils";
+import { useAppRuntime } from "@/lib/hooks/use-app-runtime";
+import { ApplyEmailReviewMode, EmailQueueItem, EmailRoute } from "@/lib/types";
 
 type ApplyDraft = {
   mode: ApplyEmailReviewMode;
@@ -27,11 +25,8 @@ const DEFAULT_APPLY_DRAFT: ApplyDraft = {
 };
 
 export function useEmailReviewQueue() {
-  const { toasts, pushToast } = useToast();
-  const [config, setConfig] = useState<AppConfig | null>(null);
-  const [configError, setConfigError] = useState<string | null>(null);
-  const [needsOnboarding, setNeedsOnboarding] = useState(false);
-
+  const runtime = useAppRuntime();
+  const { toasts, pushToast, config, configError, needsOnboarding, ensureOnboarded } = runtime;
   const [items, setItems] = useState<EmailQueueItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,48 +36,31 @@ export function useEmailReviewQueue() {
   const [applyDrafts, setApplyDrafts] = useState<Record<string, ApplyDraft>>({});
 
   useEffect(() => {
-    const runtime = getRuntimeConfig();
-    if (!runtime.apiKey) {
-      setConfigError("Missing API key from /ui/app-config.js");
-      return;
-    }
-    setConfig(runtime);
-  }, []);
-
-  useEffect(() => {
     if (!config) {
       return;
     }
-    void (async () => {
-      try {
-        const onboarding = await getOnboardingStatus(config);
-        if (onboarding.stage !== "ready") {
-          setNeedsOnboarding(true);
-          return;
-        }
-        setNeedsOnboarding(false);
-        await loadQueue(config);
-      } catch (err) {
-        if (isOnboardingRequiredError(err)) {
-          setNeedsOnboarding(true);
-          return;
-        }
-        setError(toErrorMessage(err));
-      }
-    })();
+    void boot(config);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config]);
 
-  async function loadQueue(runtimeConfig?: AppConfig) {
-    const runtime = runtimeConfig ?? config;
-    if (!runtime) {
+  async function boot(runtimeConfig: NonNullable<typeof config>) {
+    const onboarded = await ensureOnboarded(runtimeConfig);
+    if (!onboarded) {
+      return;
+    }
+    await loadQueue(runtimeConfig);
+  }
+
+  async function loadQueue(runtimeConfig?: NonNullable<typeof config>) {
+    const runtimeInput = runtimeConfig ?? config;
+    if (!runtimeInput) {
       return;
     }
     setLoading(true);
     setRefreshing(true);
     setError(null);
     try {
-      const rows = await getEmailQueue(runtime, { route: "review", limit: 50 });
+      const rows = await getEmailReviewQueue(runtimeInput, { route: "review", limit: 50 });
       setItems(rows);
       setApplyDrafts((current) => {
         const next: Record<string, ApplyDraft> = {};
@@ -92,10 +70,6 @@ export function useEmailReviewQueue() {
         return next;
       });
     } catch (err) {
-      if (isOnboardingRequiredError(err)) {
-        setNeedsOnboarding(true);
-        return;
-      }
       setError(toErrorMessage(err));
     } finally {
       setLoading(false);
@@ -211,30 +185,4 @@ export function useEmailReviewQueue() {
     handleMarkViewed,
     updateApplyDraft,
   };
-}
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
-
-function isOnboardingRequiredError(error: unknown): boolean {
-  if (!(error instanceof ApiError)) {
-    return false;
-  }
-  if (error.status !== 404 && error.status !== 409) {
-    return false;
-  }
-  const body = error.body;
-  if (!body || typeof body !== "object") {
-    return false;
-  }
-  const detail = (body as Record<string, unknown>).detail;
-  if (!detail || typeof detail !== "object") {
-    return false;
-  }
-  const code = (detail as Record<string, unknown>).code;
-  return code === "user_not_initialized" || code === "user_onboarding_incomplete";
 }
