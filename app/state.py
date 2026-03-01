@@ -14,7 +14,7 @@ class SchedulerStatus:
     last_run_finished_at: datetime | None = None
     last_error: str | None = None
     last_skip_reason: str | None = None
-    last_synced_inputs: int = 0
+    last_synced_sources: int = 0
     last_run_success_count: int = 0
     last_run_failed_count: int = 0
     last_run_notification_failed_count: int = 0
@@ -24,7 +24,7 @@ class SchedulerStatus:
     cumulative_run_executed_count: int = 0
     cumulative_run_skipped_lock_count: int = 0
     next_expected_check_at: datetime | None = None
-    next_expected_input_id: int | None = None
+    next_expected_source_id: int | None = None
     lock_backend: str = "postgres_advisory"
     database_dialect: str = "postgresql"
     schema_guard_blocked: bool = False
@@ -41,7 +41,7 @@ class SchedulerStatus:
             "last_run_finished_at": self.last_run_finished_at,
             "last_error": self.last_error,
             "last_skip_reason": self.last_skip_reason,
-            "last_synced_inputs": self.last_synced_inputs,
+            "last_synced_sources": self.last_synced_sources,
             "last_run_success_count": self.last_run_success_count,
             "last_run_failed_count": self.last_run_failed_count,
             "last_run_notification_failed_count": self.last_run_notification_failed_count,
@@ -51,7 +51,7 @@ class SchedulerStatus:
             "cumulative_run_executed_count": self.cumulative_run_executed_count,
             "cumulative_run_skipped_lock_count": self.cumulative_run_skipped_lock_count,
             "next_expected_check_at": self.next_expected_check_at,
-            "next_expected_input_id": self.next_expected_input_id,
+            "next_expected_source_id": self.next_expected_source_id,
             "lock_backend": self.lock_backend,
             "database_dialect": self.database_dialect,
             "schema_guard_blocked": self.schema_guard_blocked,

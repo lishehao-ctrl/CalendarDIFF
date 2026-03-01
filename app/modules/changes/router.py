@@ -7,7 +7,6 @@ from typing import Any
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from icalendar import Calendar
 from sqlalchemy import and_, case, select
 from sqlalchemy.orm import Session, joinedload
 
@@ -30,23 +29,21 @@ from app.modules.changes.schemas import (
     ChangeResponse,
     ChangeSummary,
     ChangeSummarySide,
-    EvidencePreviewEvent,
     EvidencePreviewResponse,
 )
 from app.modules.evidence import EvidencePathError, resolve_evidence_file_path
 
-router = APIRouter(prefix="/v1", tags=["changes"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/v2", tags=["change-events"], dependencies=[Depends(require_api_key)])
 SUMMARY_TIME_FIELDS = ("start_at_utc", "internal_date", "due_at", "end_at_utc")
 PREVIEW_MAX_BYTES = 64 * 1024
-PREVIEW_DESCRIPTION_MAX_CHARS = 240
 logger = logging.getLogger(__name__)
 
 
-@router.get("/feed", response_model=list[ChangeFeedResponse])
+@router.get("/change-events", response_model=list[ChangeFeedResponse])
 def list_feed(
-    input_id: int | None = Query(default=None),
+    source_id: int | None = Query(default=None),
     view: str = Query(default="all"),
-    input_types: str | None = Query(default=None),
+    source_kinds: str | None = Query(default=None),
     limit: int | None = Query(default=None, ge=1),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -56,7 +53,7 @@ def list_feed(
     applied_limit = limit or settings.default_changes_limit
     applied_limit = min(applied_limit, settings.max_changes_limit)
 
-    requested_types = _parse_input_types(input_types)
+    requested_types = _parse_source_kinds(source_kinds)
 
     current_user_id = user.id
 
@@ -75,8 +72,8 @@ def list_feed(
         )
     )
 
-    if input_id is not None:
-        stmt = stmt.where(Change.input_id == input_id)
+    if source_id is not None:
+        stmt = stmt.where(Change.input_id == source_id)
     stmt = stmt.where(Input.user_id == current_user_id)
     if requested_types is not None:
         stmt = stmt.where(Input.type.in_(requested_types))
@@ -96,7 +93,7 @@ def list_feed(
         result.append(
             ChangeFeedResponse(
                 **base.model_dump(),
-                input_type=input.type.value,
+                source_kind=_to_source_kind_value(input.type),
                 priority_rank=priority_rank,
                 priority_label=priority_label,
                 notification_state=notification_state,
@@ -107,7 +104,7 @@ def list_feed(
     return result
 
 
-@router.patch("/changes/{change_id}/viewed", response_model=ChangeResponse)
+@router.patch("/change-events/{change_id}", response_model=ChangeResponse)
 def mark_change_viewed(
     change_id: int,
     payload: ChangeViewedUpdateRequest,
@@ -135,7 +132,7 @@ def mark_change_viewed(
     return _to_response(row)
 
 
-@router.get("/changes/{change_id}/evidence/{side}/preview", response_model=EvidencePreviewResponse)
+@router.get("/change-events/{change_id}/evidence/{side}/preview", response_model=EvidencePreviewResponse)
 def preview_change_evidence(
     change_id: int,
     side: Literal["before", "after"],
@@ -152,23 +149,15 @@ def preview_change_evidence(
         raise HTTPException(status_code=500, detail="Failed to prepare evidence preview")
 
     truncated = len(content_bytes) > PREVIEW_MAX_BYTES
-    try:
-        events = _build_evidence_preview_events(content_bytes)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "code": "evidence_parse_failed",
-                "message": "Failed to parse ICS evidence preview",
-            },
-        ) from exc
+    preview_text = _build_evidence_preview_text(content_bytes)
     return EvidencePreviewResponse(
         side=side,
         content_type="text/calendar",
         truncated=truncated,
         filename=f"change-{row.id}-{side}.ics",
-        event_count=len(events),
-        events=events,
+        event_count=0,
+        events=[],
+        preview_text=preview_text,
     )
 
 
@@ -177,7 +166,7 @@ def _to_response(row: Change) -> ChangeResponse:
     after_evidence = _extract_snapshot_evidence_key(row.after_snapshot.raw_evidence_key if row.after_snapshot else None)
     return ChangeResponse(
         id=row.id,
-        input_id=row.input_id,
+        source_id=row.input_id,
         event_uid=row.event_uid,
         change_type=row.change_type.value,
         detected_at=row.detected_at,
@@ -195,7 +184,7 @@ def _to_response(row: Change) -> ChangeResponse:
     )
 
 
-def _parse_input_types(raw_value: str | None) -> list[InputType] | None:
+def _parse_source_kinds(raw_value: str | None) -> list[InputType] | None:
     if raw_value is None or not raw_value.strip():
         return None
     parsed: list[InputType] = []
@@ -203,9 +192,9 @@ def _parse_input_types(raw_value: str | None) -> list[InputType] | None:
         value = item.strip().lower()
         if not value:
             continue
-        if value == InputType.EMAIL.value:
+        if value in {InputType.EMAIL.value, "email"}:
             parsed.append(InputType.EMAIL)
-        elif value == InputType.ICS.value:
+        elif value in {InputType.ICS.value, "calendar"}:
             parsed.append(InputType.ICS)
     return parsed or None
 
@@ -233,8 +222,8 @@ def _read_notification_state(
 
 
 def _build_change_summary(*, change: Change, input_row: Input) -> ChangeSummary:
-    input_label = input_row.display_label if isinstance(input_row.display_label, str) else None
-    input_type = input_row.type.value if isinstance(input_row.type, InputType) else None
+    source_label = input_row.display_label if isinstance(input_row.display_label, str) else None
+    source_kind = _to_source_kind_value(input_row.type) if isinstance(input_row.type, InputType) else None
 
     before_payload = change.before_json if isinstance(change.before_json, dict) else None
     after_payload = change.after_json if isinstance(change.after_json, dict) else None
@@ -242,17 +231,23 @@ def _build_change_summary(*, change: Change, input_row: Input) -> ChangeSummary:
     return ChangeSummary(
         old=ChangeSummarySide(
             value_time=_extract_value_time(before_payload),
-            input_label=input_label,
-            input_type=input_type,
-            input_observed_at=change.before_snapshot.retrieved_at if change.before_snapshot is not None else None,
+            source_label=source_label,
+            source_kind=source_kind,
+            source_observed_at=change.before_snapshot.retrieved_at if change.before_snapshot is not None else None,
         ),
         new=ChangeSummarySide(
             value_time=_extract_value_time(after_payload),
-            input_label=input_label,
-            input_type=input_type,
-            input_observed_at=change.after_snapshot.retrieved_at if change.after_snapshot is not None else None,
+            source_label=source_label,
+            source_kind=source_kind,
+            source_observed_at=change.after_snapshot.retrieved_at if change.after_snapshot is not None else None,
         ),
     )
+
+
+def _to_source_kind_value(input_type: InputType) -> str:
+    if input_type == InputType.ICS:
+        return "calendar"
+    return "email"
 
 
 def _extract_snapshot_evidence_key(raw_evidence_key: object) -> dict[str, Any] | None:
@@ -314,49 +309,9 @@ def _resolve_change_evidence_file(
     return row, resolved
 
 
-def _build_evidence_preview_events(content_bytes: bytes) -> list[EvidencePreviewEvent]:
-    try:
-        calendar = Calendar.from_ical(content_bytes)
-    except Exception as exc:
-        raise ValueError("failed to parse ICS evidence") from exc
-
-    events: list[EvidencePreviewEvent] = []
-    for component in calendar.walk("VEVENT"):
-        description = _to_preview_text(component.get("description"), prefer_ical=False)
-        if description and len(description) > PREVIEW_DESCRIPTION_MAX_CHARS:
-            description = f"{description[:PREVIEW_DESCRIPTION_MAX_CHARS].rstrip()}..."
-
-        events.append(
-            EvidencePreviewEvent(
-                uid=_to_preview_text(component.get("uid"), prefer_ical=False),
-                summary=_to_preview_text(component.get("summary"), prefer_ical=False),
-                dtstart=_to_preview_text(component.get("dtstart"), prefer_ical=True),
-                dtend=_to_preview_text(component.get("dtend"), prefer_ical=True),
-                location=_to_preview_text(component.get("location"), prefer_ical=False),
-                description=description,
-            )
-        )
-    return events
-
-
-def _to_preview_text(value: object, *, prefer_ical: bool) -> str | None:
-    if value is None:
-        return None
-
-    if prefer_ical and hasattr(value, "to_ical"):
-        try:
-            encoded = value.to_ical()
-            if isinstance(encoded, bytes):
-                text = encoded.decode("utf-8", errors="replace").strip()
-            else:
-                text = str(encoded).strip()
-            if text:
-                return text
-        except Exception:  # pragma: no cover - fallback below
-            pass
-
-    text = str(value).strip()
-    return text or None
+def _build_evidence_preview_text(content_bytes: bytes) -> str:
+    preview_bytes = content_bytes[:PREVIEW_MAX_BYTES]
+    return preview_bytes.decode("utf-8", errors="replace")
 
 
 def _extract_value_time(payload: dict[str, Any] | None) -> datetime | None:

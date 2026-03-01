@@ -8,13 +8,12 @@ from pydantic import BaseModel
 
 class EventListItemResponse(BaseModel):
     id: int
-    input_id: int
+    source_id: int
     uid: str
     course_label: str
     title: str
     start_at_utc: datetime
     end_at_utc: datetime
     updated_at: datetime
-    input_label: str
-    input_type: Literal["ics", "email"]
-
+    source_label: str
+    source_kind: Literal["calendar", "email"]

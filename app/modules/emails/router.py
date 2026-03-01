@@ -23,7 +23,8 @@ from app.modules.emails.service import (
     mark_email_viewed,
     update_email_route,
 )
-router = APIRouter(prefix="/v1/review/emails", tags=["review"], dependencies=[Depends(require_api_key)])
+
+router = APIRouter(prefix="/v2/review-items/emails", tags=["review-items"], dependencies=[Depends(require_api_key)])
 
 
 def _parse_offset_cursor(cursor: str | None) -> int:
@@ -65,7 +66,7 @@ def get_email_queue(
     return [EmailQueueItemResponse(**row) for row in rows]
 
 
-@router.patch("/{email_id}/route", response_model=UpdateEmailRouteResponse)
+@router.patch("/{email_id}", response_model=UpdateEmailRouteResponse)
 def post_email_route(
     email_id: str,
     payload: UpdateEmailRouteRequest,
@@ -92,7 +93,7 @@ def post_email_route(
     )
 
 
-@router.post("/{email_id}/viewed", response_model=MarkEmailViewedResponse)
+@router.post("/{email_id}/views", response_model=MarkEmailViewedResponse)
 def post_mark_email_viewed(
     email_id: str,
     db: Session = Depends(get_db),
@@ -110,7 +111,7 @@ def post_mark_email_viewed(
     return MarkEmailViewedResponse(email_id=route_row.email_id, viewed_at=route_row.viewed_at)
 
 
-@router.post("/{email_id}/apply", response_model=ApplyEmailReviewResponse)
+@router.post("/{email_id}/applications", response_model=ApplyEmailReviewResponse)
 def post_apply_email_review(
     email_id: str,
     payload: ApplyEmailReviewRequest,

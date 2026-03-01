@@ -1,4 +1,4 @@
-# Demo UI Acceptance (Converged v3)
+# Demo UI Acceptance (V2)
 
 ## 1) Startup
 
@@ -14,8 +14,6 @@ Open:
 
 ## 2) Expected Page Set
 
-Core workspace routes:
-
 1. `/ui/onboarding`
 2. `/ui/inputs`
 3. `/ui/processing`
@@ -24,34 +22,26 @@ Core workspace routes:
 
 ## 3) Core Flow Acceptance
 
-1. onboarding register with `notify_email + ics.url`
-2. ready user visiting `/ui/onboarding` is redirected to `/ui/processing`
-3. pages bootstrap via `GET /v1/workspace/bootstrap` (onboarding/user/inputs/config summary)
-4. `/ui/inputs` can connect Gmail and soft-delete email inputs
-5. processing can run manual sync for active inputs
-6. feed shows canonical changes only
-7. feed renders diff-only cards (`Added / Removed / Modified`) without full old/new snapshot event lists
-8. email review queue supports:
-   - apply
-   - archive
-   - drop
-   - mark viewed
-9. apply creates canonical change visible in feed
+1. onboarding register with `notify_email`
+2. connect at least one source from `/ui/inputs` (Gmail OAuth or calendar source API)
+3. ready user visiting `/ui/onboarding` is redirected out
+4. processing page can trigger manual sync through `POST /v2/sync-requests` + polling
+5. feed shows canonical changes via `GET /v2/change-events`
+6. review queue works under `/v2/review-items/emails*`
 
-## 4) Optional Evidence API Checks
+## 4) Evidence Preview Checks
 
-1. endpoint available is `/v1/changes/{change_id}/evidence/{side}/preview`
-2. no download button
-3. malformed ICS returns `422 detail.code=evidence_parse_failed`
-4. missing evidence returns `404`
+1. endpoint is `/v2/change-events/{change_id}/evidence/{side}/preview`
+2. ICS evidence preview is raw text (`events=[]`, `event_count=0`, `preview_text` present)
+3. missing evidence returns `404`
 
-## 5) Single-ICS Checks
+## 5) Runtime Failure Semantics
 
-1. user has at most one ICS input row
-2. re-onboarding with new ICS replaces old row
-3. replacement baseline failure clears ICS and onboarding returns `needs_ics`
-
-## 6) Optional Integration Checks
-
-1. Gmail/SMTP can be unconfigured; ICS loop still works
-2. digest delivery is fixed-slot and not required for base ICS demo
+1. sync requests for calendar/gmail sources can end in `FAILED` with:
+   - `parse_llm_calendar_schema_invalid`
+   - `parse_llm_gmail_schema_invalid`
+   - `parse_llm_calendar_upstream_error`
+   - `parse_llm_gmail_upstream_error`
+   - `parse_llm_timeout`
+   - `parse_llm_empty_output`
+2. these failures follow normal retry/dead-letter behavior in ingestion workers.

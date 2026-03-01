@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 
-import { ApiError, deleteInput, startGmailOAuth } from "@/lib/api";
+import { ApiError, createInputSource, createOAuthSession, deleteInputSource } from "@/lib/api";
 import {
-  isGmailReconnectErrorCode,
+  handleManualSyncResult,
   isOnboardingRequiredError,
   parsePositiveInt,
   requestManualSync,
@@ -10,35 +10,32 @@ import {
   toErrorMessage,
 } from "@/lib/hooks/runtime-utils";
 import { useAppRuntime } from "@/lib/hooks/use-app-runtime";
-import { Input } from "@/lib/types";
+import { InputSource } from "@/lib/types";
 
 export function useInputsSettingsData() {
   const runtime = useAppRuntime();
-  const { config, ensureOnboarded, needsOnboarding, setNeedsOnboarding, pushToast, bootstrap, refreshBootstrap } = runtime;
+  const { config, ensureOnboarded, needsOnboarding, setNeedsOnboarding, pushToast, sources, refreshRuntime } = runtime;
 
-  const [inputs, setInputs] = useState<Input[]>([]);
-  const [inputsLoading, setInputsLoading] = useState(false);
-  const [inputsError, setInputsError] = useState<string | null>(null);
-  const [activeInputId, setActiveInputId] = useState<number | null>(null);
+  const [sourceRows, setSourceRows] = useState<InputSource[]>([]);
+  const [sourcesLoading, setSourcesLoading] = useState(false);
+  const [sourcesError, setSourcesError] = useState<string | null>(null);
+  const [activeSourceId, setActiveSourceId] = useState<number | null>(null);
 
-  const [deletingInputId, setDeletingInputId] = useState<number | null>(null);
+  const [deletingSourceId, setDeletingSourceId] = useState<number | null>(null);
   const [connectingGmail, setConnectingGmail] = useState(false);
   const [oauthQueryHandled, setOauthQueryHandled] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const inputId = parsePositiveInt(params.get("input_id"));
-    if (inputId !== null) {
-      setActiveInputId(inputId);
+    const sourceId = parsePositiveInt(params.get("source_id"));
+    if (sourceId !== null) {
+      setActiveSourceId(sourceId);
     }
   }, []);
 
   useEffect(() => {
-    if (!bootstrap) {
-      return;
-    }
-    applyInputs(bootstrap.inputs);
-  }, [bootstrap]);
+    applySources(sourceRowsFromRuntime(sources));
+  }, [sources]);
 
   useEffect(() => {
     if (!config || oauthQueryHandled) {
@@ -46,7 +43,7 @@ export function useInputsSettingsData() {
     }
     const params = new URLSearchParams(window.location.search);
     const oauthStatus = params.get("gmail_oauth_status");
-    const oauthInputId = parsePositiveInt(params.get("input_id"));
+    const oauthSourceId = parsePositiveInt(params.get("source_id"));
     const oauthMessage = params.get("message");
 
     const clearOauthQuery = () => {
@@ -70,35 +67,24 @@ export function useInputsSettingsData() {
     }
 
     pushToast(
-      oauthInputId ? `Gmail connected successfully (input-${oauthInputId})` : "Gmail connected successfully",
+      oauthSourceId ? `Gmail connected successfully (source-${oauthSourceId})` : "Gmail connected successfully",
       "success"
     );
-    if (oauthInputId === null) {
+    if (oauthSourceId === null) {
       clearOauthQuery();
       setOauthQueryHandled(true);
       return;
     }
 
-    setActiveInputId(oauthInputId);
+    setActiveSourceId(oauthSourceId);
     void (async () => {
-      const result = await requestManualSync(config, oauthInputId);
+      const result = await requestManualSync(config, oauthSourceId);
       if (result.kind === "success") {
-        if (isGmailReconnectErrorCode(result.result.error_code)) {
-          pushToast("Gmail authorization is invalid. Reconnect Gmail in Inputs.", "error");
-        } else if (result.result.last_error) {
-          pushToast(`Gmail connected, but initial sync failed: ${result.result.last_error}`, "error");
-        } else if (result.result.changes_created > 0) {
-          pushToast("Gmail synced. New items entered review queue.", "success");
-        } else {
-          pushToast("Gmail connected and synced. No new email changes yet.", "info");
-        }
-      } else if (result.kind === "busy") {
-        pushToast("Gmail connected. Initial sync is already in progress.", "info");
+        handleManualSyncResult(result.result, pushToast);
       } else {
         pushToast(`Gmail connected, but initial sync failed: ${result.message}`, "error");
       }
-
-      await loadInputs(config);
+      await loadSources(config);
       clearOauthQuery();
       setOauthQueryHandled(true);
     })();
@@ -117,52 +103,52 @@ export function useInputsSettingsData() {
     if (!config) {
       return;
     }
-    syncSelectionQuery(activeInputId);
-  }, [config, activeInputId]);
+    syncSelectionQuery(activeSourceId);
+  }, [config, activeSourceId]);
 
-  function applyInputs(rows: Input[]) {
-    setInputs(rows);
+  function applySources(rows: InputSource[]) {
+    setSourceRows(rows);
     const firstActive = rows.find((row) => row.is_active) ?? rows[0] ?? null;
-    setActiveInputId((current) => {
-      if (current && rows.some((row) => row.id === current)) {
+    setActiveSourceId((current) => {
+      if (current && rows.some((row) => row.source_id === current)) {
         return current;
       }
-      return firstActive?.id ?? null;
+      return firstActive?.source_id ?? null;
     });
   }
 
   async function boot(runtimeConfig: NonNullable<typeof config>) {
     const onboarded = await ensureOnboarded(runtimeConfig);
     if (!onboarded) {
-      setInputs([]);
-      setActiveInputId(null);
+      setSourceRows([]);
+      setActiveSourceId(null);
       return;
     }
-    await loadInputs(runtimeConfig);
+    await loadSources(runtimeConfig);
   }
 
-  async function loadInputs(runtimeConfig: NonNullable<typeof config>) {
+  async function loadSources(runtimeConfig: NonNullable<typeof config>) {
     if (needsOnboarding) {
-      setInputs([]);
-      setActiveInputId(null);
+      setSourceRows([]);
+      setActiveSourceId(null);
       return;
     }
 
-    setInputsLoading(true);
-    setInputsError(null);
+    setSourcesLoading(true);
+    setSourcesError(null);
     try {
-      const payload = await refreshBootstrap(runtimeConfig);
-      applyInputs(payload?.inputs ?? []);
+      const snapshot = await refreshRuntime(runtimeConfig);
+      applySources(sourceRowsFromRuntime(snapshot?.sources ?? []));
     } catch (error) {
       if (isOnboardingRequiredError(error)) {
         setNeedsOnboarding(true);
-        setInputs([]);
-        setActiveInputId(null);
+        setSourceRows([]);
+        setActiveSourceId(null);
         return;
       }
-      setInputsError(toErrorMessage(error));
+      setSourcesError(toErrorMessage(error));
     } finally {
-      setInputsLoading(false);
+      setSourcesLoading(false);
     }
   }
 
@@ -174,23 +160,23 @@ export function useInputsSettingsData() {
     if (!onboarded) {
       return;
     }
-    await loadInputs(config);
+    await loadSources(config);
   }
 
-  async function handleDeleteInput(inputId: number) {
-    if (!config || deletingInputId !== null) {
+  async function handleDeleteSource(sourceId: number) {
+    if (!config || deletingSourceId !== null) {
       return;
     }
-    setDeletingInputId(inputId);
+    setDeletingSourceId(sourceId);
     try {
-      await deleteInput(config, inputId);
-      pushToast(`Input input-${inputId} deactivated`, "success");
-      await loadInputs(config);
+      await deleteInputSource(config, sourceId);
+      pushToast(`Source source-${sourceId} deactivated`, "success");
+      await loadSources(config);
     } catch (error) {
       const inactiveDetail = readApiDetailMessage(error);
       pushToast(inactiveDetail ?? toErrorMessage(error), "error");
     } finally {
-      setDeletingInputId(null);
+      setDeletingSourceId(null);
     }
   }
 
@@ -200,8 +186,18 @@ export function useInputsSettingsData() {
     }
     setConnectingGmail(true);
     try {
-      const response = await startGmailOAuth(config, {});
-      window.location.assign(response.authorization_url);
+      const source = await createInputSource(config, {
+        source_kind: "email",
+        provider: "gmail",
+        display_name: null,
+        config: {},
+        secrets: {},
+      });
+      const oauth = await createOAuthSession(config, {
+        source_id: source.source_id,
+        provider: "gmail",
+      });
+      window.location.assign(oauth.authorization_url);
     } catch (error) {
       pushToast(`Gmail OAuth start failed: ${toErrorMessage(error)}. Check OAuth config and retry.`, "error");
       setConnectingGmail(false);
@@ -210,15 +206,15 @@ export function useInputsSettingsData() {
 
   return {
     ...runtime,
-    inputs,
-    inputsLoading,
-    inputsError,
-    activeInputId,
-    deletingInputId,
+    sourceRows,
+    sourcesLoading,
+    sourcesError,
+    activeSourceId,
+    deletingSourceId,
     connectingGmail,
-    setActiveInputId,
+    setActiveSourceId,
     handleRefresh,
-    handleDeleteInput,
+    handleDeleteSource,
     handleConnectGmail,
   };
 }
@@ -236,4 +232,8 @@ function readApiDetailMessage(error: unknown): string | null {
   }
   const message = (detail as Record<string, unknown>).message;
   return typeof message === "string" && message.trim() ? message : null;
+}
+
+function sourceRowsFromRuntime(rows: InputSource[]): InputSource[] {
+  return rows.slice().sort((a, b) => a.source_id - b.source_id);
 }

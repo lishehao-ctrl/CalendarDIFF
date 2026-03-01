@@ -12,23 +12,23 @@ from app.db.models import Event, Input, InputType
 @dataclass(frozen=True)
 class EventListItem:
     id: int
-    input_id: int
+    source_id: int
     uid: str
     course_label: str
     title: str
     start_at_utc: datetime
     end_at_utc: datetime
     updated_at: datetime
-    input_label: str
-    input_type: InputType
+    source_label: str
+    source_kind: InputType
 
 
 def list_events_for_user(
     db: Session,
     *,
     user_id: int,
-    input_id: int | None,
-    input_type: InputType | None,
+    source_id: int | None,
+    source_kind: InputType | None,
     query: str | None,
     limit: int,
     offset: int,
@@ -39,10 +39,10 @@ def list_events_for_user(
         .where(Input.user_id == user_id)
     )
 
-    if input_id is not None:
-        stmt = stmt.where(Event.input_id == input_id)
-    if input_type is not None:
-        stmt = stmt.where(Input.type == input_type)
+    if source_id is not None:
+        stmt = stmt.where(Event.input_id == source_id)
+    if source_kind is not None:
+        stmt = stmt.where(Input.type == source_kind)
 
     normalized_query = (query or "").strip()
     if normalized_query:
@@ -60,15 +60,15 @@ def list_events_for_user(
     return [
         EventListItem(
             id=event.id,
-            input_id=event.input_id,
+            source_id=event.input_id,
             uid=event.uid,
             course_label=event.course_label,
             title=event.title,
             start_at_utc=event.start_at_utc,
             end_at_utc=event.end_at_utc,
             updated_at=event.updated_at,
-            input_label=input_row.display_label,
-            input_type=input_row.type,
+            source_label=input_row.display_label,
+            source_kind=input_row.type,
         )
         for event, input_row in rows
     ]

@@ -9,15 +9,15 @@ import {
 export function getFeed(
   config: AppConfig,
   params: {
-    input_types?: "ics" | "email";
+    source_kinds?: "calendar" | "email";
     limit?: number;
     offset?: number;
     view?: "all" | "unread";
   } = {}
 ): Promise<ChangeFeedRecord[]> {
   const search = new URLSearchParams();
-  if (params.input_types) {
-    search.set("input_types", params.input_types);
+  if (params.source_kinds) {
+    search.set("source_kinds", params.source_kinds);
   }
   if (typeof params.limit === "number") {
     search.set("limit", String(params.limit));
@@ -29,7 +29,7 @@ export function getFeed(
     search.set("view", params.view);
   }
   const query = search.toString();
-  return apiRequest<ChangeFeedRecord[]>(config, `/v1/feed${query ? `?${query}` : ""}`);
+  return apiRequest<ChangeFeedRecord[]>(config, `/v2/change-events${query ? `?${query}` : ""}`);
 }
 
 export function patchChangeViewed(
@@ -40,7 +40,7 @@ export function patchChangeViewed(
     note?: string | null;
   }
 ): Promise<ChangeRecord> {
-  return apiRequest<ChangeRecord>(config, `/v1/changes/${changeId}/viewed`, {
+  return apiRequest<ChangeRecord>(config, `/v2/change-events/${changeId}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
@@ -53,6 +53,6 @@ export function getEvidencePreview(
 ): Promise<EvidencePreviewResponse> {
   return apiRequest<EvidencePreviewResponse>(
     config,
-    `/v1/changes/${changeId}/evidence/${side}/preview`
+    `/v2/change-events/${changeId}/evidence/${side}/preview`
   );
 }

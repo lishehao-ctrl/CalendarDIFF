@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 class ChangeResponse(BaseModel):
     id: int
-    input_id: int
+    source_id: int
     event_uid: str
     change_type: str
     detected_at: datetime
@@ -28,9 +28,9 @@ class ChangeResponse(BaseModel):
 
 class ChangeSummarySide(BaseModel):
     value_time: datetime | None
-    input_label: str | None
-    input_type: Literal["ics", "email"] | None
-    input_observed_at: datetime | None
+    source_label: str | None
+    source_kind: Literal["calendar", "email"] | None
+    source_observed_at: datetime | None
 
 
 class ChangeSummary(BaseModel):
@@ -39,7 +39,7 @@ class ChangeSummary(BaseModel):
 
 
 class ChangeFeedResponse(ChangeResponse):
-    input_type: str
+    source_kind: str
     priority_rank: int
     priority_label: str
     notification_state: str | None
@@ -68,3 +68,4 @@ class EvidencePreviewResponse(BaseModel):
     filename: str
     event_count: int
     events: list[EvidencePreviewEvent]
+    preview_text: str | None = None

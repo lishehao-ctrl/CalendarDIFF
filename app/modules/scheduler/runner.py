@@ -69,7 +69,7 @@ class SchedulerRunner:
         run_success_count = 0
         run_failed_count = 0
         run_notification_failed_count = 0
-        run_synced_inputs = 0
+        run_synced_sources = 0
         try:
             lock_acquired = try_acquire_global_lock(db, settings.global_scheduler_lock_key)
             if not lock_acquired:
@@ -115,10 +115,10 @@ class SchedulerRunner:
                         run_failed_count += 1
                     elif result.status == SyncRunStatus.EMAIL_FAILED:
                         run_notification_failed_count += 1
-                        run_synced_inputs += 1
+                        run_synced_sources += 1
                     else:
                         run_success_count += 1
-                        run_synced_inputs += 1
+                        run_synced_sources += 1
                 finally:
                     release_input_lock(db, settings.input_lock_namespace, input.id)
 
@@ -140,7 +140,7 @@ class SchedulerRunner:
             logger.error("scheduler tick failed error=%s", safe_error)
         finally:
             if lock_acquired:
-                self._status.last_synced_inputs = run_synced_inputs
+                self._status.last_synced_sources = run_synced_sources
                 self._status.last_run_success_count = run_success_count
                 self._status.last_run_failed_count = run_failed_count
                 self._status.last_run_notification_failed_count = run_notification_failed_count

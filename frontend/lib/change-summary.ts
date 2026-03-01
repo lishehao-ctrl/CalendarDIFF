@@ -6,8 +6,8 @@ const FALLBACK_TIMEZONE = "UTC";
 let cachedViewerTimeZone: string | null = null;
 
 export function deriveChangeSummary(change: ChangeFeedRecord): ChangeSummary {
-  const inputType = normalizeInputType(change.input_type);
-  const inputLabelFallback = inputType === "email" ? "Email input" : inputType === "ics" ? "Calendar input" : null;
+  const sourceKind = normalizeSourceKind(change.source_kind);
+  const sourceLabelFallback = sourceKind === "email" ? "Email source" : sourceKind === "calendar" ? "Calendar source" : null;
 
   const beforePayload = asRecord(change.before_json);
   const afterPayload = asRecord(change.after_json);
@@ -15,14 +15,14 @@ export function deriveChangeSummary(change: ChangeFeedRecord): ChangeSummary {
   const candidate = asRecord(change.change_summary);
   return {
     old: normalizeSummarySide(asRecord(candidate?.old), {
-      inputType,
-      inputLabel: inputLabelFallback,
+      sourceKind,
+      sourceLabel: sourceLabelFallback,
       fallbackPayload: beforePayload,
       fallbackObservedAt: null,
     }),
     new: normalizeSummarySide(asRecord(candidate?.new), {
-      inputType,
-      inputLabel: inputLabelFallback,
+      sourceKind,
+      sourceLabel: sourceLabelFallback,
       fallbackPayload: afterPayload,
       fallbackObservedAt: null,
     }),
@@ -77,17 +77,17 @@ function isValidTimeZone(value: unknown): value is string {
 function normalizeSummarySide(
   side: Record<string, unknown> | null,
   fallback: {
-    inputType: "ics" | "email" | null;
-    inputLabel: string | null;
+    sourceKind: "calendar" | "email" | null;
+    sourceLabel: string | null;
     fallbackPayload: Record<string, unknown> | null;
     fallbackObservedAt: string | null;
   }
 ): ChangeSummarySide {
   return {
     value_time: normalizeIsoString(readString(side?.value_time)) ?? extractValueTime(fallback.fallbackPayload),
-    input_label: readString(side?.input_label) ?? fallback.inputLabel,
-    input_type: normalizeInputType(side?.input_type) ?? fallback.inputType,
-    input_observed_at: normalizeIsoString(readString(side?.input_observed_at)) ?? fallback.fallbackObservedAt,
+    source_label: readString(side?.source_label) ?? fallback.sourceLabel,
+    source_kind: normalizeSourceKind(side?.source_kind) ?? fallback.sourceKind,
+    source_observed_at: normalizeIsoString(readString(side?.source_observed_at)) ?? fallback.fallbackObservedAt,
   };
 }
 
@@ -104,12 +104,12 @@ function extractValueTime(payload: Record<string, unknown> | null): string | nul
   return null;
 }
 
-function normalizeInputType(value: unknown): "ics" | "email" | null {
+function normalizeSourceKind(value: unknown): "calendar" | "email" | null {
   if (typeof value !== "string") {
     return null;
   }
   const normalized = value.trim().toLowerCase();
-  if (normalized === "ics" || normalized === "email") {
+  if (normalized === "calendar" || normalized === "email") {
     return normalized;
   }
   return null;

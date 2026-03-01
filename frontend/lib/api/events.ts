@@ -4,19 +4,19 @@ import { AppConfig, EventListItem } from "@/lib/types";
 export function getEvents(
   config: AppConfig,
   params: {
-    input_id?: number;
-    input_type?: "ics" | "email";
+    source_id?: number;
+    source_kind?: "calendar" | "email";
     q?: string;
     limit?: number;
     offset?: number;
   } = {}
 ): Promise<EventListItem[]> {
   const search = new URLSearchParams();
-  if (typeof params.input_id === "number") {
-    search.set("input_id", String(params.input_id));
+  if (typeof params.source_id === "number") {
+    search.set("source_id", String(params.source_id));
   }
-  if (params.input_type) {
-    search.set("input_type", params.input_type);
+  if (params.source_kind) {
+    search.set("source_kind", params.source_kind);
   }
   if (params.q && params.q.trim()) {
     search.set("q", params.q.trim());
@@ -28,5 +28,5 @@ export function getEvents(
     search.set("offset", String(params.offset));
   }
   const query = search.toString();
-  return apiRequest<EventListItem[]>(config, `/v1/events${query ? `?${query}` : ""}`);
+  return apiRequest<EventListItem[]>(config, `/v2/timeline-events${query ? `?${query}` : ""}`);
 }

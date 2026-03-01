@@ -1,10 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
-
-
-_URL_PATTERN = re.compile(r"https?://[^\s]+", re.IGNORECASE)
 
 
 class SecretRedactionFilter(logging.Filter):
@@ -23,7 +19,7 @@ class SecretRedactionFilter(logging.Filter):
 
 
 def sanitize_log_message(message: str) -> str:
-    return _URL_PATTERN.sub("[REDACTED_URL]", message)
+    return _redact_http_urls(message)
 
 
 def configure_logging() -> None:
@@ -37,3 +33,20 @@ def configure_logging() -> None:
     root_logger.addFilter(redaction_filter)
     for handler in root_logger.handlers:
         handler.addFilter(redaction_filter)
+
+
+def _redact_http_urls(message: str) -> str:
+    out: list[str] = []
+    idx = 0
+    lower = message.lower()
+    while idx < len(message):
+        if lower.startswith("http://", idx) or lower.startswith("https://", idx):
+            end = idx
+            while end < len(message) and not message[end].isspace():
+                end += 1
+            out.append("[REDACTED_URL]")
+            idx = end
+            continue
+        out.append(message[idx])
+        idx += 1
+    return "".join(out)

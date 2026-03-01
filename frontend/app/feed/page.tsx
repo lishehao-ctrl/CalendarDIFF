@@ -40,7 +40,7 @@ export default function FeedPage() {
       <DashboardPageHeader
         icon={BellRing}
         title="Feed"
-        description="Review aggregated changes across email and calendar inputs."
+        description="Review aggregated changes across email and calendar sources."
         current="feed"
         activeInputId={activeSourceId}
         showOnboardingNav={needsOnboarding}

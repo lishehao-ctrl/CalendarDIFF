@@ -69,7 +69,7 @@ export function AppNav({ current, activeInputId, density = "comfortable", showOn
 function buildHref(path: string, activeInputId: number | null): string {
   const params = new URLSearchParams();
   if (activeInputId !== null) {
-    params.set("input_id", String(activeInputId));
+    params.set("source_id", String(activeInputId));
   }
   const query = params.toString();
   return query ? `${path}?${query}` : path;

@@ -18,14 +18,14 @@ export default function InputsPage() {
     configError,
     toasts,
     needsOnboarding,
-    inputs,
-    inputsLoading,
-    inputsError,
-    activeInputId,
-    deletingInputId,
+    sourceRows,
+    sourcesLoading,
+    sourcesError,
+    activeSourceId,
+    deletingSourceId,
     connectingGmail,
     handleRefresh,
-    handleDeleteInput,
+    handleDeleteSource,
     handleConnectGmail,
   } = useInputsSettingsData();
 
@@ -36,17 +36,17 @@ export default function InputsPage() {
     window.location.replace("/ui/onboarding");
   }, [needsOnboarding]);
 
-  const activeInputs = inputs.filter((row) => row.is_active);
-  const inactiveCount = inputs.length - activeInputs.length;
+  const activeSources = sourceRows.filter((row) => row.is_active);
+  const inactiveCount = sourceRows.length - activeSources.length;
 
   return (
     <DashboardPage>
       <DashboardPageHeader
         icon={Inbox}
-        title="Inputs"
-        description="Manage Gmail input sources. ICS is configured via onboarding."
+        title="Sources"
+        description="Manage Gmail and calendar sources."
         current="inputs"
-        activeInputId={activeInputId}
+        activeInputId={activeSourceId}
         showOnboardingNav={needsOnboarding}
         actions={
           <Button variant="secondary" asChild>
@@ -66,12 +66,12 @@ export default function InputsPage() {
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <CardTitle>Input Management</CardTitle>
-              <CardDescription>Connect multiple Gmail mailboxes and deactivate unused inputs.</CardDescription>
+              <CardTitle>Source Management</CardTitle>
+              <CardDescription>Connect multiple Gmail mailboxes and deactivate unused sources.</CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="secondary" onClick={() => void handleRefresh()} disabled={inputsLoading}>
-                {inputsLoading ? (
+              <Button variant="secondary" onClick={() => void handleRefresh()} disabled={sourcesLoading}>
+                {sourcesLoading ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <RefreshCw className="mr-2 h-4 w-4" />
@@ -88,62 +88,64 @@ export default function InputsPage() {
         <CardContent className="space-y-4">
           {inactiveCount > 0 ? (
             <Alert>
-              <AlertTitle>Inactive Inputs Hidden from Runtime</AlertTitle>
+              <AlertTitle>Inactive Sources Hidden from Runtime</AlertTitle>
               <AlertDescription>
-                {inactiveCount} inactive input{inactiveCount > 1 ? "s are" : " is"} retained for audit history.
+                {inactiveCount} inactive source{inactiveCount > 1 ? "s are" : " is"} retained for audit history.
               </AlertDescription>
             </Alert>
           ) : null}
 
           <SectionState
-            isLoading={inputsLoading}
-            error={inputsError}
-            isEmpty={!inputsLoading && !inputsError && activeInputs.length === 0}
+            isLoading={sourcesLoading}
+            error={sourcesError}
+            isEmpty={!sourcesLoading && !sourcesError && activeSources.length === 0}
             loadingRows={3}
-            errorTitle="Failed to Load Inputs"
-            emptyTitle="No Active Inputs"
-            emptyDescription="Complete onboarding first, then connect Gmail inputs from this page."
+            errorTitle="Failed to Load Sources"
+            emptyTitle="No Active Sources"
+            emptyDescription="Complete onboarding first, then connect sources from this page."
           >
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Input</TableHead>
-                  <TableHead>Type</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Kind</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Last Checked</TableHead>
-                  <TableHead>Last Result</TableHead>
+                  <TableHead>Last Polled</TableHead>
+                  <TableHead>Last Error</TableHead>
                   <TableHead className="w-[220px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {activeInputs.map((row) => {
-                  const deleting = deletingInputId === row.id;
-                  const isIcs = row.type === "ics";
+                {activeSources.map((row) => {
+                  const deleting = deletingSourceId === row.source_id;
+                  const isCalendar = row.source_kind === "calendar";
                   return (
-                    <TableRow key={row.id}>
+                    <TableRow key={row.source_id}>
                       <TableCell className="font-medium">
-                        <div>{row.display_label}</div>
-                        <div className="mt-1 text-xs text-muted">{`input-${row.id}`}</div>
+                        <div>{row.display_name ?? `${row.provider}:${row.source_key.slice(0, 8)}`}</div>
+                        <div className="mt-1 text-xs text-muted">{`source-${row.source_id}`}</div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={row.type === "email" ? "warning" : "muted"}>{row.type.toUpperCase()}</Badge>
+                        <Badge variant={row.source_kind === "email" ? "warning" : "muted"}>
+                          {String(row.source_kind).toUpperCase()}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant="success">active</Badge>
                       </TableCell>
-                      <TableCell>{row.last_checked_at ?? "-"}</TableCell>
-                      <TableCell>{row.last_result ?? "-"}</TableCell>
+                      <TableCell>{row.last_polled_at ?? "-"}</TableCell>
+                      <TableCell>{row.last_error_code ?? "-"}</TableCell>
                       <TableCell>
-                        {isIcs ? (
+                        {isCalendar ? (
                           <Button size="sm" variant="outline" disabled>
-                            Managed in onboarding
+                            Managed via source config
                           </Button>
                         ) : (
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => void handleDeleteInput(row.id)}
-                            disabled={deletingInputId !== null}
+                            onClick={() => void handleDeleteSource(row.source_id)}
+                            disabled={deletingSourceId !== null}
                           >
                             {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
                             Deactivate

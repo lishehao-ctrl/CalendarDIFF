@@ -11,20 +11,19 @@ from sqlalchemy.exc import OperationalError, ProgrammingError
 from app.core.config import get_settings
 from app.core.logging import configure_logging, sanitize_log_message
 from app.db.schema_guard import SchemaNotReadyError, ensure_schema_ready, is_schema_mismatch_error
-from app.db.session import get_engine, get_session_factory
+from app.db.session import get_engine
 from app.modules.changes.router import router as changes_router
-from app.modules.deprecated.router import router as deprecated_router
+from app.modules.core_ingest.router import router as core_ingest_router
 from app.modules.emails.router import router as emails_router
 from app.modules.events.router import router as events_router
 from app.modules.health.router import router as health_router
-from app.modules.inputs.router import router as inputs_router
+from app.modules.input_control_plane.router import internal_router as input_internal_router
+from app.modules.input_control_plane.router import public_router as input_public_router
+from app.modules.input_control_plane.router import router as input_control_plane_router
 from app.modules.onboarding.router import router as onboarding_router
-from app.modules.oauth.router import router as oauth_router
 from app.modules.users.router import router as users_router
-from app.modules.scheduler.runner import SchedulerRunner
 from app.modules.ui.router import router as ui_router
 from app.state import SchedulerStatus
-from app.modules.workspace.router import router as workspace_router
 
 
 logger = logging.getLogger(__name__)
@@ -62,21 +61,15 @@ async def lifespan(app: FastAPI):
             logger.error("schema startup check error=%s", sanitize_log_message(str(exc)))
 
     scheduler_status = SchedulerStatus()
-    scheduler_status.instance_id = settings.scheduler_instance_id or socket.gethostname()
+    scheduler_status.instance_id = f"app-main:{settings.scheduler_instance_id or socket.gethostname()}"
     scheduler_status.schema_guard_blocked = not schema_ready
     scheduler_status.schema_guard_message = app.state.schema_guard_error
-    scheduler_runner = SchedulerRunner(get_session_factory(), scheduler_status)
-    app.state.scheduler_runner = scheduler_runner
-
-    if not settings.disable_scheduler and schema_ready:
-        scheduler_runner.start()
-    elif not schema_ready:
+    scheduler_status.running = False
+    app.state.scheduler_runner = type("_NoopRunner", (), {"status": scheduler_status})()
+    if not schema_ready:
         logger.warning("scheduler startup skipped because database schema is not ready")
 
-    try:
-        yield
-    finally:
-        scheduler_runner.stop()
+    yield
 
 
 def _schema_not_ready_exception_handler(_: Request, exc: SchemaNotReadyError) -> JSONResponse:
@@ -111,11 +104,11 @@ def create_app() -> FastAPI:
     app.include_router(onboarding_router)
     app.include_router(changes_router)
     app.include_router(events_router)
-    app.include_router(inputs_router)
-    app.include_router(oauth_router)
     app.include_router(emails_router)
-    app.include_router(workspace_router)
-    app.include_router(deprecated_router)
+    app.include_router(input_public_router)
+    app.include_router(input_control_plane_router)
+    app.include_router(input_internal_router)
+    app.include_router(core_ingest_router)
     app.include_router(ui_router)
     return app
 

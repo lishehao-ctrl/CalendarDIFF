@@ -3,79 +3,109 @@ export type AppConfig = {
   apiKey: string;
 };
 
-export type Input = {
-  id: number;
-  type: "ics" | "email" | string;
-  display_label: string;
-  provider: string | null;
-  gmail_label: string | null;
-  gmail_from_contains: string | null;
-  gmail_subject_keywords: string[] | null;
-  gmail_account_email: string | null;
-  notify_email: string | null;
-  interval_minutes: number;
+export type SourceKindLiteral = "calendar" | "email" | "task" | "exam" | "announcement";
+export type SourceProviderLiteral = "gmail" | "ics" | "calendar" | "outlook" | "canvas" | "moodle";
+
+export type InputSource = {
+  source_id: number;
+  user_id: number;
+  source_kind: SourceKindLiteral | string;
+  provider: string;
+  source_key: string;
+  display_name: string | null;
   is_active: boolean;
-  last_checked_at: string | null;
-  last_ok_at: string | null;
-  last_change_detected_at: string | null;
-  last_error_at: string | null;
-  last_email_sent_at: string | null;
-  next_check_at: string | null;
-  last_result: string | null;
-  last_error: string | null;
+  poll_interval_seconds: number;
+  last_polled_at: string | null;
+  next_poll_at: string | null;
+  last_error_code: string | null;
+  last_error_message: string | null;
   created_at: string;
+  updated_at: string;
+  config: Record<string, unknown>;
 };
 
-export type GmailOAuthStartRequest = {
-  label?: string | null;
-  from_contains?: string | null;
-  subject_keywords?: string[] | null;
+export type OAuthSessionCreateRequest = {
+  source_id: number;
+  provider: string;
 };
 
-export type GmailOAuthStartResponse = {
+export type OAuthSessionCreateResponse = {
+  source_id: number;
+  provider: string;
   authorization_url: string;
   expires_at: string;
 };
 
-export type ManualSyncResponse = {
-  input_id: number;
-  changes_created: number;
-  email_sent: boolean;
-  last_error: string | null;
-  error_code: string | null;
-  is_baseline_sync: boolean;
-  notification_state: string | null;
+export type SyncRequestCreateRequest = {
+  source_id: number;
+  trace_id?: string | null;
+  metadata?: Record<string, unknown>;
 };
 
-export type InputBusyDetail = {
+export type SyncRequestCreateResponse = {
+  request_id: string;
+  source_id: number;
+  trigger_type: "manual" | "scheduler" | "webhook";
+  status: "PENDING" | "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+  created_at: string;
+  idempotency_key: string;
+};
+
+export type SyncRequestStatusResponse = {
+  request_id: string;
+  source_id: number;
+  trigger_type: "manual" | "scheduler" | "webhook";
+  status: "PENDING" | "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+  idempotency_key: string;
+  trace_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  connector_result:
+    | {
+        provider: string;
+        status: string;
+        fetched_at: string;
+        error_code: string | null;
+        error_message: string | null;
+        records_count: number;
+      }
+    | null;
+  applied: boolean;
+  applied_at: string | null;
+};
+
+export type SourceSyncBusyDetail = {
   status?: "LOCK_SKIPPED";
-  code: "input_busy";
+  code: "source_sync_busy";
   message: string;
   retry_after_seconds: number;
   recoverable: boolean;
 };
 
-export type InputInactiveDetail = {
-  code: "input_inactive";
+export type SourceInactiveDetail = {
+  code: "source_inactive";
   message: string;
 };
 
 export type EventListItem = {
   id: number;
-  input_id: number;
+  source_id: number;
   uid: string;
   course_label: string;
   title: string;
   start_at_utc: string;
   end_at_utc: string;
   updated_at: string;
-  input_label: string;
-  input_type: "ics" | "email";
+  source_label: string;
+  source_kind: "calendar" | "email";
 };
 
 export type ChangeRecord = {
   id: number;
-  input_id: number;
+  source_id: number;
   event_uid: string;
   change_type: "created" | "removed" | "due_changed" | string;
   detected_at: string;
@@ -108,13 +138,14 @@ export type EvidencePreviewResponse = {
   filename: string;
   event_count: number;
   events: EvidencePreviewEvent[];
+  preview_text: string | null;
 };
 
 export type ChangeSummarySide = {
   value_time: string | null;
-  input_label: string | null;
-  input_type: "ics" | "email" | null;
-  input_observed_at: string | null;
+  source_label: string | null;
+  source_kind: "calendar" | "email" | null;
+  source_observed_at: string | null;
 };
 
 export type ChangeSummary = {
@@ -123,7 +154,7 @@ export type ChangeSummary = {
 };
 
 export type ChangeFeedRecord = ChangeRecord & {
-  input_type: "ics" | "email" | string;
+  source_kind: "calendar" | "email" | string;
   priority_rank: number;
   priority_label: string;
   notification_state: string | null;
@@ -144,7 +175,7 @@ export type HealthResponse = {
     last_run_finished_at: string | null;
     last_error: string | null;
     last_skip_reason: string | null;
-    last_synced_inputs: number;
+    last_synced_sources: number;
     last_run_success_count: number;
     last_run_failed_count: number;
     last_run_notification_failed_count: number;
@@ -157,36 +188,32 @@ export type HealthResponse = {
     last_tick_lock_acquired: boolean | null;
     instance_id: string | null;
     next_expected_check_at: string | null;
-    next_expected_input_id: number | null;
+    next_expected_source_id: number | null;
     schema_guard_blocked: boolean;
     schema_guard_message: string | null;
     last_retention_cleanup_at: string | null;
   };
 };
 
-export type WorkspaceConfigStatus = {
-  notifications_enabled: boolean;
-  gmail_oauth_configured: boolean;
-  schema_guard_enabled: boolean;
+export type OnboardingStage = "needs_user" | "needs_source_connection" | "ready";
+
+export type OnboardingStatus = {
+  stage: OnboardingStage;
+  message: string;
+  registered_user_id: number | null;
+  first_source_id: number | null;
+  last_error: string | null;
 };
 
-export type WorkspaceDefaults = {
-  default_changes_limit: number;
-  max_changes_limit: number;
-  default_sync_interval_minutes: number;
-  scheduler_tick_seconds: number;
-  manual_sync_retry_seconds: number;
+export type OnboardingRegisterRequest = {
+  notify_email: string;
 };
 
-export type WorkspaceHealthSummary = {
-  status: string;
-  db_ok: boolean;
-  db_error: string | null;
-  scheduler_running: boolean;
-  scheduler_last_error: string | null;
-  scheduler_instance_id: string | null;
-  next_expected_input_id: number | null;
-  next_expected_check_at: string | null;
+export type OnboardingRegisterResponse = {
+  status: "accepted";
+  user_id: number;
+  stage: "needs_source_connection" | "ready";
+  first_source_id: number | null;
 };
 
 export type DashboardUser = {
@@ -196,40 +223,6 @@ export type DashboardUser = {
   notify_email: string | null;
   calendar_delay_seconds: number;
   created_at: string;
-};
-
-export type WorkspaceBootstrapResponse = {
-  config_status: WorkspaceConfigStatus;
-  onboarding: OnboardingStatus;
-  user: DashboardUser | null;
-  inputs: Input[];
-  health_summary: WorkspaceHealthSummary;
-  defaults: WorkspaceDefaults;
-};
-
-export type OnboardingStage = "needs_user" | "needs_ics" | "needs_baseline" | "ready";
-
-export type OnboardingStatus = {
-  stage: OnboardingStage;
-  message: string;
-  registered_user_id: number | null;
-  first_input_id: number | null;
-  last_error: string | null;
-};
-
-export type OnboardingRegisterRequest = {
-  notify_email: string;
-  ics: {
-    url: string;
-  };
-};
-
-export type OnboardingRegisterResponse = {
-  status: "ready";
-  user_id: number;
-  input_id: number;
-  is_baseline_sync: boolean;
-  changes_created: number;
 };
 
 export type EmailRoute = "drop" | "archive" | "review";

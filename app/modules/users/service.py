@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import re
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Input, InputType, User
+from app.db.models import Input, InputSource, InputType, User
+from app.modules.users.email_utils import is_valid_email_address
 
-EMAIL_PATTERN = re.compile(r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$")
-USER_NOT_INITIALIZED_MESSAGE = "Initialize user via POST /v1/onboarding/register"
-USER_ONBOARDING_INCOMPLETE_MESSAGE = "Complete onboarding via POST /v1/onboarding/register"
+USER_NOT_INITIALIZED_MESSAGE = "Initialize user via POST /v2/onboarding/registrations"
+USER_ONBOARDING_INCOMPLETE_MESSAGE = "Connect at least one active input source via /v2/input-sources"
 
 
 class UserNotInitializedError(RuntimeError):
@@ -58,9 +56,7 @@ def get_onboarded_user(db: Session) -> User | None:
     user = get_registered_user(db)
     if user is None:
         return None
-    if user.onboarding_completed_at is None:
-        return None
-    if get_single_ics_input_for_user(db, user_id=user.id) is None:
+    if not has_active_input_source(db, user_id=user.id):
         return None
     return user
 
@@ -69,11 +65,35 @@ def require_onboarded_user(db: Session) -> User:
     user = get_registered_user(db)
     if user is None:
         raise UserNotInitializedError(USER_NOT_INITIALIZED_MESSAGE)
-    if user.onboarding_completed_at is None:
-        raise UserOnboardingIncompleteError(USER_ONBOARDING_INCOMPLETE_MESSAGE)
-    if get_single_ics_input_for_user(db, user_id=user.id) is None:
+    if not has_active_input_source(db, user_id=user.id):
         raise UserOnboardingIncompleteError(USER_ONBOARDING_INCOMPLETE_MESSAGE)
     return user
+
+
+def has_active_input_source(db: Session, *, user_id: int) -> bool:
+    return (
+        db.scalar(
+            select(InputSource.id)
+            .where(
+                InputSource.user_id == user_id,
+                InputSource.is_active.is_(True),
+            )
+            .limit(1)
+        )
+        is not None
+    )
+
+
+def get_first_active_input_source(db: Session, *, user_id: int) -> InputSource | None:
+    return db.scalar(
+        select(InputSource)
+        .where(
+            InputSource.user_id == user_id,
+            InputSource.is_active.is_(True),
+        )
+        .order_by(InputSource.id.asc())
+        .limit(1)
+    )
 
 
 def get_single_ics_input_for_user(
@@ -145,12 +165,10 @@ def _normalize_required_email(value: str) -> str:
     stripped = value.strip()
     if not stripped:
         raise ValueError("notify_email must not be blank")
-    if not EMAIL_PATTERN.fullmatch(stripped):
+    if not is_valid_email_address(stripped):
         raise ValueError("notify_email must be a valid email address")
     return stripped
 
 
 def _is_valid_email(value: str | None) -> bool:
-    if value is None:
-        return False
-    return EMAIL_PATTERN.fullmatch(value.strip()) is not None
+    return is_valid_email_address(value)

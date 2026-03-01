@@ -22,8 +22,8 @@ import { ChangeFeedRecord } from "@/lib/types";
 type DiffSectionProps = {
   changeFilter: ChangeFilter;
   onChangeFilter: (value: ChangeFilter) => void;
-  changeSourceTypeFilter: "all" | "email" | "ics";
-  onChangeSourceTypeFilter: (value: "all" | "email" | "ics") => void;
+  changeSourceTypeFilter: "all" | "email" | "calendar";
+  onChangeSourceTypeFilter: (value: "all" | "email" | "calendar") => void;
   changesError: string | null;
   changesLoading: boolean;
   filteredChanges: ChangeFeedRecord[];
@@ -84,15 +84,15 @@ export function DiffSection({
               </div>
 
               <div className="min-w-[190px] flex-1 space-y-2">
-                <Label htmlFor="change-source-type">Input Type</Label>
+                <Label htmlFor="change-source-type">Source Kind</Label>
                 <Select
                   id="change-source-type"
                   value={changeSourceTypeFilter}
-                  onChange={(event) => onChangeSourceTypeFilter(event.target.value as "all" | "email" | "ics")}
+                  onChange={(event) => onChangeSourceTypeFilter(event.target.value as "all" | "email" | "calendar")}
                 >
-                  <option value="all">All Inputs</option>
+                  <option value="all">All Sources</option>
                   <option value="email">Email Only</option>
-                  <option value="ics">Calendar Only</option>
+                  <option value="calendar">Calendar Only</option>
                 </Select>
               </div>
             </div>
@@ -110,7 +110,7 @@ export function DiffSection({
             <div className="stagger-fade space-y-3">
               {filteredChanges.map((change) => {
                 const viewModel = toChangeDiffViewModel(change);
-                const sourceType = normalizeSourceType(change.input_type);
+                const sourceType = normalizeSourceType(change.source_kind);
                 const priorityLabel = readString((change as Record<string, unknown>).priority_label) ?? (sourceType === "email" ? "high" : "normal");
                 const viewed = change.viewed_at !== null;
                 const beforePayload = asRecord(change.before_json);
@@ -290,11 +290,11 @@ function ChangeTypeBadge({ type }: { type: ChangeDiffViewModel["normalizedType"]
   return <Badge variant="default">Modified</Badge>;
 }
 
-function normalizeSourceType(value: unknown): "email" | "ics" {
+function normalizeSourceType(value: unknown): "email" | "calendar" {
   if (typeof value === "string" && value.trim().toLowerCase() === "email") {
     return "email";
   }
-  return "ics";
+  return "calendar";
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getWorkspaceBootstrap } from "@/lib/api";
+import { ApiError, getCurrentUser, getInputSources, getOnboardingStatus } from "@/lib/api";
 import { getRuntimeConfig } from "@/lib/config";
-import { useToast } from "@/lib/hooks/use-toast";
 import { toErrorMessage } from "@/lib/hooks/runtime-utils";
-import { AppConfig, OnboardingStage, WorkspaceBootstrapResponse } from "@/lib/types";
+import { useToast } from "@/lib/hooks/use-toast";
+import { AppConfig, DashboardUser, InputSource, OnboardingStage, OnboardingStatus } from "@/lib/types";
+
+type RuntimeSnapshot = {
+  onboarding: OnboardingStatus;
+  user: DashboardUser | null;
+  sources: InputSource[];
+};
+
+const NOT_READY_CODES = new Set(["user_not_initialized", "user_onboarding_incomplete"]);
 
 export function useAppRuntime() {
   const { toasts, pushToast } = useToast();
@@ -13,7 +21,9 @@ export function useAppRuntime() {
   const [configError, setConfigError] = useState<string | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [onboardingStage, setOnboardingStage] = useState<OnboardingStage | null>(null);
-  const [bootstrap, setBootstrap] = useState<WorkspaceBootstrapResponse | null>(null);
+  const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
+  const [user, setUser] = useState<DashboardUser | null>(null);
+  const [sources, setSources] = useState<InputSource[]>([]);
 
   useEffect(() => {
     const runtimeConfig = getRuntimeConfig();
@@ -22,23 +32,50 @@ export function useAppRuntime() {
       return;
     }
     setConfig(runtimeConfig);
-    void loadBootstrap(runtimeConfig);
+    void loadRuntime(runtimeConfig);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadBootstrap = useCallback(
-    async (runtimeConfig?: AppConfig): Promise<WorkspaceBootstrapResponse | null> => {
+  const loadRuntime = useCallback(
+    async (runtimeConfig?: AppConfig): Promise<RuntimeSnapshot | null> => {
       const runtime = runtimeConfig ?? config;
       if (!runtime) {
         return null;
       }
+
       try {
-        const payload = await getWorkspaceBootstrap(runtime);
-        setBootstrap(payload);
-        setOnboardingStage(payload.onboarding.stage);
-        setNeedsOnboarding(payload.onboarding.stage !== "ready");
+        const onboardingPromise = getOnboardingStatus(runtime);
+        const userPromise = getCurrentUser(runtime).catch((error) => {
+          if (isRuntimeNotReadyApiError(error)) {
+            return null;
+          }
+          throw error;
+        });
+        const sourcesPromise = getInputSources(runtime).catch((error) => {
+          if (isRuntimeNotReadyApiError(error)) {
+            return [];
+          }
+          throw error;
+        });
+
+        const [onboarding, userPayload, sourcePayload] = await Promise.all([
+          onboardingPromise,
+          userPromise,
+          sourcesPromise,
+        ]);
+
+        setOnboardingStatus(onboarding);
+        setOnboardingStage(onboarding.stage);
+        setNeedsOnboarding(onboarding.stage !== "ready");
+        setUser(userPayload);
+        setSources(sourcePayload);
         setConfigError(null);
-        return payload;
+
+        return {
+          onboarding,
+          user: userPayload,
+          sources: sourcePayload,
+        };
       } catch (error) {
         setConfigError(toErrorMessage(error));
         return null;
@@ -49,13 +86,13 @@ export function useAppRuntime() {
 
   const ensureOnboarded = useCallback(
     async (runtimeConfig?: AppConfig): Promise<boolean> => {
-      const payload = bootstrap ?? (await loadBootstrap(runtimeConfig));
-      if (!payload) {
+      const snapshot = onboardingStatus ? { onboarding: onboardingStatus, user, sources } : await loadRuntime(runtimeConfig);
+      if (!snapshot) {
         return false;
       }
-      return payload.onboarding.stage === "ready";
+      return snapshot.onboarding.stage === "ready";
     },
-    [bootstrap, loadBootstrap]
+    [loadRuntime, onboardingStatus, sources, user]
   );
 
   return {
@@ -63,12 +100,32 @@ export function useAppRuntime() {
     configError,
     needsOnboarding,
     onboardingStage,
+    onboardingStatus,
     isReady: onboardingStage === "ready",
-    bootstrap,
+    user,
+    sources,
     setNeedsOnboarding,
     ensureOnboarded,
-    refreshBootstrap: loadBootstrap,
+    refreshRuntime: loadRuntime,
     toasts,
     pushToast,
   };
+}
+
+function isRuntimeNotReadyApiError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) {
+    return false;
+  }
+  if (error.status !== 404 && error.status !== 409) {
+    return false;
+  }
+  if (!error.body || typeof error.body !== "object") {
+    return false;
+  }
+  const detail = (error.body as Record<string, unknown>).detail;
+  if (!detail || typeof detail !== "object") {
+    return false;
+  }
+  const code = (detail as Record<string, unknown>).code;
+  return typeof code === "string" && NOT_READY_CODES.has(code);
 }

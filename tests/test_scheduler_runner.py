@@ -197,7 +197,7 @@ def test_scheduler_tick_tracks_success_failure_and_notification_failure(db_sessi
     assert status.last_run_success_count == 1
     assert status.last_run_failed_count == 1
     assert status.last_run_notification_failed_count == 1
-    assert status.last_synced_inputs == 2
+    assert status.last_synced_sources == 2
     assert status.cumulative_success_count == 1
     assert status.cumulative_failed_count == 1
     assert status.cumulative_notification_failed_count == 1
@@ -214,7 +214,7 @@ def test_scheduler_tick_lock_skip_increments_skip_counter(db_session_factory, mo
         last_run_success_count=7,
         last_run_failed_count=2,
         last_run_notification_failed_count=1,
-        last_synced_inputs=8,
+        last_synced_sources=8,
     )
     runner = SchedulerRunner(db_session_factory, status)
 
@@ -229,7 +229,7 @@ def test_scheduler_tick_lock_skip_increments_skip_counter(db_session_factory, mo
     assert status.last_run_success_count == 7
     assert status.last_run_failed_count == 2
     assert status.last_run_notification_failed_count == 1
-    assert status.last_synced_inputs == 8
+    assert status.last_synced_sources == 8
 
 
 def test_scheduler_tick_records_lock_skipped_run_for_source_conflict(db_session, db_session_factory, monkeypatch) -> None:
@@ -321,7 +321,7 @@ def test_scheduler_tick_isolates_unexpected_source_exception(db_session, db_sess
 
     assert status.last_run_success_count == 1
     assert status.last_run_failed_count == 1
-    assert status.last_synced_inputs == 1
+    assert status.last_synced_sources == 1
 
     db_session.expire_all()
     broken = db_session.get(Input, source_broken.id)

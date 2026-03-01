@@ -4,7 +4,6 @@ import { getHealth } from "@/lib/api";
 import {
   handleManualSyncResult,
   isOnboardingRequiredError,
-  MANUAL_SYNC_BUSY_RETRY_SECONDS,
   MIN_MANUAL_SYNC_ANIMATION_MS,
   parsePositiveInt,
   requestManualSync,
@@ -13,35 +12,35 @@ import {
   toErrorMessage,
 } from "@/lib/hooks/runtime-utils";
 import { useAppRuntime } from "@/lib/hooks/use-app-runtime";
-import { HealthResponse, Input } from "@/lib/types";
+import { HealthResponse, InputSource } from "@/lib/types";
 
 export function useProcessingData() {
   const runtime = useAppRuntime();
-  const { config, ensureOnboarded, pushToast, needsOnboarding, setNeedsOnboarding, bootstrap, refreshBootstrap } = runtime;
+  const { config, ensureOnboarded, pushToast, needsOnboarding, setNeedsOnboarding, sources, refreshRuntime } = runtime;
 
-  const [inputs, setInputs] = useState<Input[]>([]);
-  const [activeInputId, setActiveInputId] = useState<number | null>(null);
+  const [sourceRows, setSourceRows] = useState<InputSource[]>([]);
+  const [activeSourceId, setActiveSourceId] = useState<number | null>(null);
 
-  const [inputsLoading, setInputsLoading] = useState(false);
-  const [inputsError, setInputsError] = useState<string | null>(null);
+  const [sourcesLoading, setSourcesLoading] = useState(false);
+  const [sourcesError, setSourcesError] = useState<string | null>(null);
 
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
   const [healthError, setHealthError] = useState<string | null>(null);
 
-  const [manualSyncingInputId, setManualSyncingInputId] = useState<number | null>(null);
-  const [manualSyncBusyInputId, setManualSyncBusyInputId] = useState<number | null>(null);
-  const [manualSyncBusyMessage, setManualSyncBusyMessage] = useState<string | null>(null);
-  const [manualSyncRetryAfterSeconds, setManualSyncRetryAfterSeconds] = useState<number | null>(null);
-  const [manualSyncAutoRetried, setManualSyncAutoRetried] = useState(false);
+  const [manualSyncingSourceId, setManualSyncingSourceId] = useState<number | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const inputId = parsePositiveInt(params.get("input_id"));
-    if (inputId !== null) {
-      setActiveInputId(inputId);
+    const sourceId = parsePositiveInt(params.get("source_id"));
+    if (sourceId !== null) {
+      setActiveSourceId(sourceId);
     }
   }, []);
+
+  useEffect(() => {
+    applySources(sources);
+  }, [sources]);
 
   useEffect(() => {
     if (!config) {
@@ -52,41 +51,34 @@ export function useProcessingData() {
   }, [config]);
 
   useEffect(() => {
-    if (!bootstrap) {
-      return;
-    }
-    applyBootstrapInputs(bootstrap.inputs);
-  }, [bootstrap]);
-
-  useEffect(() => {
     if (!config) {
       return;
     }
-    syncSelectionQuery(activeInputId);
-  }, [config, activeInputId]);
+    syncSelectionQuery(activeSourceId);
+  }, [config, activeSourceId]);
 
   async function boot(runtimeConfig: NonNullable<typeof config>) {
     const onboarded = await ensureOnboarded(runtimeConfig);
     if (!onboarded) {
-      setInputs([]);
-      setActiveInputId(null);
+      setSourceRows([]);
+      setActiveSourceId(null);
       return;
     }
-    const payload = await refreshBootstrap(runtimeConfig);
-    if (payload) {
-      applyBootstrapInputs(payload.inputs);
+    const snapshot = await refreshRuntime(runtimeConfig);
+    if (snapshot) {
+      applySources(snapshot.sources);
     }
     await loadHealth(runtimeConfig);
   }
 
-  function applyBootstrapInputs(rows: Input[]) {
+  function applySources(rows: InputSource[]) {
     const activeRows = rows.filter((row) => row.is_active);
-    setInputs(activeRows);
-    setActiveInputId((current) => {
-      if (current && activeRows.some((row) => row.id === current)) {
+    setSourceRows(activeRows);
+    setActiveSourceId((current) => {
+      if (current && activeRows.some((row) => row.source_id === current)) {
         return current;
       }
-      return activeRows[0]?.id ?? null;
+      return activeRows[0]?.source_id ?? null;
     });
   }
 
@@ -99,7 +91,7 @@ export function useProcessingData() {
     setHealthError(null);
     try {
       const payload = await getHealth(activeConfig);
-      setHealth(payload as HealthResponse);
+      setHealth(payload);
     } catch (error) {
       setHealthError(toErrorMessage(error));
     } finally {
@@ -107,31 +99,31 @@ export function useProcessingData() {
     }
   }
 
-  async function loadInputs(runtimeConfig: NonNullable<typeof config>) {
+  async function loadSources(runtimeConfig: NonNullable<typeof config>) {
     if (needsOnboarding) {
-      setInputs([]);
-      setActiveInputId(null);
+      setSourceRows([]);
+      setActiveSourceId(null);
       return;
     }
-    setInputsLoading(true);
-    setInputsError(null);
+    setSourcesLoading(true);
+    setSourcesError(null);
     try {
-      const payload = await refreshBootstrap(runtimeConfig);
-      applyBootstrapInputs(payload?.inputs ?? []);
+      const snapshot = await refreshRuntime(runtimeConfig);
+      applySources(snapshot?.sources ?? []);
     } catch (error) {
       if (isOnboardingRequiredError(error)) {
         setNeedsOnboarding(true);
-        setInputs([]);
-        setActiveInputId(null);
+        setSourceRows([]);
+        setActiveSourceId(null);
         return;
       }
-      setInputsError(toErrorMessage(error));
+      setSourcesError(toErrorMessage(error));
     } finally {
-      setInputsLoading(false);
+      setSourcesLoading(false);
     }
   }
 
-  async function handleRefreshInputs() {
+  async function handleRefreshSources() {
     if (!config) {
       return;
     }
@@ -139,78 +131,29 @@ export function useProcessingData() {
     if (!onboarded) {
       return;
     }
-    await Promise.all([loadInputs(config), loadHealth(config)]);
+    await Promise.all([loadSources(config), loadHealth(config)]);
   }
 
-  async function handleActiveInputChange(inputId: number) {
-    setActiveInputId(inputId);
+  async function handleActiveSourceChange(sourceId: number) {
+    setActiveSourceId(sourceId);
   }
 
-  async function runManualSync(inputId: number) {
-    if (!config || manualSyncingInputId !== null) {
+  async function runManualSync(sourceId: number) {
+    if (!config || manualSyncingSourceId !== null) {
       return;
     }
 
     const startedAt = Date.now();
-    setManualSyncingInputId(inputId);
-    setManualSyncBusyInputId(null);
-    setManualSyncBusyMessage(null);
-    setManualSyncRetryAfterSeconds(null);
-    setManualSyncAutoRetried(false);
+    setManualSyncingSourceId(sourceId);
 
     try {
-      const firstAttempt = await requestManualSync(config, inputId);
-      if (firstAttempt.kind === "success") {
-        handleManualSyncResult(firstAttempt.result, pushToast);
-        await Promise.all([loadInputs(config), loadHealth(config)]);
+      const attempt = await requestManualSync(config, sourceId);
+      if (attempt.kind === "success") {
+        handleManualSyncResult(attempt.result, pushToast);
+        await Promise.all([loadSources(config), loadHealth(config)]);
         return;
       }
-
-      if (firstAttempt.kind === "busy") {
-        const retryAfterSeconds = firstAttempt.detail.retry_after_seconds > 0
-          ? firstAttempt.detail.retry_after_seconds
-          : MANUAL_SYNC_BUSY_RETRY_SECONDS;
-        setManualSyncBusyInputId(inputId);
-        setManualSyncBusyMessage(firstAttempt.detail.message);
-        setManualSyncRetryAfterSeconds(retryAfterSeconds);
-        setManualSyncAutoRetried(false);
-        pushToast(`Sync is in progress. Auto retry in ${retryAfterSeconds}s`, "info");
-
-        await sleep(retryAfterSeconds * 1000);
-        setManualSyncAutoRetried(true);
-
-        const secondAttempt = await requestManualSync(config, inputId);
-        if (secondAttempt.kind === "success") {
-          setManualSyncBusyInputId(null);
-          setManualSyncBusyMessage(null);
-          setManualSyncRetryAfterSeconds(null);
-          setManualSyncAutoRetried(false);
-          handleManualSyncResult(secondAttempt.result, pushToast);
-          await Promise.all([loadInputs(config), loadHealth(config)]);
-          return;
-        }
-
-        if (secondAttempt.kind === "busy") {
-          setManualSyncBusyInputId(inputId);
-          setManualSyncBusyMessage(secondAttempt.detail.message);
-          setManualSyncRetryAfterSeconds(
-            secondAttempt.detail.retry_after_seconds > 0
-              ? secondAttempt.detail.retry_after_seconds
-              : MANUAL_SYNC_BUSY_RETRY_SECONDS
-          );
-          pushToast("Sync is still in progress. Click Retry now.", "info");
-          return;
-        }
-
-        setManualSyncBusyInputId(null);
-        setManualSyncBusyMessage(null);
-        setManualSyncRetryAfterSeconds(null);
-        setManualSyncAutoRetried(false);
-        pushToast(`Sync failed: ${secondAttempt.message}`, "error");
-        return;
-      }
-
-      pushToast(`Sync failed: ${firstAttempt.message}`, "error");
+      pushToast(`Sync failed: ${attempt.message}`, "error");
     } catch (error) {
       pushToast(`Sync failed: ${toErrorMessage(error)}`, "error");
     } finally {
@@ -218,34 +161,34 @@ export function useProcessingData() {
       if (elapsed < MIN_MANUAL_SYNC_ANIMATION_MS) {
         await sleep(MIN_MANUAL_SYNC_ANIMATION_MS - elapsed);
       }
-      setManualSyncingInputId((current) => (current === inputId ? null : current));
+      setManualSyncingSourceId((current) => (current === sourceId ? null : current));
     }
   }
 
   async function handleRetryManualSyncBusy() {
-    if (manualSyncBusyInputId === null) {
+    if (activeSourceId === null) {
       return;
     }
-    await runManualSync(manualSyncBusyInputId);
+    await runManualSync(activeSourceId);
   }
 
   return {
     ...runtime,
-    inputs,
-    activeInputId,
-    inputsLoading,
-    inputsError,
+    sourceRows,
+    activeSourceId,
+    sourcesLoading,
+    sourcesError,
     health,
     healthLoading,
     healthError,
-    manualSyncingInputId,
-    manualSyncBusyInputId,
-    manualSyncBusyMessage,
-    manualSyncRetryAfterSeconds,
-    manualSyncAutoRetried,
+    manualSyncingSourceId,
+    manualSyncBusySourceId: null as number | null,
+    manualSyncBusyMessage: null as string | null,
+    manualSyncRetryAfterSeconds: null as number | null,
+    manualSyncAutoRetried: false,
     loadHealth,
-    handleRefreshInputs,
-    handleActiveInputChange,
+    handleRefreshSources,
+    handleActiveSourceChange,
     runManualSync,
     handleRetryManualSyncBusy,
   };

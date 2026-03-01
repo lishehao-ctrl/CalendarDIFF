@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import get_settings
 from app.db.models import User
 from app.db.session import reset_engine
-from app.modules.inputs.schemas import InputCreateRequest
-from app.modules.inputs.service import create_ics_input
+from app.modules.input_control_plane.schemas import InputSourceCreateRequest
+from app.modules.input_control_plane.service import create_input_source
 from app.main import create_app
 from datetime import datetime, timezone
 
@@ -133,10 +133,17 @@ def initialized_user(client: TestClient, db_session: Session) -> dict[str, objec
     )
     db_session.add(user)
     db_session.flush()
-    create_ics_input(
+    create_input_source(
         db_session,
-        user_id=user.id,
-        payload=InputCreateRequest(url="https://example.com/initialized-user.ics"),
+        user=user,
+        payload=InputSourceCreateRequest(
+            source_kind="calendar",
+            provider="ics",
+            source_key="initialized-user-calendar",
+            display_name="Initialized User Calendar",
+            config={},
+            secrets={"url": "https://example.com/initialized-user.ics"},
+        ),
     )
     db_session.commit()
     db_session.refresh(user)

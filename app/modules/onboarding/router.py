@@ -12,7 +12,7 @@ from app.modules.onboarding.schemas import (
 )
 from app.modules.onboarding.service import OnboardingRegisterError, get_onboarding_status, register_onboarding
 
-router = APIRouter(prefix="/v1/onboarding", tags=["onboarding"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/v2/onboarding", tags=["onboarding"], dependencies=[Depends(require_api_key)])
 
 
 @router.get("/status", response_model=OnboardingStatusResponse)
@@ -22,27 +22,25 @@ def get_status(db: Session = Depends(get_db)) -> OnboardingStatusResponse:
         stage=status_payload.stage,  # type: ignore[arg-type]
         message=status_payload.message,
         registered_user_id=status_payload.registered_user_id,
-        first_input_id=status_payload.first_input_id,
+        first_source_id=status_payload.first_source_id,
         last_error=status_payload.last_error,
     )
 
 
-@router.post("/register", response_model=OnboardingRegisterResponse)
-def post_register(payload: OnboardingRegisterRequest, db: Session = Depends(get_db)) -> OnboardingRegisterResponse:
+@router.post("/registrations", response_model=OnboardingRegisterResponse)
+def create_registration(payload: OnboardingRegisterRequest, db: Session = Depends(get_db)) -> OnboardingRegisterResponse:
     try:
         result = register_onboarding(
             db,
             notify_email=payload.notify_email,
-            ics_url=str(payload.ics.url),
         )
     except OnboardingRegisterError as exc:
-        status_code = exc.status_code if exc.status_code in {409, 422, 502} else status.HTTP_422_UNPROCESSABLE_ENTITY
+        status_code = exc.status_code if exc.status_code in {409, 422} else status.HTTP_422_UNPROCESSABLE_ENTITY
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
     return OnboardingRegisterResponse(
-        status="ready",
+        status="accepted",
         user_id=result.user_id,
-        input_id=result.input_id,
-        is_baseline_sync=result.is_baseline_sync,
-        changes_created=result.changes_created,
+        stage=result.stage,  # type: ignore[arg-type]
+        first_source_id=result.first_source_id,
     )

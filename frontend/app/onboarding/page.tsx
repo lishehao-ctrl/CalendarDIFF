@@ -15,7 +15,6 @@ import { OnboardingStatus } from "@/lib/types";
 export default function OnboardingPage() {
   const config = useMemo(() => getRuntimeConfig(), []);
   const [notifyEmail, setNotifyEmail] = useState("");
-  const [icsUrl, setIcsUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,8 +48,8 @@ export default function OnboardingPage() {
     if (!config.apiKey || busy) {
       return;
     }
-    if (!notifyEmail.trim() || !icsUrl.trim()) {
-      setError("notify_email and ICS URL are required.");
+    if (!notifyEmail.trim()) {
+      setError("notify_email is required.");
       return;
     }
 
@@ -59,11 +58,8 @@ export default function OnboardingPage() {
     try {
       await registerOnboarding(config, {
         notify_email: notifyEmail.trim(),
-        ics: {
-          url: icsUrl.trim(),
-        },
       });
-      window.location.replace("/ui/processing");
+      window.location.replace("/ui/inputs");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -81,7 +77,7 @@ export default function OnboardingPage() {
               Onboarding Required
             </CardTitle>
             <CardDescription>
-              Bind notify email + first ICS URL, then run the initial baseline sync before entering Processing workspace.
+              Initialize user profile with notify email, then connect at least one source before entering workspace.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -103,17 +99,6 @@ export default function OnboardingPage() {
                     required
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="onboarding-ics-url">ICS URL</Label>
-                  <Input
-                    id="onboarding-ics-url"
-                    type="url"
-                    value={icsUrl}
-                    onChange={(event) => setIcsUrl(event.target.value)}
-                    placeholder="https://example.edu/calendar.ics"
-                    required
-                  />
-                </div>
                 {statusInfo ? (
                   <Alert>
                     <AlertTitle>Current Stage: {statusInfo.stage}</AlertTitle>
@@ -128,7 +113,7 @@ export default function OnboardingPage() {
                 ) : null}
                 <Button type="submit" disabled={busy}>
                   {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Register and Run Initial Baseline
+                  Register
                 </Button>
               </form>
             )}

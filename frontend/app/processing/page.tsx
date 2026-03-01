@@ -17,16 +17,16 @@ export default function ProcessingPage() {
     configError,
     toasts,
     needsOnboarding,
-    inputs,
-    activeInputId,
-    inputsLoading,
-    inputsError,
-    handleActiveInputChange,
-    handleRefreshInputs,
+    sourceRows,
+    activeSourceId,
+    sourcesLoading,
+    sourcesError,
+    handleActiveSourceChange,
+    handleRefreshSources,
     runManualSync,
     handleRetryManualSyncBusy,
-    manualSyncingInputId,
-    manualSyncBusyInputId,
+    manualSyncingSourceId,
+    manualSyncBusySourceId,
     manualSyncBusyMessage,
     manualSyncRetryAfterSeconds,
     manualSyncAutoRetried,
@@ -61,9 +61,9 @@ export default function ProcessingPage() {
       <DashboardPageHeader
         icon={Workflow}
         title="Processing"
-        description="Manual sync control and runtime health for ICS + Gmail inputs."
+        description="Manual sync control and runtime health for connected sources."
         current="processing"
-        activeInputId={activeInputId}
+        activeInputId={activeSourceId}
         showOnboardingNav={needsOnboarding}
       />
 
@@ -100,10 +100,10 @@ export default function ProcessingPage() {
               <HealthMetric label="DB" value={health.db.ok ? "ok" : "degraded"} />
               <HealthMetric label="Scheduler" value={health.scheduler.running ? "running" : "idle"} />
               <HealthMetric label="Last Tick" value={health.scheduler.last_tick_at ?? "never"} />
-              <HealthMetric label="Last Synced Inputs" value={String(health.scheduler.last_synced_inputs)} />
+              <HealthMetric label="Last Synced Sources" value={String(health.scheduler.last_synced_sources)} />
               <HealthMetric
-                label="Next Expected Input"
-                value={health.scheduler.next_expected_input_id ? `input-${health.scheduler.next_expected_input_id}` : "n/a"}
+                label="Next Expected Source"
+                value={health.scheduler.next_expected_source_id ? `source-${health.scheduler.next_expected_source_id}` : "n/a"}
               />
             </div>
           ) : null}
@@ -114,17 +114,17 @@ export default function ProcessingPage() {
       </Card>
 
       <ProcessingSection
-        inputs={inputs}
-        activeInputId={activeInputId}
-        inputsLoading={inputsLoading}
-        inputsError={inputsError}
-        manualSyncingInputId={manualSyncingInputId}
-        manualSyncBusyInputId={manualSyncBusyInputId}
+        sourceRows={sourceRows}
+        activeSourceId={activeSourceId}
+        sourcesLoading={sourcesLoading}
+        sourcesError={sourcesError}
+        manualSyncingSourceId={manualSyncingSourceId}
+        manualSyncBusySourceId={manualSyncBusySourceId}
         manualSyncBusyMessage={manualSyncBusyMessage}
         manualSyncRetryAfterSeconds={manualSyncRetryAfterSeconds}
         manualSyncAutoRetried={manualSyncAutoRetried}
-        onActiveInputChange={handleActiveInputChange}
-        onRefreshInputs={handleRefreshInputs}
+        onActiveSourceChange={handleActiveSourceChange}
+        onRefreshSources={handleRefreshSources}
         onRunManualSync={runManualSync}
         onRetryManualSyncBusy={handleRetryManualSyncBusy}
       />

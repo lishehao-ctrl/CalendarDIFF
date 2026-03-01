@@ -1,24 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.db.models import Input, SyncRunStatus, SyncTriggerType
-from app.modules.inputs.schemas import InputCreateRequest
-from app.modules.inputs.service import create_ics_input
-from app.modules.notify.interface import ChangeDigestItem, Notifier, SendResult
-from app.modules.sync.service import SyncRunResult, sync_input
-from app.modules.users.service import create_or_initialize_user, get_registered_user, get_single_ics_input_for_user
-
-
-BASELINE_FAILURE_STATUSES = {
-    SyncRunStatus.FETCH_FAILED,
-    SyncRunStatus.PARSE_FAILED,
-    SyncRunStatus.DIFF_FAILED,
-    SyncRunStatus.EMAIL_FAILED,
-}
+from app.modules.users.service import (
+    create_or_initialize_user,
+    get_first_active_input_source,
+    get_registered_user,
+)
 
 
 class OnboardingRegisterError(RuntimeError):
@@ -32,16 +22,15 @@ class OnboardingStatus:
     stage: str
     message: str
     registered_user_id: int | None
-    first_input_id: int | None
+    first_source_id: int | None
     last_error: str | None
 
 
 @dataclass(frozen=True)
 class OnboardingRegisterResult:
     user_id: int
-    input_id: int
-    is_baseline_sync: bool
-    changes_created: int
+    stage: str
+    first_source_id: int | None
 
 
 def get_onboarding_status(db: Session) -> OnboardingStatus:
@@ -51,36 +40,27 @@ def get_onboarding_status(db: Session) -> OnboardingStatus:
             stage="needs_user",
             message="Create user profile first with notify_email.",
             registered_user_id=None,
-            first_input_id=None,
+            first_source_id=None,
             last_error=None,
         )
 
-    first_ics_input = get_single_ics_input_for_user(db, user_id=user.id)
+    first_source = get_first_active_input_source(db, user_id=user.id)
 
-    if first_ics_input is None:
+    if first_source is None:
         return OnboardingStatus(
-            stage="needs_ics",
-            message="Connect first ICS calendar input.",
+            stage="needs_source_connection",
+            message="Connect at least one active input source.",
             registered_user_id=user.id,
-            first_input_id=None,
-            last_error=None,
-        )
-
-    if user.onboarding_completed_at is not None:
-        return OnboardingStatus(
-            stage="ready",
-            message="Onboarding complete.",
-            registered_user_id=user.id,
-            first_input_id=first_ics_input.id,
+            first_source_id=None,
             last_error=None,
         )
 
     return OnboardingStatus(
-        stage="needs_baseline",
-        message="Run first successful ICS baseline sync.",
+        stage="ready",
+        message="Onboarding complete.",
         registered_user_id=user.id,
-        first_input_id=first_ics_input.id,
-        last_error=first_ics_input.last_error,
+        first_source_id=first_source.id,
+        last_error=first_source.last_error_message,
     )
 
 
@@ -88,60 +68,14 @@ def register_onboarding(
     db: Session,
     *,
     notify_email: str,
-    ics_url: str,
 ) -> OnboardingRegisterResult:
     user, _ = create_or_initialize_user(db, notify_email=notify_email)
-
-    try:
-        input_result = create_ics_input(
-            db,
-            user_id=user.id,
-            payload=InputCreateRequest(url=ics_url),
-        )
-    except RuntimeError as exc:
-        raise OnboardingRegisterError(str(exc), status_code=422) from exc
-
-    sync_result = _run_baseline_sync(db, input_row=input_result.input)
-    if sync_result.status in BASELINE_FAILURE_STATUSES:
-        safe_error = sync_result.last_error or "baseline sync failed"
-        failed_input = db.get(Input, input_result.input.id)
-        if failed_input is not None:
-            db.delete(failed_input)
-        user.onboarding_completed_at = None
-        db.commit()
-        if sync_result.status == SyncRunStatus.PARSE_FAILED:
-            raise OnboardingRegisterError(safe_error, status_code=422)
-        raise OnboardingRegisterError(safe_error, status_code=502)
-
-    user.onboarding_completed_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(user)
+    status = get_onboarding_status(db)
+    if status.registered_user_id is None:
+        raise OnboardingRegisterError("register user failed", status_code=422)
 
     return OnboardingRegisterResult(
         user_id=user.id,
-        input_id=input_result.input.id,
-        is_baseline_sync=sync_result.is_baseline_sync,
-        changes_created=sync_result.changes_created,
-    )
-
-
-def _run_baseline_sync(db: Session, *, input_row: Input) -> SyncRunResult:
-    # During onboarding we do not want a real email side effect; this only validates
-    # that fetch/parse/diff pipeline succeeds and seeds the baseline snapshot/events.
-    class _NoopNotifier(Notifier):
-        def send_changes_digest(
-            self,
-            to_email: str,
-            input_label: str,
-            input_id: int,
-            items: list[ChangeDigestItem],
-        ) -> SendResult:
-            return SendResult(success=True, error=None)
-
-    return sync_input(
-        db,
-        input_row,
-        notifier=_NoopNotifier(),
-        trigger_type=SyncTriggerType.MANUAL,
-        lock_owner="onboarding-register",
+        stage=status.stage,
+        first_source_id=status.first_source_id,
     )

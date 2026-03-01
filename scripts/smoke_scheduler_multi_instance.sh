@@ -29,6 +29,8 @@ FEED_DIR="$(mktemp -d /tmp/deadline_diff_feed.XXXXXX)"
 SMTP_LOG="${LOG_DIR}/smtp.log"
 API_A_LOG="${LOG_DIR}/api_a.log"
 API_B_LOG="${LOG_DIR}/api_b.log"
+ORCH_LOG="${LOG_DIR}/orchestrator.log"
+CONNECTOR_LOG="${LOG_DIR}/connector.log"
 HTTP_LOG="${LOG_DIR}/http.log"
 
 mkdir -p "${LOG_DIR}"
@@ -37,10 +39,14 @@ SMTP_PID=""
 HTTP_PID=""
 API_A_PID=""
 API_B_PID=""
+ORCH_PID=""
+CONNECTOR_PID=""
 
 cleanup() {
   [[ -n "${API_A_PID}" ]] && kill "${API_A_PID}" >/dev/null 2>&1 || true
   [[ -n "${API_B_PID}" ]] && kill "${API_B_PID}" >/dev/null 2>&1 || true
+  [[ -n "${ORCH_PID}" ]] && kill "${ORCH_PID}" >/dev/null 2>&1 || true
+  [[ -n "${CONNECTOR_PID}" ]] && kill "${CONNECTOR_PID}" >/dev/null 2>&1 || true
   [[ -n "${SMTP_PID}" ]] && kill "${SMTP_PID}" >/dev/null 2>&1 || true
   [[ -n "${HTTP_PID}" ]] && kill "${HTTP_PID}" >/dev/null 2>&1 || true
   rm -rf "${FEED_DIR}"
@@ -97,6 +103,20 @@ SCHEMA_GUARD_ENABLED="true" \
 .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001 >"${API_B_LOG}" 2>&1 &
 API_B_PID="$!"
 
+APP_API_KEY="${APP_KEY}" \
+DATABASE_URL="${DATABASE_URL_VALUE}" \
+DISABLE_SCHEDULER="true" \
+ORCHESTRATOR_TICK_SECONDS="1" \
+"${PYTHON_BIN}" -m services.ingestion_orchestrator.worker >"${ORCH_LOG}" 2>&1 &
+ORCH_PID="$!"
+
+APP_API_KEY="${APP_KEY}" \
+DATABASE_URL="${DATABASE_URL_VALUE}" \
+DISABLE_SCHEDULER="true" \
+CONNECTOR_TICK_SECONDS="1" \
+"${PYTHON_BIN}" -m services.connector_runtime.worker >"${CONNECTOR_LOG}" 2>&1 &
+CONNECTOR_PID="$!"
+
 echo "[6/8] Waiting for both APIs to become healthy..."
 for _ in {1..30}; do
   if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1 && curl -fsS http://127.0.0.1:8001/health >/dev/null 2>&1; then
@@ -114,19 +134,23 @@ if ! curl -fsS http://127.0.0.1:8001/health >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "[7/8] Creating source and waiting baseline tick..."
+echo "[7/8] Registering user + creating v2 calendar source..."
+curl -fsS -X POST \
+  -H "X-API-Key: ${APP_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"notify_email":"notify@example.com"}' \
+  http://127.0.0.1:8000/v2/onboarding/registrations >/dev/null
+
 SOURCE_JSON="$(
-  curl -fsS \
+  curl -fsS -X POST \
     -H "X-API-Key: ${APP_KEY}" \
     -H "Content-Type: application/json" \
-    -d '{"name":"Smoke Multi Instance","url":"http://127.0.0.1:8765/feed.ics","interval_minutes":1,"notify_email":"notify@example.com"}' \
-    http://127.0.0.1:8000/v1/sources/ics
+    -d '{"source_kind":"calendar","provider":"calendar","display_name":"Smoke Multi Instance","poll_interval_seconds":60,"config":{},"secrets":{"url":"http://127.0.0.1:8765/feed.ics"}}' \
+    http://127.0.0.1:8000/v2/input-sources
 )"
-SOURCE_ID="$(echo "${SOURCE_JSON}" | "${PYTHON_BIN}" -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+SOURCE_ID="$(echo "${SOURCE_JSON}" | "${PYTHON_BIN}" -c 'import json,sys; print(json.load(sys.stdin)["source_id"])')"
 
-sleep 8
-
-echo "[8/8] Mutating feed, waiting scheduler diff, and asserting dedup..."
+echo "[8/8] Mutating feed and asserting v2 sync request idempotency..."
 cat > "${FEED_DIR}/feed.ics" <<'EOF'
 BEGIN:VCALENDAR
 VERSION:2.0
@@ -141,23 +165,40 @@ END:VEVENT
 END:VCALENDAR
 EOF
 
-HAS_CHANGES="0"
-# interval_minutes is 1, so allow up to 2 minutes to avoid boundary flakes
-# between baseline completion and the first due scheduler cycle.
-for _ in {1..60}; do
-  CHANGES_JSON="$(curl -fsS -H "X-API-Key: ${APP_KEY}" "http://127.0.0.1:8000/v1/changes?source_id=${SOURCE_ID}&limit=20")"
-  CHANGE_COUNT="$(echo "${CHANGES_JSON}" | "${PYTHON_BIN}" -c 'import json,sys; print(len(json.load(sys.stdin)))')"
-  if [[ "${CHANGE_COUNT}" -gt 0 ]]; then
-    HAS_CHANGES="1"
-    break
-  fi
-  sleep 2
-done
+IDEMPOTENCY_KEY="smoke-sync-${SOURCE_ID}"
+REQ_A="$(
+  curl -fsS -X POST \
+    -H "X-API-Key: ${APP_KEY}" \
+    -H "Idempotency-Key: ${IDEMPOTENCY_KEY}" \
+    -H "Content-Type: application/json" \
+    -d "{\"source_id\": ${SOURCE_ID}}" \
+    http://127.0.0.1:8000/v2/sync-requests
+)"
+REQ_B="$(
+  curl -fsS -X POST \
+    -H "X-API-Key: ${APP_KEY}" \
+    -H "Idempotency-Key: ${IDEMPOTENCY_KEY}" \
+    -H "Content-Type: application/json" \
+    -d "{\"source_id\": ${SOURCE_ID}}" \
+    http://127.0.0.1:8000/v2/sync-requests
+)"
 
-if [[ "${HAS_CHANGES}" != "1" ]]; then
-  echo "No changes detected from scheduler."
+REQ_ID_A="$(echo "${REQ_A}" | "${PYTHON_BIN}" -c 'import json,sys; print(json.load(sys.stdin)["request_id"])')"
+REQ_ID_B="$(echo "${REQ_B}" | "${PYTHON_BIN}" -c 'import json,sys; print(json.load(sys.stdin)["request_id"])')"
+
+if [[ "${REQ_ID_A}" != "${REQ_ID_B}" ]]; then
+  echo "Idempotent sync request creation failed: request ids differ."
   exit 1
 fi
+
+for _ in {1..60}; do
+  STATUS_JSON="$(curl -fsS -H "X-API-Key: ${APP_KEY}" "http://127.0.0.1:8000/v2/sync-requests/${REQ_ID_A}")"
+  STATUS_VALUE="$(echo "${STATUS_JSON}" | "${PYTHON_BIN}" -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
+  if [[ "${STATUS_VALUE}" == "SUCCEEDED" || "${STATUS_VALUE}" == "FAILED" ]]; then
+    break
+  fi
+  sleep 1
+done
 
 "${PYTHON_BIN}" <<'PY'
 import os
@@ -168,24 +209,26 @@ with engine.connect() as conn:
     duplicates = conn.execute(
         text(
             """
-            SELECT change_id, COUNT(*) AS cnt
-            FROM notifications
-            GROUP BY change_id
+            SELECT request_id, COUNT(*) AS cnt
+            FROM ingest_results
+            GROUP BY request_id
             HAVING COUNT(*) > 1
             """
         )
     ).all()
-    total = conn.execute(text("SELECT COUNT(*) FROM notifications")).scalar_one()
+    total = conn.execute(text("SELECT COUNT(*) FROM ingest_results")).scalar_one()
 
 if duplicates:
-    raise SystemExit(f"Duplicate notifications detected: {duplicates}")
+    raise SystemExit(f"Duplicate ingest results detected: {duplicates}")
 if total == 0:
-    raise SystemExit("No notification rows were generated.")
-print("notification_dedup_ok total_notifications=", total)
+    raise SystemExit("No ingest result rows were generated.")
+print("ingest_result_dedup_ok total_results=", total)
 PY
 
-echo "Smoke success: scheduler ran on two instances without duplicate notifications."
+echo "Smoke success: v2 sync request and ingest dedup checks passed."
 echo "Logs:"
 echo "  ${API_A_LOG}"
 echo "  ${API_B_LOG}"
+echo "  ${ORCH_LOG}"
+echo "  ${CONNECTOR_LOG}"
 echo "  ${SMTP_LOG}"

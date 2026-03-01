@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from sqlalchemy import Select, case, func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -16,25 +16,18 @@ from app.db.models import (
     Change,
     ChangeType,
     EmailMessage,
-    Event,
-    Snapshot,
-    SnapshotEvent,
     Input,
     InputType,
     SyncRun,
     SyncRunStatus,
     SyncTriggerType,
 )
-from app.modules.diff.engine import EventState, compute_diff
 from app.modules.evidence.store import save_ics
 from app.modules.emails.service import create_review_queue_from_email_changes
 from app.modules.notify.interface import Notifier
 from app.modules.notify.service import enqueue_notifications_for_changes
 from app.modules.sync.ics_client import ICSClient
 from app.modules.sync.gmail_client import GmailAPIError, GmailClient, GmailHistoryExpiredError
-from app.modules.sync.ics_parser import ICSParser
-from app.modules.sync.normalizer import normalize_events
-from app.modules.sync.types import FetchResult
 
 logger = logging.getLogger(__name__)
 MAX_SYNC_RUN_ERROR_MESSAGE_LEN = 512
@@ -162,7 +155,6 @@ def sync_input(
     input: Input,
     notifier: Notifier | None = None,
     ics_client: ICSClient | None = None,
-    ics_parser: ICSParser | None = None,
     *,
     trigger_type: SyncTriggerType = SyncTriggerType.SCHEDULER,
     lock_owner: str | None = None,
@@ -176,13 +168,11 @@ def sync_input(
             lock_owner=lock_owner,
         )
 
-    settings = get_settings()
     run_started_at = datetime.now(timezone.utc)
     input.last_checked_at = run_started_at
     input.last_error = None
 
     client = ics_client or ICSClient()
-    parser = ics_parser or ICSParser()
 
     try:
         input_url = decrypt_secret(input.encrypted_url)
@@ -194,36 +184,15 @@ def sync_input(
         )
 
         if fetched.not_modified:
-            finished_at = datetime.now(timezone.utc)
-            _update_input_pull_cache(input, fetched, last_content_hash=input.last_content_hash)
-            input.last_checked_at = finished_at
-            input.last_ok_at = finished_at
-            input.last_error = None
-            run = _build_sync_run(
-                input_id=input.id,
-                trigger_type=trigger_type,
+            return _handle_input_error(
+                db,
+                input,
+                RuntimeError("calendar parser removed, pending llm implementation"),
                 started_at=run_started_at,
-                finished_at=finished_at,
-                status=SyncRunStatus.NO_CHANGE,
-                changes_count=0,
-                lock_owner=lock_owner,
-            )
-            db.add(run)
-            db.commit()
-            db.refresh(run)
-            return SyncRunResult(
-                input_id=input.id,
-                changes_created=0,
-                email_sent=False,
-                last_error=None,
-                is_baseline_sync=False,
-                sync_failed=False,
-                notification_failed=False,
-                notification_skipped_duplicate=False,
-                status=SyncRunStatus.NO_CHANGE,
-                error_code=None,
-                run_id=run.id,
                 trigger_type=trigger_type,
+                lock_owner=lock_owner,
+                status=SyncRunStatus.PARSE_FAILED,
+                error_code="parse_calendar_parser_removed",
             )
 
         if fetched.content is None:
@@ -231,36 +200,15 @@ def sync_input(
 
         content_hash = _compute_normalized_content_hash(fetched.content)
         if input.last_content_hash is not None and input.last_content_hash == content_hash:
-            finished_at = datetime.now(timezone.utc)
-            _update_input_pull_cache(input, fetched, last_content_hash=content_hash)
-            input.last_checked_at = finished_at
-            input.last_ok_at = finished_at
-            input.last_error = None
-            run = _build_sync_run(
-                input_id=input.id,
-                trigger_type=trigger_type,
+            return _handle_input_error(
+                db,
+                input,
+                RuntimeError("calendar parser removed, pending llm implementation"),
                 started_at=run_started_at,
-                finished_at=finished_at,
-                status=SyncRunStatus.NO_CHANGE,
-                changes_count=0,
-                lock_owner=lock_owner,
-            )
-            db.add(run)
-            db.commit()
-            db.refresh(run)
-            return SyncRunResult(
-                input_id=input.id,
-                changes_created=0,
-                email_sent=False,
-                last_error=None,
-                is_baseline_sync=False,
-                sync_failed=False,
-                notification_failed=False,
-                notification_skipped_duplicate=False,
-                status=SyncRunStatus.NO_CHANGE,
-                error_code=None,
-                run_id=run.id,
                 trigger_type=trigger_type,
+                lock_owner=lock_owner,
+                status=SyncRunStatus.PARSE_FAILED,
+                error_code="parse_calendar_parser_removed",
             )
     except Exception as exc:
         return _handle_input_error(
@@ -276,7 +224,7 @@ def sync_input(
 
     assert fetched.content is not None
     try:
-        evidence_key = save_ics(input_id=input.id, content=fetched.content, retrieved_at=fetched.fetched_at_utc)
+        save_ics(input_id=input.id, content=fetched.content, retrieved_at=fetched.fetched_at_utc)
     except Exception as exc:
         return _handle_input_error(
             db,
@@ -289,248 +237,16 @@ def sync_input(
             error_code="diff_exception",
         )
 
-    try:
-        raw_events = parser.parse(fetched.content)
-        normalized_events = normalize_events(raw_events)
-    except Exception as exc:
-        return _handle_input_error(
-            db,
-            input,
-            exc,
-            started_at=run_started_at,
-            trigger_type=trigger_type,
-            lock_owner=lock_owner,
-            status=SyncRunStatus.PARSE_FAILED,
-            error_code="parse_invalid_ics",
-        )
-
-    try:
-        snapshot = Snapshot(
-            input_id=input.id,
-            retrieved_at=fetched.fetched_at_utc,
-            etag=fetched.etag,
-            content_hash=content_hash,
-            event_count=len(normalized_events),
-            raw_evidence_key=evidence_key,
-        )
-        db.add(snapshot)
-        db.flush()
-
-        previous_snapshot = _get_previous_snapshot(db, input_id=input.id, current_snapshot_id=snapshot.id)
-
-        for event in normalized_events:
-            db.add(
-                SnapshotEvent(
-                    snapshot_id=snapshot.id,
-                    uid=event.uid,
-                    course_label=event.course_label,
-                    title=event.title,
-                    start_at_utc=event.start_at_utc,
-                    end_at_utc=event.end_at_utc,
-                )
-            )
-
-        canonical_rows = db.scalars(select(Event).where(Event.input_id == input.id)).all()
-        canonical_map: dict[str, EventState] = {
-            row.uid: EventState(
-                uid=row.uid,
-                course_label=row.course_label,
-                title=row.title,
-                start_at_utc=_as_utc(row.start_at_utc),
-                end_at_utc=_as_utc(row.end_at_utc),
-            )
-            for row in canonical_rows
-        }
-        snapshot_map = {event.uid: event for event in normalized_events}
-        is_baseline_sync = previous_snapshot is None and len(canonical_rows) == 0
-
-        if is_baseline_sync:
-            for event in normalized_events:
-                db.add(
-                    Event(
-                        input_id=input.id,
-                        uid=event.uid,
-                        course_label=event.course_label,
-                        title=event.title,
-                        start_at_utc=event.start_at_utc,
-                        end_at_utc=event.end_at_utc,
-                    )
-                )
-
-            finished_at = datetime.now(timezone.utc)
-            input.last_checked_at = finished_at
-            input.last_ok_at = finished_at
-            input.last_error = None
-            _update_input_pull_cache(input, fetched, last_content_hash=content_hash)
-            run = _build_sync_run(
-                input_id=input.id,
-                trigger_type=trigger_type,
-                started_at=run_started_at,
-                finished_at=finished_at,
-                status=SyncRunStatus.NO_CHANGE,
-                changes_count=0,
-                lock_owner=lock_owner,
-            )
-            db.add(run)
-
-            db.commit()
-            db.refresh(run)
-            return SyncRunResult(
-                input_id=input.id,
-                changes_created=0,
-                email_sent=False,
-                last_error=None,
-                is_baseline_sync=True,
-                sync_failed=False,
-                notification_failed=False,
-                notification_skipped_duplicate=False,
-                status=SyncRunStatus.NO_CHANGE,
-                error_code=None,
-                run_id=run.id,
-                trigger_type=trigger_type,
-            )
-
-        candidate_removed = set(canonical_map) - set(snapshot_map)
-        debounced_removed_uids = _find_debounced_removed_uids(db, input_id=input.id, candidate_uids=candidate_removed)
-
-        diff_result = compute_diff(
-            canonical_events=canonical_map,
-            snapshot_events=snapshot_map,
-            debounced_removed_uids=debounced_removed_uids,
-        )
-
-        canonical_by_uid = {row.uid: row for row in canonical_rows}
-
-        for created in diff_result.created_events:
-            db.add(
-                Event(
-                    input_id=input.id,
-                    uid=created.uid,
-                    course_label=created.course_label,
-                    title=created.title,
-                    start_at_utc=created.start_at_utc,
-                    end_at_utc=created.end_at_utc,
-                )
-            )
-
-        for updated in diff_result.updated_events:
-            row = canonical_by_uid.get(updated.uid)
-            if row is None:
-                continue
-            row.course_label = updated.course_label
-            row.title = updated.title
-            row.start_at_utc = updated.start_at_utc
-            row.end_at_utc = updated.end_at_utc
-
-        for removed_uid in diff_result.removed_uids:
-            row = canonical_by_uid.get(removed_uid)
-            if row is not None:
-                db.delete(row)
-
-        change_rows: list[Change] = []
-        detected_at = datetime.now(timezone.utc)
-        for payload in diff_result.changes:
-            change = Change(
-                input_id=input.id,
-                event_uid=payload.event_uid,
-                change_type=payload.change_type,
-                detected_at=detected_at,
-                before_json=payload.before_json,
-                after_json=payload.after_json,
-                delta_seconds=payload.delta_seconds,
-                before_snapshot_id=previous_snapshot.id if previous_snapshot is not None else None,
-                after_snapshot_id=snapshot.id,
-                evidence_keys={
-                    "before": previous_snapshot.raw_evidence_key if previous_snapshot is not None else None,
-                    "after": snapshot.raw_evidence_key,
-                },
-            )
-            db.add(change)
-            change_rows.append(change)
-
-        db.flush()
-
-        email_sent = False
-        notify_error: str | None = None
-        notify_dedup_skipped = 0
-        notification_state: str | None = None
-        if settings.enable_notifications:
-            (
-                email_sent,
-                notify_error,
-                notify_dedup_skipped,
-                notification_state,
-            ) = _enqueue_and_maybe_dispatch_notifications(
-                db=db,
-                input=input,
-                changes=change_rows,
-                notifier=notifier,
-                now=datetime.now(timezone.utc),
-            )
-
-        finished_at = datetime.now(timezone.utc)
-        input.last_checked_at = finished_at
-        input.last_ok_at = finished_at
-        _update_input_pull_cache(input, fetched, last_content_hash=content_hash)
-
-        run_status = SyncRunStatus.NO_CHANGE
-        error_code: str | None = None
-        safe_notify_error: str | None = None
-        if change_rows:
-            input.last_change_detected_at = finished_at
-            run_status = SyncRunStatus.CHANGED
-        if notify_error is not None:
-            safe_notify_error = _sanitize_sync_error(notify_error)
-            input.last_error = safe_notify_error
-            input.last_error_at = finished_at
-            run_status = SyncRunStatus.EMAIL_FAILED
-            error_code = _classify_email_error(notify_error)
-        else:
-            input.last_error = None
-        if email_sent:
-            input.last_email_sent_at = finished_at
-
-        run = _build_sync_run(
-            input_id=input.id,
-            trigger_type=trigger_type,
-            started_at=run_started_at,
-            finished_at=finished_at,
-            status=run_status,
-            changes_count=len(change_rows),
-            error_code=error_code,
-            error_message=safe_notify_error,
-            lock_owner=lock_owner,
-        )
-        db.add(run)
-
-        db.commit()
-        db.refresh(run)
-        return SyncRunResult(
-            input_id=input.id,
-            changes_created=len(change_rows),
-            email_sent=email_sent,
-            last_error=safe_notify_error,
-            is_baseline_sync=False,
-            sync_failed=False,
-            notification_failed=notify_error is not None,
-            notification_skipped_duplicate=notify_dedup_skipped > 0,
-            status=run_status,
-            error_code=error_code,
-            run_id=run.id,
-            trigger_type=trigger_type,
-            notification_state=notification_state,
-        )
-    except Exception as exc:
-        return _handle_input_error(
-            db,
-            input,
-            exc,
-            started_at=run_started_at,
-            trigger_type=trigger_type,
-            lock_owner=lock_owner,
-            status=SyncRunStatus.DIFF_FAILED,
-            error_code="diff_exception",
-        )
+    return _handle_input_error(
+        db,
+        input,
+        RuntimeError("calendar parser removed, pending llm implementation"),
+        started_at=run_started_at,
+        trigger_type=trigger_type,
+        lock_owner=lock_owner,
+        status=SyncRunStatus.PARSE_FAILED,
+        error_code="parse_calendar_parser_removed",
+    )
 
 
 def _sync_email_input(
@@ -767,42 +483,6 @@ def _sync_email_input(
             status=SyncRunStatus.FETCH_FAILED,
             error_code=_classify_gmail_fetch_error(exc),
         )
-
-
-def _find_debounced_removed_uids(db: Session, input_id: int, candidate_uids: set[str]) -> set[str]:
-    if not candidate_uids:
-        return set()
-
-    snapshot_id_stmt: Select[tuple[int]] = (
-        select(Snapshot.id)
-        .where(Snapshot.input_id == input_id)
-        .order_by(Snapshot.id.desc())
-        .limit(3)
-    )
-    latest_snapshot_ids = db.scalars(snapshot_id_stmt).all()
-    if len(latest_snapshot_ids) < 3:
-        return set()
-
-    present_uid_stmt = select(SnapshotEvent.uid).where(
-        SnapshotEvent.snapshot_id.in_(latest_snapshot_ids),
-        SnapshotEvent.uid.in_(candidate_uids),
-    )
-    present_uids = set(db.scalars(present_uid_stmt).all())
-
-    return candidate_uids - present_uids
-
-
-def _get_previous_snapshot(db: Session, input_id: int, current_snapshot_id: int) -> Snapshot | None:
-    stmt = (
-        select(Snapshot)
-        .where(
-            Snapshot.input_id == input_id,
-            Snapshot.id < current_snapshot_id,
-        )
-        .order_by(Snapshot.id.desc())
-        .limit(1)
-    )
-    return db.scalar(stmt)
 
 
 def _handle_input_error(
@@ -1072,12 +752,6 @@ def _classify_email_error(message: str) -> str:
     return "email_send_failed"
 
 
-def _as_utc(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
-
-
 def _compute_normalized_content_hash(content: bytes) -> str:
     normalized_content = _normalize_ics_bytes(content)
     return hashlib.sha256(normalized_content).hexdigest()
@@ -1090,12 +764,3 @@ def _normalize_ics_bytes(content: bytes) -> bytes:
     if joined:
         joined += "\n"
     return joined.encode("utf-8")
-
-
-def _update_input_pull_cache(input: Input, fetched: FetchResult, *, last_content_hash: str | None) -> None:
-    if fetched.etag is not None:
-        input.etag = fetched.etag
-    if fetched.last_modified is not None:
-        input.last_modified = fetched.last_modified
-    if last_content_hash is not None:
-        input.last_content_hash = last_content_hash

@@ -28,7 +28,7 @@ export function getEmailReviewQueue(
     search.set("cursor", params.cursor);
   }
   const query = search.toString();
-  return apiRequest<EmailQueueItem[]>(config, `/v1/review/emails${query ? `?${query}` : ""}`);
+  return apiRequest<EmailQueueItem[]>(config, `/v2/review-items/emails${query ? `?${query}` : ""}`);
 }
 
 export function updateEmailRoute(
@@ -36,14 +36,14 @@ export function updateEmailRoute(
   emailId: string,
   payload: UpdateEmailRouteRequest
 ): Promise<UpdateEmailRouteResponse> {
-  return apiRequest<UpdateEmailRouteResponse>(config, `/v1/review/emails/${encodeURIComponent(emailId)}/route`, {
+  return apiRequest<UpdateEmailRouteResponse>(config, `/v2/review-items/emails/${encodeURIComponent(emailId)}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
 }
 
 export function markEmailViewed(config: AppConfig, emailId: string): Promise<MarkEmailViewedResponse> {
-  return apiRequest<MarkEmailViewedResponse>(config, `/v1/review/emails/${encodeURIComponent(emailId)}/viewed`, {
+  return apiRequest<MarkEmailViewedResponse>(config, `/v2/review-items/emails/${encodeURIComponent(emailId)}/views`, {
     method: "POST",
   });
 }
@@ -53,8 +53,12 @@ export function applyEmailReview(
   emailId: string,
   payload: ApplyEmailReviewRequest = {}
 ): Promise<ApplyEmailReviewResponse> {
-  return apiRequest<ApplyEmailReviewResponse>(config, `/v1/review/emails/${encodeURIComponent(emailId)}/apply`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  return apiRequest<ApplyEmailReviewResponse>(
+    config,
+    `/v2/review-items/emails/${encodeURIComponent(emailId)}/applications`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }

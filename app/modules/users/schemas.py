@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-import re
 
 from pydantic import BaseModel, Field, field_validator
 
-EMAIL_PATTERN = re.compile(r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$")
+from app.modules.users.email_utils import is_valid_email_address
 
 
 class UserResponse(BaseModel):
@@ -31,6 +30,6 @@ class UserUpdateRequest(BaseModel):
         stripped = value.strip()
         if not stripped:
             return None
-        if not EMAIL_PATTERN.fullmatch(stripped):
+        if not is_valid_email_address(stripped):
             raise ValueError("must be a valid email address")
         return stripped

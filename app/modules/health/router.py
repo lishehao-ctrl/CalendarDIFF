@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import func, select, text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core.logging import sanitize_log_message
-from app.db.models import Input
+from app.db.models import InputSource
 from app.db.session import get_db
-from app.modules.scheduler.runner import SchedulerRunner
 from app.state import SchedulerStatus
 
 router = APIRouter(tags=["health"])
@@ -26,19 +26,19 @@ def health(request: Request, db: Session = Depends(get_db)) -> dict[str, object]
     except Exception as exc:  # pragma: no cover - defensive path
         db_error = sanitize_log_message(str(exc))
 
-    runner: SchedulerRunner | None = getattr(request.app.state, "scheduler_runner", None)
+    runner: Any = getattr(request.app.state, "scheduler_runner", None)
     scheduler_summary = runner.status.to_dict() if runner else SchedulerStatus().to_dict()
 
-    next_input_id: int | None = None
+    next_source_id: int | None = None
     next_check_at: datetime | None = None
     if db_ok:
         try:
-            next_input_id, next_check_at = _compute_next_expected_check(db, now=now)
+            next_source_id, next_check_at = _compute_next_expected_check(db, now=now)
         except Exception as exc:  # pragma: no cover - defensive path
             db_ok = False
             db_error = sanitize_log_message(str(exc))
 
-    scheduler_summary["next_expected_input_id"] = next_input_id
+    scheduler_summary["next_expected_source_id"] = next_source_id
     scheduler_summary["next_expected_check_at"] = next_check_at
     if db_ok:
         scheduler_summary["database_dialect"] = db.get_bind().dialect.name
@@ -53,24 +53,20 @@ def health(request: Request, db: Session = Depends(get_db)) -> dict[str, object]
 
 
 def _compute_next_expected_check(db: Session, now: datetime) -> tuple[int | None, datetime | None]:
-    next_check_expr = func.coalesce(
-        Input.last_checked_at + func.make_interval(0, 0, 0, 0, 0, Input.interval_minutes, 0),
-        now,
-    )
     stmt = (
-        select(Input.id, next_check_expr.label("next_check_at"))
-        .where(Input.is_active.is_(True))
-        .order_by(next_check_expr.asc(), Input.id.asc())
+        select(InputSource.id, InputSource.next_poll_at)
+        .where(InputSource.is_active.is_(True))
+        .order_by(InputSource.next_poll_at.asc().nullslast(), InputSource.id.asc())
         .limit(1)
     )
     row = db.execute(stmt).first()
     if row is None:
         return None, None
 
-    input_id, next_check_at = row
+    source_id, next_check_at = row
     if next_check_at is None:
-        return None, None
-    return input_id, _as_utc(next_check_at)
+        return source_id, now
+    return source_id, _as_utc(next_check_at)
 
 
 def _as_utc(value: datetime) -> datetime:

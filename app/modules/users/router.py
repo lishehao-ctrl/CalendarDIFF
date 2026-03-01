@@ -15,10 +15,10 @@ from app.modules.users.service import (
     user_not_initialized_detail,
 )
 
-router = APIRouter(prefix="/v1/user", tags=["user"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/v2/users", tags=["users"], dependencies=[Depends(require_api_key)])
 
 
-@router.get("", response_model=UserResponse)
+@router.get("/me", response_model=UserResponse)
 def get_user(db: Session = Depends(get_db)) -> UserResponse:
     user = get_registered_user(db)
     if user is None:
@@ -26,7 +26,7 @@ def get_user(db: Session = Depends(get_db)) -> UserResponse:
     return _to_user_response(user)
 
 
-@router.patch("", response_model=UserResponse)
+@router.patch("/me", response_model=UserResponse)
 def patch_user(payload: UserUpdateRequest, db: Session = Depends(get_db)) -> UserResponse:
     user = get_registered_user(db)
     if user is None:

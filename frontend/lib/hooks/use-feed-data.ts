@@ -14,7 +14,7 @@ export type ChangeFilter = "all" | "unread";
 
 export function useFeedData() {
   const runtime = useAppRuntime();
-  const { config, ensureOnboarded, needsOnboarding, setNeedsOnboarding, pushToast, bootstrap } = runtime;
+  const { config, ensureOnboarded, needsOnboarding, setNeedsOnboarding, pushToast, sources } = runtime;
 
   const [activeSourceId, setActiveSourceId] = useState<number | null>(null);
 
@@ -22,29 +22,26 @@ export function useFeedData() {
   const [changesLoading, setChangesLoading] = useState(false);
   const [changesError, setChangesError] = useState<string | null>(null);
   const [changeFilter, setChangeFilter] = useState<ChangeFilter>("all");
-  const [changeSourceTypeFilter, setChangeSourceTypeFilter] = useState<"all" | "email" | "ics">("all");
+  const [changeSourceTypeFilter, setChangeSourceTypeFilter] = useState<"all" | "email" | "calendar">("all");
   const [changeNotes, setChangeNotes] = useState<Record<number, string>>({});
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const inputId = parsePositiveInt(params.get("input_id"));
-    if (inputId !== null) {
-      setActiveSourceId(inputId);
+    const sourceId = parsePositiveInt(params.get("source_id"));
+    if (sourceId !== null) {
+      setActiveSourceId(sourceId);
     }
   }, []);
 
   useEffect(() => {
-    if (!bootstrap) {
-      return;
-    }
-    const rows = bootstrap.inputs.filter((item) => item.is_active);
+    const rows = sources.filter((item) => item.is_active);
     setActiveSourceId((current) => {
-      if (current && rows.some((item) => item.id === current)) {
+      if (current && rows.some((item) => item.source_id === current)) {
         return current;
       }
-      return rows[0]?.id ?? null;
+      return rows[0]?.source_id ?? null;
     });
-  }, [bootstrap]);
+  }, [sources]);
 
   useEffect(() => {
     if (!config) {
@@ -81,8 +78,8 @@ export function useFeedData() {
 
   async function loadChangesFeed(runtimeConfig: NonNullable<typeof config>): Promise<ChangeFeedRecord[]> {
     const rows = await getFeed(runtimeConfig, {
+      source_kinds: changeSourceTypeFilter === "all" ? undefined : changeSourceTypeFilter,
       limit: 200,
-      input_types: changeSourceTypeFilter === "all" ? undefined : changeSourceTypeFilter,
     });
     setChanges(rows);
     setChangeNotes(Object.fromEntries(rows.map((item) => [item.id, item.viewed_note ?? ""])));

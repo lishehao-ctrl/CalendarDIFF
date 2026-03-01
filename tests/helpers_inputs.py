@@ -2,15 +2,25 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.modules.inputs.schemas import InputCreateRequest
-from app.modules.inputs.service import create_ics_input
+from app.db.models import User
+from app.modules.input_control_plane.schemas import InputSourceCreateRequest
+from app.modules.input_control_plane.service import create_input_source
 
 
 def create_ics_input_for_user(db_session: Session, *, user_id: int, url: str) -> int:
-    created = create_ics_input(
+    user = db_session.get(User, user_id)
+    if user is None:
+        raise RuntimeError(f"user not found: {user_id}")
+    created = create_input_source(
         db_session,
-        user_id=user_id,
-        payload=InputCreateRequest(url=url),
+        user=user,
+        payload=InputSourceCreateRequest(
+            source_kind="calendar",
+            provider="ics",
+            source_key=f"calendar-{user_id}",
+            display_name="Calendar Source",
+            config={},
+            secrets={"url": url},
+        ),
     )
-    return created.input.id
-
+    return created.id
