@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     email_llm_ambiguous_high: float = 0.2
     email_llm_confidence_threshold: float = 0.85
     email_llm_max_body_chars: int = 4000
+    ingestion_llm_enabled: bool = False
+    ingestion_llm_base_url: str | None = None
+    ingestion_llm_api_key: str | None = None
+    ingestion_llm_model: str = "gpt-5.3-codex"
+    ingestion_llm_timeout_seconds: float = 12.0
+    ingestion_llm_max_retries: int = 1
+    ingestion_llm_max_input_chars: int = 12000
+    llm_allow_http_base_url: bool = False
+    llm_registry_cache_ttl_seconds: int = 30
 
     smtp_host: str = "localhost"
     smtp_port: int = 25

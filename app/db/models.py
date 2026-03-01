@@ -31,6 +31,57 @@ class InputType(str, Enum):
     EMAIL = "email"
 
 
+class SourceKind(str, Enum):
+    CALENDAR = "calendar"
+    EMAIL = "email"
+    TASK = "task"
+    EXAM = "exam"
+    ANNOUNCEMENT = "announcement"
+
+
+class IngestTriggerType(str, Enum):
+    MANUAL = "manual"
+    SCHEDULER = "scheduler"
+    WEBHOOK = "webhook"
+
+
+class SyncRequestStatus(str, Enum):
+    PENDING = "PENDING"
+    QUEUED = "QUEUED"
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+
+
+class IngestJobStatus(str, Enum):
+    PENDING = "PENDING"
+    CLAIMED = "CLAIMED"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    DEAD_LETTER = "DEAD_LETTER"
+
+
+class ConnectorResultStatus(str, Enum):
+    NO_CHANGE = "NO_CHANGE"
+    CHANGED = "CHANGED"
+    FETCH_FAILED = "FETCH_FAILED"
+    PARSE_FAILED = "PARSE_FAILED"
+    AUTH_FAILED = "AUTH_FAILED"
+    RATE_LIMITED = "RATE_LIMITED"
+
+
+class LlmApiMode(str, Enum):
+    CHAT_COMPLETIONS = "chat_completions"
+    RESPONSES = "responses"
+
+
+class OutboxStatus(str, Enum):
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    PROCESSED = "PROCESSED"
+    FAILED = "FAILED"
+
+
 class ChangeType(str, Enum):
     CREATED = "created"
     REMOVED = "removed"
@@ -73,6 +124,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     inputs: Mapped[list[Input]] = relationship(back_populates="user")
+    input_sources: Mapped[list[InputSource]] = relationship(back_populates="user", cascade="all, delete-orphan")
     digest_send_logs: Mapped[list[DigestSendLog]] = relationship(back_populates="user", cascade="all, delete-orphan")
     email_messages: Mapped[list[EmailMessage]] = relationship(
         back_populates="user",
@@ -84,7 +136,6 @@ class Input(Base):
     __table_args__ = (
         Index("ix_inputs_active_last_checked", "is_active", "last_checked_at"),
         Index("ix_inputs_due_lookup", "is_active", "last_checked_at", "interval_minutes"),
-        Index("ux_inputs_user_single_ics", "user_id", unique=True, postgresql_where=sa_text("lower(type) = 'ics'")),
         UniqueConstraint("user_id", "type", "identity_key", name="uq_inputs_user_type_identity_key"),
         CheckConstraint("interval_minutes = 15", name="ck_inputs_interval_minutes_fixed_15"),
     )
@@ -429,3 +480,325 @@ class DigestSendLog(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     user: Mapped[User] = relationship(back_populates="digest_send_logs")
+
+
+class InputSource(Base):
+    __tablename__ = "input_sources"
+    __table_args__ = (
+        UniqueConstraint("user_id", "provider", "source_key", name="uq_input_sources_user_provider_source_key"),
+        Index("ix_input_sources_active_kind", "is_active", "source_kind"),
+        Index("ix_input_sources_active_due", "is_active", "next_poll_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    source_kind: Mapped[SourceKind] = mapped_column(
+        SAEnum(SourceKind, name="source_kind", native_enum=False),
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    poll_interval_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=900, server_default="900")
+    last_polled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    user: Mapped[User] = relationship(back_populates="input_sources")
+    config: Mapped[InputSourceConfig | None] = relationship(
+        back_populates="source",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    secrets: Mapped[InputSourceSecret | None] = relationship(
+        back_populates="source",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    cursor: Mapped[InputSourceCursor | None] = relationship(
+        back_populates="source",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    llm_binding: Mapped[SourceLlmBinding | None] = relationship(
+        back_populates="source",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    sync_requests: Mapped[list[SyncRequest]] = relationship(back_populates="source", cascade="all, delete-orphan")
+
+
+class InputSourceConfig(Base):
+    __tablename__ = "input_source_configs"
+
+    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), primary_key=True)
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    config_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    source: Mapped[InputSource] = relationship(back_populates="config")
+
+
+class InputSourceSecret(Base):
+    __tablename__ = "input_source_secrets"
+
+    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), primary_key=True)
+    encrypted_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    source: Mapped[InputSource] = relationship(back_populates="secrets")
+
+
+class InputSourceCursor(Base):
+    __tablename__ = "input_source_cursors"
+
+    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    cursor_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    source: Mapped[InputSource] = relationship(back_populates="cursor")
+
+
+class LlmProvider(Base):
+    __tablename__ = "llm_providers"
+    __table_args__ = (
+        UniqueConstraint("provider_id", name="uq_llm_providers_provider_id"),
+        Index("ix_llm_providers_enabled_default", "enabled", "is_default"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    provider_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    vendor: Mapped[str] = mapped_column(String(64), nullable=False)
+    base_url: Mapped[str] = mapped_column(Text, nullable=False)
+    api_mode: Mapped[LlmApiMode] = mapped_column(
+        SAEnum(LlmApiMode, name="llm_api_mode", native_enum=False),
+        nullable=False,
+        default=LlmApiMode.CHAT_COMPLETIONS,
+        server_default=LlmApiMode.CHAT_COMPLETIONS.name,
+    )
+    model: Mapped[str] = mapped_column(String(255), nullable=False)
+    api_key_ref: Mapped[str] = mapped_column(String(128), nullable=False)
+    timeout_seconds: Mapped[float] = mapped_column(Float, nullable=False, default=12.0, server_default="12")
+    max_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    max_input_chars: Mapped[int] = mapped_column(Integer, nullable=False, default=12000, server_default="12000")
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    extra_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    source_bindings: Mapped[list[SourceLlmBinding]] = relationship(
+        back_populates="provider",
+        cascade="all, delete-orphan",
+    )
+
+
+class SourceLlmBinding(Base):
+    __tablename__ = "source_llm_bindings"
+    __table_args__ = (
+        Index("ix_source_llm_bindings_provider_id", "llm_provider_id"),
+    )
+
+    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), primary_key=True)
+    llm_provider_id: Mapped[int] = mapped_column(ForeignKey("llm_providers.id", ondelete="RESTRICT"), nullable=False)
+    model_override: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    api_mode_override: Mapped[LlmApiMode | None] = mapped_column(
+        SAEnum(LlmApiMode, name="llm_api_mode", native_enum=False),
+        nullable=True,
+    )
+    prompt_profile: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    source: Mapped[InputSource] = relationship(back_populates="llm_binding")
+    provider: Mapped[LlmProvider] = relationship(back_populates="source_bindings")
+
+
+class SyncRequest(Base):
+    __tablename__ = "sync_requests"
+    __table_args__ = (
+        UniqueConstraint("request_id", name="uq_sync_requests_request_id"),
+        UniqueConstraint("source_id", "idempotency_key", name="uq_sync_requests_source_idempotency"),
+        Index("ix_sync_requests_status_created", "status", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    request_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), nullable=False)
+    trigger_type: Mapped[IngestTriggerType] = mapped_column(
+        SAEnum(IngestTriggerType, name="ingest_trigger_type", native_enum=False),
+        nullable=False,
+    )
+    status: Mapped[SyncRequestStatus] = mapped_column(
+        SAEnum(SyncRequestStatus, name="sync_request_status", native_enum=False),
+        nullable=False,
+        default=SyncRequestStatus.PENDING,
+        server_default=SyncRequestStatus.PENDING.value,
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    source: Mapped[InputSource] = relationship(back_populates="sync_requests")
+    jobs: Mapped[list[IngestJob]] = relationship(
+        back_populates="sync_request",
+        cascade="all, delete-orphan",
+        primaryjoin="SyncRequest.request_id == foreign(IngestJob.request_id)",
+    )
+    ingest_result: Mapped[IngestResult | None] = relationship(
+        back_populates="sync_request",
+        uselist=False,
+        primaryjoin="SyncRequest.request_id == foreign(IngestResult.request_id)",
+    )
+    apply_log: Mapped[IngestApplyLog | None] = relationship(
+        back_populates="sync_request",
+        uselist=False,
+        primaryjoin="SyncRequest.request_id == foreign(IngestApplyLog.request_id)",
+    )
+
+
+class IngestJob(Base):
+    __tablename__ = "ingest_jobs"
+    __table_args__ = (
+        UniqueConstraint("request_id", name="uq_ingest_jobs_request_id"),
+        Index("ix_ingest_jobs_status_next_retry", "status", "next_retry_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    request_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[IngestJobStatus] = mapped_column(
+        SAEnum(IngestJobStatus, name="ingest_job_status", native_enum=False),
+        nullable=False,
+        default=IngestJobStatus.PENDING,
+        server_default=IngestJobStatus.PENDING.value,
+    )
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    claimed_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    claim_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dead_lettered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    sync_request: Mapped[SyncRequest] = relationship(
+        back_populates="jobs",
+        primaryjoin="foreign(IngestJob.request_id) == SyncRequest.request_id",
+    )
+    source: Mapped[InputSource] = relationship()
+
+
+class IngestResult(Base):
+    __tablename__ = "ingest_results"
+    __table_args__ = (
+        UniqueConstraint("request_id", name="uq_ingest_results_request_id"),
+        Index("ix_ingest_results_source_created", "source_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    request_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), nullable=False)
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[ConnectorResultStatus] = mapped_column(
+        SAEnum(ConnectorResultStatus, name="connector_result_status", native_enum=False),
+        nullable=False,
+    )
+    cursor_patch: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    records: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    source: Mapped[InputSource] = relationship()
+    sync_request: Mapped[SyncRequest | None] = relationship(
+        back_populates="ingest_result",
+        uselist=False,
+        primaryjoin="foreign(IngestResult.request_id) == SyncRequest.request_id",
+    )
+
+
+class IntegrationOutbox(Base):
+    __tablename__ = "integration_outbox"
+    __table_args__ = (
+        UniqueConstraint("event_id", name="uq_integration_outbox_event_id"),
+        Index("ix_integration_outbox_status_available", "status", "available_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    aggregate_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    aggregate_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    status: Mapped[OutboxStatus] = mapped_column(
+        SAEnum(OutboxStatus, name="outbox_status", native_enum=False),
+        nullable=False,
+        default=OutboxStatus.PENDING,
+        server_default=OutboxStatus.PENDING.value,
+    )
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class IntegrationInbox(Base):
+    __tablename__ = "integration_inbox"
+    __table_args__ = (
+        UniqueConstraint("consumer_name", "event_id", name="uq_integration_inbox_consumer_event"),
+        Index("ix_integration_inbox_processed", "processed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    consumer_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class IngestApplyLog(Base):
+    __tablename__ = "ingest_apply_log"
+    __table_args__ = (
+        UniqueConstraint("request_id", name="uq_ingest_apply_log_request_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    request_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="applied", server_default="applied")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    sync_request: Mapped[SyncRequest | None] = relationship(
+        back_populates="apply_log",
+        uselist=False,
+        primaryjoin="foreign(IngestApplyLog.request_id) == SyncRequest.request_id",
+    )

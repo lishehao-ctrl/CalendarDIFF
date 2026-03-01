@@ -1,0 +1,409 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from urllib.parse import urlencode
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi.responses import RedirectResponse
+from sqlalchemy.orm import Session
+
+from app.core.config import get_settings
+from app.core.logging import sanitize_log_message
+from app.core.security import require_api_key
+from app.db.models import IngestTriggerType
+from app.db.session import get_db
+from app.modules.input_control_plane.schemas import (
+    DeadLetterReplayResponse,
+    InputSourceCreateRequest,
+    InputSourcePatchRequest,
+    InputSourceResponse,
+    IngestJobReplayResponse,
+    LlmDefaultProviderRequest,
+    LlmProviderCreateRequest,
+    LlmProviderPatchRequest,
+    LlmProviderResponse,
+    LlmProviderValidationResponse,
+    OAuthSessionCreateRequest,
+    OAuthSessionCreateResponse,
+    SourceLlmBindingPatchRequest,
+    SourceLlmBindingResponse,
+    SyncRequestCreateRequest,
+    SyncRequestCreateResponse,
+    SyncRequestStatusResponse,
+    WebhookEnqueueResponse,
+)
+from app.modules.input_control_plane.service import (
+    build_gmail_oauth_start_for_source,
+    build_sync_request_status_payload,
+    create_input_source,
+    create_llm_provider,
+    enqueue_sync_request_idempotent,
+    get_input_source,
+    get_llm_provider,
+    get_sync_request_status,
+    handle_gmail_oauth_callback,
+    list_llm_providers,
+    list_input_sources,
+    replay_dead_letter_jobs,
+    replay_ingest_job,
+    serialize_llm_provider,
+    serialize_source,
+    set_default_llm_provider,
+    soft_delete_input_source,
+    upsert_source_llm_binding,
+    update_input_source,
+    update_llm_provider,
+    validate_llm_provider,
+)
+from app.modules.users.service import get_registered_user
+
+router = APIRouter(prefix="/v2", tags=["input-control-plane"], dependencies=[Depends(require_api_key)])
+public_router = APIRouter(prefix="/v2", tags=["input-control-plane-public"])
+internal_router = APIRouter(prefix="/internal/v2", tags=["internal-input-ops"], dependencies=[Depends(require_api_key)])
+
+
+@router.post("/input-sources", response_model=InputSourceResponse, status_code=status.HTTP_201_CREATED)
+def create_source(
+    payload: InputSourceCreateRequest,
+    db: Session = Depends(get_db),
+) -> InputSourceResponse:
+    user = _require_registered_user_or_409(db)
+    try:
+        source = create_input_source(db, user=user, payload=payload)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=sanitize_log_message(str(exc))) from exc
+    return InputSourceResponse.model_validate(serialize_source(source))
+
+
+@router.get("/input-sources", response_model=list[InputSourceResponse])
+def list_sources(
+    db: Session = Depends(get_db),
+) -> list[InputSourceResponse]:
+    user = _require_registered_user_or_409(db)
+    rows = list_input_sources(db, user_id=user.id)
+    return [InputSourceResponse.model_validate(serialize_source(row)) for row in rows]
+
+
+@router.patch("/input-sources/{source_id}", response_model=InputSourceResponse)
+def patch_source(
+    source_id: int,
+    payload: InputSourcePatchRequest,
+    db: Session = Depends(get_db),
+) -> InputSourceResponse:
+    user = _require_registered_user_or_409(db)
+    source = get_input_source(db, user_id=user.id, source_id=source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Input source not found")
+    try:
+        updated = update_input_source(db, source=source, payload=payload)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=sanitize_log_message(str(exc))) from exc
+    return InputSourceResponse.model_validate(serialize_source(updated))
+
+
+@router.delete("/input-sources/{source_id}", status_code=status.HTTP_200_OK)
+def delete_source(
+    source_id: int,
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    user = _require_registered_user_or_409(db)
+    source = get_input_source(db, user_id=user.id, source_id=source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Input source not found")
+    soft_delete_input_source(db, source=source)
+    return {"deleted": True}
+
+
+@router.post("/sync-requests", response_model=SyncRequestCreateResponse, status_code=status.HTTP_201_CREATED)
+def create_sync_request(
+    payload: SyncRequestCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    db: Session = Depends(get_db),
+) -> SyncRequestCreateResponse:
+    user = _require_registered_user_or_409(db)
+    source = get_input_source(db, user_id=user.id, source_id=payload.source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Input source not found")
+    if not source.is_active:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "source_inactive", "message": "source is inactive and cannot be synced"},
+        )
+    applied_idempotency_key = idempotency_key or f"manual:{payload.source_id}:{uuid4().hex}"
+    row = enqueue_sync_request_idempotent(
+        db,
+        source=source,
+        trigger_type=IngestTriggerType.MANUAL,
+        idempotency_key=applied_idempotency_key,
+        metadata=payload.metadata or {"kind": "manual"},
+        trace_id=payload.trace_id,
+    )
+    return SyncRequestCreateResponse(
+        request_id=row.request_id,
+        source_id=row.source_id,
+        trigger_type=row.trigger_type.value,  # type: ignore[arg-type]
+        status=row.status.value,  # type: ignore[arg-type]
+        created_at=row.created_at,
+        idempotency_key=row.idempotency_key,
+    )
+
+
+@router.get("/sync-requests/{request_id}", response_model=SyncRequestStatusResponse)
+def get_sync_request(
+    request_id: str,
+    db: Session = Depends(get_db),
+) -> SyncRequestStatusResponse:
+    user = _require_registered_user_or_409(db)
+    row = get_sync_request_status(db, request_id=request_id)
+    if row is None or row.source.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Sync request not found")
+    return SyncRequestStatusResponse.model_validate(build_sync_request_status_payload(db, sync_request=row))
+
+
+@router.post("/oauth-sessions", response_model=OAuthSessionCreateResponse, status_code=status.HTTP_201_CREATED)
+def create_oauth_session(
+    payload: OAuthSessionCreateRequest,
+    db: Session = Depends(get_db),
+) -> OAuthSessionCreateResponse:
+    user = _require_registered_user_or_409(db)
+    source = get_input_source(db, user_id=user.id, source_id=payload.source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Input source not found")
+    provider = payload.provider.strip().lower()
+    if provider != "gmail" or source.provider != "gmail":
+        raise HTTPException(status_code=422, detail="Only gmail oauth is supported in current connector runtime")
+    try:
+        authorization_url, expires_at = build_gmail_oauth_start_for_source(db, source=source)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=sanitize_log_message(str(exc))) from exc
+    return OAuthSessionCreateResponse(
+        source_id=source.id,
+        provider=provider,
+        authorization_url=authorization_url,
+        expires_at=expires_at,
+    )
+
+
+@public_router.get("/oauth-callbacks/{provider}", include_in_schema=False)
+def oauth_callback(
+    provider: str,
+    code: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    error: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    if error:
+        return _redirect_oauth_status("error", message=sanitize_log_message(error))
+    if not code or not state:
+        return _redirect_oauth_status("error", message="oauth callback missing code/state")
+    normalized_provider = provider.strip().lower()
+    if normalized_provider != "gmail":
+        return _redirect_oauth_status("error", message="unsupported oauth provider")
+    try:
+        source, sync_request = handle_gmail_oauth_callback(db, code=code, state=state)
+    except Exception as exc:
+        return _redirect_oauth_status("error", message=sanitize_log_message(str(exc)))
+
+    del normalized_provider
+    del sync_request
+    return _redirect_oauth_status(
+        "success",
+        source_id=source.id,
+    )
+
+
+@router.post("/webhook-events/{source_id}/{provider}", response_model=WebhookEnqueueResponse)
+async def webhook_ingest(
+    request: Request,
+    source_id: int,
+    provider: str,
+    db: Session = Depends(get_db),
+    x_event_id: str | None = Header(default=None, alias="X-Event-Id"),
+) -> WebhookEnqueueResponse:
+    user = get_registered_user(db)
+    if user is None:
+        raise HTTPException(status_code=409, detail={"code": "user_not_initialized", "message": "user not initialized"})
+
+    source = get_input_source(db, user_id=user.id, source_id=source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Input source not found")
+
+    normalized_provider = provider.strip().lower()
+    if source.provider != normalized_provider:
+        raise HTTPException(status_code=422, detail="provider mismatch")
+
+    body = await request.body()
+    event_id = x_event_id or hashlib.sha256(body).hexdigest()
+    metadata: dict[str, object] = {
+        "provider": normalized_provider,
+        "event_id": event_id,
+    }
+    try:
+        payload_json = json.loads(body.decode("utf-8")) if body else {}
+        if isinstance(payload_json, dict):
+            metadata["payload"] = payload_json
+    except Exception:
+        metadata["payload_raw"] = body.decode("utf-8", errors="replace")
+
+    row = enqueue_sync_request_idempotent(
+        db,
+        source=source,
+        trigger_type=IngestTriggerType.WEBHOOK,
+        idempotency_key=f"webhook:{source.id}:{event_id}",
+        metadata=metadata,
+        trace_id=event_id,
+    )
+    return WebhookEnqueueResponse(request_id=row.request_id, status=row.status.value)
+
+
+@internal_router.post("/ingest-jobs/{job_id}/replays", response_model=IngestJobReplayResponse)
+def replay_single_ingest_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+) -> IngestJobReplayResponse:
+    try:
+        job = replay_ingest_job(db, job_id=job_id)
+    except RuntimeError as exc:
+        message = str(exc)
+        if message == "ingest job not found":
+            raise HTTPException(status_code=404, detail=message) from exc
+        raise HTTPException(status_code=409, detail=message) from exc
+    return IngestJobReplayResponse(
+        job_id=job.id,
+        request_id=job.request_id,
+        status=job.status.value,
+        next_retry_at=job.next_retry_at,
+    )
+
+
+@internal_router.post("/ingest-jobs/dead-letter/replays", response_model=DeadLetterReplayResponse)
+def replay_dead_letter(
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> DeadLetterReplayResponse:
+    replayed = replay_dead_letter_jobs(db, limit=limit)
+    return DeadLetterReplayResponse(
+        replayed_jobs=[
+            IngestJobReplayResponse(
+                job_id=job.id,
+                request_id=job.request_id,
+                status=job.status.value,
+                next_retry_at=job.next_retry_at,
+            )
+            for job in replayed
+        ]
+    )
+
+
+@internal_router.post("/llm-providers", response_model=LlmProviderResponse, status_code=status.HTTP_201_CREATED)
+def create_internal_llm_provider(
+    payload: LlmProviderCreateRequest,
+    db: Session = Depends(get_db),
+) -> LlmProviderResponse:
+    try:
+        provider = create_llm_provider(db, payload=payload)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=sanitize_log_message(str(exc))) from exc
+    return LlmProviderResponse.model_validate(serialize_llm_provider(provider))
+
+
+@internal_router.get("/llm-providers", response_model=list[LlmProviderResponse])
+def list_internal_llm_providers(
+    db: Session = Depends(get_db),
+) -> list[LlmProviderResponse]:
+    rows = list_llm_providers(db)
+    return [LlmProviderResponse.model_validate(serialize_llm_provider(row)) for row in rows]
+
+
+@internal_router.patch("/llm-providers/{provider_id}", response_model=LlmProviderResponse)
+def patch_internal_llm_provider(
+    provider_id: str,
+    payload: LlmProviderPatchRequest,
+    db: Session = Depends(get_db),
+) -> LlmProviderResponse:
+    provider = get_llm_provider(db, provider_id=provider_id)
+    if provider is None:
+        raise HTTPException(status_code=404, detail="LLM provider not found")
+    try:
+        updated = update_llm_provider(db, provider=provider, payload=payload)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=sanitize_log_message(str(exc))) from exc
+    return LlmProviderResponse.model_validate(serialize_llm_provider(updated))
+
+
+@internal_router.post("/llm-providers/{provider_id}/validations", response_model=LlmProviderValidationResponse)
+def validate_internal_llm_provider(
+    provider_id: str,
+    db: Session = Depends(get_db),
+) -> LlmProviderValidationResponse:
+    provider = get_llm_provider(db, provider_id=provider_id)
+    if provider is None:
+        raise HTTPException(status_code=404, detail="LLM provider not found")
+    payload = validate_llm_provider(db, provider=provider)
+    return LlmProviderValidationResponse.model_validate(payload)
+
+
+@internal_router.post("/llm-default-provider", response_model=LlmProviderResponse)
+def set_internal_default_llm_provider(
+    payload: LlmDefaultProviderRequest,
+    db: Session = Depends(get_db),
+) -> LlmProviderResponse:
+    provider = get_llm_provider(db, provider_id=payload.provider_id)
+    if provider is None:
+        raise HTTPException(status_code=404, detail="LLM provider not found")
+    try:
+        updated = set_default_llm_provider(db, provider=provider)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=sanitize_log_message(str(exc))) from exc
+    return LlmProviderResponse.model_validate(serialize_llm_provider(updated))
+
+
+@internal_router.patch("/input-sources/{source_id}/llm-binding", response_model=SourceLlmBindingResponse)
+def patch_internal_source_llm_binding(
+    source_id: int,
+    payload: SourceLlmBindingPatchRequest,
+    db: Session = Depends(get_db),
+) -> SourceLlmBindingResponse:
+    user = _require_registered_user_or_409(db)
+    source = get_input_source(db, user_id=user.id, source_id=source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Input source not found")
+    try:
+        upsert_source_llm_binding(db, source=source, payload=payload)
+        db.commit()
+        db.refresh(source)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=sanitize_log_message(str(exc))) from exc
+    serialized = serialize_source(source).get("llm_binding")
+    if serialized is None:
+        raise HTTPException(status_code=500, detail="LLM binding was not persisted")
+    return SourceLlmBindingResponse.model_validate(serialized)
+
+
+def _redirect_oauth_status(
+    status_value: str,
+    *,
+    source_id: int | None = None,
+    message: str | None = None,
+) -> RedirectResponse:
+    settings = get_settings()
+    app_base_url = settings.app_base_url.rstrip("/") if settings.app_base_url else ""
+    params: dict[str, str] = {"gmail_oauth_status": status_value}
+    if source_id is not None:
+        params["source_id"] = str(source_id)
+    if message:
+        params["message"] = message[:256]
+    query = urlencode(params)
+    target_path = f"/ui/inputs?{query}"
+    target = f"{app_base_url}{target_path}" if app_base_url else target_path
+    return RedirectResponse(url=target, status_code=302)
+
+
+def _require_registered_user_or_409(db: Session):
+    user = get_registered_user(db)
+    if user is None:
+        raise HTTPException(status_code=409, detail={"code": "user_not_initialized", "message": "user not initialized"})
+    return user
