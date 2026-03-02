@@ -63,12 +63,12 @@ SCENARIOS: dict[int, RoundScenario] = {
         course_label="CSE 8A",
         title="[Update] CSE 8A HW1 Deadline",
         subject="Re: Update cse_8a hw1 deadline moved",
-        due_iso="2026-03-10T21:00:00Z",
+        due_iso="2026-03-11T21:00:00Z",
         message_id="gmail-r2-msg",
         body_text=(
             "Update notice for CSE 8A.\\n"
             "HW1 timeline was adjusted after grading infra maintenance.\\n"
-            "New due timestamp: 2026-03-10T21:00:00Z."
+            "New due timestamp: 2026-03-11T21:00:00Z."
         ),
     ),
     3: RoundScenario(
@@ -78,11 +78,11 @@ SCENARIOS: dict[int, RoundScenario] = {
         course_label="CSE-8A",
         title="Fwd: cSe_8A HW1 deadline",
         subject="[Reminder] CSE8A hw-1 DEADLINE",
-        due_iso="2026-03-10T20:30:00Z",
+        due_iso="2026-03-12T20:30:00Z",
         message_id="gmail-r3-msg",
         body_text=(
             "Reminder for the same course entity: CSE8A / cSe_8A / CSE 8A.\\n"
-            "HW-1 final timestamp is 2026-03-10T20:30:00Z.\\n"
+            "HW-1 final timestamp is 2026-03-12T20:30:00Z.\\n"
             "Treat all aliases above as the same subject."
         ),
     ),

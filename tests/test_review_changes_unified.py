@@ -192,3 +192,101 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
         json={"mode": "create_new"},
     )
     assert removed_apply_route.status_code == 404
+
+
+def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session) -> None:
+    user, calendar_source, gmail_source = _create_sources(db_session)
+    due_round1 = datetime(2026, 3, 10, 23, 59, tzinfo=timezone.utc)
+    due_round2 = datetime(2026, 3, 12, 20, 30, tzinfo=timezone.utc)
+
+    round1_calendar_records = [
+        {
+            "record_type": "calendar.event.extracted",
+            "payload": {
+                "uid": "calendar-hw1",
+                "title": "CSE8A HW1 Deadline",
+                "start_at": due_round1.isoformat(),
+                "end_at": (due_round1 + timedelta(hours=1)).isoformat(),
+                "course_label": "CSE8A",
+                "raw_confidence": 0.95,
+            },
+        }
+    ]
+    round1_gmail_records = [
+        {
+            "record_type": "gmail.message.extracted",
+            "payload": {
+                "message_id": "gmail-hw1-round1",
+                "subject": "CSE8A HW1 Deadline",
+                "event_type": "deadline",
+                "due_at": due_round1.isoformat(),
+                "confidence": 0.9,
+                "raw_extract": {"course_hint": "cSe_8A"},
+            },
+        }
+    ]
+
+    _seed_result(db_session, source=calendar_source, request_id="merge-round1-cal", records=round1_calendar_records)
+    apply_ingest_result_idempotent(db_session, request_id="merge-round1-cal")
+    _seed_result(db_session, source=gmail_source, request_id="merge-round1-gmail", records=round1_gmail_records)
+    apply_ingest_result_idempotent(db_session, request_id="merge-round1-gmail")
+
+    headers = {"X-API-Key": "test-api-key"}
+    pending_round1 = client.get("/v2/review-items/changes?review_status=pending", headers=headers)
+    assert pending_round1.status_code == 200
+    round1_rows = pending_round1.json()
+    assert len(round1_rows) == 1
+    round1_change = round1_rows[0]
+    round1_uid = round1_change["event_uid"]
+    assert isinstance(round1_uid, str) and round1_uid
+    source_ids = {row["source_id"] for row in round1_change["proposal_sources"]}
+    assert source_ids == {calendar_source.id, gmail_source.id}
+
+    approve_round1 = client.post(
+        f"/v2/review-items/changes/{round1_change['id']}/decisions",
+        headers=headers,
+        json={"decision": "approve", "note": "approve round1"},
+    )
+    assert approve_round1.status_code == 200
+    assert approve_round1.json()["review_status"] == "approved"
+
+    round2_calendar_records = [
+        {
+            "record_type": "calendar.event.extracted",
+            "payload": {
+                "uid": "calendar-hw1",
+                "title": "[Update] CSE 8A HW1 deadline moved",
+                "start_at": due_round2.isoformat(),
+                "end_at": (due_round2 + timedelta(hours=1)).isoformat(),
+                "course_label": "CSE-8A",
+                "raw_confidence": 0.93,
+            },
+        }
+    ]
+    round2_gmail_records = [
+        {
+            "record_type": "gmail.message.extracted",
+            "payload": {
+                "message_id": "gmail-hw1-round2",
+                "subject": "Fwd: cSe_8A hw-1 DEADLINE reminder",
+                "event_type": "deadline",
+                "due_at": due_round2.isoformat(),
+                "confidence": 0.88,
+                "raw_extract": {"course_alias": ["CSE8A", "cSe_8A", "CSE 8A"]},
+            },
+        }
+    ]
+
+    _seed_result(db_session, source=calendar_source, request_id="merge-round2-cal", records=round2_calendar_records)
+    apply_ingest_result_idempotent(db_session, request_id="merge-round2-cal")
+    _seed_result(db_session, source=gmail_source, request_id="merge-round2-gmail", records=round2_gmail_records)
+    apply_ingest_result_idempotent(db_session, request_id="merge-round2-gmail")
+
+    pending_round2 = client.get("/v2/review-items/changes?review_status=pending", headers=headers)
+    assert pending_round2.status_code == 200
+    round2_rows = pending_round2.json()
+    assert len(round2_rows) == 1
+    round2_change = round2_rows[0]
+    assert round2_change["event_uid"] == round1_uid
+    assert round2_change["change_type"] == "due_changed"
+    assert round2_change["before_json"]["start_at_utc"] != round2_change["after_json"]["start_at_utc"]

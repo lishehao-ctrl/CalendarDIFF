@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -30,7 +31,12 @@ from app.db.models import (
     SyncRequest,
     SyncRequestStatus,
 )
-from app.modules.core_ingest.merge_engine import build_merge_key, choose_primary_observation
+from app.modules.core_ingest.merge_engine import (
+    build_merge_key,
+    choose_primary_observation,
+    normalize_course_label,
+    normalize_topic_signature,
+)
 from app.modules.notify.service import enqueue_notifications_for_changes
 from app.modules.sync.email_rules import ACTIONABLE_EVENT_TYPES
 from app.modules.sync.types import CanonicalEventInput
@@ -38,6 +44,7 @@ from app.modules.sync.types import CanonicalEventInput
 GMAIL_EVENT_TYPES = ACTIONABLE_EVENT_TYPES | {"announcement", "grade", "other"}
 EMAIL_EVENT_KEYS = sorted(ACTIONABLE_EVENT_TYPES | {"announcement", "grade", "other"})
 COURSE_HINT_PATTERN = re.compile(r"\b([A-Za-z]{3,5})[\s_\-]*([0-9]{1,3}[A-Za-z]?)\b")
+logger = logging.getLogger(__name__)
 
 
 def get_ingest_apply_status(db: Session, *, request_id: str) -> dict:
@@ -203,17 +210,32 @@ def _apply_calendar_observations(
         event = _coerce_calendar_payload(payload=payload, source_id=source.id, fallback_index=index)
         confidence_raw = payload.get("raw_confidence")
         confidence = float(confidence_raw) if isinstance(confidence_raw, (int, float)) else 0.5
+        course_hints_from_title = _extract_course_hints_from_text(event.title)
+        course_label_for_merge = (
+            course_hints_from_title[0]
+            if _is_unknown_course_label(event.course_label) and course_hints_from_title
+            else event.course_label
+        )
+        topic_signature = normalize_topic_signature(event.title)
         merge_key = build_merge_key(
-            course_label=event.course_label,
-            title=event.title,
+            course_label=course_label_for_merge,
+            title=topic_signature,
             start_at=event.start_at_utc,
             end_at=event.end_at_utc,
             event_type=None,
         )
+        logger.debug(
+            "core_ingest.merge.calendar request_id=%s source_id=%s merge_key_v2=%s topic_signature=%s course_label_normalized=%s",
+            request_id,
+            source.id,
+            merge_key,
+            topic_signature,
+            normalize_course_label(course_label_for_merge),
+        )
         observation_payload = {
             "uid": event.uid,
             "title": event.title,
-            "course_label": event.course_label,
+            "course_label": course_label_for_merge,
             "start_at_utc": event.start_at_utc.isoformat(),
             "end_at_utc": event.end_at_utc.isoformat(),
             "confidence": confidence,
@@ -294,24 +316,33 @@ def _apply_gmail_observations(
         course_hints = _extract_course_hints(raw_extract)
         if not course_hints:
             course_hints = _extract_course_hints_from_text(subject)
-        course_label = course_hints[0] if course_hints else "Unknown"
+        course_label_for_merge = course_hints[0] if course_hints else "Unknown"
         title = (subject or f"Email event {external_event_id}").strip()[:512]
+        topic_signature = normalize_topic_signature(title)
         end_at = due_at + timedelta(hours=1)
 
         confidence_raw = payload.get("confidence")
         confidence = float(confidence_raw) if isinstance(confidence_raw, (int, float)) else 0.5
         merge_key = build_merge_key(
-            course_label=course_label,
-            title=title,
+            course_label=course_label_for_merge,
+            title=topic_signature,
             start_at=due_at,
             end_at=end_at,
             event_type=None,
+        )
+        logger.debug(
+            "core_ingest.merge.gmail request_id=%s source_id=%s merge_key_v2=%s topic_signature=%s course_label_normalized=%s",
+            request_id,
+            source.id,
+            merge_key,
+            topic_signature,
+            normalize_course_label(course_label_for_merge),
         )
 
         observation_payload = {
             "uid": f"gmail:{external_event_id}",
             "title": title,
-            "course_label": course_label,
+            "course_label": course_label_for_merge,
             "start_at_utc": due_at.isoformat(),
             "end_at_utc": end_at.isoformat(),
             "confidence": confidence,
@@ -534,6 +565,7 @@ def _rebuild_pending_change_proposals(
             {
                 "source_kind": row.source_kind.value,
                 "event_payload": row.event_payload,
+                "observed_at": row.observed_at,
             }
             for row in observations
         ])
@@ -890,15 +922,35 @@ def _compute_payload_hash(payload: dict) -> str:
 
 
 def _extract_course_hints(raw_extract: dict) -> list[str]:
+    candidates: list[str] = []
+
     course_hint = raw_extract.get("course_hint")
     if isinstance(course_hint, str) and course_hint.strip():
-        return [course_hint.strip()[:64]]
+        candidates.append(course_hint.strip()[:64])
+
     course_hints = raw_extract.get("course_hints")
     if isinstance(course_hints, list):
-        out = [item.strip()[:64] for item in course_hints if isinstance(item, str) and item.strip()]
-        if out:
-            return out[:3]
-    return []
+        candidates.extend([item.strip()[:64] for item in course_hints if isinstance(item, str) and item.strip()])
+
+    course = raw_extract.get("course")
+    if isinstance(course, str) and course.strip():
+        candidates.append(course.strip()[:64])
+
+    course_alias = raw_extract.get("course_alias")
+    if isinstance(course_alias, list):
+        candidates.extend([item.strip()[:64] for item in course_alias if isinstance(item, str) and item.strip()])
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = candidate.upper()
+        if key in seen:
+            continue
+        deduped.append(candidate)
+        seen.add(key)
+        if len(deduped) >= 3:
+            break
+    return deduped
 
 
 def _extract_course_hints_from_text(value: object) -> list[str]:
@@ -915,6 +967,13 @@ def _extract_course_hints_from_text(value: object) -> list[str]:
         if len(hints) >= 3:
             break
     return hints
+
+
+def _is_unknown_course_label(value: str | None) -> bool:
+    if not isinstance(value, str):
+        return True
+    cleaned = value.strip().lower()
+    return cleaned in {"", "unknown", "n/a", "none"}
 
 
 def _coerce_text(value: object) -> str | None:

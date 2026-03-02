@@ -43,6 +43,8 @@ def test_real_source_smoke_report_schema(tmp_path: Path) -> None:
         "api_base",
         "llm_model",
         "llm_base_url_hash",
+        "merge_gate_mode",
+        "global_topic_uid",
         "passed",
         "fatal_errors",
         "source",
@@ -72,6 +74,10 @@ def test_real_source_smoke_report_schema(tmp_path: Path) -> None:
         "timeline_count_after",
         "feed_count_after",
         "merge_verified",
+        "single_pending_enforced",
+        "merge_required_sources_present",
+        "same_topic_uid_enforced",
+        "topic_uid",
         "errors",
     }
     for round_payload in payload["rounds"]:

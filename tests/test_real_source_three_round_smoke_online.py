@@ -52,3 +52,12 @@ def test_real_source_three_round_smoke_online(tmp_path: Path) -> None:
     assert payload["passed"] is True
     assert payload["fatal_errors"] == []
     assert len(payload["rounds"]) == 3
+    assert payload["merge_gate_mode"] == "strict_same_topic"
+    assert isinstance(payload["global_topic_uid"], str) and payload["global_topic_uid"]
+    for round_payload in payload["rounds"]:
+        assert round_payload["merge_verified"] is True
+        assert len(round_payload["pending_change_ids"]) == 1
+        assert round_payload["single_pending_enforced"] is True
+        assert round_payload["merge_required_sources_present"] is True
+        assert round_payload["same_topic_uid_enforced"] is True
+        assert round_payload["topic_uid"] == payload["global_topic_uid"]

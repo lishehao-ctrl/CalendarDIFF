@@ -210,6 +210,10 @@ def _build_round_result(profile: RoundProfile) -> dict[str, Any]:
         "timeline_count_after": 0,
         "feed_count_after": 0,
         "merge_verified": False,
+        "single_pending_enforced": False,
+        "merge_required_sources_present": False,
+        "same_topic_uid_enforced": False,
+        "topic_uid": None,
         "errors": [],
     }
 
@@ -230,6 +234,8 @@ def main() -> int:
         "api_base": args.api_base,
         "llm_model": None,
         "llm_base_url_hash": None,
+        "merge_gate_mode": "strict_same_topic",
+        "global_topic_uid": None,
         "passed": False,
         "fatal_errors": [],
         "source": {
@@ -357,6 +363,7 @@ def main() -> int:
             )
 
             approved_change_ids: set[int] = set()
+            global_topic_uid: str | None = None
 
             for idx, profile in enumerate(ROUND_PROFILES):
                 round_report = report["rounds"][idx]
@@ -416,33 +423,98 @@ def main() -> int:
                         round_pending_rows.append(row)
 
                 if not round_pending_rows:
+                    round_report["pending_change_ids"] = []
+                    round_report["single_pending_enforced"] = False
+                    round_report["merge_required_sources_present"] = False
+                    round_report["merge_verified"] = False
+                    round_report["same_topic_uid_enforced"] = False
+                    round_report["errors"].append("single_pending_enforced_failed")
+                    _assert(
+                        report["assertions"],
+                        name=f"round_{profile.round_id}_single_pending_enforced",
+                        passed=False,
+                        detail="pending_ids=[]",
+                    )
                     raise SmokeFailure(f"round {profile.round_id}: no new pending review items detected")
-
-                merge_verified = all(required_sources.issubset(_extract_source_ids(row)) for row in round_pending_rows)
-                round_report["merge_verified"] = merge_verified
-                if not merge_verified:
-                    round_report["errors"].append("cross_source_merge_not_verified")
 
                 round_report["pending_change_ids"] = [
                     int(row["id"]) for row in round_pending_rows if isinstance(row.get("id"), int)
                 ]
+                single_pending_enforced = len(round_pending_rows) == 1
+                round_report["single_pending_enforced"] = single_pending_enforced
+                _assert(
+                    report["assertions"],
+                    name=f"round_{profile.round_id}_single_pending_enforced",
+                    passed=single_pending_enforced,
+                    detail=f"pending_ids={sorted(round_report['pending_change_ids'])}",
+                )
+                if not single_pending_enforced:
+                    round_report["errors"].append("single_pending_enforced_failed")
+                    raise SmokeFailure(
+                        f"round {profile.round_id}: strict gate failed single_pending_enforced "
+                        f"pending_ids={sorted(round_report['pending_change_ids'])}"
+                    )
+
+                candidate_row = round_pending_rows[0]
+                candidate_sources = _extract_source_ids(candidate_row)
+                merge_required_sources_present = required_sources.issubset(candidate_sources)
+                round_report["merge_required_sources_present"] = merge_required_sources_present
+                round_report["merge_verified"] = merge_required_sources_present
+                _assert(
+                    report["assertions"],
+                    name=f"round_{profile.round_id}_merge_required_sources_present",
+                    passed=merge_required_sources_present,
+                    detail=f"candidate_sources={sorted(candidate_sources)}",
+                )
+                if not merge_required_sources_present:
+                    round_report["errors"].append("cross_source_merge_not_verified")
+                    raise SmokeFailure(
+                        f"round {profile.round_id}: strict gate failed merge_required_sources_present "
+                        f"sources={sorted(candidate_sources)}"
+                    )
+
+                topic_uid_raw = candidate_row.get("event_uid")
+                topic_uid = str(topic_uid_raw) if isinstance(topic_uid_raw, str) and topic_uid_raw.strip() else ""
+                if not topic_uid:
+                    raise SmokeFailure(f"round {profile.round_id}: strict gate failed missing event_uid")
+                round_report["topic_uid"] = topic_uid
+
+                if global_topic_uid is None:
+                    global_topic_uid = topic_uid
+                    report["global_topic_uid"] = global_topic_uid
+                    same_topic_uid_enforced = True
+                else:
+                    same_topic_uid_enforced = topic_uid == global_topic_uid
+
+                round_report["same_topic_uid_enforced"] = same_topic_uid_enforced
+                _assert(
+                    report["assertions"],
+                    name=f"round_{profile.round_id}_same_topic_uid_enforced",
+                    passed=same_topic_uid_enforced,
+                    detail=f"global_topic_uid={global_topic_uid} candidate_topic_uid={topic_uid}",
+                )
+                if not same_topic_uid_enforced:
+                    round_report["errors"].append("same_topic_uid_enforced_failed")
+                    raise SmokeFailure(
+                        f"round {profile.round_id}: strict gate failed same_topic_uid_enforced "
+                        f"global_topic_uid={global_topic_uid} candidate_topic_uid={topic_uid}"
+                    )
 
                 round_approved_ids: list[int] = []
-                for row in round_pending_rows:
-                    change_id = int(row["id"])
-                    decision = _request_json(
-                        api_client,
-                        "POST",
-                        f"/v2/review-items/changes/{change_id}/decisions",
-                        json_payload={
-                            "decision": "approve",
-                            "note": f"real-source-smoke round {profile.round_id}",
-                        },
-                    )
-                    if str(decision.get("review_status") or "") != "approved":
-                        raise SmokeFailure(f"round {profile.round_id}: approve failed for change_id={change_id}")
-                    approved_change_ids.add(change_id)
-                    round_approved_ids.append(change_id)
+                change_id = int(candidate_row["id"])
+                decision = _request_json(
+                    api_client,
+                    "POST",
+                    f"/v2/review-items/changes/{change_id}/decisions",
+                    json_payload={
+                        "decision": "approve",
+                        "note": f"real-source-smoke round {profile.round_id}",
+                    },
+                )
+                if str(decision.get("review_status") or "") != "approved":
+                    raise SmokeFailure(f"round {profile.round_id}: approve failed for change_id={change_id}")
+                approved_change_ids.add(change_id)
+                round_approved_ids.append(change_id)
 
                 round_report["approved_change_ids"] = sorted(round_approved_ids)
 
@@ -474,11 +546,7 @@ def main() -> int:
                 if not timeline_rows:
                     raise SmokeFailure(f"round {profile.round_id}: timeline is empty after approve")
 
-                round_event_uids = {
-                    str(row["event_uid"])
-                    for row in round_pending_rows
-                    if isinstance(row.get("event_uid"), str) and row["event_uid"]
-                }
+                round_event_uids = {topic_uid}
                 timeline_uids = {str(item["uid"]) for item in timeline_rows if isinstance(item.get("uid"), str)}
                 _assert(
                     report["assertions"],
@@ -528,12 +596,6 @@ def main() -> int:
         finally:
             api_client.close()
 
-        passed_checks = sum(1 for row in report["assertions"] if row.get("passed") is True)
-        total_checks = len(report["assertions"])
-        report["assertion_pass_rate"] = round((passed_checks / total_checks) if total_checks else 0.0, 4)
-        report["failed_assertions"] = [row for row in report["assertions"] if row.get("passed") is not True]
-        report["passed"] = not report["fatal_errors"] and not report["failed_assertions"]
-
     except Exception as exc:
         report["fatal_errors"].append(str(exc))
         report["passed"] = False
@@ -561,6 +623,11 @@ def main() -> int:
                 fake_process.kill()
                 fake_process.wait(timeout=5)
 
+        passed_checks = sum(1 for row in report["assertions"] if row.get("passed") is True)
+        total_checks = len(report["assertions"])
+        report["assertion_pass_rate"] = round((passed_checks / total_checks) if total_checks else 0.0, 4)
+        report["failed_assertions"] = [row for row in report["assertions"] if row.get("passed") is not True]
+        report["passed"] = not report["fatal_errors"] and not report["failed_assertions"]
         report["finished_at"] = _utc_now_iso()
         report_path.write_text(json.dumps(report, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
 
