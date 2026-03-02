@@ -102,6 +102,4 @@ Non-format errors keep existing retry/dead-letter semantics.
 ## 7) Related Docs
 
 1. `docs/api_surface_current.md`
-2. `docs/review_pool_unified_flow.md`
-3. `docs/deploy_three_layer_runtime.md`
-4. `docs/v2_llm_parser_placeholders.md`
+2. `docs/deploy_three_layer_runtime.md`

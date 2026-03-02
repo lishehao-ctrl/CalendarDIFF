@@ -186,10 +186,9 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
     assert rejected_view.status_code == 200
     assert rejected_view.json() == []
 
-    deprecated_apply = client.post(
+    removed_apply_route = client.post(
         "/v2/review-items/emails/legacy-id/applications",
         headers=headers,
         json={"mode": "create_new"},
     )
-    assert deprecated_apply.status_code == 409
-    assert "deprecated" in deprecated_apply.json()["detail"].lower()
+    assert removed_apply_route.status_code == 404

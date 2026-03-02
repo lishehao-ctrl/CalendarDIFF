@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 EmailRoute = Literal["drop", "archive", "review"]
@@ -64,17 +64,3 @@ class UpdateEmailRouteResponse(BaseModel):
 class MarkEmailViewedResponse(BaseModel):
     email_id: str
     viewed_at: datetime
-
-
-class ApplyEmailReviewRequest(BaseModel):
-    mode: Literal["create_new", "update_existing", "remove_existing"] = "create_new"
-    target_event_uid: str | None = Field(default=None, min_length=1)
-    applied_due_at: datetime | None = None
-    note: str | None = Field(default=None, max_length=512)
-
-    model_config = {"extra": "forbid"}
-
-
-class ApplyEmailReviewResponse(BaseModel):
-    task_id: int
-    change_id: int

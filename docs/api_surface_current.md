@@ -48,10 +48,9 @@ Notes:
 1. `GET /v2/review-items/emails`
 2. `PATCH /v2/review-items/emails/{email_id}`
 3. `POST /v2/review-items/emails/{email_id}/views`
-4. `POST /v2/review-items/emails/{email_id}/applications` (deprecated; migration hint only)
-5. `GET /v2/review-items/changes`
-6. `PATCH /v2/review-items/changes/{change_id}/views`
-7. `POST /v2/review-items/changes/{change_id}/decisions`
+4. `GET /v2/review-items/changes`
+5. `PATCH /v2/review-items/changes/{change_id}/views`
+6. `POST /v2/review-items/changes/{change_id}/decisions`
 
 ## Internal APIs
 

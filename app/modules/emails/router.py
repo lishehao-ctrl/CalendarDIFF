@@ -7,7 +7,6 @@ from app.core.security import require_api_key
 from app.db.session import get_db
 from app.modules.common.deps import get_onboarded_user_or_409
 from app.modules.emails.schemas import (
-    ApplyEmailReviewRequest,
     EmailQueueItemResponse,
     MarkEmailViewedResponse,
     UpdateEmailRouteRequest,
@@ -15,7 +14,6 @@ from app.modules.emails.schemas import (
 )
 from app.modules.emails.service import (
     EmailQueueItemNotFoundError,
-    EmailQueueStateError,
     list_email_queue,
     mark_email_viewed,
     update_email_route,
@@ -79,8 +77,6 @@ def post_email_route(
         )
     except EmailQueueItemNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except EmailQueueStateError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     return UpdateEmailRouteResponse(
         email_id=route_row.email_id,
@@ -106,20 +102,3 @@ def post_mark_email_viewed(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     assert route_row.viewed_at is not None
     return MarkEmailViewedResponse(email_id=route_row.email_id, viewed_at=route_row.viewed_at)
-
-
-@router.post("/{email_id}/applications")
-def post_apply_email_review(
-    email_id: str,
-    payload: ApplyEmailReviewRequest,
-    db: Session = Depends(get_db),
-    user=Depends(get_onboarded_user_or_409),
-) -> dict:
-    del email_id, payload, db, user
-    raise HTTPException(
-        status_code=status.HTTP_409_CONFLICT,
-        detail=(
-            "Email-specific apply is deprecated. "
-            "Use unified review decisions API: POST /v2/review-items/changes/{change_id}/decisions"
-        ),
-    )

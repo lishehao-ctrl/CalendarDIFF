@@ -281,17 +281,3 @@ export type MarkEmailViewedResponse = {
   email_id: string;
   viewed_at: string;
 };
-
-export type ApplyEmailReviewMode = "create_new" | "update_existing" | "remove_existing";
-
-export type ApplyEmailReviewRequest = {
-  mode?: ApplyEmailReviewMode;
-  target_event_uid?: string;
-  applied_due_at?: string | null;
-  note?: string | null;
-};
-
-export type ApplyEmailReviewResponse = {
-  task_id: number;
-  change_id: number;
-};

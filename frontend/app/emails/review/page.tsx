@@ -20,13 +20,9 @@ export default function EmailReviewPage() {
     refreshing,
     error,
     busyEmailId,
-    lastAppliedChangeId,
-    applyDrafts,
     loadQueue,
-    handleApply,
     handleRoute,
     handleMarkViewed,
-    updateApplyDraft,
   } = useEmailReviewQueue();
 
   useEffect(() => {
@@ -41,7 +37,7 @@ export default function EmailReviewPage() {
       <DashboardPageHeader
         icon={BellRing}
         title="Email Review"
-        description="Review rule-derived email candidates before applying them into your canonical timeline."
+        description="Review rule-derived email candidates and keep queue state clean with route and viewed actions."
         current="emails"
         activeInputId={null}
         showOnboardingNav={needsOnboarding}
@@ -59,27 +55,15 @@ export default function EmailReviewPage() {
         </Alert>
       ) : null}
 
-      {lastAppliedChangeId !== null ? (
-        <Alert>
-          <AlertTitle>Applied Successfully</AlertTitle>
-          <AlertDescription>
-            Latest applied change: #{lastAppliedChangeId}. Open Feed to inspect the created record.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
       <EmailReviewSection
         items={items}
         loading={loading}
         refreshing={refreshing}
         error={error}
         busyEmailId={busyEmailId}
-        applyDrafts={applyDrafts}
         onRefresh={loadQueue}
-        onApply={handleApply}
         onRoute={handleRoute}
         onMarkViewed={handleMarkViewed}
-        onUpdateApplyDraft={updateApplyDraft}
       />
 
       <DashboardToastStack toasts={toasts} />

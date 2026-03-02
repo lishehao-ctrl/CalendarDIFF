@@ -71,7 +71,6 @@ def configure_test_environment(test_database_url: str) -> Generator[None, None, 
     os.environ["APP_SECRET_KEY"] = "7J2Btjj4GW8jIP5MErM81QOZeK4c7xYknVxKsgKMnmk="
     os.environ["DEFAULT_NOTIFY_EMAIL"] = "notify@example.com"
     os.environ["DATABASE_URL"] = test_database_url
-    os.environ["DISABLE_SCHEDULER"] = "true"
     os.environ["SCHEMA_GUARD_ENABLED"] = "true"
 
     get_settings.cache_clear()

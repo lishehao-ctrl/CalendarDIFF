@@ -1,8 +1,6 @@
 import { apiRequest } from "@/lib/api/client";
 import {
   AppConfig,
-  ApplyEmailReviewRequest,
-  ApplyEmailReviewResponse,
   EmailQueueItem,
   MarkEmailViewedResponse,
   UpdateEmailRouteRequest,
@@ -46,19 +44,4 @@ export function markEmailViewed(config: AppConfig, emailId: string): Promise<Mar
   return apiRequest<MarkEmailViewedResponse>(config, `/v2/review-items/emails/${encodeURIComponent(emailId)}/views`, {
     method: "POST",
   });
-}
-
-export function applyEmailReview(
-  config: AppConfig,
-  emailId: string,
-  payload: ApplyEmailReviewRequest = {}
-): Promise<ApplyEmailReviewResponse> {
-  return apiRequest<ApplyEmailReviewResponse>(
-    config,
-    `/v2/review-items/emails/${encodeURIComponent(emailId)}/applications`,
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    },
-  );
 }

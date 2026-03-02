@@ -143,5 +143,3 @@ cd frontend && npm run typecheck && npm run lint && npm run build
 1. `docs/architecture.md`
 2. `docs/deploy_three_layer_runtime.md`
 3. `docs/api_surface_current.md`
-4. `docs/review_pool_unified_flow.md`
-5. `docs/v2_llm_parser_placeholders.md`

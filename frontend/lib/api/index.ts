@@ -12,5 +12,5 @@ export {
 export { getCurrentUser, patchCurrentUser } from "@/lib/api/users";
 export { getEvents } from "@/lib/api/events";
 export { getFeed, patchChangeViewed, getEvidencePreview } from "@/lib/api/changes";
-export { getEmailReviewQueue, updateEmailRoute, markEmailViewed, applyEmailReview } from "@/lib/api/review";
+export { getEmailReviewQueue, updateEmailRoute, markEmailViewed } from "@/lib/api/review";
 export { getHealth } from "@/lib/api/health";
