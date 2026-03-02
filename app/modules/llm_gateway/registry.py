@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from typing import Iterator
+
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -11,10 +14,61 @@ DEFAULT_TIMEOUT_SECONDS = 12.0
 DEFAULT_MAX_RETRIES = 1
 DEFAULT_MAX_INPUT_CHARS = 12000
 
+_runtime_defaults = {
+    "timeout_seconds": DEFAULT_TIMEOUT_SECONDS,
+    "max_retries": DEFAULT_MAX_RETRIES,
+    "max_input_chars": DEFAULT_MAX_INPUT_CHARS,
+}
+
 
 def clear_llm_registry_cache() -> None:
     # Kept for compatibility with existing imports.
     return
+
+
+def validate_ingestion_llm_config() -> ResolvedLlmProfile:
+    # db/source_id are intentionally not used in env-only profile resolution.
+    return resolve_llm_profile(None, source_id=None)
+
+
+def set_llm_runtime_defaults(
+    *,
+    timeout_seconds: float | None = None,
+    max_retries: int | None = None,
+    max_input_chars: int | None = None,
+) -> dict[str, float | int]:
+    previous = dict(_runtime_defaults)
+
+    if timeout_seconds is not None:
+        _runtime_defaults["timeout_seconds"] = max(float(timeout_seconds), 1.0)
+    if max_retries is not None:
+        _runtime_defaults["max_retries"] = max(int(max_retries), 0)
+    if max_input_chars is not None:
+        _runtime_defaults["max_input_chars"] = max(int(max_input_chars), 256)
+
+    return previous
+
+
+@contextmanager
+def llm_runtime_overrides(
+    *,
+    timeout_seconds: float | None = None,
+    max_retries: int | None = None,
+    max_input_chars: int | None = None,
+) -> Iterator[None]:
+    previous = set_llm_runtime_defaults(
+        timeout_seconds=timeout_seconds,
+        max_retries=max_retries,
+        max_input_chars=max_input_chars,
+    )
+    try:
+        yield
+    finally:
+        set_llm_runtime_defaults(
+            timeout_seconds=float(previous["timeout_seconds"]),
+            max_retries=int(previous["max_retries"]),
+            max_input_chars=int(previous["max_input_chars"]),
+        )
 
 
 def resolve_llm_profile(
@@ -64,7 +118,7 @@ def resolve_llm_profile(
         api_mode="chat_completions",
         model=model,
         api_key=api_key,
-        timeout_seconds=DEFAULT_TIMEOUT_SECONDS,
-        max_retries=DEFAULT_MAX_RETRIES,
-        max_input_chars=DEFAULT_MAX_INPUT_CHARS,
+        timeout_seconds=float(_runtime_defaults["timeout_seconds"]),
+        max_retries=int(_runtime_defaults["max_retries"]),
+        max_input_chars=int(_runtime_defaults["max_input_chars"]),
     )

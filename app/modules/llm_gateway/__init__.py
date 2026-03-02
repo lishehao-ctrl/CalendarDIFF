@@ -5,7 +5,18 @@ from app.modules.llm_gateway.contracts import (
     ResolvedLlmProfile,
 )
 from app.modules.llm_gateway.gateway import invoke_llm_json
-from app.modules.llm_gateway.registry import clear_llm_registry_cache, resolve_llm_profile
+from app.modules.llm_gateway.registry import (
+    clear_llm_registry_cache,
+    llm_runtime_overrides,
+    resolve_llm_profile,
+    set_llm_runtime_defaults,
+    validate_ingestion_llm_config,
+)
+from app.modules.llm_gateway.retry_policy import (
+    FORMAT_RETRY_CODES,
+    LLM_FORMAT_MAX_ATTEMPTS,
+    is_format_retryable_code,
+)
 
 __all__ = [
     "LlmGatewayError",
@@ -15,4 +26,10 @@ __all__ = [
     "invoke_llm_json",
     "resolve_llm_profile",
     "clear_llm_registry_cache",
+    "validate_ingestion_llm_config",
+    "set_llm_runtime_defaults",
+    "llm_runtime_overrides",
+    "LLM_FORMAT_MAX_ATTEMPTS",
+    "FORMAT_RETRY_CODES",
+    "is_format_retryable_code",
 ]

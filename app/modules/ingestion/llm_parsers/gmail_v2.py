@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.modules.ingestion.llm_parsers.contracts import LlmParseError, ParserContext, ParserOutput
 from app.modules.ingestion.llm_parsers.schemas import GmailParserResponse
-from app.modules.llm_gateway import LlmGatewayError, LlmInvokeRequest, invoke_llm_json
+from app.modules.llm_gateway import (
+    LLM_FORMAT_MAX_ATTEMPTS,
+    LlmGatewayError,
+    LlmInvokeRequest,
+    invoke_llm_json,
+)
 
 GMAIL_SCHEMA_INVALID_CODE = "parse_llm_gmail_schema_invalid"
 GMAIL_UPSTREAM_ERROR_CODE = "parse_llm_gmail_upstream_error"
+logger = logging.getLogger(__name__)
 
 
 def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -> ParserOutput:
@@ -25,46 +32,81 @@ def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -
             parser_version="v2",
         )
 
-    try:
-        invoke_result = invoke_llm_json(
-            db,
-            invoke_request=LlmInvokeRequest(
-                task_name="gmail_message_extract",
-                system_prompt=(
-                    "You extract actionable event metadata from Gmail messages for a deadline tracker. "
-                    "Respond with JSON only using schema: "
-                    "{\"messages\":[{\"message_id\":string|null,\"subject\":string|null,"
-                    "\"event_type\":\"deadline\"|\"exam\"|\"schedule_change\"|\"assignment\"|"
-                    "\"action_required\"|\"announcement\"|\"grade\"|\"other\"|null,"
-                    "\"due_at\":string|null,\"confidence\":number,\"raw_extract\":object}]} . "
-                    "Return empty messages array when no extraction is possible."
-                ),
-                user_payload={
-                    "source_id": context.source_id,
-                    "provider": context.provider,
-                    "source_kind": context.source_kind,
-                    "message": payload,
-                },
-                output_schema_name="GmailParserResponse",
-                output_schema_json=GmailParserResponse.model_json_schema(),
-                source_id=context.source_id,
-                source_provider=context.provider,
-                request_id=context.request_id,
-            ),
-        )
-    except LlmGatewayError as exc:
-        raise _map_llm_error(exc, provider=context.provider) from exc
+    invoke_request = LlmInvokeRequest(
+        task_name="gmail_message_extract",
+        system_prompt=(
+            "You extract actionable event metadata from Gmail messages for a deadline tracker. "
+            "Respond with JSON only using schema: "
+            "{\"messages\":[{\"message_id\":string|null,\"subject\":string|null,"
+            "\"event_type\":\"deadline\"|\"exam\"|\"schedule_change\"|\"assignment\"|"
+            "\"action_required\"|\"announcement\"|\"grade\"|\"other\"|null,"
+            "\"due_at\":string|null,\"confidence\":number,\"raw_extract\":object}]} . "
+            "Return empty messages array when no extraction is possible."
+        ),
+        user_payload={
+            "source_id": context.source_id,
+            "provider": context.provider,
+            "source_kind": context.source_kind,
+            "message": payload,
+        },
+        output_schema_name="GmailParserResponse",
+        output_schema_json=GmailParserResponse.model_json_schema(),
+        source_id=context.source_id,
+        source_provider=context.provider,
+        request_id=context.request_id,
+    )
 
-    try:
-        parsed = GmailParserResponse.model_validate(invoke_result.json_object)
-    except ValidationError as exc:
+    parsed: GmailParserResponse | None = None
+    invoke_result = None
+    for attempt in range(1, LLM_FORMAT_MAX_ATTEMPTS + 1):
+        try:
+            invoke_result = invoke_llm_json(
+                db,
+                invoke_request=invoke_request,
+            )
+        except LlmGatewayError as exc:
+            raise _map_llm_error(exc, provider=context.provider) from exc
+
+        try:
+            parsed = GmailParserResponse.model_validate(invoke_result.json_object)
+            break
+        except ValidationError as exc:
+            if attempt < LLM_FORMAT_MAX_ATTEMPTS:
+                logger.warning(
+                    "gmail_v2.format_retry request_id=%s source_id=%s task_name=gmail_message_extract "
+                    "error_code=%s attempt=%s/%s",
+                    context.request_id or "-",
+                    context.source_id,
+                    GMAIL_SCHEMA_INVALID_CODE,
+                    attempt,
+                    LLM_FORMAT_MAX_ATTEMPTS,
+                )
+                continue
+            logger.warning(
+                "gmail_v2.format_retry_exhausted request_id=%s source_id=%s task_name=gmail_message_extract "
+                "error_code=%s attempt=%s/%s",
+                context.request_id or "-",
+                context.source_id,
+                GMAIL_SCHEMA_INVALID_CODE,
+                attempt,
+                LLM_FORMAT_MAX_ATTEMPTS,
+            )
+            raise LlmParseError(
+                code=GMAIL_SCHEMA_INVALID_CODE,
+                message=f"gmail llm schema invalid: {exc.errors()}",
+                retryable=False,
+                provider=context.provider,
+                parser_version="v2",
+            ) from exc
+
+    if parsed is None or invoke_result is None:
         raise LlmParseError(
             code=GMAIL_SCHEMA_INVALID_CODE,
-            message=f"gmail llm schema invalid: {exc.errors()}",
+            message="gmail llm parser returned no valid payload after retries",
             retryable=False,
             provider=context.provider,
             parser_version="v2",
-        ) from exc
+        )
 
     source_message_id = payload.get("message_id") if isinstance(payload.get("message_id"), str) else None
     source_subject = payload.get("subject") if isinstance(payload.get("subject"), str) else None
