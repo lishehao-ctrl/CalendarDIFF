@@ -82,6 +82,12 @@ class ChangeType(str, Enum):
     DUE_CHANGED = "due_changed"
 
 
+class ReviewStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class NotificationChannel(str, Enum):
     EMAIL = "email"
 
@@ -172,6 +178,11 @@ class Input(Base):
     snapshots: Mapped[list[Snapshot]] = relationship(back_populates="input", cascade="all, delete-orphan")
     changes: Mapped[list[Change]] = relationship(back_populates="input", cascade="all, delete-orphan")
     sync_runs: Mapped[list[SyncRun]] = relationship(back_populates="input", cascade="all, delete-orphan")
+    source_bridge: Mapped[SourceLegacyInput | None] = relationship(
+        back_populates="input",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
     @property
     def display_label(self) -> str:
@@ -242,7 +253,10 @@ class SnapshotEvent(Base):
 
 class Change(Base):
     __tablename__ = "changes"
-    __table_args__ = (Index("ix_changes_input_detected_desc", "input_id", "detected_at"),)
+    __table_args__ = (
+        Index("ix_changes_input_detected_desc", "input_id", "detected_at"),
+        Index("ix_changes_review_status_detected_at", "review_status", "detected_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     input_id: Mapped[int] = mapped_column(ForeignKey("inputs.id", ondelete="CASCADE"), nullable=False)
@@ -257,13 +271,27 @@ class Change(Base):
     delta_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     viewed_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    review_status: Mapped[ReviewStatus] = mapped_column(
+        SAEnum(ReviewStatus, name="review_status", native_enum=False),
+        nullable=False,
+        default=ReviewStatus.APPROVED,
+        server_default=ReviewStatus.APPROVED.value,
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    proposal_merge_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    proposal_sources_json: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
     before_snapshot_id: Mapped[int | None] = mapped_column(
         ForeignKey("snapshots.id", ondelete="SET NULL"),
         nullable=True,
     )
-    after_snapshot_id: Mapped[int] = mapped_column(
+    after_snapshot_id: Mapped[int | None] = mapped_column(
         ForeignKey("snapshots.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )
     evidence_keys: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
@@ -273,7 +301,7 @@ class Change(Base):
         foreign_keys=[before_snapshot_id],
         back_populates="changes_as_before",
     )
-    after_snapshot: Mapped[Snapshot] = relationship(
+    after_snapshot: Mapped[Snapshot | None] = relationship(
         "Snapshot",
         foreign_keys=[after_snapshot_id],
         back_populates="changes_as_after",
@@ -521,6 +549,63 @@ class InputSource(Base):
         cascade="all, delete-orphan",
     )
     sync_requests: Mapped[list[SyncRequest]] = relationship(back_populates="source", cascade="all, delete-orphan")
+    observations: Mapped[list[SourceEventObservation]] = relationship(
+        back_populates="source",
+        cascade="all, delete-orphan",
+    )
+    legacy_input_bridge: Mapped[SourceLegacyInput | None] = relationship(
+        back_populates="source",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+
+class SourceLegacyInput(Base):
+    __tablename__ = "source_legacy_inputs"
+    __table_args__ = (
+        UniqueConstraint("input_id", name="uq_source_legacy_inputs_input_id"),
+        Index("ix_source_legacy_inputs_input_id", "input_id"),
+    )
+
+    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), primary_key=True)
+    input_id: Mapped[int] = mapped_column(ForeignKey("inputs.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    source: Mapped[InputSource] = relationship(back_populates="legacy_input_bridge")
+    input: Mapped[Input] = relationship(back_populates="source_bridge")
+
+
+class SourceEventObservation(Base):
+    __tablename__ = "source_event_observations"
+    __table_args__ = (
+        UniqueConstraint("source_id", "external_event_id", name="uq_source_event_observations_source_external"),
+        Index("ix_source_event_observations_user_merge_active", "user_id", "merge_key", "is_active"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), nullable=False)
+    source_kind: Mapped[SourceKind] = mapped_column(
+        SAEnum(SourceKind, name="source_kind", native_enum=False),
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    external_event_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    merge_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    event_payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    event_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    last_request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    source: Mapped[InputSource] = relationship(back_populates="observations")
 
 
 class InputSourceConfig(Base):
