@@ -8,17 +8,14 @@ from app.db.session import get_db
 from app.modules.common.deps import get_onboarded_user_or_409
 from app.modules.emails.schemas import (
     ApplyEmailReviewRequest,
-    ApplyEmailReviewResponse,
     EmailQueueItemResponse,
     MarkEmailViewedResponse,
     UpdateEmailRouteRequest,
     UpdateEmailRouteResponse,
 )
 from app.modules.emails.service import (
-    EmailQueueApplyError,
     EmailQueueItemNotFoundError,
     EmailQueueStateError,
-    apply_email_review,
     list_email_queue,
     mark_email_viewed,
     update_email_route,
@@ -111,28 +108,18 @@ def post_mark_email_viewed(
     return MarkEmailViewedResponse(email_id=route_row.email_id, viewed_at=route_row.viewed_at)
 
 
-@router.post("/{email_id}/applications", response_model=ApplyEmailReviewResponse)
+@router.post("/{email_id}/applications")
 def post_apply_email_review(
     email_id: str,
     payload: ApplyEmailReviewRequest,
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
-) -> ApplyEmailReviewResponse:
-    try:
-        task_id, change_id = apply_email_review(
-            db,
-            user_id=user.id,
-            email_id=email_id,
-            mode=payload.mode,
-            target_event_uid=payload.target_event_uid,
-            applied_due_at=payload.applied_due_at,
-            note=payload.note,
-        )
-    except EmailQueueItemNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except EmailQueueStateError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except EmailQueueApplyError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-
-    return ApplyEmailReviewResponse(task_id=task_id, change_id=change_id)
+) -> dict:
+    del email_id, payload, db, user
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=(
+            "Email-specific apply is deprecated. "
+            "Use unified review decisions API: POST /v2/review-items/changes/{change_id}/decisions"
+        ),
+    )

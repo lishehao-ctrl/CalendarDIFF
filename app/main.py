@@ -21,6 +21,7 @@ from app.modules.input_control_plane.router import internal_router as input_inte
 from app.modules.input_control_plane.router import public_router as input_public_router
 from app.modules.input_control_plane.router import router as input_control_plane_router
 from app.modules.onboarding.router import router as onboarding_router
+from app.modules.review_changes.router import router as review_changes_router
 from app.modules.users.router import router as users_router
 from app.modules.ui.router import router as ui_router
 from app.state import SchedulerStatus
@@ -103,6 +104,7 @@ def create_app() -> FastAPI:
     app.include_router(users_router)
     app.include_router(onboarding_router)
     app.include_router(changes_router)
+    app.include_router(review_changes_router)
     app.include_router(events_router)
     app.include_router(emails_router)
     app.include_router(input_public_router)

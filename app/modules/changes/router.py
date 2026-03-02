@@ -20,6 +20,8 @@ from app.db.models import (
     Notification,
     NotificationChannel,
     NotificationStatus,
+    ReviewStatus,
+    SourceLegacyInput,
 )
 from app.db.session import get_db
 from app.modules.common.deps import get_onboarded_user_or_409
@@ -43,6 +45,7 @@ logger = logging.getLogger(__name__)
 def list_feed(
     source_id: int | None = Query(default=None),
     view: str = Query(default="all"),
+    review_status: Literal["approved", "pending", "rejected", "all"] = Query(default="approved"),
     source_kinds: str | None = Query(default=None),
     limit: int | None = Query(default=None, ge=1),
     offset: int = Query(default=0, ge=0),
@@ -60,7 +63,7 @@ def list_feed(
     priority_rank_expr = case((Input.type == InputType.EMAIL, 0), else_=1)
 
     stmt = (
-        select(Change, Input, Notification)
+        select(Change, Input, Notification, SourceLegacyInput)
         .options(joinedload(Change.before_snapshot), joinedload(Change.after_snapshot))
         .join(Input, Change.input_id == Input.id)
         .outerjoin(
@@ -70,23 +73,40 @@ def list_feed(
                 Notification.channel == NotificationChannel.EMAIL,
             ),
         )
+        .outerjoin(SourceLegacyInput, SourceLegacyInput.input_id == Input.id)
     )
 
-    if source_id is not None:
-        stmt = stmt.where(Change.input_id == source_id)
     stmt = stmt.where(Input.user_id == current_user_id)
+    if review_status == "approved":
+        stmt = stmt.where(Change.review_status == ReviewStatus.APPROVED)
+    elif review_status == "pending":
+        stmt = stmt.where(Change.review_status == ReviewStatus.PENDING)
+    elif review_status == "rejected":
+        stmt = stmt.where(Change.review_status == ReviewStatus.REJECTED)
     if requested_types is not None:
         stmt = stmt.where(Input.type.in_(requested_types))
     if view == "unread":
         stmt = stmt.where(Change.viewed_at.is_(None))
 
-    stmt = stmt.order_by(priority_rank_expr.asc(), Change.detected_at.desc(), Change.id.desc()).offset(offset).limit(applied_limit)
+    db_offset = 0 if source_id is not None else offset
+    db_limit = (applied_limit + offset + 512) if source_id is not None else applied_limit
+    stmt = stmt.order_by(priority_rank_expr.asc(), Change.detected_at.desc(), Change.id.desc()).offset(db_offset).limit(db_limit)
     rows = db.execute(stmt).all()
 
     now = datetime.now(timezone.utc)
     result: list[ChangeFeedResponse] = []
-    for change, input, notification in rows:
-        base = _to_response(change)
+    for change, input, notification, source_bridge in rows:
+        proposal_source_ids = _extract_proposal_source_ids(change)
+        resolved_source_id = (
+            proposal_source_ids[0]
+            if proposal_source_ids
+            else source_bridge.source_id
+            if source_bridge is not None
+            else change.input_id
+        )
+        if source_id is not None and source_id not in {resolved_source_id, *proposal_source_ids}:
+            continue
+        base = _to_response(change, source_id=resolved_source_id)
         priority_rank = 0 if input.type == InputType.EMAIL else 1
         priority_label = "high" if priority_rank == 0 else "normal"
         notification_state, deliver_after = _read_notification_state(notification, now=now)
@@ -101,6 +121,8 @@ def list_feed(
                 change_summary=_build_change_summary(change=change, input_row=input),
             )
         )
+    if source_id is not None:
+        return result[offset : offset + applied_limit]
     return result
 
 
@@ -129,7 +151,10 @@ def mark_change_viewed(
 
     db.commit()
     db.refresh(row)
-    return _to_response(row)
+    source_id = db.scalar(select(SourceLegacyInput.source_id).where(SourceLegacyInput.input_id == row.input_id))
+    proposal_source_ids = _extract_proposal_source_ids(row)
+    resolved_source_id = proposal_source_ids[0] if proposal_source_ids else (source_id or row.input_id)
+    return _to_response(row, source_id=resolved_source_id)
 
 
 @router.get("/change-events/{change_id}/evidence/{side}/preview", response_model=EvidencePreviewResponse)
@@ -161,12 +186,12 @@ def preview_change_evidence(
     )
 
 
-def _to_response(row: Change) -> ChangeResponse:
+def _to_response(row: Change, *, source_id: int | None = None) -> ChangeResponse:
     before_evidence = _extract_snapshot_evidence_key(row.before_snapshot.raw_evidence_key if row.before_snapshot else None)
     after_evidence = _extract_snapshot_evidence_key(row.after_snapshot.raw_evidence_key if row.after_snapshot else None)
     return ChangeResponse(
         id=row.id,
-        source_id=row.input_id,
+        source_id=source_id or row.input_id,
         event_uid=row.event_uid,
         change_type=row.change_type.value,
         detected_at=row.detected_at,
@@ -248,6 +273,18 @@ def _to_source_kind_value(input_type: InputType) -> str:
     if input_type == InputType.ICS:
         return "calendar"
     return "email"
+
+
+def _extract_proposal_source_ids(change: Change) -> list[int]:
+    sources = change.proposal_sources_json if isinstance(change.proposal_sources_json, list) else []
+    out: list[int] = []
+    for row in sources:
+        if not isinstance(row, dict):
+            continue
+        source_id = row.get("source_id")
+        if isinstance(source_id, int):
+            out.append(source_id)
+    return out
 
 
 def _extract_snapshot_evidence_key(raw_evidence_key: object) -> dict[str, Any] | None:

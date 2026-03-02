@@ -17,7 +17,7 @@ class ChangeResponse(BaseModel):
     after_json: dict | None
     delta_seconds: int | None
     before_snapshot_id: int | None
-    after_snapshot_id: int
+    after_snapshot_id: int | None
     has_before_evidence: bool
     has_after_evidence: bool
     before_evidence_kind: str | None
