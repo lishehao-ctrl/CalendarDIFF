@@ -6,11 +6,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db.models import IntegrationInbox, IntegrationOutbox, OutboxStatus
+from app.db.models import IntegrationInbox, IntegrationOutbox, OutboxStatus, SyncRequest, SyncRequestStatus
 from app.modules.core_ingest.service import apply_ingest_result_idempotent
 
 CORE_APPLY_CONSUMER = "core.ingest.apply.v1"
 CORE_APPLY_BATCH_SIZE = 200
+MAX_SYNC_REQUEST_ERROR_LEN = 512
 
 
 def run_core_apply_tick(db: Session) -> int:
@@ -66,6 +67,11 @@ def run_core_apply_tick(db: Session) -> int:
                 row_in_db.status = OutboxStatus.FAILED
                 row_in_db.attempt += 1
                 row_in_db.last_error = str(exc)[:512]
+                sync_request = db.scalar(select(SyncRequest).where(SyncRequest.request_id == request_id))
+                if sync_request is not None:
+                    sync_request.status = SyncRequestStatus.FAILED
+                    sync_request.error_code = "apply_failed"
+                    sync_request.error_message = str(exc)[:MAX_SYNC_REQUEST_ERROR_LEN]
                 db.commit()
         processed += 1
     return processed

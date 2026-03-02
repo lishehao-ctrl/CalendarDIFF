@@ -349,7 +349,9 @@ def _run_calendar_connector(
         "etag": fetched.etag,
         "last_modified": fetched.last_modified,
     }
-    status = ConnectorResultStatus.CHANGED if records else ConnectorResultStatus.NO_CHANGE
+    # Calendar diff relies on snapshot semantics; changed content must still be applied
+    # even when parser extracted zero records.
+    status = ConnectorResultStatus.CHANGED
     return status, cursor_patch, records, None, None
 
 
