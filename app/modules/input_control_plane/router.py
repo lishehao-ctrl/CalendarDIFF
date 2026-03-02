@@ -20,15 +20,8 @@ from app.modules.input_control_plane.schemas import (
     InputSourcePatchRequest,
     InputSourceResponse,
     IngestJobReplayResponse,
-    LlmDefaultProviderRequest,
-    LlmProviderCreateRequest,
-    LlmProviderPatchRequest,
-    LlmProviderResponse,
-    LlmProviderValidationResponse,
     OAuthSessionCreateRequest,
     OAuthSessionCreateResponse,
-    SourceLlmBindingPatchRequest,
-    SourceLlmBindingResponse,
     SyncRequestCreateRequest,
     SyncRequestCreateResponse,
     SyncRequestStatusResponse,
@@ -38,24 +31,16 @@ from app.modules.input_control_plane.service import (
     build_gmail_oauth_start_for_source,
     build_sync_request_status_payload,
     create_input_source,
-    create_llm_provider,
     enqueue_sync_request_idempotent,
     get_input_source,
-    get_llm_provider,
     get_sync_request_status,
     handle_gmail_oauth_callback,
-    list_llm_providers,
     list_input_sources,
     replay_dead_letter_jobs,
     replay_ingest_job,
-    serialize_llm_provider,
     serialize_source,
-    set_default_llm_provider,
     soft_delete_input_source,
-    upsert_source_llm_binding,
     update_input_source,
-    update_llm_provider,
-    validate_llm_provider,
 )
 from app.modules.users.service import get_registered_user
 
@@ -295,92 +280,6 @@ def replay_dead_letter(
             for job in replayed
         ]
     )
-
-
-@internal_router.post("/llm-providers", response_model=LlmProviderResponse, status_code=status.HTTP_201_CREATED)
-def create_internal_llm_provider(
-    payload: LlmProviderCreateRequest,
-    db: Session = Depends(get_db),
-) -> LlmProviderResponse:
-    try:
-        provider = create_llm_provider(db, payload=payload)
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=sanitize_log_message(str(exc))) from exc
-    return LlmProviderResponse.model_validate(serialize_llm_provider(provider))
-
-
-@internal_router.get("/llm-providers", response_model=list[LlmProviderResponse])
-def list_internal_llm_providers(
-    db: Session = Depends(get_db),
-) -> list[LlmProviderResponse]:
-    rows = list_llm_providers(db)
-    return [LlmProviderResponse.model_validate(serialize_llm_provider(row)) for row in rows]
-
-
-@internal_router.patch("/llm-providers/{provider_id}", response_model=LlmProviderResponse)
-def patch_internal_llm_provider(
-    provider_id: str,
-    payload: LlmProviderPatchRequest,
-    db: Session = Depends(get_db),
-) -> LlmProviderResponse:
-    provider = get_llm_provider(db, provider_id=provider_id)
-    if provider is None:
-        raise HTTPException(status_code=404, detail="LLM provider not found")
-    try:
-        updated = update_llm_provider(db, provider=provider, payload=payload)
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=sanitize_log_message(str(exc))) from exc
-    return LlmProviderResponse.model_validate(serialize_llm_provider(updated))
-
-
-@internal_router.post("/llm-providers/{provider_id}/validations", response_model=LlmProviderValidationResponse)
-def validate_internal_llm_provider(
-    provider_id: str,
-    db: Session = Depends(get_db),
-) -> LlmProviderValidationResponse:
-    provider = get_llm_provider(db, provider_id=provider_id)
-    if provider is None:
-        raise HTTPException(status_code=404, detail="LLM provider not found")
-    payload = validate_llm_provider(db, provider=provider)
-    return LlmProviderValidationResponse.model_validate(payload)
-
-
-@internal_router.post("/llm-default-provider", response_model=LlmProviderResponse)
-def set_internal_default_llm_provider(
-    payload: LlmDefaultProviderRequest,
-    db: Session = Depends(get_db),
-) -> LlmProviderResponse:
-    provider = get_llm_provider(db, provider_id=payload.provider_id)
-    if provider is None:
-        raise HTTPException(status_code=404, detail="LLM provider not found")
-    try:
-        updated = set_default_llm_provider(db, provider=provider)
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=sanitize_log_message(str(exc))) from exc
-    return LlmProviderResponse.model_validate(serialize_llm_provider(updated))
-
-
-@internal_router.patch("/input-sources/{source_id}/llm-binding", response_model=SourceLlmBindingResponse)
-def patch_internal_source_llm_binding(
-    source_id: int,
-    payload: SourceLlmBindingPatchRequest,
-    db: Session = Depends(get_db),
-) -> SourceLlmBindingResponse:
-    user = _require_registered_user_or_409(db)
-    source = get_input_source(db, user_id=user.id, source_id=source_id)
-    if source is None:
-        raise HTTPException(status_code=404, detail="Input source not found")
-    try:
-        upsert_source_llm_binding(db, source=source, payload=payload)
-        db.commit()
-        db.refresh(source)
-    except Exception as exc:
-        db.rollback()
-        raise HTTPException(status_code=422, detail=sanitize_log_message(str(exc))) from exc
-    serialized = serialize_source(source).get("llm_binding")
-    if serialized is None:
-        raise HTTPException(status_code=500, detail="LLM binding was not persisted")
-    return SourceLlmBindingResponse.model_validate(serialized)
 
 
 def _redirect_oauth_status(

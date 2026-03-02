@@ -109,18 +109,10 @@ External:
 8. `GET /v2/oauth-callbacks/{provider}`
 9. `POST /v2/webhook-events/{source_id}/{provider}`
 
-`/v2/input-sources` request/response now supports optional `llm_binding` to bind a source to a configured LLM provider.
-
 Internal ops:
 
 1. `POST /internal/v2/ingest-jobs/{job_id}/replays`
 2. `POST /internal/v2/ingest-jobs/dead-letter/replays`
-3. `POST /internal/v2/llm-providers`
-4. `GET /internal/v2/llm-providers`
-5. `PATCH /internal/v2/llm-providers/{provider_id}`
-6. `POST /internal/v2/llm-providers/{provider_id}/validations`
-7. `POST /internal/v2/llm-default-provider`
-8. `PATCH /internal/v2/input-sources/{source_id}/llm-binding`
 
 Core internal:
 
@@ -141,28 +133,26 @@ Onboarding stage is now:
 
 Calendar and Gmail ingestion parsers run through a unified `LLM Gateway`:
 
-1. provider metadata is configured in DB (`llm_providers`) and source-level binding in `source_llm_bindings`
-2. secret keys are not persisted in DB, and are resolved by `api_key_ref -> env`
-3. gateway supports OpenAI-compatible `chat/completions` and `responses` modes (explicitly configured, no auto-fallback)
-4. connector runtime routes `calendar` and `gmail` through `app/modules/ingestion/llm_parsers/*`, which call `app/modules/llm_gateway/*`
-5. legacy parser code remains archived under `app/modules/sync/archive/*`
-6. Gmail connector flow is:
+1. gateway is OpenAI-compatible `chat/completions` mode only
+2. runtime config comes from env only:
+   - `INGESTION_LLM_MODEL`
+   - `INGESTION_LLM_BASE_URL`
+   - `INGESTION_LLM_API_KEY`
+3. connector runtime routes `calendar` and `gmail` through `app/modules/ingestion/llm_parsers/*`, which call `app/modules/llm_gateway/*`
+4. legacy parser code remains archived under `app/modules/sync/archive/*`
+5. Gmail connector flow is:
    - read cursor `history_id`
    - `list_history(start_history_id)` for incrementals
    - fetch message metadata/body
    - call gmail LLM parser per message
-7. Calendar connector flow is:
+6. Calendar connector flow is:
    - fetch ICS with etag/last-modified
    - decode + truncate payload
    - call calendar LLM parser
-8. parser failures map to `PARSE_FAILED` with explicit error codes:
+7. parser failures map to `PARSE_FAILED` with explicit error codes:
    - `parse_llm_calendar_schema_invalid`
    - `parse_llm_gmail_schema_invalid`
    - `parse_llm_calendar_upstream_error`
    - `parse_llm_gmail_upstream_error`
    - `parse_llm_timeout`
    - `parse_llm_empty_output`
-   - `parse_llm_provider_not_found`
-   - `parse_llm_provider_disabled`
-   - `parse_llm_provider_key_missing`
-   - `parse_llm_mode_unsupported`

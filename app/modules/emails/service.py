@@ -8,7 +8,6 @@ from typing import Any, Iterable
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.db.models import (
     Change,
     ChangeType,
@@ -23,13 +22,6 @@ from app.db.models import (
 )
 from app.modules.notify.service import enqueue_notifications_for_changes
 from app.modules.sync.email_rules import ACTIONABLE_EVENT_TYPES, EmailRuleDecision, evaluate_email_rule
-from app.modules.sync.email_llm_fallback import (
-    EmailLlmFallbackClient,
-    EmailLlmFallbackError,
-    EmailLlmRequestPayload,
-    LlmActionItem,
-    LlmExtractDecision,
-)
 from app.modules.sync.gmail_client import GmailMessageMetadata
 from app.modules.users.service import get_single_ics_input_for_user
 
@@ -53,14 +45,12 @@ def create_review_queue_from_email_changes(
     messages: Iterable[GmailMessageMetadata],
     timezone_name: str = "UTC",
 ) -> int:
-    settings = get_settings()
     actionable_count = 0
     now = datetime.now(timezone.utc)
     event_keys = sorted(ACTIONABLE_EVENT_TYPES | {"announcement", "grade", "other"})
-    llm_client = EmailLlmFallbackClient(settings=settings) if settings.email_llm_fallback_enabled else None
 
     for metadata in messages:
-        rule_decision = evaluate_email_rule(
+        decision = evaluate_email_rule(
             subject=metadata.subject,
             snippet=metadata.snippet,
             body_text=metadata.body_text,
@@ -68,65 +58,9 @@ def create_review_queue_from_email_changes(
             internal_date=metadata.internal_date,
             timezone_name=timezone_name,
         )
-        decision = rule_decision
-        llm_decision: LlmExtractDecision | None = None
         drop_reason_codes: list[str] = []
-        fallback_attempted = False
 
-        if llm_client is not None and _is_ambiguous_score(
-            score=rule_decision.score,
-            low=settings.email_llm_ambiguous_low,
-            high=settings.email_llm_ambiguous_high,
-        ):
-            fallback_attempted = True
-            request_payload = EmailLlmRequestPayload(
-                subject=metadata.subject,
-                snippet=metadata.snippet,
-                body_text=metadata.body_text,
-                from_header=metadata.from_header,
-                internal_date=metadata.internal_date,
-                timezone_name=timezone_name,
-                rule_event_type=rule_decision.event_type,
-                rule_score=rule_decision.score,
-            )
-            try:
-                llm_decision = llm_client.extract_for_ambiguous_email(request_payload)
-            except EmailLlmFallbackError as exc:
-                drop_reason_codes = [exc.code]
-                decision = _build_llm_drop_decision(
-                    rule_decision=rule_decision,
-                    confidence=rule_decision.confidence,
-                    reason=f"llm fallback failed ({exc.code})",
-                )
-            else:
-                if llm_decision.label == "KEEP" and llm_decision.confidence >= settings.email_llm_confidence_threshold:
-                    decision = _build_llm_keep_decision(
-                        rule_decision=rule_decision,
-                        llm_decision=llm_decision,
-                    )
-                    if not decision.actionable:
-                        drop_reason_codes = ["llm_fallback_drop"]
-                        decision = _build_llm_drop_decision(
-                            rule_decision=rule_decision,
-                            confidence=llm_decision.confidence,
-                            reason="llm keep result is not actionable",
-                        )
-                elif llm_decision.label == "KEEP":
-                    drop_reason_codes = ["llm_fallback_low_confidence"]
-                    decision = _build_llm_drop_decision(
-                        rule_decision=rule_decision,
-                        confidence=llm_decision.confidence,
-                        reason="llm keep confidence below threshold",
-                    )
-                else:
-                    drop_reason_codes = ["llm_fallback_drop"]
-                    decision = _build_llm_drop_decision(
-                        rule_decision=rule_decision,
-                        confidence=llm_decision.confidence,
-                        reason="llm fallback decided drop",
-                    )
-
-        if not decision.actionable and not fallback_attempted:
+        if not decision.actionable:
             continue
         if decision.actionable:
             actionable_count += 1
@@ -167,16 +101,13 @@ def create_review_queue_from_email_changes(
         }
         label_row.notes = _build_label_notes(
             decision=decision,
-            llm_decision=llm_decision,
             drop_reason_codes=drop_reason_codes,
-            llm_model=settings.email_llm_model,
         )
 
         db.query(EmailActionItem).filter(EmailActionItem.email_id == metadata.message_id).delete(synchronize_session=False)
         if decision.actionable:
             action_items = _build_action_items_for_decision(
                 decision=decision,
-                llm_action_items=llm_decision.action_items if llm_decision is not None else [],
             )
             for item in action_items:
                 db.add(
@@ -194,7 +125,7 @@ def create_review_queue_from_email_changes(
             db.add(analysis_row)
         analysis_row.event_flags = {key: key == decision.event_type for key in event_keys}
         snippet_text = (metadata.snippet or metadata.subject or "").strip()
-        matched_rule = decision.event_type or ("llm_fallback" if fallback_attempted else "rule_drop")
+        matched_rule = decision.event_type or "rule_drop"
         analysis_row.matched_snippets = (
             [{"rule": matched_rule, "snippet": snippet_text[:240]}] if snippet_text else []
         )
@@ -821,84 +752,16 @@ def _resolve_where_text(*, action_items: list[EmailActionItem], raw_extract: dic
     return None
 
 
-def _is_ambiguous_score(*, score: float, low: float, high: float) -> bool:
-    if low > high:
-        low, high = high, low
-    return low <= score <= high
-
-
-def _build_llm_keep_decision(
-    *,
-    rule_decision: EmailRuleDecision,
-    llm_decision: LlmExtractDecision,
-) -> EmailRuleDecision:
-    due_at = None
-    for item in llm_decision.action_items:
-        parsed_due = _parse_maybe_datetime(item.due_iso)
-        if parsed_due is not None:
-            due_at = parsed_due
-            break
-    if due_at is None:
-        due_at = _parse_maybe_datetime(llm_decision.raw_extract.time_text)
-    if due_at is None:
-        due_at = _parse_maybe_datetime(llm_decision.raw_extract.deadline_text)
-
-    raw_extract = {
-        "deadline_text": llm_decision.raw_extract.deadline_text,
-        "time_text": llm_decision.raw_extract.time_text or (due_at.isoformat() if due_at is not None else None),
-        "location_text": llm_decision.raw_extract.location_text,
-    }
-    return EmailRuleDecision(
-        label="KEEP",
-        confidence=round(float(llm_decision.confidence), 4),
-        event_type=llm_decision.event_type,
-        due_at=due_at,
-        course_hint=rule_decision.course_hint,
-        reasons=list(llm_decision.reasons)[:3] or ["llm fallback accepted"],
-        raw_extract=raw_extract,
-        proposed_title=llm_decision.proposed_title or rule_decision.proposed_title,
-        score=rule_decision.score,
-        decision_origin="llm_fallback",
-    )
-
-
-def _build_llm_drop_decision(
-    *,
-    rule_decision: EmailRuleDecision,
-    confidence: float,
-    reason: str,
-) -> EmailRuleDecision:
-    return EmailRuleDecision(
-        label="DROP",
-        confidence=round(float(confidence), 4),
-        event_type=None,
-        due_at=rule_decision.due_at,
-        course_hint=rule_decision.course_hint,
-        reasons=[reason],
-        raw_extract=dict(rule_decision.raw_extract),
-        proposed_title=rule_decision.proposed_title,
-        score=rule_decision.score,
-        decision_origin="llm_fallback",
-    )
-
-
 def _build_label_notes(
     *,
     decision: EmailRuleDecision,
-    llm_decision: LlmExtractDecision | None,
     drop_reason_codes: list[str],
-    llm_model: str,
 ) -> str:
     parts = [
         f"origin={decision.decision_origin}",
         f"score={decision.score:.2f}",
         f"confidence={decision.confidence:.2f}",
     ]
-    if llm_decision is not None:
-        parts.append("llm=true")
-        parts.append(f"llm_model={llm_model}")
-        parts.append(f"llm_label={llm_decision.label}")
-        parts.append(f"llm_confidence={llm_decision.confidence:.2f}")
     if drop_reason_codes:
         parts.append(f"drop_reason={drop_reason_codes[0]}")
     return "; ".join(parts)
@@ -907,23 +770,7 @@ def _build_label_notes(
 def _build_action_items_for_decision(
     *,
     decision: EmailRuleDecision,
-    llm_action_items: list[LlmActionItem],
 ) -> list[dict[str, str | None]]:
-    action_items: list[dict[str, str | None]] = []
-    for row in llm_action_items:
-        action_text = (row.action or "").strip()
-        due_iso = (row.due_iso or "").strip() or None
-        where_text = (row.where_text or "").strip() or None
-        if action_text or due_iso or where_text:
-            action_items.append(
-                {
-                    "action": action_text or f"Review {decision.event_type or 'timeline'} update",
-                    "due_iso": due_iso,
-                    "where_text": where_text,
-                }
-            )
-    if action_items:
-        return action_items
     return [
         {
             "action": f"Review {decision.event_type or 'timeline'} update",

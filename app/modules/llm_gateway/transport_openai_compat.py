@@ -22,7 +22,7 @@ class OpenAICompatTransport:
         raise last_error
 
     def _post_json_once(self, *, profile: ResolvedLlmProfile, payload: dict) -> tuple[dict, int, str | None]:
-        endpoint = build_openai_compat_endpoint(base_url=profile.base_url, api_mode=profile.api_mode)
+        endpoint = build_openai_compat_endpoint(base_url=profile.base_url)
         headers = {
             "Authorization": f"Bearer {profile.api_key}",
             "Content-Type": "application/json",
@@ -90,23 +90,16 @@ class OpenAICompatTransport:
         return response_json, latency_ms, upstream_request_id
 
 
-def build_openai_compat_endpoint(*, base_url: str, api_mode: str) -> str:
+def build_openai_compat_endpoint(*, base_url: str) -> str:
     normalized = base_url.strip().rstrip("/")
     if not normalized:
         raise ValueError("base_url is required")
-    if api_mode == "chat_completions":
-        endpoint_suffix = "chat/completions"
-    elif api_mode == "responses":
-        endpoint_suffix = "responses"
-    else:
-        raise ValueError(f"unsupported api_mode: {api_mode}")
+    endpoint_suffix = "chat/completions"
 
     if normalized.endswith(f"/{endpoint_suffix}"):
         return normalized
     if normalized.endswith("/chat/completions"):
         normalized = normalized[: -len("/chat/completions")]
-    elif normalized.endswith("/responses"):
-        normalized = normalized[: -len("/responses")]
     if normalized.endswith("/v1"):
         return f"{normalized}/{endpoint_suffix}"
     return f"{normalized}/v1/{endpoint_suffix}"

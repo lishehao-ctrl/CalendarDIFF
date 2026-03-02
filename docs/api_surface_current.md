@@ -24,7 +24,6 @@ This file captures the runtime API surface after the V2 hard cut.
 7. `POST /v2/oauth-sessions`
 8. `GET /v2/oauth-callbacks/{provider}`
 9. `POST /v2/webhook-events/{source_id}/{provider}`
-10. `POST/PATCH /v2/input-sources*` payload supports optional `llm_binding`
 
 ## Timeline + Change Events
 
@@ -46,26 +45,20 @@ This file captures the runtime API surface after the V2 hard cut.
 2. `GET /internal/v2/ingest-results/{request_id}`
 3. `POST /internal/v2/ingest-jobs/{job_id}/replays`
 4. `POST /internal/v2/ingest-jobs/dead-letter/replays`
-5. `POST /internal/v2/llm-providers`
-6. `GET /internal/v2/llm-providers`
-7. `PATCH /internal/v2/llm-providers/{provider_id}`
-8. `POST /internal/v2/llm-providers/{provider_id}/validations`
-9. `POST /internal/v2/llm-default-provider`
-10. `PATCH /internal/v2/input-sources/{source_id}/llm-binding`
 
 ## Runtime Parsing Status
 
 1. `calendar` and `gmail` connectors call V2 LLM parsers through `app/modules/llm_gateway/*`.
-2. LLM providers are DB-configured and source-bindable, with key refs resolved from environment variables.
-2. Parser failures surface through connector errors:
+2. LLM is configured only by environment variables:
+   - `INGESTION_LLM_MODEL`
+   - `INGESTION_LLM_BASE_URL`
+   - `INGESTION_LLM_API_KEY`
+3. Gateway is OpenAI-compatible `chat/completions` API only.
+4. Parser failures surface through connector errors:
    - `parse_llm_calendar_schema_invalid`
    - `parse_llm_gmail_schema_invalid`
    - `parse_llm_calendar_upstream_error`
    - `parse_llm_gmail_upstream_error`
    - `parse_llm_timeout`
    - `parse_llm_empty_output`
-   - `parse_llm_provider_not_found`
-   - `parse_llm_provider_disabled`
-   - `parse_llm_provider_key_missing`
-   - `parse_llm_mode_unsupported`
-3. Parse failures follow normal retry/dead-letter semantics in ingest jobs.
+5. Parse failures follow normal retry/dead-letter semantics in ingest jobs.

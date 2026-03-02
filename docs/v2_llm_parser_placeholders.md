@@ -1,10 +1,13 @@
-# V2 LLM Gateway + Parsers (Calendar + Gmail)
+# V2 Ingestion LLM Runtime (Minimal Chat-Completions-Only)
 
 ## Scope
 
-V2 ingestion runtime executes live LLM parsing for both calendar and Gmail connectors
-through a unified OpenAI-compatible gateway.
-The gateway supports both `chat/completions` and `responses` APIs.
+Calendar and Gmail ingestion parsers use a minimal LLM gateway:
+
+1. OpenAI-compatible `chat/completions` API only.
+2. JSON object output only (schema-validated).
+3. No DB provider registry.
+4. No source-level LLM binding.
 
 ## Runtime Modules
 
@@ -12,39 +15,26 @@ The gateway supports both `chat/completions` and `responses` APIs.
 2. `app/modules/llm_gateway/registry.py`
 3. `app/modules/llm_gateway/transport_openai_compat.py`
 4. `app/modules/llm_gateway/adapters/chat_completions.py`
-5. `app/modules/llm_gateway/adapters/responses.py`
-6. `app/modules/llm_gateway/json_contract.py`
-7. `app/modules/llm_gateway/gateway.py`
-8. `app/modules/ingestion/llm_parsers/contracts.py`
-9. `app/modules/ingestion/llm_parsers/schemas.py`
-10. `app/modules/ingestion/llm_parsers/calendar_v2.py`
-11. `app/modules/ingestion/llm_parsers/gmail_v2.py`
+5. `app/modules/llm_gateway/json_contract.py`
+6. `app/modules/llm_gateway/gateway.py`
+7. `app/modules/ingestion/llm_parsers/contracts.py`
+8. `app/modules/ingestion/llm_parsers/schemas.py`
+9. `app/modules/ingestion/llm_parsers/calendar_v2.py`
+10. `app/modules/ingestion/llm_parsers/gmail_v2.py`
 
 ## Configuration
 
-1. Provider metadata is configured in DB (`llm_providers`) via internal APIs.
-2. Source-level provider binding is configured in DB (`source_llm_bindings`).
-3. API keys are resolved from environment variables via `api_key_ref` (no key plaintext in DB).
-4. Runtime hardening flags:
-   - `LLM_ALLOW_HTTP_BASE_URL`
-   - `LLM_REGISTRY_CACHE_TTL_SECONDS`
+Only three environment variables are required:
 
-## Contract
+1. `INGESTION_LLM_MODEL`
+2. `INGESTION_LLM_BASE_URL`
+3. `INGESTION_LLM_API_KEY`
 
-### Error
+Gateway runtime defaults are fixed in code:
 
-`LlmParseError(code, message, retryable, provider, parser_version="v2")`
-
-### Context
-
-`ParserContext(source_id, provider, source_kind, request_id | optional)`
-
-### Output
-
-`ParserOutput(records, parser_name, parser_version, model_hint)`
-
-`records[]` must use `record_type + payload` objects.
-Connector runtime appends parser metadata under `payload._parser`.
+1. timeout: `12s`
+2. max retries: `1`
+3. max input chars: `12000`
 
 ## Failure Matrix
 
@@ -52,7 +42,7 @@ Connector runtime appends parser metadata under `payload._parser`.
    - LLM request timed out
    - retryable: yes
 2. `parse_llm_empty_output`
-   - LLM returned empty content or source input was empty after preprocessing
+   - LLM returned empty text or parser input is empty
    - retryable: no
 3. `parse_llm_calendar_schema_invalid`
    - Calendar parser JSON/schema validation failed
@@ -66,31 +56,12 @@ Connector runtime appends parser metadata under `payload._parser`.
 6. `parse_llm_gmail_upstream_error`
    - Gmail parser upstream/network/http failure
    - retryable: yes
-7. `parse_llm_provider_not_found`
-   - no enabled/default provider or missing binding provider
-   - retryable: no
-8. `parse_llm_provider_disabled`
-   - source binding points to disabled provider
-   - retryable: no
-9. `parse_llm_provider_key_missing`
-   - provider `api_key_ref` env variable not present
-   - retryable: no
-10. `parse_llm_mode_unsupported`
-   - unsupported `api_mode`
+7. `parse_llm_upstream_error`
+   - Global ingestion env missing/invalid
    - retryable: no
 
 Connector runtime maps parser errors to `ConnectorResultStatus.PARSE_FAILED`.
 Job retries and dead-letter transitions remain unchanged.
-Connector logs include `request_id/source_id/provider/error_code` for parse failures.
-
-## Internal Management APIs
-
-1. `POST /internal/v2/llm-providers`
-2. `GET /internal/v2/llm-providers`
-3. `PATCH /internal/v2/llm-providers/{provider_id}`
-4. `POST /internal/v2/llm-providers/{provider_id}/validations`
-5. `POST /internal/v2/llm-default-provider`
-6. `PATCH /internal/v2/input-sources/{source_id}/llm-binding`
 
 ## Gmail Ingestion Flow
 
@@ -113,4 +84,4 @@ Connector logs include `request_id/source_id/provider/error_code` for parse fail
 
 1. Gateway transport uses in-process `httpx`; no shell subprocess `curl`.
 2. External status visibility remains `/v2/sync-requests/{request_id}`.
-3. Email review pipeline (`email_rules` + `email_llm_fallback`) is intentionally untouched.
+3. Email review pipeline is rules-only and does not use LLM fallback.

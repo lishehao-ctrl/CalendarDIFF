@@ -69,12 +69,6 @@ class ConnectorResultStatus(str, Enum):
     AUTH_FAILED = "AUTH_FAILED"
     RATE_LIMITED = "RATE_LIMITED"
 
-
-class LlmApiMode(str, Enum):
-    CHAT_COMPLETIONS = "chat_completions"
-    RESPONSES = "responses"
-
-
 class OutboxStatus(str, Enum):
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
@@ -526,11 +520,6 @@ class InputSource(Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
-    llm_binding: Mapped[SourceLlmBinding | None] = relationship(
-        back_populates="source",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
     sync_requests: Mapped[list[SyncRequest]] = relationship(back_populates="source", cascade="all, delete-orphan")
 
 
@@ -570,66 +559,6 @@ class InputSourceCursor(Base):
     )
 
     source: Mapped[InputSource] = relationship(back_populates="cursor")
-
-
-class LlmProvider(Base):
-    __tablename__ = "llm_providers"
-    __table_args__ = (
-        UniqueConstraint("provider_id", name="uq_llm_providers_provider_id"),
-        Index("ix_llm_providers_enabled_default", "enabled", "is_default"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    provider_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    name: Mapped[str] = mapped_column(String(128), nullable=False)
-    vendor: Mapped[str] = mapped_column(String(64), nullable=False)
-    base_url: Mapped[str] = mapped_column(Text, nullable=False)
-    api_mode: Mapped[LlmApiMode] = mapped_column(
-        SAEnum(LlmApiMode, name="llm_api_mode", native_enum=False),
-        nullable=False,
-        default=LlmApiMode.CHAT_COMPLETIONS,
-        server_default=LlmApiMode.CHAT_COMPLETIONS.name,
-    )
-    model: Mapped[str] = mapped_column(String(255), nullable=False)
-    api_key_ref: Mapped[str] = mapped_column(String(128), nullable=False)
-    timeout_seconds: Mapped[float] = mapped_column(Float, nullable=False, default=12.0, server_default="12")
-    max_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
-    max_input_chars: Mapped[int] = mapped_column(Integer, nullable=False, default=12000, server_default="12000")
-    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
-    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
-    extra_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
-    )
-
-    source_bindings: Mapped[list[SourceLlmBinding]] = relationship(
-        back_populates="provider",
-        cascade="all, delete-orphan",
-    )
-
-
-class SourceLlmBinding(Base):
-    __tablename__ = "source_llm_bindings"
-    __table_args__ = (
-        Index("ix_source_llm_bindings_provider_id", "llm_provider_id"),
-    )
-
-    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), primary_key=True)
-    llm_provider_id: Mapped[int] = mapped_column(ForeignKey("llm_providers.id", ondelete="RESTRICT"), nullable=False)
-    model_override: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    api_mode_override: Mapped[LlmApiMode | None] = mapped_column(
-        SAEnum(LlmApiMode, name="llm_api_mode", native_enum=False),
-        nullable=True,
-    )
-    prompt_profile: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
-    )
-
-    source: Mapped[InputSource] = relationship(back_populates="llm_binding")
-    provider: Mapped[LlmProvider] = relationship(back_populates="source_bindings")
 
 
 class SyncRequest(Base):

@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 
-LlmApiModeLiteral = Literal["chat_completions", "responses"]
+LlmApiModeLiteral = Literal["chat_completions"]
 
 
 class LlmGatewayError(RuntimeError):
@@ -36,7 +36,6 @@ class LlmInvokeRequest:
     source_id: int | None = None
     request_id: str | None = None
     source_provider: str | None = None
-    llm_provider_id: str | None = None
     temperature: float = 0.0
 
 
