@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:cse101a-baseline-027
+DTSTART:20260328T120000Z
+DTEND:20260328T130000Z
+SUMMARY:CSE_101 A weekly class sync
+DESCRIPTION:Pair context: ics-pair-027 (before snapshot) with expected class CREATED. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=CSE_101_a-baseline-027, DTSTART=20260328T120000Z, DTEND=20260328T130000Z, SUMMARY=CsE101a weekly class sync. Reasoning context: scheduling adjustments were reviewed against dependency chains to minimize downstream collisions. Execution guidance: if tooling discrepancy appears, escalate with exact timestamp, platform region, and reproducible steps. FAQ: If your local clock differs from server time, buffer your execution window and do not submit at the final minute.
+END:VEVENT
+BEGIN:VEVENT
+UID:cse101a-task-027
+DTSTART:20260328T090000Z
+DTEND:20260328T100000Z
+SUMMARY:cSe_101a Existing Task
+DESCRIPTION:Pair context: ics-pair-027 (before snapshot) with expected class CREATED. This event carries the focal change semantics for the pair and contains the evidence needed to infer the expected diff class. Schedule anchor: UID=csE-101A-task-027, DTSTART=20260328T090000Z, DTEND=20260328T100000Z, SUMMARY=CsE101A Existing Task. Reasoning context: staff consolidated policy clarifications after seeing conflicting interpretations in discussion threads. Execution guidance: if tooling discrepancy appears, escalate with exact timestamp, platform region, and reproducible steps. FAQ: If another channel states a different time, use the value documented in the canonical course platform and report the mismatch.
+END:VEVENT
+END:VCALENDAR

@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:cse110-baseline-029
+DTSTART:20260330T120000Z
+DTEND:20260330T130000Z
+SUMMARY:CSe_110 Weekly lecture session
+DESCRIPTION:Pair context: ics-pair-029 (before snapshot) with expected class NO_CHANGE. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=CSE-110-baseline-029, DTSTART=20260330T120000Z, DTEND=20260330T130000Z, SUMMARY=cSe110 Weekly lecture session. Reasoning context: staff consolidated policy clarifications after seeing conflicting interpretations in discussion threads. Execution guidance: verify section enrollment mapping, then apply this schedule decision to the exact UID-linked task only. FAQ: If another channel states a different time, use the value documented in the canonical course platform and report the mismatch.
+END:VEVENT
+BEGIN:VEVENT
+UID:cse110-task-029
+DTSTART:20260330T090000Z
+DTEND:20260330T100000Z
+SUMMARY:csE110 Assignment Deadline
+DESCRIPTION:Pair context: ics-pair-029 (before snapshot) with expected class NO_CHANGE. This event carries the focal change semantics for the pair and contains the evidence needed to infer the expected diff class. Schedule anchor: UID=CSE_110-task-029, DTSTART=20260330T090000Z, DTEND=20260330T100000Z, SUMMARY=csE 110 Assignment Deadline. Reasoning context: fallback instructions are preserved so operational intent remains readable even without LMS UI metadata. Execution guidance: if tooling discrepancy appears, escalate with exact timestamp, platform region, and reproducible steps. FAQ: If a teammate sees stale metadata, refresh enrollment context before concluding that the event disappeared. Diff evidence: critical schedule fields remain stable; this pair validates no-change behavior under verbose text.
+END:VEVENT
+END:VCALENDAR

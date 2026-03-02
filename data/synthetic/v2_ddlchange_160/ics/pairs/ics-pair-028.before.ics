@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:cse151a-baseline-028
+DTSTART:20260329T120000Z
+DTEND:20260329T130000Z
+SUMMARY:CSe151_a weekly class sync
+DESCRIPTION:Pair context: ics-pair-028 (before snapshot) with expected class CREATED. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=cse 151_a-baseline-028, DTSTART=20260329T120000Z, DTEND=20260329T130000Z, SUMMARY=CsE-151_A weekly class sync. Reasoning context: this longform description is intentionally explicit to reduce parser brittleness under varied textual style. Execution guidance: students should prioritize the explicit timestamp over relative wording if both appear in adjacent notices. FAQ: If a teammate sees stale metadata, refresh enrollment context before concluding that the event disappeared.
+END:VEVENT
+BEGIN:VEVENT
+UID:cse151a-task-028
+DTSTART:20260329T090000Z
+DTEND:20260329T100000Z
+SUMMARY:CSE_151-a ongoing task record
+DESCRIPTION:Pair context: ics-pair-028 (before snapshot) with expected class CREATED. This event carries the focal change semantics for the pair and contains the evidence needed to infer the expected diff class. Schedule anchor: UID=cse_151_a-task-028, DTSTART=20260329T090000Z, DTEND=20260329T100000Z, SUMMARY=csE_151-A ongoing task record. Reasoning context: staff consolidated policy clarifications after seeing conflicting interpretations in discussion threads. Execution guidance: verify section enrollment mapping, then apply this schedule decision to the exact UID-linked task only. FAQ: If another channel states a different time, use the value documented in the canonical course platform and report the mismatch.
+END:VEVENT
+END:VCALENDAR

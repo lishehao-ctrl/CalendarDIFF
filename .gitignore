@@ -12,10 +12,16 @@ dev.db.*
 tests/fixtures/private/
 reports/
 evidence/
-/data/
+/data/*
 *.eml
 *.ics
 *.mbox
 labeled*.jsonl
 error*.jsonl
 tools/labeling/.env
+
+# Keep synthetic benchmark dataset tracked.
+!/data/synthetic/
+!/data/synthetic/v2_ddlchange_160/
+!/data/synthetic/v2_ddlchange_160/**
+!/data/synthetic/v2_ddlchange_160/ics/pairs/*.ics

@@ -1,0 +1,11 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:cogs108-baseline-035
+DTSTART:20260405T120000Z
+DTEND:20260405T130000Z
+SUMMARY:cOGs_108 weekly lecture block
+DESCRIPTION:Pair context: ics-pair-035 (after snapshot) with expected class REMOVED_CANDIDATE. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=coGs 108-baseline-035, DTSTART=20260405T120000Z, DTEND=20260405T130000Z, SUMMARY=cOGS_108 weekly lecture block. Reasoning context: scheduling adjustments were reviewed against dependency chains to minimize downstream collisions. Execution guidance: retain screenshot evidence of final submission or attendance acknowledgement for reconciliation requests. FAQ: If a teammate sees stale metadata, refresh enrollment context before concluding that the event disappeared.
+END:VEVENT
+END:VCALENDAR

@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:phys2a-baseline-040
+DTSTART:20260410T120000Z
+DTEND:20260410T130000Z
+SUMMARY:phys 2A Weekly Lecture
+DESCRIPTION:Pair context: ics-pair-040 (before snapshot) with expected class REMOVED_CANDIDATE. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=phys 2a-baseline-040, DTSTART=20260410T120000Z, DTEND=20260410T130000Z, SUMMARY=phYS 2a Weekly Lecture. Reasoning context: fallback instructions are preserved so operational intent remains readable even without LMS UI metadata. Execution guidance: students should prioritize the explicit timestamp over relative wording if both appear in adjacent notices. FAQ: If accommodation or conflict applies, follow approved pathways; this text does not override formal accommodation workflows.
+END:VEVENT
+BEGIN:VEVENT
+UID:phys2a-task-040-removed
+DTSTART:20260410T090000Z
+DTEND:20260410T100000Z
+SUMMARY:Phys 2A Assignment Deadline
+DESCRIPTION:Pair context: ics-pair-040 (before snapshot) with expected class REMOVED_CANDIDATE. This event is intentionally absent from the after snapshot to represent history-dependent removal candidate behavior. Schedule anchor: UID=pHYS 2A-task-040-removed, DTSTART=20260410T090000Z, DTEND=20260410T100000Z, SUMMARY=phYS_2a Assignment Deadline. Reasoning context: staff consolidated policy clarifications after seeing conflicting interpretations in discussion threads. Execution guidance: students should prioritize the explicit timestamp over relative wording if both appear in adjacent notices. FAQ: If cancellation language appears elsewhere, verify whether the UID was replaced versus removed for debounce evaluation.
+END:VEVENT
+END:VCALENDAR

@@ -1,0 +1,11 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:chem6a-baseline-039
+DTSTART:20260409T120000Z
+DTEND:20260409T130000Z
+SUMMARY:cHEM 6 a Lecture cadence block
+DESCRIPTION:Pair context: ics-pair-039 (after snapshot) with expected class REMOVED_CANDIDATE. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=cHeM_6 A-baseline-039, DTSTART=20260409T120000Z, DTEND=20260409T130000Z, SUMMARY=chem 6_A Lecture cadence block. Reasoning context: fallback instructions are preserved so operational intent remains readable even without LMS UI metadata. Execution guidance: if tooling discrepancy appears, escalate with exact timestamp, platform region, and reproducible steps. FAQ: If cancellation language appears elsewhere, verify whether the UID was replaced versus removed for debounce evaluation.
+END:VEVENT
+END:VCALENDAR

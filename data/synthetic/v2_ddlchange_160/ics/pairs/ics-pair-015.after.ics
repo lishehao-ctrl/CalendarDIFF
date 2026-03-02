@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:chem6a-baseline-015
+DTSTART:20260316T120000Z
+DTEND:20260316T130000Z
+SUMMARY:cheM_6_A Lecture cadence block
+DESCRIPTION:Pair context: ics-pair-015 (after snapshot) with expected class DUE_CHANGED. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=cHeM_6A-baseline-015, DTSTART=20260316T120000Z, DTEND=20260316T130000Z, SUMMARY=chEm_6-a Lecture cadence block. Reasoning context: this longform description is intentionally explicit to reduce parser brittleness under varied textual style. Execution guidance: students should prioritize the explicit timestamp over relative wording if both appear in adjacent notices. FAQ: If accommodation or conflict applies, follow approved pathways; this text does not override formal accommodation workflows.
+END:VEVENT
+BEGIN:VEVENT
+UID:chem6a-task-015
+DTSTART:20260318T090000Z
+DTEND:20260318T100000Z
+SUMMARY:chem 6a assignment due checkpoint
+DESCRIPTION:Pair context: ics-pair-015 (after snapshot) with expected class DUE_CHANGED. This event carries the focal change semantics for the pair and contains the evidence needed to infer the expected diff class. Schedule anchor: UID=cHEM_6A-task-015, DTSTART=20260318T090000Z, DTEND=20260318T100000Z, SUMMARY=cHeM-6a assignment due checkpoint. Reasoning context: staff consolidated policy clarifications after seeing conflicting interpretations in discussion threads. Execution guidance: avoid assuming mirrored systems update simultaneously; rely on the published canonical statement first. FAQ: If accommodation or conflict applies, follow approved pathways; this text does not override formal accommodation workflows.
+END:VEVENT
+END:VCALENDAR

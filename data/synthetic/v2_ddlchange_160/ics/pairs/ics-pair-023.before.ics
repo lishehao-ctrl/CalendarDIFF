@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:mus15-baseline-023
+DTSTART:20260324T120000Z
+DTEND:20260324T130000Z
+SUMMARY:mus 15 weekly lecture block
+DESCRIPTION:Pair context: ics-pair-023 (before snapshot) with expected class CREATED. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=MuS_15-baseline-023, DTSTART=20260324T120000Z, DTEND=20260324T130000Z, SUMMARY=muS-15 weekly lecture block. Reasoning context: scheduling adjustments were reviewed against dependency chains to minimize downstream collisions. Execution guidance: if tooling discrepancy appears, escalate with exact timestamp, platform region, and reproducible steps. FAQ: If a teammate sees stale metadata, refresh enrollment context before concluding that the event disappeared.
+END:VEVENT
+BEGIN:VEVENT
+UID:mus15-task-023
+DTSTART:20260324T090000Z
+DTEND:20260324T100000Z
+SUMMARY:MuS15 ongoing task record
+DESCRIPTION:Pair context: ics-pair-023 (before snapshot) with expected class CREATED. This event carries the focal change semantics for the pair and contains the evidence needed to infer the expected diff class. Schedule anchor: UID=Mus_15-task-023, DTSTART=20260324T090000Z, DTEND=20260324T100000Z, SUMMARY=mUs_15 ongoing task record. Reasoning context: timezone handling was surfaced because prior cohorts reported one-hour and date-boundary confusion. Execution guidance: students should prioritize the explicit timestamp over relative wording if both appear in adjacent notices. FAQ: If your local clock differs from server time, buffer your execution window and do not submit at the final minute.
+END:VEVENT
+END:VCALENDAR

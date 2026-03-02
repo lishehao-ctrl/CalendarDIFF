@@ -1,0 +1,11 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:phys2a-baseline-040
+DTSTART:20260410T120000Z
+DTEND:20260410T130000Z
+SUMMARY:phys 2A Weekly Lecture
+DESCRIPTION:Pair context: ics-pair-040 (after snapshot) with expected class REMOVED_CANDIDATE. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=phys 2a-baseline-040, DTSTART=20260410T120000Z, DTEND=20260410T130000Z, SUMMARY=phYS 2a Weekly Lecture. Reasoning context: fallback instructions are preserved so operational intent remains readable even without LMS UI metadata. Execution guidance: retain screenshot evidence of final submission or attendance acknowledgement for reconciliation requests.
+END:VEVENT
+END:VCALENDAR

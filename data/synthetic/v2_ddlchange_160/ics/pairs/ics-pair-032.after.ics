@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:ece35-baseline-032
+DTSTART:20260402T120000Z
+DTEND:20260402T130000Z
+SUMMARY:ecE_35 Weekly lecture session
+DESCRIPTION:Pair context: ics-pair-032 (after snapshot) with expected class NO_CHANGE. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=ECe 35-baseline-032, DTSTART=20260402T120000Z, DTEND=20260402T130000Z, SUMMARY=ECE-35 Weekly lecture session. Reasoning context: scheduling adjustments were reviewed against dependency chains to minimize downstream collisions. Execution guidance: retain screenshot evidence of final submission or attendance acknowledgement for reconciliation requests. FAQ: If a teammate sees stale metadata, refresh enrollment context before concluding that the event disappeared.
+END:VEVENT
+BEGIN:VEVENT
+UID:ece35-task-032
+DTSTART:20260402T090000Z
+DTEND:20260402T100000Z
+SUMMARY:EcE 35 Assignment DDL milestone
+DESCRIPTION:Pair context: ics-pair-032 (after snapshot) with expected class NO_CHANGE. This event carries the focal change semantics for the pair and contains the evidence needed to infer the expected diff class. Schedule anchor: UID=ece 35-task-032, DTSTART=20260402T090000Z, DTEND=20260402T100000Z, SUMMARY=ECe 35 Assignment DDL milestone. Reasoning context: this longform description is intentionally explicit to reduce parser brittleness under varied textual style. Execution guidance: if tooling discrepancy appears, escalate with exact timestamp, platform region, and reproducible steps. FAQ: If cancellation language appears elsewhere, verify whether the UID was replaced versus removed for debounce evaluation.
+END:VEVENT
+END:VCALENDAR

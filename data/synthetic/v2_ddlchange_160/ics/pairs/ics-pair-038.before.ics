@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:bild3-baseline-038
+DTSTART:20260408T120000Z
+DTEND:20260408T130000Z
+SUMMARY:bIlD 3 Lecture cadence block
+DESCRIPTION:Pair context: ics-pair-038 (before snapshot) with expected class REMOVED_CANDIDATE. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=BiLD 3-baseline-038, DTSTART=20260408T120000Z, DTEND=20260408T130000Z, SUMMARY=Bild-3 Lecture cadence block. Reasoning context: this longform description is intentionally explicit to reduce parser brittleness under varied textual style. Execution guidance: retain screenshot evidence of final submission or attendance acknowledgement for reconciliation requests. FAQ: If accommodation or conflict applies, follow approved pathways; this text does not override formal accommodation workflows.
+END:VEVENT
+BEGIN:VEVENT
+UID:bild3-task-038-removed
+DTSTART:20260408T090000Z
+DTEND:20260408T100000Z
+SUMMARY:BiLD 3 Assignment DDL milestone
+DESCRIPTION:Pair context: ics-pair-038 (before snapshot) with expected class REMOVED_CANDIDATE. This event is intentionally absent from the after snapshot to represent history-dependent removal candidate behavior. Schedule anchor: UID=Bild_3-task-038-removed, DTSTART=20260408T090000Z, DTEND=20260408T100000Z, SUMMARY=bIld 3 Assignment DDL milestone. Reasoning context: fallback instructions are preserved so operational intent remains readable even without LMS UI metadata. Execution guidance: students should prioritize the explicit timestamp over relative wording if both appear in adjacent notices. FAQ: If a teammate sees stale metadata, refresh enrollment context before concluding that the event disappeared.
+END:VEVENT
+END:VCALENDAR

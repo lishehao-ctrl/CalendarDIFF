@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:bild3-baseline-038
+DTSTART:20260408T120000Z
+DTEND:20260408T130000Z
+SUMMARY:BILD 3 Weekly Lecture
+DESCRIPTION:Baseline recurring item for stable context.
+END:VEVENT
+BEGIN:VEVENT
+UID:bild3-task-038-removed
+DTSTART:20260408T090000Z
+DTEND:20260408T100000Z
+SUMMARY:BILD 3 Assignment Deadline
+DESCRIPTION:Potentially removed event. Please verify final deadline on official site.
+END:VEVENT
+END:VCALENDAR
