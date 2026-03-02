@@ -92,6 +92,14 @@ INGESTION_LLM_BASE_URL=
 INGESTION_LLM_API_KEY=
 ```
 
+Optional Gmail endpoint overrides (for local fake-provider smoke only):
+
+```env
+GMAIL_API_BASE_URL=http://127.0.0.1:8765/gmail/v1/users/me
+GMAIL_OAUTH_TOKEN_URL=http://127.0.0.1:8765/oauth2/token
+GMAIL_OAUTH_AUTHORIZE_URL=http://127.0.0.1:8765/oauth2/auth
+```
+
 Worker intervals:
 
 ```env
@@ -114,6 +122,36 @@ curl -s http://localhost:8000/health
 python -c "import app.main"
 python -c "import services.ingestion_runtime.worker"
 python -c "import services.notification.worker"
+```
+
+## Real Source Smoke (3 Rounds)
+
+This smoke covers:
+
+1. input source -> sync request
+2. orchestrator + connector + online LLM parse
+3. pending review generation
+4. approve decision
+5. canonical timeline update
+
+Run prerequisites:
+
+1. API + ingestion-worker + notification-worker are running.
+2. Ingestion worker env includes:
+   - `INGESTION_LLM_MODEL`
+   - `INGESTION_LLM_BASE_URL`
+   - `INGESTION_LLM_API_KEY`
+3. For fake Gmail source, ingestion worker uses local overrides:
+   - `GMAIL_API_BASE_URL=http://127.0.0.1:8765/gmail/v1/users/me`
+   - `GMAIL_OAUTH_TOKEN_URL=http://127.0.0.1:8765/oauth2/token`
+   - `GMAIL_OAUTH_AUTHORIZE_URL=http://127.0.0.1:8765/oauth2/auth`
+
+Smoke command:
+
+```bash
+python scripts/smoke_real_sources_three_rounds.py \
+  --api-base http://127.0.0.1:8000 \
+  --report data/synthetic/v2_ddlchange_160/qa/real_source_smoke_report.json
 ```
 
 ## API Surface (V2)

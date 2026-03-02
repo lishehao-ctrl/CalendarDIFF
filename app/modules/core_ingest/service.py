@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -36,6 +37,7 @@ from app.modules.sync.types import CanonicalEventInput
 
 GMAIL_EVENT_TYPES = ACTIONABLE_EVENT_TYPES | {"announcement", "grade", "other"}
 EMAIL_EVENT_KEYS = sorted(ACTIONABLE_EVENT_TYPES | {"announcement", "grade", "other"})
+COURSE_HINT_PATTERN = re.compile(r"\b([A-Za-z]{3,5})[\s_\-]*([0-9]{1,3}[A-Za-z]?)\b")
 
 
 def get_ingest_apply_status(db: Session, *, request_id: str) -> dict:
@@ -287,10 +289,12 @@ def _apply_gmail_observations(
             )
             continue
 
+        subject = payload.get("subject") if isinstance(payload.get("subject"), str) else None
         raw_extract = payload.get("raw_extract") if isinstance(payload.get("raw_extract"), dict) else {}
         course_hints = _extract_course_hints(raw_extract)
+        if not course_hints:
+            course_hints = _extract_course_hints_from_text(subject)
         course_label = course_hints[0] if course_hints else "Unknown"
-        subject = payload.get("subject") if isinstance(payload.get("subject"), str) else None
         title = (subject or f"Email event {external_event_id}").strip()[:512]
         end_at = due_at + timedelta(hours=1)
 
@@ -895,6 +899,22 @@ def _extract_course_hints(raw_extract: dict) -> list[str]:
         if out:
             return out[:3]
     return []
+
+
+def _extract_course_hints_from_text(value: object) -> list[str]:
+    if not isinstance(value, str) or not value.strip():
+        return []
+    hints: list[str] = []
+    seen: set[str] = set()
+    for match in COURSE_HINT_PATTERN.finditer(value):
+        normalized = f"{match.group(1).upper()}{match.group(2).upper()}"
+        if normalized in seen:
+            continue
+        hints.append(normalized[:64])
+        seen.add(normalized)
+        if len(hints) >= 3:
+            break
+    return hints
 
 
 def _coerce_text(value: object) -> str | None:

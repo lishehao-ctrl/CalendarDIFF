@@ -25,6 +25,9 @@ class Settings(BaseSettings):
 
     gmail_oauth_client_secrets_file: str | None = None
     gmail_oauth_scope: str = "https://www.googleapis.com/auth/gmail.readonly"
+    gmail_api_base_url: str = "https://gmail.googleapis.com/gmail/v1/users/me"
+    gmail_oauth_token_url: str = "https://oauth2.googleapis.com/token"
+    gmail_oauth_authorize_url: str = "https://accounts.google.com/o/oauth2/v2/auth"
     ingestion_llm_base_url: str | None = None
     ingestion_llm_api_key: str | None = None
     ingestion_llm_model: str = "gpt-5.3-codex"

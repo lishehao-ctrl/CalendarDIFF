@@ -189,3 +189,40 @@ def test_apply_gmail_records_write_audit_tables_and_pending_change(db_session) -
         note="approve gmail proposal",
     )
     assert db_session.scalar(select(func.count(Event.id)).where(Event.input_id == canonical_input_id)) == 1
+
+
+def test_apply_gmail_records_extract_course_hint_from_subject_alias(db_session) -> None:
+    source = _create_gmail_source(db_session)
+    records = [
+        {
+            "record_type": "gmail.message.extracted",
+            "payload": {
+                "message_id": "gmail-msg-alias",
+                "subject": "Re: Update cSe_8A hw1 deadline moved",
+                "event_type": "deadline",
+                "due_at": "2026-03-11T21:00:00+00:00",
+                "confidence": 0.88,
+                "raw_extract": {},
+            },
+        }
+    ]
+    _create_gmail_request_and_result(
+        db_session,
+        source=source,
+        request_id="gmail-req-alias",
+        records=records,
+    )
+
+    applied = apply_ingest_result_idempotent(db_session, request_id="gmail-req-alias")
+    assert applied["changes_created"] == 1
+
+    canonical_input_id = _canonical_input_id(db_session, user_id=source.user_id)
+    pending = db_session.scalar(
+        select(Change)
+        .where(Change.input_id == canonical_input_id, Change.review_status == ReviewStatus.PENDING)
+        .order_by(Change.id.desc())
+        .limit(1)
+    )
+    assert pending is not None
+    assert isinstance(pending.after_json, dict)
+    assert pending.after_json["course_label"] == "CSE8A"

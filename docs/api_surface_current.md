@@ -67,7 +67,17 @@ Notes:
    - `INGESTION_LLM_MODEL`
    - `INGESTION_LLM_BASE_URL`
    - `INGESTION_LLM_API_KEY`
+   - optional fake-source overrides:
+     - `GMAIL_API_BASE_URL`
+     - `GMAIL_OAUTH_TOKEN_URL`
+     - `GMAIL_OAUTH_AUTHORIZE_URL`
 
 ## Eval Tooling (CLI, Not HTTP)
 
 1. `python scripts/eval_ingestion_llm_pass_rate.py --dataset-root data/synthetic/v2_ddlchange_160 --report data/synthetic/v2_ddlchange_160/qa/llm_pass_rate_report.json --fail-on-threshold`
+2. `python scripts/smoke_real_sources_three_rounds.py --api-base http://127.0.0.1:8000 --report data/synthetic/v2_ddlchange_160/qa/real_source_smoke_report.json`
+
+Notes:
+
+1. No public HTTP API path changes are introduced by real-source smoke tooling.
+2. Smoke runner drives existing `/v2/input-sources`, `/v2/sync-requests`, `/v2/review-items/changes`, and `/v2/timeline-events`.

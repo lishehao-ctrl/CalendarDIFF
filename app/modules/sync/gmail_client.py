@@ -69,13 +69,12 @@ class GmailHistoryExpiredError(GmailAPIError):
 
 
 class GmailClient:
-    _oauth_authorize_url = "https://accounts.google.com/o/oauth2/v2/auth"
-    _oauth_token_url = "https://oauth2.googleapis.com/token"
-    _gmail_api_base = "https://gmail.googleapis.com/gmail/v1/users/me"
-
     def __init__(self) -> None:
         settings = get_settings()
         self._settings = settings
+        self._oauth_authorize_url = _normalize_endpoint(settings.gmail_oauth_authorize_url)
+        self._oauth_token_url = _normalize_endpoint(settings.gmail_oauth_token_url)
+        self._gmail_api_base = _normalize_endpoint(settings.gmail_api_base_url)
         self._timeout = httpx.Timeout(
             connect=settings.http_connect_timeout_seconds,
             read=settings.http_read_timeout_seconds,
@@ -441,3 +440,10 @@ def _decode_base64url_to_text(value: object) -> str | None:
         return decoded_bytes.decode("utf-8", errors="replace")
     except Exception:
         return None
+
+
+def _normalize_endpoint(value: str) -> str:
+    text = value.strip()
+    if not text:
+        raise RuntimeError("Gmail endpoint URL must not be blank")
+    return text.rstrip("/")

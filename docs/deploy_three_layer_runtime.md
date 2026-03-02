@@ -40,6 +40,14 @@ INGESTION_LLM_BASE_URL=...
 INGESTION_LLM_API_KEY=...
 ```
 
+Optional Gmail endpoint overrides (for local fake-source smoke):
+
+```env
+GMAIL_API_BASE_URL=http://127.0.0.1:8765/gmail/v1/users/me
+GMAIL_OAUTH_TOKEN_URL=http://127.0.0.1:8765/oauth2/token
+GMAIL_OAUTH_AUTHORIZE_URL=http://127.0.0.1:8765/oauth2/auth
+```
+
 ## Local Startup (Manual)
 
 1. migrate DB:
@@ -102,6 +110,24 @@ python -c "import services.notification.worker"
 4. Notification worker log fields per tick:
 
 `processed_slots`, `sent_count`, `failed_count`, `tick_latency_ms`
+
+## Three-Round Real Source Smoke
+
+Run end-to-end smoke (`source -> pending review -> approve -> timeline`) with fake ICS + fake Gmail:
+
+```bash
+python scripts/smoke_real_sources_three_rounds.py \
+  --api-base http://127.0.0.1:8000 \
+  --report data/synthetic/v2_ddlchange_160/qa/real_source_smoke_report.json
+```
+
+The smoke runner launches `scripts/fake_source_provider.py` and drives three rounds:
+
+1. Round 1 simple
+2. Round 2 medium
+3. Round 3 same-subject alias-heavy
+
+Output report includes round-level sync IDs/status, review decisions, merge checks, and timeline assertions.
 
 ## Failure Triage
 
