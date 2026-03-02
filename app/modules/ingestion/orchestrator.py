@@ -24,9 +24,10 @@ ORCHESTRATOR_SYNC_REQUEST_CONSUMER = "orchestrator.sync_requested.v1"
 OUTBOX_BATCH_SIZE = 200
 
 
-def run_orchestrator_tick(db: Session, *, worker_id: str) -> None:
-    _enqueue_due_scheduler_requests(db, worker_id=worker_id)
-    _consume_sync_requested_events(db, worker_id=worker_id)
+def run_orchestrator_tick(db: Session, *, worker_id: str) -> int:
+    created = _enqueue_due_scheduler_requests(db, worker_id=worker_id)
+    consumed = _consume_sync_requested_events(db, worker_id=worker_id)
+    return created + consumed
 
 
 def _enqueue_due_scheduler_requests(db: Session, *, worker_id: str) -> int:

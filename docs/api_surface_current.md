@@ -1,6 +1,11 @@
-# API Surface Snapshot (Current, V2 Hard-Cut)
+# API Surface Snapshot (Current, V2)
 
-This file captures the runtime API surface after the V2 hard cut.
+This document captures the active HTTP API surface after the three-layer runtime cutover.
+
+Deployment note:
+
+1. Single HTTP backend entrypoint: `uvicorn app.main:app`
+2. No gateway proxy and no split API services
 
 ## Workspace
 
@@ -36,15 +41,14 @@ Notes:
 
 1. `GET /v2/change-events` defaults to approved changes only (`review_status=approved`).
 2. `GET /v2/timeline-events` reads canonical events after review approval.
-3. `source_id` filtering for `change-events`/`timeline-events` is sourced from `proposal_sources_json` on approved changes.
-4. hard-cut behavior: historical rows without proposal source metadata are not guaranteed to match `source_id` filters.
+3. `source_id` mapping/filtering for new rows is based on `proposal_sources_json`.
 
 ## Review
 
 1. `GET /v2/review-items/emails`
 2. `PATCH /v2/review-items/emails/{email_id}`
 3. `POST /v2/review-items/emails/{email_id}/views`
-4. `POST /v2/review-items/emails/{email_id}/applications` (deprecated; returns migration hint)
+4. `POST /v2/review-items/emails/{email_id}/applications` (deprecated; migration hint only)
 5. `GET /v2/review-items/changes`
 6. `PATCH /v2/review-items/changes/{change_id}/views`
 7. `POST /v2/review-items/changes/{change_id}/decisions`
@@ -56,32 +60,15 @@ Notes:
 3. `POST /internal/v2/ingest-jobs/{job_id}/replays`
 4. `POST /internal/v2/ingest-jobs/dead-letter/replays`
 
-## Runtime Parsing Status
+## Ingestion LLM Runtime (No API Change)
 
-1. `calendar` and `gmail` connectors call V2 LLM parsers through `app/modules/llm_gateway/*`.
-2. LLM is configured only by environment variables:
+1. Calendar/Gmail parsers call `app/modules/llm_gateway/*`.
+2. Gateway protocol is OpenAI-compatible `chat/completions`.
+3. Runtime env:
    - `INGESTION_LLM_MODEL`
    - `INGESTION_LLM_BASE_URL`
    - `INGESTION_LLM_API_KEY`
-3. Gateway is OpenAI-compatible `chat/completions` API only.
-4. Parser failures surface through connector errors:
-   - `parse_llm_calendar_schema_invalid`
-   - `parse_llm_gmail_schema_invalid`
-   - `parse_llm_calendar_upstream_error`
-   - `parse_llm_gmail_upstream_error`
-   - `parse_llm_timeout`
-   - `parse_llm_empty_output`
-5. Parse failures follow normal retry/dead-letter semantics in ingest jobs.
 
-## Eval Tooling (No API Change)
-
-No new HTTP endpoints were added for ingestion evaluation. The pass-rate gate is implemented as a CLI:
+## Eval Tooling (CLI, Not HTTP)
 
 1. `python scripts/eval_ingestion_llm_pass_rate.py --dataset-root data/synthetic/v2_ddlchange_160 --report data/synthetic/v2_ddlchange_160/qa/llm_pass_rate_report.json --fail-on-threshold`
-
-The CLI emits:
-
-1. run metadata (`run_id`, provider/model/base_url hash)
-2. mail metrics (`structured_success_rate`, `label_accuracy`, `event_macro_f1`)
-3. ics metrics (`structured_success_rate`, `diff_accuracy`, `uid_hit_rate`)
-4. threshold checks and failure list

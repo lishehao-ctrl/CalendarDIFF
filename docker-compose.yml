@@ -15,88 +15,48 @@ services:
       timeout: 5s
       retries: 10
 
-  input-control-plane-api:
+  api:
     build: .
     env_file:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
-      DISABLE_SCHEDULER: "true"
     volumes:
       - ./:/app
     depends_on:
       postgres:
         condition: service_healthy
-    command: /bin/sh -lc "alembic upgrade head && uvicorn services.input_control_plane.main:app --host 0.0.0.0 --port 8000"
-
-  core-api:
-    build: .
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
-      DISABLE_SCHEDULER: "true"
-    volumes:
-      - ./:/app
-    depends_on:
-      postgres:
-        condition: service_healthy
-    command: /bin/sh -lc "alembic upgrade head && uvicorn services.core_api.main:app --host 0.0.0.0 --port 8001"
-
-  gateway:
-    image: nginx:1.27-alpine
-    depends_on:
-      - input-control-plane-api
-      - core-api
+    command: /bin/sh -lc "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
-      - "8000:80"
-    volumes:
-      - ./services/gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - "8000:8000"
 
-  ingestion-orchestrator:
+  ingestion-worker:
     build: .
     env_file:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
-      DISABLE_SCHEDULER: "true"
-      ORCHESTRATOR_TICK_SECONDS: "3"
+      INGESTION_TICK_SECONDS: "2"
     volumes:
       - ./:/app
     depends_on:
       postgres:
         condition: service_healthy
-    command: /bin/sh -lc "alembic upgrade head && python -m services.ingestion_orchestrator.worker"
+    command: /bin/sh -lc "alembic upgrade head && python -m services.ingestion_runtime.worker"
 
-  connector-runtime:
+  notification-worker:
     build: .
     env_file:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
-      DISABLE_SCHEDULER: "true"
-      CONNECTOR_TICK_SECONDS: "2"
+      NOTIFICATION_TICK_SECONDS: "30"
     volumes:
       - ./:/app
     depends_on:
       postgres:
         condition: service_healthy
-    command: /bin/sh -lc "alembic upgrade head && python -m services.connector_runtime.worker"
-
-  core-apply-worker:
-    build: .
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
-      DISABLE_SCHEDULER: "true"
-      CORE_APPLY_TICK_SECONDS: "2"
-    volumes:
-      - ./:/app
-    depends_on:
-      postgres:
-        condition: service_healthy
-    command: /bin/sh -lc "alembic upgrade head && python -m services.core_apply_worker.worker"
+    command: /bin/sh -lc "alembic upgrade head && python -m services.notification.worker"
 
 volumes:
   pgdata:
