@@ -63,6 +63,24 @@ Gateway runtime defaults are fixed in code:
 Connector runtime maps parser errors to `ConnectorResultStatus.PARSE_FAILED`.
 Job retries and dead-letter transitions remain unchanged.
 
+## Format Retry Policy
+
+To reduce one-off model formatting drift, ingestion parsers now apply an additional
+format-specific retry strategy:
+
+1. Maximum attempts: `4` total (`initial + 3 retries`).
+2. Gateway-level format retries are triggered for:
+   - `parse_llm_schema_invalid`
+   - `parse_llm_empty_output`
+3. Parser-level format retries are triggered when Pydantic response validation fails:
+   - `GmailParserResponse.model_validate(...)`
+   - `CalendarParserResponse.model_validate(...)`
+4. No extra backoff is added for format retries (immediate retry).
+5. After attempt 4 still failing, existing parser error codes are preserved:
+   - `parse_llm_gmail_schema_invalid`
+   - `parse_llm_calendar_schema_invalid`
+   - `parse_llm_empty_output`
+
 ## Gmail Ingestion Flow
 
 1. Load cursor `history_id`.
@@ -85,3 +103,35 @@ Job retries and dead-letter transitions remain unchanged.
 1. Gateway transport uses in-process `httpx`; no shell subprocess `curl`.
 2. External status visibility remains `/v2/sync-requests/{request_id}`.
 3. Email review pipeline is rules-only and does not use LLM fallback.
+
+## Pass-Rate Evaluation Gate (Online)
+
+The ingestion parser quality gate runs against the full synthetic benchmark set:
+
+1. Dataset: `data/synthetic/v2_ddlchange_160`
+2. Scale: 160 samples (`mail=120`, `ics pairs=40`)
+3. Mode: online only (real provider through `chat/completions`)
+
+Run command:
+
+```bash
+python scripts/eval_ingestion_llm_pass_rate.py \
+  --dataset-root data/synthetic/v2_ddlchange_160 \
+  --report data/synthetic/v2_ddlchange_160/qa/llm_pass_rate_report.json \
+  --max-workers 4 \
+  --fail-on-threshold
+```
+
+Thresholds:
+
+1. `mail.event_macro_f1 >= 0.85`
+2. `ics.diff_accuracy >= 0.92`
+3. `mail.structured_success_rate >= 0.98`
+4. `ics.structured_success_rate >= 0.98`
+
+Report output includes:
+
+1. run metadata (`run_id`, `provider`, `model`, `base_url_hash`)
+2. mail metrics (`structured_success_rate`, `label_accuracy`, `event_macro_f1`, confusion matrix)
+3. ics metrics (`structured_success_rate`, `diff_accuracy`, `uid_hit_rate`, confusion matrix)
+4. threshold decision (`threshold_check`, `failed_checks`, `passed`)
