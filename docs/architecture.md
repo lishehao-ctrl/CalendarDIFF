@@ -73,6 +73,14 @@ Does not own:
 1. input source provisioning
 2. oauth/webhook entry
 
+Review-pool lifecycle (current):
+
+1. ingest apply writes/updates `source_event_observations` from calendar/gmail parser records
+2. apply creates `changes.review_status=pending` proposals only (no immediate canonical mutation)
+3. pending proposal creation enqueues notification
+4. reviewer calls unified review API (`/v2/review-items/changes/{id}/decisions`)
+5. only `approve` mutates canonical `events`; `reject` keeps canonical unchanged
+
 ## 3) Contracts and States
 
 ### Source kind
@@ -156,3 +164,36 @@ Calendar and Gmail ingestion parsers run through a unified `LLM Gateway`:
    - `parse_llm_gmail_upstream_error`
    - `parse_llm_timeout`
    - `parse_llm_empty_output`
+8. format-error resilience:
+   - max `4` attempts per parse invocation (`initial + 3 retries`)
+   - retries are applied only for format-class failures (`schema_invalid`, `empty_output`, parser validation errors)
+   - network/auth/rate/fetch semantics remain unchanged
+
+## 7) LLM Eval Gate (Online Pass-Rate)
+
+Ingestion parser quality is gated by an online benchmark command:
+
+1. runner: `scripts/eval_ingestion_llm_pass_rate.py`
+2. dataset root: `data/synthetic/v2_ddlchange_160`
+3. full run: `mail=120`, `ics pairs=40` (no sampling mode)
+4. provider config source: env (`INGESTION_LLM_MODEL`, `INGESTION_LLM_BASE_URL`, `INGESTION_LLM_API_KEY`)
+
+Flow:
+
+1. fail-fast validate LLM env config
+2. load and align synthetic dataset views
+3. run mail parser online (`parse_gmail_payload`) and apply evaluation mapping rules
+4. run ics parser online (`parse_calendar_content`) and infer pair diff classes
+5. score + threshold gate + report write
+
+Thresholds (strict):
+
+1. `mail.event_macro_f1 >= 0.85`
+2. `ics.diff_accuracy >= 0.92`
+3. `mail.structured_success_rate >= 0.98`
+4. `ics.structured_success_rate >= 0.98`
+
+Artifacts:
+
+1. JSON report (`qa/llm_pass_rate_report.json`)
+2. optional markdown summary (`qa/llm_pass_rate_report.md`)

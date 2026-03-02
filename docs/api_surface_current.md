@@ -32,12 +32,20 @@ This file captures the runtime API surface after the V2 hard cut.
 3. `PATCH /v2/change-events/{change_id}`
 4. `GET /v2/change-events/{change_id}/evidence/{side}/preview`
 
+Notes:
+
+1. `GET /v2/change-events` defaults to approved changes only (`review_status=approved`).
+2. `GET /v2/timeline-events` reads canonical events after review approval.
+
 ## Review
 
 1. `GET /v2/review-items/emails`
 2. `PATCH /v2/review-items/emails/{email_id}`
 3. `POST /v2/review-items/emails/{email_id}/views`
-4. `POST /v2/review-items/emails/{email_id}/applications`
+4. `POST /v2/review-items/emails/{email_id}/applications` (deprecated; returns migration hint)
+5. `GET /v2/review-items/changes`
+6. `PATCH /v2/review-items/changes/{change_id}/views`
+7. `POST /v2/review-items/changes/{change_id}/decisions`
 
 ## Internal APIs
 
@@ -62,3 +70,16 @@ This file captures the runtime API surface after the V2 hard cut.
    - `parse_llm_timeout`
    - `parse_llm_empty_output`
 5. Parse failures follow normal retry/dead-letter semantics in ingest jobs.
+
+## Eval Tooling (No API Change)
+
+No new HTTP endpoints were added for ingestion evaluation. The pass-rate gate is implemented as a CLI:
+
+1. `python scripts/eval_ingestion_llm_pass_rate.py --dataset-root data/synthetic/v2_ddlchange_160 --report data/synthetic/v2_ddlchange_160/qa/llm_pass_rate_report.json --fail-on-threshold`
+
+The CLI emits:
+
+1. run metadata (`run_id`, provider/model/base_url hash)
+2. mail metrics (`structured_success_rate`, `label_accuracy`, `event_macro_f1`)
+3. ics metrics (`structured_success_rate`, `diff_accuracy`, `uid_hit_rate`)
+4. threshold checks and failure list
