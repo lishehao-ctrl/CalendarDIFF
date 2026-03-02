@@ -8,7 +8,6 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.security import encrypt_secret
 from app.db.models import (
     Change,
     ChangeType,
@@ -27,12 +26,10 @@ from app.db.models import (
     ReviewStatus,
     SourceEventObservation,
     SourceKind,
-    SourceLegacyInput,
     SyncRequest,
     SyncRequestStatus,
 )
 from app.modules.core_ingest.merge_engine import build_merge_key, choose_primary_observation
-from app.modules.input_control_plane.service import decode_source_secrets
 from app.modules.notify.service import enqueue_notifications_for_changes
 from app.modules.sync.email_rules import ACTIONABLE_EVENT_TYPES
 from app.modules.sync.types import CanonicalEventInput
@@ -116,7 +113,6 @@ def _apply_records(
     request_id: str,
 ) -> int:
     records = result.records if isinstance(result.records, list) else []
-    _ensure_legacy_input_for_source(db=db, source=source)
 
     if result.status == ConnectorResultStatus.NO_CHANGE and not records:
         return 0
@@ -177,9 +173,6 @@ def _ensure_canonical_input_for_user(*, db: Session, user_id: int) -> Input:
         user_id=user_id,
         type=InputType.ICS,
         identity_key=identity_key,
-        encrypted_url=encrypt_secret(f"canonical://user/{user_id}"),
-        provider="canonical",
-        interval_minutes=15,
         is_active=True,
     )
     db.add(input_row)
@@ -833,94 +826,6 @@ def _safe_delta_seconds(*, before_json: dict, after_json: dict) -> int | None:
     before = _parse_iso_datetime(before_raw, field="start_at_utc", uid="before")
     after = _parse_iso_datetime(after_raw, field="start_at_utc", uid="after")
     return int((after - before).total_seconds())
-
-
-def _ensure_legacy_input_for_source(*, db: Session, source: InputSource) -> Input:
-    bridge = db.get(SourceLegacyInput, source.id)
-    if bridge is not None:
-        input_row = db.get(Input, bridge.input_id)
-        if input_row is not None:
-            _sync_legacy_input_fields_from_source(input_row=input_row, source=source)
-            return input_row
-
-    input_type = _map_source_kind_to_input_type(source.source_kind)
-    identity_key = f"source:{source.id}"
-    input_row = db.scalar(
-        select(Input).where(
-            Input.user_id == source.user_id,
-            Input.type == input_type,
-            Input.identity_key == identity_key,
-        )
-    )
-
-    if input_row is None:
-        input_row = Input(
-            user_id=source.user_id,
-            type=input_type,
-            identity_key=identity_key,
-            encrypted_url=encrypt_secret(f"source://{source.provider}/{source.id}"),
-            provider=source.provider,
-            interval_minutes=15,
-            is_active=source.is_active,
-        )
-        db.add(input_row)
-        db.flush()
-
-    _sync_legacy_input_fields_from_source(input_row=input_row, source=source)
-
-    if bridge is None:
-        bridge = SourceLegacyInput(source_id=source.id, input_id=input_row.id)
-        db.add(bridge)
-    elif bridge.input_id != input_row.id:
-        bridge.input_id = input_row.id
-    db.flush()
-    return input_row
-
-
-def _sync_legacy_input_fields_from_source(*, input_row: Input, source: InputSource) -> None:
-    input_row.is_active = source.is_active
-    input_row.provider = source.provider
-    input_row.last_checked_at = source.last_polled_at
-    input_row.last_error = source.last_error_message
-
-    config = source.config.config_json if source.config is not None and isinstance(source.config.config_json, dict) else {}
-    cursor = source.cursor.cursor_json if source.cursor is not None and isinstance(source.cursor.cursor_json, dict) else {}
-    secrets = decode_source_secrets(source)
-
-    if source.source_kind == SourceKind.CALENDAR:
-        url = secrets.get("url")
-        if isinstance(url, str) and url:
-            input_row.encrypted_url = encrypt_secret(url)
-        etag = cursor.get("etag")
-        last_modified = cursor.get("last_modified")
-        if isinstance(etag, str):
-            input_row.etag = etag
-        if isinstance(last_modified, str):
-            input_row.last_modified = last_modified
-    elif source.source_kind == SourceKind.EMAIL:
-        history_id = cursor.get("history_id")
-        if isinstance(history_id, str):
-            input_row.gmail_history_id = history_id
-        account_email = secrets.get("account_email")
-        if isinstance(account_email, str):
-            input_row.gmail_account_email = account_email
-        label_id = config.get("label_id")
-        if isinstance(label_id, str):
-            input_row.gmail_label = label_id
-        from_contains = config.get("from_contains")
-        if isinstance(from_contains, str):
-            input_row.gmail_from_contains = from_contains
-        subject_keywords = config.get("subject_keywords")
-        if isinstance(subject_keywords, list):
-            input_row.gmail_subject_keywords = [v for v in subject_keywords if isinstance(v, str)]
-
-
-def _map_source_kind_to_input_type(source_kind: SourceKind) -> InputType:
-    if source_kind == SourceKind.CALENDAR:
-        return InputType.ICS
-    if source_kind == SourceKind.EMAIL:
-        return InputType.EMAIL
-    raise RuntimeError(f"source kind is not supported in legacy bridge: {source_kind.value}")
 
 
 def _coerce_calendar_payload(*, payload: dict, source_id: int, fallback_index: int) -> CanonicalEventInput:

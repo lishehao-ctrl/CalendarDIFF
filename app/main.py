@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import socket
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -24,7 +23,6 @@ from app.modules.onboarding.router import router as onboarding_router
 from app.modules.review_changes.router import router as review_changes_router
 from app.modules.users.router import router as users_router
 from app.modules.ui.router import router as ui_router
-from app.state import SchedulerStatus
 
 
 logger = logging.getLogger(__name__)
@@ -61,12 +59,6 @@ async def lifespan(app: FastAPI):
             app.state.schema_guard_error = "Database schema check failed during startup."
             logger.error("schema startup check error=%s", sanitize_log_message(str(exc)))
 
-    scheduler_status = SchedulerStatus()
-    scheduler_status.instance_id = f"app-main:{settings.scheduler_instance_id or socket.gethostname()}"
-    scheduler_status.schema_guard_blocked = not schema_ready
-    scheduler_status.schema_guard_message = app.state.schema_guard_error
-    scheduler_status.running = False
-    app.state.scheduler_runner = type("_NoopRunner", (), {"status": scheduler_status})()
     if not schema_ready:
         logger.warning("scheduler startup skipped because database schema is not ready")
 

@@ -98,21 +98,6 @@ class NotificationStatus(str, Enum):
     FAILED = "failed"
 
 
-class SyncRunStatus(str, Enum):
-    NO_CHANGE = "NO_CHANGE"
-    CHANGED = "CHANGED"
-    FETCH_FAILED = "FETCH_FAILED"
-    PARSE_FAILED = "PARSE_FAILED"
-    DIFF_FAILED = "DIFF_FAILED"
-    EMAIL_FAILED = "EMAIL_FAILED"
-    LOCK_SKIPPED = "LOCK_SKIPPED"
-
-
-class SyncTriggerType(str, Enum):
-    SCHEDULER = "scheduler"
-    MANUAL = "manual"
-
-
 class User(Base):
     __tablename__ = "users"
 
@@ -134,10 +119,7 @@ class User(Base):
 class Input(Base):
     __tablename__ = "inputs"
     __table_args__ = (
-        Index("ix_inputs_active_last_checked", "is_active", "last_checked_at"),
-        Index("ix_inputs_due_lookup", "is_active", "last_checked_at", "interval_minutes"),
         UniqueConstraint("user_id", "type", "identity_key", name="uq_inputs_user_type_identity_key"),
-        CheckConstraint("interval_minutes = 15", name="ck_inputs_interval_minutes_fixed_15"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -149,46 +131,18 @@ class Input(Base):
         server_default=InputType.ICS.value,
     )
     identity_key: Mapped[str] = mapped_column(String(128), nullable=False)
-    encrypted_url: Mapped[str] = mapped_column(Text, nullable=False)
-    provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    gmail_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    gmail_from_contains: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    gmail_subject_keywords: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
-    gmail_history_id: Mapped[str | None] = mapped_column(Text, nullable=True)
-    gmail_account_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    encrypted_access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
-    encrypted_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
-    access_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    etag: Mapped[str | None] = mapped_column(Text, nullable=True)
-    last_modified: Mapped[str | None] = mapped_column(Text, nullable=True)
-    last_content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    notify_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=15, server_default="15")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
-    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_ok_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_change_detected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     user: Mapped[User] = relationship(back_populates="inputs")
     events: Mapped[list[Event]] = relationship(back_populates="input", cascade="all, delete-orphan")
     snapshots: Mapped[list[Snapshot]] = relationship(back_populates="input", cascade="all, delete-orphan")
     changes: Mapped[list[Change]] = relationship(back_populates="input", cascade="all, delete-orphan")
-    sync_runs: Mapped[list[SyncRun]] = relationship(back_populates="input", cascade="all, delete-orphan")
-    source_bridge: Mapped[SourceLegacyInput | None] = relationship(
-        back_populates="input",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
 
     @property
     def display_label(self) -> str:
         if self.type == InputType.EMAIL:
-            account = (self.gmail_account_email or "").strip()
-            return f"Gmail · {account}" if account else f"Gmail · input-{self.id}"
+            return f"Gmail · input-{self.id}"
         return "Calendar · Primary"
 
 
@@ -424,35 +378,6 @@ class EmailRoute(Base):
     email_message: Mapped[EmailMessage] = relationship(back_populates="route")
 
 
-class SyncRun(Base):
-    __tablename__ = "sync_runs"
-    __table_args__ = (
-        Index("ix_sync_runs_input_started_desc", "input_id", "started_at"),
-        Index("ix_sync_runs_started_at", "started_at"),
-        Index("ix_sync_runs_status_started_at", "status", "started_at"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    input_id: Mapped[int] = mapped_column(ForeignKey("inputs.id", ondelete="CASCADE"), nullable=False)
-    trigger_type: Mapped[SyncTriggerType] = mapped_column(
-        SAEnum(SyncTriggerType, name="sync_trigger_type", native_enum=False),
-        nullable=False,
-    )
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    status: Mapped[SyncRunStatus] = mapped_column(
-        SAEnum(SyncRunStatus, name="sync_run_status", native_enum=False),
-        nullable=False,
-    )
-    changes_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    error_message: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    lock_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
-
-    input: Mapped[Input] = relationship(back_populates="sync_runs")
-
-
 class Notification(Base):
     __tablename__ = "notifications"
     __table_args__ = (
@@ -553,29 +478,6 @@ class InputSource(Base):
         back_populates="source",
         cascade="all, delete-orphan",
     )
-    legacy_input_bridge: Mapped[SourceLegacyInput | None] = relationship(
-        back_populates="source",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
-
-
-class SourceLegacyInput(Base):
-    __tablename__ = "source_legacy_inputs"
-    __table_args__ = (
-        UniqueConstraint("input_id", name="uq_source_legacy_inputs_input_id"),
-        Index("ix_source_legacy_inputs_input_id", "input_id"),
-    )
-
-    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), primary_key=True)
-    input_id: Mapped[int] = mapped_column(ForeignKey("inputs.id", ondelete="CASCADE"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
-    )
-
-    source: Mapped[InputSource] = relationship(back_populates="legacy_input_bridge")
-    input: Mapped[Input] = relationship(back_populates="source_bridge")
 
 
 class SourceEventObservation(Base):

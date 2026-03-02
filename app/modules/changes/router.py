@@ -7,7 +7,7 @@ from typing import Any
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, case, select
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import get_settings
@@ -21,7 +21,6 @@ from app.db.models import (
     NotificationChannel,
     NotificationStatus,
     ReviewStatus,
-    SourceLegacyInput,
 )
 from app.db.session import get_db
 from app.modules.common.deps import get_onboarded_user_or_409
@@ -60,10 +59,8 @@ def list_feed(
 
     current_user_id = user.id
 
-    priority_rank_expr = case((Input.type == InputType.EMAIL, 0), else_=1)
-
     stmt = (
-        select(Change, Input, Notification, SourceLegacyInput)
+        select(Change, Input, Notification)
         .options(joinedload(Change.before_snapshot), joinedload(Change.after_snapshot))
         .join(Input, Change.input_id == Input.id)
         .outerjoin(
@@ -73,7 +70,6 @@ def list_feed(
                 Notification.channel == NotificationChannel.EMAIL,
             ),
         )
-        .outerjoin(SourceLegacyInput, SourceLegacyInput.input_id == Input.id)
     )
 
     stmt = stmt.where(Input.user_id == current_user_id)
@@ -90,30 +86,25 @@ def list_feed(
 
     db_offset = 0 if source_id is not None else offset
     db_limit = (applied_limit + offset + 512) if source_id is not None else applied_limit
-    stmt = stmt.order_by(priority_rank_expr.asc(), Change.detected_at.desc(), Change.id.desc()).offset(db_offset).limit(db_limit)
+    stmt = stmt.order_by(Change.detected_at.desc(), Change.id.desc()).offset(db_offset).limit(db_limit)
     rows = db.execute(stmt).all()
 
     now = datetime.now(timezone.utc)
     result: list[ChangeFeedResponse] = []
-    for change, input, notification, source_bridge in rows:
+    for change, input, notification in rows:
         proposal_source_ids = _extract_proposal_source_ids(change)
-        resolved_source_id = (
-            proposal_source_ids[0]
-            if proposal_source_ids
-            else source_bridge.source_id
-            if source_bridge is not None
-            else change.input_id
-        )
+        resolved_source_id = proposal_source_ids[0] if proposal_source_ids else change.input_id
+        resolved_source_kind = _extract_primary_source_kind(change) or _to_source_kind_value(input.type)
         if source_id is not None and source_id not in {resolved_source_id, *proposal_source_ids}:
             continue
         base = _to_response(change, source_id=resolved_source_id)
-        priority_rank = 0 if input.type == InputType.EMAIL else 1
+        priority_rank = 0 if resolved_source_kind == "email" else 1
         priority_label = "high" if priority_rank == 0 else "normal"
         notification_state, deliver_after = _read_notification_state(notification, now=now)
         result.append(
             ChangeFeedResponse(
                 **base.model_dump(),
-                source_kind=_to_source_kind_value(input.type),
+                source_kind=resolved_source_kind,
                 priority_rank=priority_rank,
                 priority_label=priority_label,
                 notification_state=notification_state,
@@ -151,9 +142,8 @@ def mark_change_viewed(
 
     db.commit()
     db.refresh(row)
-    source_id = db.scalar(select(SourceLegacyInput.source_id).where(SourceLegacyInput.input_id == row.input_id))
     proposal_source_ids = _extract_proposal_source_ids(row)
-    resolved_source_id = proposal_source_ids[0] if proposal_source_ids else (source_id or row.input_id)
+    resolved_source_id = proposal_source_ids[0] if proposal_source_ids else row.input_id
     return _to_response(row, source_id=resolved_source_id)
 
 
@@ -285,6 +275,19 @@ def _extract_proposal_source_ids(change: Change) -> list[int]:
         if isinstance(source_id, int):
             out.append(source_id)
     return out
+
+
+def _extract_primary_source_kind(change: Change) -> str | None:
+    sources = change.proposal_sources_json if isinstance(change.proposal_sources_json, list) else []
+    for row in sources:
+        if not isinstance(row, dict):
+            continue
+        source_kind = row.get("source_kind")
+        if isinstance(source_kind, str):
+            normalized = source_kind.strip().lower()
+            if normalized in {"calendar", "email"}:
+                return normalized
+    return None
 
 
 def _extract_snapshot_evidence_key(raw_evidence_key: object) -> dict[str, Any] | None:

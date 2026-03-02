@@ -22,8 +22,6 @@ def _build_change(db_session: Session, *, change_type: ChangeType) -> tuple[Inpu
         user_id=user.id,
         type=InputType.ICS,
         identity_key="Course Deadlines",
-        encrypted_url="encrypted",
-        interval_minutes=15,
         is_active=True,
     )
     db_session.add(input_row)

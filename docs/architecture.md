@@ -147,7 +147,7 @@ Calendar and Gmail ingestion parsers run through a unified `LLM Gateway`:
    - `INGESTION_LLM_BASE_URL`
    - `INGESTION_LLM_API_KEY`
 3. connector runtime routes `calendar` and `gmail` through `app/modules/ingestion/llm_parsers/*`, which call `app/modules/llm_gateway/*`
-4. legacy parser code remains archived under `app/modules/sync/archive/*`
+4. legacy parser/runtime code has been removed from active runtime (hard-cut cleanup)
 5. Gmail connector flow is:
    - read cursor `history_id`
    - `list_history(start_history_id)` for incrementals

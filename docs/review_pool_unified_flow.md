@@ -30,4 +30,5 @@
 
 1. `GET /v2/change-events` returns approved changes by default.
 2. `GET /v2/timeline-events` returns canonical applied events only.
-3. `POST /v2/review-items/emails/{email_id}/applications` is deprecated and returns migration guidance.
+3. `source_id` mapping for read APIs is resolved from `proposal_sources_json` (no legacy bridge dependency).
+4. `POST /v2/review-items/emails/{email_id}/applications` is deprecated and returns migration guidance.

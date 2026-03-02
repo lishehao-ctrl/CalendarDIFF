@@ -29,9 +29,6 @@ def test_send_digest_for_slot_is_idempotent(db_session: Session, monkeypatch) ->
         user_id=user.id,
         type=InputType.EMAIL,
         identity_key="digest-test-input",
-        encrypted_url="encrypted",
-        provider="gmail",
-        interval_minutes=15,
         is_active=True,
     )
     db_session.add(input_row)

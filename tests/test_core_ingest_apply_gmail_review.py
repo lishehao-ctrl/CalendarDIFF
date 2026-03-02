@@ -151,6 +151,15 @@ def test_apply_gmail_records_write_audit_tables_and_pending_change(db_session) -
     applied = apply_ingest_result_idempotent(db_session, request_id="gmail-req-1")
     assert applied["changes_created"] == 1
     assert applied["idempotent_replay"] is False
+    assert (
+        db_session.scalar(
+            select(func.count(Input.id)).where(
+                Input.user_id == source.user_id,
+                Input.identity_key.like("source:%"),
+            )
+        )
+        == 0
+    )
 
     assert db_session.scalar(select(func.count(EmailMessage.email_id))) == 2
     assert db_session.scalar(select(func.count(EmailRuleLabel.email_id))) == 2

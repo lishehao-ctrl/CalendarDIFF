@@ -17,12 +17,7 @@ class Settings(BaseSettings):
     evidence_dir: str = "./evidence"
     enable_notifications: bool = True
 
-    default_sync_interval_minutes: int = 15
-    scheduler_tick_seconds: int = 60
-    disable_scheduler: bool = False
     schema_guard_enabled: bool = True
-    scheduler_instance_id: str | None = None
-    sync_runs_retention_days: int = 30
 
     http_connect_timeout_seconds: float = 5.0
     http_read_timeout_seconds: float = 20.0
@@ -48,9 +43,6 @@ class Settings(BaseSettings):
     )
     app_base_url: str | None = None
 
-    global_scheduler_lock_key: int = Field(default=947123)
-    input_lock_namespace: int = Field(default=947124)
-    digest_scheduler_lock_key: int = Field(default=947125)
     digest_fixed_timezone: str = "America/Los_Angeles"
     digest_fixed_times: str = "09:00,18:00"
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select, text
@@ -10,13 +9,13 @@ from sqlalchemy.orm import Session
 from app.core.logging import sanitize_log_message
 from app.db.models import InputSource
 from app.db.session import get_db
-from app.state import SchedulerStatus
 
 router = APIRouter(tags=["health"])
 
 
 @router.get("/health")
 def health(request: Request, db: Session = Depends(get_db)) -> dict[str, object]:
+    del request
     now = datetime.now(timezone.utc)
     db_ok = False
     db_error: str | None = None
@@ -26,8 +25,7 @@ def health(request: Request, db: Session = Depends(get_db)) -> dict[str, object]
     except Exception as exc:  # pragma: no cover - defensive path
         db_error = sanitize_log_message(str(exc))
 
-    runner: Any = getattr(request.app.state, "scheduler_runner", None)
-    scheduler_summary = runner.status.to_dict() if runner else SchedulerStatus().to_dict()
+    scheduler_summary = _default_scheduler_summary()
 
     next_source_id: int | None = None
     next_check_at: datetime | None = None
@@ -73,3 +71,32 @@ def _as_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def _default_scheduler_summary() -> dict[str, object]:
+    return {
+        "running": False,
+        "instance_id": None,
+        "last_tick_at": None,
+        "last_tick_lock_acquired": None,
+        "last_run_started_at": None,
+        "last_run_finished_at": None,
+        "last_error": None,
+        "last_skip_reason": None,
+        "last_synced_sources": 0,
+        "last_run_success_count": 0,
+        "last_run_failed_count": 0,
+        "last_run_notification_failed_count": 0,
+        "cumulative_success_count": 0,
+        "cumulative_failed_count": 0,
+        "cumulative_notification_failed_count": 0,
+        "cumulative_run_executed_count": 0,
+        "cumulative_run_skipped_lock_count": 0,
+        "next_expected_check_at": None,
+        "next_expected_source_id": None,
+        "lock_backend": "postgres_advisory",
+        "database_dialect": "postgresql",
+        "schema_guard_blocked": False,
+        "schema_guard_message": None,
+        "last_retention_cleanup_at": None,
+    }

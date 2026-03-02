@@ -2,6 +2,8 @@
 
 Updated: 2026-02-28
 
+Status: Obsolete after 2026-03 hard-cut cleanup. Legacy `sync/*` runtime files and archived regex references mentioned below have been removed.
+
 ## 1) Context
 
 This project originally relied on regex-heavy runtime rules in two critical paths:
@@ -13,22 +15,7 @@ The concern is valid: regex rules tend to be brittle under template drift, langu
 
 ## 2) Scope Of This Refactor
 
-Runtime regex logic has been removed from:
-
-1. `app/modules/sync/normalizer.py`
-2. `app/modules/sync/email_rules.py`
-3. `app/modules/users/service.py`
-4. `app/modules/users/schemas.py`
-5. `app/core/logging.py`
-
-Legacy regex definitions are retained in one archive reference file:
-
-1. `app/modules/sync/archive/legacy_regex_patterns.py`
-
-Notes:
-
-1. Archive file is intentionally not imported by runtime.
-2. This gives a stable rollback/reference point for A/B comparison experiments.
+Legacy sync parser/runtime paths were removed from active runtime. Any file-level references in this historical plan are preserved only for context and are no longer part of current code paths.
 
 ## 3) Why Regex Was Unstable In Practice
 

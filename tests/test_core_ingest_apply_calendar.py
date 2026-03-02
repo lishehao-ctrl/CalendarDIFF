@@ -141,6 +141,15 @@ def test_apply_calendar_records_create_pending_proposal_then_approve(db_session)
     first_apply = apply_ingest_result_idempotent(db_session, request_id="calendar-req-1")
     assert first_apply["changes_created"] == 1
     assert first_apply["idempotent_replay"] is False
+    assert (
+        db_session.scalar(
+            select(func.count(Input.id)).where(
+                Input.user_id == source.user_id,
+                Input.identity_key.like("source:%"),
+            )
+        )
+        == 0
+    )
 
     canonical_input_id = _canonical_input_id(db_session, user_id=source.user_id)
     pending = db_session.scalar(

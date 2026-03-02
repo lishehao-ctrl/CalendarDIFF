@@ -36,6 +36,8 @@ Notes:
 
 1. `GET /v2/change-events` defaults to approved changes only (`review_status=approved`).
 2. `GET /v2/timeline-events` reads canonical events after review approval.
+3. `source_id` filtering for `change-events`/`timeline-events` is sourced from `proposal_sources_json` on approved changes.
+4. hard-cut behavior: historical rows without proposal source metadata are not guaranteed to match `source_id` filters.
 
 ## Review
 
