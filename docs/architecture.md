@@ -35,7 +35,8 @@ Primary write ownership:
 ### ingest-service
 
 1. orchestrator tick
-2. connector fetch runtime tick (fetch-only + llm task enqueue)
+2. connector fetch runtime tick (Gmail incremental fetch, ICS RFC delta parse)
+3. enqueue llm parse tasks only for changed records/components
 3. dead-letter replay internal APIs
 
 Primary write ownership:
@@ -48,8 +49,9 @@ Primary write ownership:
 
 1. consumes Redis LLM parse queue
 2. enforces global LLM limiter (target/hard RPS)
-3. executes parser calls (`calendar_v2` / `gmail_v2`)
-4. writes `ingest_results` + emits `ingest.result.ready`
+3. executes parser calls (`calendar_v2` / `gmail_v2`) for changed payloads
+4. writes deterministic removed records for ICS delta removals
+5. writes `ingest_results` + emits `ingest.result.ready`
 
 Primary write ownership:
 
@@ -94,6 +96,7 @@ Primary write ownership:
 4. `review.decision.approved|rejected` (review audit events)
 
 See `docs/event_contracts.md` for payload schemas.
+See `docs/dataflow_input_to_notification.md` for a high-level end-to-end dataflow map.
 
 ## 4) Shared PostgreSQL Policy
 
@@ -108,6 +111,9 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 1. ingestion only creates pending proposals
 2. `approve` mutates canonical `events`
 3. `reject` keeps canonical state unchanged
+4. manual correction (`/v2/review-items/changes/corrections`) mutates canonical `events` directly
+5. manual correction auto-rejects conflicting pending changes for the same `event_uid`
+6. manual correction writes `review.decision.approved` audit event with `decision_origin=manual_correction`
 
 ## 6) LLM Runtime Placement
 
@@ -115,6 +121,18 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 2. parser code remains in shared module `app/modules/ingestion/llm_parsers/*`
 3. queue backend is Redis stream + retry zset
 4. gateway protocol remains OpenAI-compatible `chat/completions`
+5. ICS path is delta-first (`UID + RECURRENCE-ID` component key); cancelled components map to removal records
+6. ICS canonical fields are deterministic from parser/source and persisted as `source_canonical`
+7. LLM output is enrichment-only (`course_parse` + metadata), persisted under `enrichment`
+8. `course_parse` is LLM-only with strict schema validation; parser failures enter existing retry/dead-letter flow
+9. pending/review diff only evaluates canonical source fields, not enrichment drift
+10. review-service maintains `event_entities` for strong/weak course naming (`course_best` + aliases) based on 5 parsed parts only (`dept/number/suffix/quarter/year2`)
+11. Gmail-to-ICS linker v2 is conservative (same-day ±30min time-first + course/signal scoring) and persists normalized link state in:
+   - `event_entity_links` (auto/manual accepted links)
+   - `event_link_candidates` (review queue for score band / low anchor confidence)
+   - `event_link_blocks` (permanent rejected pairs)
+12. `0.65 <= score < 0.85` enters link-candidate review APIs (`/v2/review-items/link-candidates*`) and does not trigger `review.pending.created`
+13. blocked source/entity pairs are never auto-linked and never re-enter pending candidate flow until unblocked
 
 ## 7) Operational Notes
 

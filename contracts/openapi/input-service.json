@@ -681,12 +681,17 @@
               }
             ],
             "title": "Notify Email"
+          },
+          "timezone_name": {
+            "title": "Timezone Name",
+            "type": "string"
           }
         },
         "required": [
           "id",
           "email",
           "notify_email",
+          "timezone_name",
           "calendar_delay_seconds",
           "created_at"
         ],
@@ -732,6 +737,18 @@
               }
             ],
             "title": "Notify Email"
+          },
+          "timezone_name": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone Name"
           }
         },
         "title": "UserUpdateRequest",

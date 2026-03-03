@@ -28,6 +28,10 @@ Default compose exposure:
 3. `GET /v2/users/me`
 4. `PATCH /v2/users/me`
 
+User profile includes:
+
+1. `timezone_name` (IANA timezone, default `UTC`)
+
 ### Input Sources + Sync
 
 1. `POST /v2/input-sources`
@@ -51,8 +55,8 @@ Default compose exposure:
 Runtime responsibilities:
 
 1. orchestrator tick
-2. connector tick
-3. enqueue llm parse tasks to Redis
+2. connector tick (`gmail` incremental fetch, `ics` delta parser)
+3. enqueue llm parse tasks to Redis only for changed payloads
 4. emits `ingest.result.ready`
 
 ## llm-service (`/internal/v2` worker + metrics)
@@ -64,8 +68,9 @@ Runtime responsibilities:
 
 1. consume Redis stream tasks
 2. execute LLM parser calls with global limiter
-3. manage retry zset and backoff
-4. write `ingest_results` and emit `ingest.result.ready`
+3. process ICS removed delta records without LLM call
+4. manage retry zset and backoff
+5. write `ingest_results` and emit `ingest.result.ready`
 
 ## review-service (`/v2` read/review + internal apply)
 
@@ -76,18 +81,27 @@ Runtime responsibilities:
 5. `GET /v2/review-items/changes`
 6. `PATCH /v2/review-items/changes/{change_id}/views`
 7. `POST /v2/review-items/changes/{change_id}/decisions`
-8. `GET /v2/timeline-events`
-9. `GET /v2/change-events`
-10. `PATCH /v2/change-events/{change_id}`
-11. `GET /v2/change-events/{change_id}/evidence/{side}/preview`
-12. `POST /internal/v2/ingest-results/applications`
-13. `GET /internal/v2/ingest-results/{request_id}`
-14. `GET /internal/v2/metrics`
+8. `POST /v2/review-items/changes/corrections/preview`
+9. `POST /v2/review-items/changes/corrections`
+10. `GET /v2/review-items/link-candidates`
+11. `POST /v2/review-items/link-candidates/{id}/decisions`
+12. `GET /v2/review-items/link-candidates/blocks`
+13. `DELETE /v2/review-items/link-candidates/blocks/{block_id}`
+14. `GET /v2/timeline-events`
+15. `GET /v2/change-events`
+16. `PATCH /v2/change-events/{change_id}`
+17. `GET /v2/change-events/{change_id}/evidence/{side}/preview`
+18. `POST /internal/v2/ingest-results/applications`
+19. `GET /internal/v2/ingest-results/{request_id}`
+20. `GET /internal/v2/metrics`
 
 Notes:
 
 1. review-service consumes `ingest.result.ready` and emits `review.pending.created`
 2. approve mutates canonical events; reject does not
+3. manual correction mutates canonical events directly and writes an approved audit change
+4. manual correction does not emit `review.pending.created` (no notification enqueue)
+5. link-candidate generation/decisions are parallel linker governance flow and do not emit `review.pending.created`
 
 ## notification-service (`/internal/v2` ops + worker)
 
@@ -120,9 +134,12 @@ All `/internal/v2/*` endpoints require:
 ## LLM Runtime
 
 1. parser location: ingest-service
-1. parser runtime service: llm-service
-2. protocol: OpenAI-compatible `chat/completions`
-3. env:
+2. parser runtime service: llm-service
+3. protocol: OpenAI-compatible `chat/completions`
+4. ICS parser contract: connector emits `calendar_delta_v1` payload, llm-service only parses changed VEVENT components
+5. canonical/enrichment split: payloads include `source_canonical` (deterministic) and `enrichment` (LLM/rule metadata)
+6. ICS canonical fields come from parser/source; LLM is limited to `course_parse` enrichment
+7. env:
    - `INGESTION_LLM_MODEL`
    - `INGESTION_LLM_BASE_URL`
    - `INGESTION_LLM_API_KEY`

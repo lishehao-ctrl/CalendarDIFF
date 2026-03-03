@@ -69,6 +69,28 @@ GMAIL_OAUTH_AUTHORIZE_URL=http://127.0.0.1:8765/oauth2/auth
 alembic upgrade head
 ```
 
+Migration revision rename handling:
+
+1. reset + upgrade (preferred for local/dev):
+
+```bash
+scripts/reset_postgres_db.sh
+alembic upgrade head
+```
+
+2. remap current revision and then upgrade (for existing DB state):
+
+```sql
+UPDATE alembic_version
+SET version_num = '20260302_0004_src_bridge_map'
+WHERE version_num LIKE '20260302_0004_src_%_map'
+  AND version_num <> '20260302_0004_src_bridge_map';
+```
+
+```bash
+alembic upgrade head
+```
+
 2. start services:
 
 ```bash

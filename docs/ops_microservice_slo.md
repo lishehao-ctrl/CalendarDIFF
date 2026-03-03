@@ -36,6 +36,13 @@ Default thresholds:
 3. `notification.notify_fail_rate_24h <= 0.2`
 4. `ingest.event_lag_seconds_p95 <= 120`
 
+Ingest delta observability fields (non-blocking but must be present):
+
+1. `ics_delta_components_total_1m`
+2. `ics_delta_changed_components_1m`
+3. `ics_delta_removed_components_1m`
+4. `ics_delta_parse_failures_1h`
+
 `llm-service` metrics are required contract fields for closure gating:
 
 1. `queue_depth_stream`
@@ -44,6 +51,16 @@ Default thresholds:
 4. `llm_calls_rate_limited_1m`
 5. `llm_call_latency_ms_p95_5m`
 6. `limiter_reject_rate_1m`
+
+`review-service` linker governance metrics (non-blocking, required fields):
+
+1. `linker_auto_link_total`
+2. `linker_candidate_total`
+3. `linker_unlinked_total`
+4. `linker_block_hit_total`
+5. `linker_candidate_decision_approve_total`
+6. `linker_candidate_decision_reject_total`
+7. `linker_false_link_corrections_total`
 
 ## Command
 
@@ -77,3 +94,6 @@ Exit code:
 4. `event_lag_seconds_p95` high:
    - Check outbox processing delays and worker saturation.
    - Validate DB latency and lock contention.
+5. `ics_delta_parse_failures_1h` non-zero spike:
+   - Validate ICS provider payload validity and recent upstream format changes.
+   - Inspect ingest logs for `calendar_delta_parse_failed`.

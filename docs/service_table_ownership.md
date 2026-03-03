@@ -24,6 +24,10 @@ Rules:
 | integration_inbox | platform-shared | read/write | Consumer dedupe table, namespace by consumer_name |
 | ingest_apply_log | review-service | read | Apply idempotency log |
 | source_event_observations | review-service | read | Observation store |
+| event_entities | review-service | read | Cross-source entity profile (`course_best` + aliases) |
+| event_entity_links | review-service | read | Normalized observation->entity link table (auto/manual) |
+| event_link_candidates | review-service | read | Review queue for linker score band / missing time anchor |
+| event_link_blocks | review-service | read | Permanent block list for rejected source->entity bindings |
 | inputs | review-service | read | Canonical input container |
 | events | review-service | read | Canonical events |
 | snapshots | review-service | read | Snapshot metadata |

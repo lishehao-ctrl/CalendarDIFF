@@ -73,7 +73,10 @@ Consumers: optional observability/audit services
     "event_uid": "mk_...",
     "review_status": "approved",
     "reviewed_by_user_id": 1,
-    "reviewed_at": "2026-03-02T12:34:56+00:00"
+    "reviewed_at": "2026-03-02T12:34:56+00:00",
+    "decision_origin": "review_api|manual_correction",
+    "correction_change_id": 901,
+    "rejected_pending_change_ids": [887, 888]
   }
 }
 ```
@@ -84,3 +87,50 @@ Consumers: optional observability/audit services
 2. Existing keys are immutable in meaning.
 3. Consumers must ignore unknown fields.
 4. Event type names are immutable once published.
+
+## Internal Ingest Record Envelope (Non-Outbox, additive)
+
+The `ingest_results.records[*].payload` envelope used between llm/review runtime keeps record types stable and adds layered fields:
+
+1. `source_canonical`: deterministic source fields used for canonical diff and pending generation.
+2. `enrichment`: LLM-derived metadata (`course_parse`, linker metadata, aliases). No local regex/raw-text fallback is used for `course_parse`.
+3. additive linker signals:
+   - Gmail canonical signals: `from_header`, `thread_id`, `internal_date`
+   - ICS canonical signals: `organizer`
+   - enrichment signals: `enrichment.link_signals` (`keywords`, `exam_sequence`, `location_text`, `instructor_hint`)
+
+Parser note:
+
+1. `course_parse` must be schema-valid from LLM output; invalid/missing objects are treated as parser failures (retry/dead-letter path), not downgraded by local inference.
+2. link-candidate review flow is storage/API-only (`event_link_candidates` + `/v2/review-items/link-candidates*`) and does not emit outbox notification events.
+
+Example (`calendar.event.extracted`):
+
+```json
+{
+  "payload": {
+    "uid": "ent_...",
+    "title": "CSE 151A exam 1",
+    "start_at": "2026-03-10T20:00:00+00:00",
+    "end_at": "2026-03-10T21:00:00+00:00",
+    "course_label": "CSE 151A WI26",
+    "source_canonical": {
+      "external_event_id": "uid#rid",
+      "source_title": "CSE 151A exam 1",
+      "source_dtstart_utc": "2026-03-10T20:00:00+00:00",
+      "source_dtend_utc": "2026-03-10T21:00:00+00:00"
+    },
+    "enrichment": {
+      "course_parse": {
+        "dept": "CSE",
+        "number": 151,
+        "suffix": "A",
+        "quarter": "WI",
+        "year2": 26,
+        "confidence": 0.95,
+        "evidence": "CSE 151A WI26"
+      }
+    }
+  }
+}
+```
