@@ -4,10 +4,19 @@ CalendarDIFF runs as 5 services with shared PostgreSQL + Redis and event-driven 
 
 Core flow:
 
-1. ingest input sources (ICS/Gmail) and parse with LLM
-2. build pending review proposals from observations
-3. approve proposals into canonical events
-4. enqueue and send digest notifications
+1. ingest input sources (ICS/Gmail) and build event observations
+2. ICS uses RFC-based delta detection first; only changed VEVENT components go to LLM
+3. removed/cancelled ICS components are handled as deterministic removals
+4. ICS canonical fields (`title/start/end/status/location`) stay deterministic from parser/source
+5. LLM outputs enrichment only (`course_parse`, tags/type/confidence), not canonical identity fields
+6. `course_parse` is LLM-only (no local regex/raw text fallback in review/apply)
+7. strong/weak naming uses 5 parsed parts (`dept/number/suffix/quarter/year2`) with monotonic best-name updates
+8. cross-source linker v2 persists normalized links/candidates/blocks and keeps candidate review out of pending-notification chain
+9. link-candidate APIs: `GET /v2/review-items/link-candidates`, `POST /v2/review-items/link-candidates/{id}/decisions`, `GET/DELETE /v2/review-items/link-candidates/blocks*`
+10. build pending review proposals from source canonical observations
+11. approve proposals into canonical events
+12. enqueue and send digest notifications
+13. allow manual due correction when parsed result is wrong
 
 ## Runtime Topology (5 Services + PostgreSQL + Redis)
 
@@ -31,23 +40,42 @@ python -m pip install -r requirements.txt
 cp .env.example .env
 ```
 
-2. Build frontend assets:
-
-```bash
-cd frontend
-npm ci
-npm run build
-cd ..
-```
-
-3. Start PostgreSQL and apply schema:
+2. Start PostgreSQL and apply schema:
 
 ```bash
 docker compose up -d postgres
 alembic upgrade head
 ```
 
-4. Run service APIs:
+### Migration Revision Rename Note
+
+This cleanup rewrites migration revision identifiers in `app/db/migrations/versions`.
+If an environment still tracks older revision IDs, use one of the following:
+
+1. reset and re-init (preferred for local/dev):
+
+```bash
+scripts/reset_postgres_db.sh
+alembic upgrade head
+```
+
+2. controlled revision remap (existing DB state is kept):
+
+```sql
+-- run on the target database
+UPDATE alembic_version
+SET version_num = '20260302_0004_src_bridge_map'
+WHERE version_num LIKE '20260302_0004_src_%_map'
+  AND version_num <> '20260302_0004_src_bridge_map';
+```
+
+Then run:
+
+```bash
+alembic upgrade head
+```
+
+3. Run service APIs:
 
 ```bash
 SERVICE_NAME=input RUN_MIGRATIONS=false PORT=8001 ./scripts/start_service.sh
@@ -125,7 +153,7 @@ REVIEW_APPLY_TICK_SECONDS=2
 NOTIFICATION_TICK_SECONDS=30
 ```
 
-Frontend multi-base routing (required when `input-service` and `review-service` are on different ports):
+Optional per-service base URLs (useful when services run on different ports):
 
 ```env
 INPUT_API_BASE_URL=http://localhost:8001
@@ -210,12 +238,34 @@ Detailed snapshot:
 1. `docs/api_surface_current.md`
 2. `docs/event_contracts.md`
 
+## Manual Due Correction
+
+When the parser extracts an incorrect due time, review-service supports direct canonical correction APIs:
+
+1. `POST /v2/review-items/changes/corrections/preview`
+2. `POST /v2/review-items/changes/corrections`
+
+Behavior:
+
+1. target can be provided by `change_id` or `event_uid`
+2. `patch.due_at` accepts date-only, local datetime, or timezone-aware datetime
+3. date-only is normalized to `23:59` in `users.timezone_name` then converted to UTC
+4. conflicting pending changes for the same `event_uid` are auto-rejected
+5. correction writes an approved audit change and emits `review.decision.approved` with `decision_origin=manual_correction`
+
+## Canonical vs Enrichment (MVP)
+
+1. ICS canonical diff is source-deterministic; LLM does not rewrite canonical title/time.
+2. Gmail/ICS `course_parse` is strictly LLM-derived with schema validation; invalid payloads fail parse and enter retry/dead-letter flow.
+3. Cross-source linking is time-anchor first and conservative; when Gmail parse lacks reliable `dept+number`, auto-link is disabled (candidate metadata only).
+4. Strong/weak naming uses only the 5 parsed parts (`dept/number/suffix/quarter/year2`) and updates `course_best` monotonically.
+5. Pending generation reacts to canonical change only; enrichment-only drift does not trigger notification flow.
+
 ## Testing
 
 ```bash
 source .venv/bin/activate
 python -m pytest -q
-cd frontend && npm run typecheck && npm run lint && npm run build
 ```
 
 ## Documentation
@@ -227,3 +277,4 @@ cd frontend && npm run typecheck && npm run lint && npm run build
 5. `docs/service_table_ownership.md`
 6. `docs/event_contracts.md`
 7. `docs/ops_microservice_slo.md`
+8. `docs/dataflow_input_to_notification.md`
