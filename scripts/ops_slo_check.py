@@ -34,6 +34,11 @@ def parse_args() -> argparse.Namespace:
         help="Notification service base URL.",
     )
     parser.add_argument(
+        "--llm-base",
+        default=os.getenv("LLM_API_BASE_URL", "http://127.0.0.1:8005"),
+        help="LLM service base URL.",
+    )
+    parser.add_argument(
         "--ops-token",
         default=os.getenv("INTERNAL_SERVICE_TOKEN_OPS", ""),
         help="Ops internal service token (X-Service-Token). Defaults to INTERNAL_SERVICE_TOKEN_OPS.",
@@ -104,16 +109,27 @@ def main() -> int:
         ingest_metrics = _fetch_metrics(args.ingest_base, token=args.ops_token, timeout_seconds=args.timeout_seconds)
         review_metrics = _fetch_metrics(args.review_base, token=args.ops_token, timeout_seconds=args.timeout_seconds)
         notify_metrics = _fetch_metrics(args.notify_base, token=args.ops_token, timeout_seconds=args.timeout_seconds)
+        llm_metrics = _fetch_metrics(args.llm_base, token=args.ops_token, timeout_seconds=args.timeout_seconds)
         output["services"] = {
             "input": input_metrics,
             "ingest": ingest_metrics,
             "review": review_metrics,
             "notification": notify_metrics,
+            "llm": llm_metrics,
         }
 
         ingest_values = ingest_metrics.get("metrics") if isinstance(ingest_metrics.get("metrics"), dict) else {}
         review_values = review_metrics.get("metrics") if isinstance(review_metrics.get("metrics"), dict) else {}
         notify_values = notify_metrics.get("metrics") if isinstance(notify_metrics.get("metrics"), dict) else {}
+        llm_values = llm_metrics.get("metrics") if isinstance(llm_metrics.get("metrics"), dict) else {}
+
+        # Validate llm-service metric contract is present.
+        _to_float(llm_values.get("queue_depth_stream"), key="queue_depth_stream")
+        _to_float(llm_values.get("queue_depth_retry"), key="queue_depth_retry")
+        _to_float(llm_values.get("llm_calls_total_1m"), key="llm_calls_total_1m")
+        _to_float(llm_values.get("llm_calls_rate_limited_1m"), key="llm_calls_rate_limited_1m")
+        _to_float(llm_values.get("llm_call_latency_ms_p95_5m"), key="llm_call_latency_ms_p95_5m")
+        _to_float(llm_values.get("limiter_reject_rate_1m"), key="limiter_reject_rate_1m")
 
         checks = [
             {
@@ -138,6 +154,11 @@ def main() -> int:
                 "name": "event_lag_seconds_p95",
                 "value": _to_float(ingest_values.get("event_lag_seconds_p95"), key="event_lag_seconds_p95"),
                 "threshold": args.max_event_lag_seconds_p95,
+            },
+            {
+                "name": "llm_metrics_contract",
+                "value": 1.0,
+                "threshold": 1.0,
             },
         ]
 

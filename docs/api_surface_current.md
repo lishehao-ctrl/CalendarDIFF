@@ -6,13 +6,14 @@ This document captures active HTTP APIs after microservice split with shared Pos
 
 1. input-service: `http://localhost:8001`
 2. ingest-service: `http://localhost:8002`
-3. review-service: `http://localhost:8000`
-4. notification-service: `http://localhost:8004`
+3. llm-service: `http://localhost:8005`
+4. review-service: `http://localhost:8000`
+5. notification-service: `http://localhost:8004`
 
 Default compose exposure:
 
 1. external: input-service + review-service
-2. internal-only: ingest-service + notification-service
+2. internal-only: ingest-service + llm-service + notification-service
 
 ## input-service (`/v2` public)
 
@@ -51,8 +52,20 @@ Runtime responsibilities:
 
 1. orchestrator tick
 2. connector tick
-3. LLM parsing
+3. enqueue llm parse tasks to Redis
 4. emits `ingest.result.ready`
+
+## llm-service (`/internal/v2` worker + metrics)
+
+1. `GET /health`
+2. `GET /internal/v2/metrics`
+
+Runtime responsibilities:
+
+1. consume Redis stream tasks
+2. execute LLM parser calls with global limiter
+3. manage retry zset and backoff
+4. write `ingest_results` and emit `ingest.result.ready`
 
 ## review-service (`/v2` read/review + internal apply)
 
@@ -107,11 +120,15 @@ All `/internal/v2/*` endpoints require:
 ## LLM Runtime
 
 1. parser location: ingest-service
+1. parser runtime service: llm-service
 2. protocol: OpenAI-compatible `chat/completions`
 3. env:
    - `INGESTION_LLM_MODEL`
    - `INGESTION_LLM_BASE_URL`
    - `INGESTION_LLM_API_KEY`
+   - `REDIS_URL`
+   - `LLM_RATE_LIMIT_TARGET_RPS`
+   - `LLM_RATE_LIMIT_HARD_RPS`
    - optional fake-source overrides:
      - `GMAIL_API_BASE_URL`
      - `GMAIL_OAUTH_TOKEN_URL`

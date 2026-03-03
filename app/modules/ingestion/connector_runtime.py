@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import base64
 import logging
+import random
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import exists, or_, select
+from sqlalchemy.orm import Session, aliased
 
 from app.contracts.events import new_event
+from app.core.config import get_settings
 from app.db.models import (
     ConnectorResultStatus,
     IngestJob,
@@ -19,23 +22,19 @@ from app.db.models import (
     SyncRequest,
     SyncRequestStatus,
 )
-from app.modules.ingestion.llm_parsers import (
-    LlmParseError,
-    ParserContext,
-    ParserOutput,
-    parse_calendar_content,
-    parse_gmail_payload,
-)
 from app.modules.input_control_plane.service import decode_source_secrets
+from app.modules.llm_runtime.queue import ensure_stream_group, get_redis_client, queue_group, queue_stream_key
+from app.modules.llm_runtime.worker import enqueue_llm_task
 from app.modules.sync.gmail_client import GmailAPIError, GmailClient, GmailHistoryExpiredError, GmailMessageMetadata
 from app.modules.sync.ics_client import ICSClient
 
 CONNECTOR_BATCH_SIZE = 50
-MAX_RETRY_ATTEMPTS = 3
+MAX_SYNC_ERROR_LENGTH = 512
 logger = logging.getLogger(__name__)
 
 
 def run_connector_tick(db: Session, *, worker_id: str) -> int:
+    _requeue_stale_claimed_jobs(db)
     jobs = _claim_jobs(db, worker_id=worker_id)
     processed = 0
     for job in jobs:
@@ -44,13 +43,87 @@ def run_connector_tick(db: Session, *, worker_id: str) -> int:
     return processed
 
 
+def _requeue_stale_claimed_jobs(db: Session) -> int:
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+    timeout_seconds = max(30, int(settings.llm_claim_timeout_seconds))
+    cutoff = now - timedelta(seconds=timeout_seconds)
+    rows = db.scalars(
+        select(IngestJob)
+        .where(
+            IngestJob.status == IngestJobStatus.CLAIMED,
+            IngestJob.updated_at <= cutoff,
+            or_(IngestJob.next_retry_at.is_(None), IngestJob.next_retry_at <= now),
+        )
+        .order_by(IngestJob.id.asc())
+        .with_for_update(skip_locked=True)
+        .limit(CONNECTOR_BATCH_SIZE)
+    ).all()
+    if not rows:
+        return 0
+
+    max_attempts = max(1, int(settings.llm_max_retry_attempts))
+    for row in rows:
+        sync_request = db.scalar(select(SyncRequest).where(SyncRequest.request_id == row.request_id))
+        source = db.get(InputSource, row.source_id)
+        attempt = row.attempt + 1
+        error_code = "llm_claim_timeout_requeue"
+        error_message = "claimed job timed out before completion"
+        payload = _job_payload(row)
+        payload["last_error_code"] = error_code
+        payload["last_error_message"] = error_message
+
+        if attempt < max_attempts:
+            row.attempt = attempt
+            row.status = IngestJobStatus.PENDING
+            row.next_retry_at = now + timedelta(seconds=_compute_retry_delay_seconds(attempt))
+            row.claimed_by = None
+            row.claim_token = None
+            payload["workflow_stage"] = "CLAIM_TIMEOUT_REQUEUED"
+            row.payload_json = payload
+            if sync_request is not None:
+                sync_request.status = SyncRequestStatus.QUEUED
+                sync_request.error_code = error_code
+                sync_request.error_message = _truncate(error_message)
+            if source is not None:
+                source.last_error_code = error_code
+                source.last_error_message = _truncate(error_message)
+            continue
+
+        row.attempt = attempt
+        row.status = IngestJobStatus.DEAD_LETTER
+        row.next_retry_at = None
+        row.dead_lettered_at = now
+        row.claimed_by = None
+        row.claim_token = None
+        payload["workflow_stage"] = "CLAIM_TIMEOUT_DEAD_LETTER"
+        row.payload_json = payload
+        if sync_request is not None:
+            sync_request.status = SyncRequestStatus.FAILED
+            sync_request.error_code = error_code
+            sync_request.error_message = _truncate(error_message)
+        if source is not None:
+            source.last_error_code = error_code
+            source.last_error_message = _truncate(error_message)
+    db.commit()
+    return len(rows)
+
+
 def _claim_jobs(db: Session, *, worker_id: str) -> list[IngestJob]:
     now = datetime.now(timezone.utc)
+    older = aliased(IngestJob)
     rows = db.scalars(
         select(IngestJob)
         .where(
             IngestJob.status == IngestJobStatus.PENDING,
-            IngestJob.next_retry_at <= now,
+            or_(IngestJob.next_retry_at.is_(None), IngestJob.next_retry_at <= now),
+            ~exists(
+                select(1).where(
+                    older.source_id == IngestJob.source_id,
+                    older.id < IngestJob.id,
+                    older.status.in_([IngestJobStatus.PENDING, IngestJobStatus.CLAIMED]),
+                )
+            ),
         )
         .order_by(IngestJob.id.asc())
         .with_for_update(skip_locked=True)
@@ -65,6 +138,8 @@ def _claim_jobs(db: Session, *, worker_id: str) -> list[IngestJob]:
         sync_request = db.scalar(select(SyncRequest).where(SyncRequest.request_id == row.request_id))
         if sync_request is not None:
             sync_request.status = SyncRequestStatus.RUNNING
+            sync_request.error_code = None
+            sync_request.error_message = None
         claimed.append(row)
     db.commit()
     return claimed
@@ -74,35 +149,37 @@ def _process_job(db: Session, *, job_id: int, worker_id: str) -> None:
     del worker_id
     now = datetime.now(timezone.utc)
     job = db.get(IngestJob, job_id)
-    if job is None:
+    if job is None or job.status != IngestJobStatus.CLAIMED:
         return
+
     sync_request = db.scalar(select(SyncRequest).where(SyncRequest.request_id == job.request_id))
     source = db.get(InputSource, job.source_id)
     if sync_request is None or source is None:
         job.status = IngestJobStatus.DEAD_LETTER
         job.dead_lettered_at = now
+        job.next_retry_at = None
+        if sync_request is not None:
+            sync_request.status = SyncRequestStatus.FAILED
+            sync_request.error_code = "connector_context_missing"
+            sync_request.error_message = "missing sync request/source context"
         db.commit()
         return
 
     result_status = ConnectorResultStatus.NO_CHANGE
     cursor_patch: dict = {}
-    records: list[dict] = []
+    parse_payload: dict | None = None
     error_code: str | None = None
     error_message: str | None = None
-    fetched_at = now
 
     try:
         if source.provider == "gmail":
-            result_status, cursor_patch, records, error_code, error_message = _run_gmail_connector(
-                db=db,
+            result_status, cursor_patch, parse_payload, error_code, error_message = _run_gmail_connector_fetch_only(
                 source=source,
                 request_id=sync_request.request_id,
             )
         elif source.provider in {"ics", "calendar"}:
-            result_status, cursor_patch, records, error_code, error_message = _run_calendar_connector(
-                db=db,
+            result_status, cursor_patch, parse_payload, error_code, error_message = _run_calendar_connector_fetch_only(
                 source=source,
-                request_id=sync_request.request_id,
             )
         else:
             result_status = ConnectorResultStatus.FETCH_FAILED
@@ -113,45 +190,120 @@ def _process_job(db: Session, *, job_id: int, worker_id: str) -> None:
         error_code = "connector_exception"
         error_message = str(exc)
 
-    if result_status == ConnectorResultStatus.PARSE_FAILED:
-        logger.warning(
-            "connector parse failed request_id=%s source_id=%s provider=%s code=%s",
-            sync_request.request_id,
-            source.id,
-            source.provider,
-            error_code,
-        )
-
-    fetched_at = datetime.now(timezone.utc)
     is_failure = result_status in {
         ConnectorResultStatus.FETCH_FAILED,
         ConnectorResultStatus.PARSE_FAILED,
         ConnectorResultStatus.AUTH_FAILED,
         ConnectorResultStatus.RATE_LIMITED,
     }
-
-    if is_failure and job.attempt + 1 < MAX_RETRY_ATTEMPTS:
-        job.attempt += 1
-        job.status = IngestJobStatus.PENDING
-        job.next_retry_at = now + timedelta(seconds=30 * (2**job.attempt))
-        sync_request.status = SyncRequestStatus.QUEUED
-        sync_request.error_code = error_code
-        sync_request.error_message = error_message
-        db.commit()
-        return
-
     if is_failure:
-        job.attempt += 1
-        job.status = IngestJobStatus.DEAD_LETTER
-        job.dead_lettered_at = now
-        sync_request.status = SyncRequestStatus.FAILED
-        sync_request.error_code = error_code
-        sync_request.error_message = error_message
-        source.last_error_code = error_code
-        source.last_error_message = error_message
-        db.commit()
+        _retry_or_fail_job(
+            db,
+            job=job,
+            sync_request=sync_request,
+            source=source,
+            result_status=result_status,
+            error_code=error_code,
+            error_message=error_message,
+        )
         return
 
+    if parse_payload is not None:
+        _queue_llm_parse_task(
+            db,
+            job=job,
+            sync_request=sync_request,
+            source=source,
+            result_status=result_status,
+            cursor_patch=cursor_patch,
+            parse_payload=parse_payload,
+        )
+        return
+
+    _mark_success_without_llm(
+        db,
+        job=job,
+        sync_request=sync_request,
+        source=source,
+        result_status=result_status,
+        cursor_patch=cursor_patch,
+    )
+
+
+def _queue_llm_parse_task(
+    db: Session,
+    *,
+    job: IngestJob,
+    sync_request: SyncRequest,
+    source: InputSource,
+    result_status: ConnectorResultStatus,
+    cursor_patch: dict,
+    parse_payload: dict,
+) -> None:
+    settings = get_settings()
+    if settings.ingest_llm_execution_mode.strip().lower() != "worker_only":
+        _retry_or_fail_job(
+            db,
+            job=job,
+            sync_request=sync_request,
+            source=source,
+            result_status=ConnectorResultStatus.PARSE_FAILED,
+            error_code="ingest_llm_execution_mode_invalid",
+            error_message="INGEST_LLM_EXECUTION_MODE must be worker_only",
+        )
+        return
+
+    try:
+        redis_client = get_redis_client()
+        stream_key = queue_stream_key()
+        ensure_stream_group(redis_client, stream_key=stream_key, group_name=queue_group())
+        enqueue_llm_task(
+            redis_client=redis_client,
+            request_id=sync_request.request_id,
+            source_id=source.id,
+            attempt=job.attempt,
+            reason="initial",
+        )
+    except Exception as exc:
+        _retry_or_fail_job(
+            db,
+            job=job,
+            sync_request=sync_request,
+            source=source,
+            result_status=ConnectorResultStatus.PARSE_FAILED,
+            error_code="llm_queue_unavailable",
+            error_message=str(exc),
+        )
+        return
+
+    now = datetime.now(timezone.utc)
+    payload = _job_payload(job)
+    payload["provider"] = source.provider
+    payload["workflow_stage"] = "LLM_QUEUED"
+    payload["llm_task_id"] = sync_request.request_id
+    payload["llm_enqueued_at"] = now.isoformat()
+    payload["llm_parse_payload"] = parse_payload
+    payload["llm_cursor_patch"] = cursor_patch
+    payload["connector_status"] = result_status.value
+    job.payload_json = payload
+    job.status = IngestJobStatus.CLAIMED
+    job.next_retry_at = now + timedelta(seconds=max(30, int(settings.llm_claim_timeout_seconds)))
+    sync_request.status = SyncRequestStatus.RUNNING
+    sync_request.error_code = None
+    sync_request.error_message = None
+    db.commit()
+
+
+def _mark_success_without_llm(
+    db: Session,
+    *,
+    job: IngestJob,
+    sync_request: SyncRequest,
+    source: InputSource,
+    result_status: ConnectorResultStatus,
+    cursor_patch: dict,
+) -> None:
+    fetched_at = datetime.now(timezone.utc)
     existing_result = db.scalar(select(IngestResult).where(IngestResult.request_id == sync_request.request_id))
     if existing_result is None:
         db.add(
@@ -161,10 +313,10 @@ def _process_job(db: Session, *, job_id: int, worker_id: str) -> None:
                 provider=source.provider,
                 status=result_status,
                 cursor_patch=cursor_patch,
-                records=records,
+                records=[],
                 fetched_at=fetched_at,
-                error_code=error_code,
-                error_message=error_message,
+                error_code=None,
+                error_message=None,
             )
         )
         event = new_event(
@@ -189,6 +341,7 @@ def _process_job(db: Session, *, job_id: int, worker_id: str) -> None:
                 available_at=event.available_at,
             )
         )
+
     if source.cursor is not None and cursor_patch:
         merged = dict(source.cursor.cursor_json or {})
         merged.update(cursor_patch)
@@ -199,25 +352,82 @@ def _process_job(db: Session, *, job_id: int, worker_id: str) -> None:
     source.last_error_code = None
     source.last_error_message = None
     job.status = IngestJobStatus.SUCCEEDED
+    job.next_retry_at = None
     sync_request.status = SyncRequestStatus.SUCCEEDED
     sync_request.error_code = None
     sync_request.error_message = None
     db.commit()
 
 
-def _run_gmail_connector(
-    *,
+def _retry_or_fail_job(
     db: Session,
+    *,
+    job: IngestJob,
+    sync_request: SyncRequest,
+    source: InputSource,
+    result_status: ConnectorResultStatus,
+    error_code: str | None,
+    error_message: str | None,
+) -> None:
+    now = datetime.now(timezone.utc)
+    settings = get_settings()
+    normalized_code = (error_code or "connector_failed").strip() or "connector_failed"
+    normalized_message = _truncate(error_message or normalized_code)
+    retryable = _is_retryable_failure(result_status=result_status, error_code=normalized_code)
+    max_attempts = max(1, int(settings.llm_max_retry_attempts))
+    next_attempt = job.attempt + 1
+
+    payload = _job_payload(job)
+    payload["last_error_code"] = normalized_code
+    payload["last_error_message"] = normalized_message
+
+    if retryable and next_attempt < max_attempts:
+        delay_seconds = _compute_retry_delay_seconds(next_attempt)
+        job.attempt = next_attempt
+        job.status = IngestJobStatus.PENDING
+        job.next_retry_at = now + timedelta(seconds=delay_seconds)
+        job.claimed_by = None
+        job.claim_token = None
+        payload["workflow_stage"] = "CONNECTOR_RETRY_WAITING"
+        payload["next_retry_at"] = job.next_retry_at.isoformat() if job.next_retry_at else None
+        job.payload_json = payload
+        sync_request.status = SyncRequestStatus.QUEUED
+        sync_request.error_code = normalized_code
+        sync_request.error_message = normalized_message
+        source.last_error_code = normalized_code
+        source.last_error_message = normalized_message
+        db.commit()
+        return
+
+    job.attempt = next_attempt
+    job.status = IngestJobStatus.DEAD_LETTER
+    job.dead_lettered_at = now
+    job.next_retry_at = None
+    job.claimed_by = None
+    job.claim_token = None
+    payload["workflow_stage"] = "CONNECTOR_DEAD_LETTER"
+    payload["dead_lettered_at"] = now.isoformat()
+    job.payload_json = payload
+    sync_request.status = SyncRequestStatus.FAILED
+    sync_request.error_code = normalized_code
+    sync_request.error_message = normalized_message
+    source.last_error_code = normalized_code
+    source.last_error_message = normalized_message
+    db.commit()
+
+
+def _run_gmail_connector_fetch_only(
+    *,
     source: InputSource,
     request_id: str,
-) -> tuple[ConnectorResultStatus, dict, list[dict], str | None, str | None]:
+) -> tuple[ConnectorResultStatus, dict, dict | None, str | None, str | None]:
     secrets = decode_source_secrets(source)
     access_token = secrets.get("access_token")
     if not isinstance(access_token, str) or not access_token:
         return (
             ConnectorResultStatus.AUTH_FAILED,
             {},
-            [],
+            None,
             "gmail_missing_access_token",
             "missing access token for gmail source",
         )
@@ -226,19 +436,18 @@ def _run_gmail_connector(
         profile = client.get_profile(access_token=access_token)
     except GmailAPIError as exc:
         if exc.status_code in {401, 403}:
-            return ConnectorResultStatus.AUTH_FAILED, {}, [], "gmail_auth_failed", str(exc)
+            return ConnectorResultStatus.AUTH_FAILED, {}, None, "gmail_auth_failed", str(exc)
         if exc.status_code == 429:
-            return ConnectorResultStatus.RATE_LIMITED, {}, [], "gmail_rate_limited", str(exc)
-        return ConnectorResultStatus.FETCH_FAILED, {}, [], "gmail_fetch_failed", str(exc)
+            return ConnectorResultStatus.RATE_LIMITED, {}, None, "gmail_rate_limited", str(exc)
+        return ConnectorResultStatus.FETCH_FAILED, {}, None, "gmail_fetch_failed", str(exc)
 
     cursor = source.cursor.cursor_json if source.cursor is not None and isinstance(source.cursor.cursor_json, dict) else {}
     cursor_history_id = cursor.get("history_id") if isinstance(cursor.get("history_id"), str) else None
 
-    # Baseline first run: record current history pointer and do not parse old mailbox backlog.
     if cursor_history_id is None:
         if profile.history_id:
-            return ConnectorResultStatus.NO_CHANGE, {"history_id": profile.history_id}, [], None, None
-        return ConnectorResultStatus.NO_CHANGE, {}, [], None, None
+            return ConnectorResultStatus.NO_CHANGE, {"history_id": profile.history_id}, None, None, None
+        return ConnectorResultStatus.NO_CHANGE, {}, None, None, None
 
     try:
         history_result = client.list_history(
@@ -246,78 +455,74 @@ def _run_gmail_connector(
             start_history_id=cursor_history_id,
         )
     except GmailHistoryExpiredError:
-        # History cursor is stale; reset baseline to latest known history id.
         if profile.history_id:
-            return ConnectorResultStatus.NO_CHANGE, {"history_id": profile.history_id}, [], None, None
-        return ConnectorResultStatus.NO_CHANGE, {}, [], None, None
+            return ConnectorResultStatus.NO_CHANGE, {"history_id": profile.history_id}, None, None, None
+        return ConnectorResultStatus.NO_CHANGE, {}, None, None, None
     except GmailAPIError as exc:
         if exc.status_code in {401, 403}:
-            return ConnectorResultStatus.AUTH_FAILED, {}, [], "gmail_auth_failed", str(exc)
+            return ConnectorResultStatus.AUTH_FAILED, {}, None, "gmail_auth_failed", str(exc)
         if exc.status_code == 429:
-            return ConnectorResultStatus.RATE_LIMITED, {}, [], "gmail_rate_limited", str(exc)
-        return ConnectorResultStatus.FETCH_FAILED, {}, [], "gmail_fetch_failed", str(exc)
+            return ConnectorResultStatus.RATE_LIMITED, {}, None, "gmail_rate_limited", str(exc)
+        return ConnectorResultStatus.FETCH_FAILED, {}, None, "gmail_fetch_failed", str(exc)
 
     latest_history_id = history_result.history_id or profile.history_id or cursor_history_id
     if not history_result.message_ids:
-        return ConnectorResultStatus.NO_CHANGE, {"history_id": latest_history_id}, [], None, None
+        return ConnectorResultStatus.NO_CHANGE, {"history_id": latest_history_id}, None, None, None
 
     config = source.config.config_json if source.config is not None and isinstance(source.config.config_json, dict) else {}
-    message_ids = history_result.message_ids
-    records: list[dict] = []
-    for message_id in message_ids:
+    message_payloads: list[dict] = []
+    for message_id in history_result.message_ids:
         try:
             metadata = client.get_message_metadata(access_token=access_token, message_id=message_id)
         except GmailAPIError as exc:
             if exc.status_code in {401, 403}:
-                return ConnectorResultStatus.AUTH_FAILED, {}, [], "gmail_auth_failed", str(exc)
+                return ConnectorResultStatus.AUTH_FAILED, {}, None, "gmail_auth_failed", str(exc)
             if exc.status_code == 429:
-                return ConnectorResultStatus.RATE_LIMITED, {}, [], "gmail_rate_limited", str(exc)
-            return ConnectorResultStatus.FETCH_FAILED, {}, [], "gmail_fetch_failed", str(exc)
+                return ConnectorResultStatus.RATE_LIMITED, {}, None, "gmail_rate_limited", str(exc)
+            return ConnectorResultStatus.FETCH_FAILED, {}, None, "gmail_fetch_failed", str(exc)
 
         if not _matches_gmail_source_filters(metadata=metadata, config=config):
             continue
 
-        context = ParserContext(
-            source_id=source.id,
-            provider=source.provider,
-            source_kind=source.source_kind.value,
-            request_id=request_id,
+        message_payloads.append(
+            {
+                "message_id": metadata.message_id,
+                "subject": metadata.subject,
+                "snippet": metadata.snippet,
+                "body_text": metadata.body_text,
+                "from_header": metadata.from_header,
+                "internal_date": metadata.internal_date,
+                "label_ids": metadata.label_ids,
+                "history_id": latest_history_id,
+                "account_email": profile.email_address,
+                "request_id": request_id,
+            }
         )
-        payload = {
-            "message_id": metadata.message_id,
-            "subject": metadata.subject,
-            "snippet": metadata.snippet,
-            "body_text": metadata.body_text,
-            "from_header": metadata.from_header,
-            "internal_date": metadata.internal_date,
-            "label_ids": metadata.label_ids,
-            "history_id": latest_history_id,
-            "account_email": profile.email_address,
-        }
-        try:
-            parser_output = parse_gmail_payload(db=db, payload=payload, context=context)
-        except LlmParseError as exc:
-            return ConnectorResultStatus.PARSE_FAILED, {}, [], exc.code, str(exc)
-        records.extend(_attach_parser_metadata(records=parser_output.records, parser_output=parser_output))
 
     cursor_patch = {"history_id": latest_history_id}
-    status = ConnectorResultStatus.CHANGED if records else ConnectorResultStatus.NO_CHANGE
-    return status, cursor_patch, records, None, None
+    if not message_payloads:
+        return ConnectorResultStatus.NO_CHANGE, cursor_patch, None, None, None
+
+    return (
+        ConnectorResultStatus.CHANGED,
+        cursor_patch,
+        {"kind": "gmail", "messages": message_payloads},
+        None,
+        None,
+    )
 
 
-def _run_calendar_connector(
+def _run_calendar_connector_fetch_only(
     *,
-    db: Session,
     source: InputSource,
-    request_id: str,
-) -> tuple[ConnectorResultStatus, dict, list[dict], str | None, str | None]:
+) -> tuple[ConnectorResultStatus, dict, dict | None, str | None, str | None]:
     secrets = decode_source_secrets(source)
     url = secrets.get("url")
     if not isinstance(url, str) or not url:
         return (
             ConnectorResultStatus.AUTH_FAILED,
             {},
-            [],
+            None,
             "calendar_missing_url",
             "missing calendar url in source secrets",
         )
@@ -329,30 +534,25 @@ def _run_calendar_connector(
     client = ICSClient()
     fetched = client.fetch(url, source.id, if_none_match=if_none_match, if_modified_since=if_modified_since)
     if fetched.not_modified:
-        return ConnectorResultStatus.NO_CHANGE, {"etag": fetched.etag, "last_modified": fetched.last_modified}, [], None, None
+        return (
+            ConnectorResultStatus.NO_CHANGE,
+            {"etag": fetched.etag, "last_modified": fetched.last_modified},
+            None,
+            None,
+            None,
+        )
     if fetched.content is None:
-        return ConnectorResultStatus.FETCH_FAILED, {}, [], "calendar_empty_content", "calendar fetch returned empty content"
+        return ConnectorResultStatus.FETCH_FAILED, {}, None, "calendar_empty_content", "calendar fetch returned empty content"
 
-    context = ParserContext(
-        source_id=source.id,
-        provider=source.provider,
-        source_kind=source.source_kind.value,
-        request_id=request_id,
-    )
-    try:
-        parser_output = parse_calendar_content(db=db, content=fetched.content, context=context)
-    except LlmParseError as exc:
-        return ConnectorResultStatus.PARSE_FAILED, {}, [], exc.code, str(exc)
-
-    records = _attach_parser_metadata(records=parser_output.records, parser_output=parser_output)
+    payload = {
+        "kind": "calendar",
+        "content_b64": base64.b64encode(fetched.content).decode("ascii"),
+    }
     cursor_patch = {
         "etag": fetched.etag,
         "last_modified": fetched.last_modified,
     }
-    # Calendar diff relies on snapshot semantics; changed content must still be applied
-    # even when parser extracted zero records.
-    status = ConnectorResultStatus.CHANGED
-    return status, cursor_patch, records, None, None
+    return ConnectorResultStatus.CHANGED, cursor_patch, payload, None, None
 
 
 def _matches_gmail_source_filters(*, metadata: GmailMessageMetadata, config: dict) -> bool:
@@ -383,26 +583,47 @@ def _matches_gmail_source_filters(*, metadata: GmailMessageMetadata, config: dic
     return True
 
 
-def _attach_parser_metadata(*, records: list[dict], parser_output: ParserOutput) -> list[dict]:
-    parser_meta = {
-        "name": parser_output.parser_name,
-        "version": parser_output.parser_version,
-        "model": parser_output.model_hint,
-    }
-    enriched: list[dict] = []
-    for record in records:
-        if not isinstance(record, dict):
-            continue
-        record_type = record.get("record_type")
-        payload = record.get("payload")
-        if not isinstance(record_type, str) or not isinstance(payload, dict):
-            continue
-        payload_json = dict(payload)
-        payload_json["_parser"] = parser_meta
-        enriched.append(
-            {
-                "record_type": record_type,
-                "payload": payload_json,
-            }
-        )
-    return enriched
+def _compute_retry_delay_seconds(attempt: int) -> int:
+    settings = get_settings()
+    exponent = max(attempt - 1, 0)
+    base_seconds = max(1, int(settings.llm_retry_base_seconds))
+    max_seconds = max(base_seconds, int(settings.llm_retry_max_seconds))
+    jitter_seconds = max(0, int(settings.llm_retry_jitter_seconds))
+    delay = min(base_seconds * (2**exponent), max_seconds)
+    if jitter_seconds > 0:
+        delay += random.randint(0, jitter_seconds)
+    return max(1, int(delay))
+
+
+def _is_retryable_failure(*, result_status: ConnectorResultStatus, error_code: str) -> bool:
+    code = error_code.lower()
+    if result_status == ConnectorResultStatus.AUTH_FAILED:
+        return False
+    if result_status == ConnectorResultStatus.RATE_LIMITED:
+        return True
+    if "rate_limit" in code:
+        return True
+    if "timeout" in code:
+        return True
+    if "upstream" in code:
+        return True
+    if "fetch_failed" in code:
+        return True
+    if "queue_unavailable" in code:
+        return True
+    if "connector_exception" in code:
+        return True
+    return result_status in {ConnectorResultStatus.FETCH_FAILED, ConnectorResultStatus.PARSE_FAILED}
+
+
+def _job_payload(job: IngestJob) -> dict:
+    if isinstance(job.payload_json, dict):
+        return dict(job.payload_json)
+    return {}
+
+
+def _truncate(message: str, max_len: int = MAX_SYNC_ERROR_LENGTH) -> str:
+    value = (message or "").strip()
+    if len(value) <= max_len:
+        return value
+    return value[:max_len]

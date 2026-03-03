@@ -51,10 +51,10 @@ def main() -> int:
         if 'prefix="/internal/v2"' in content and "require_api_key" in content:
             errors.append(f"internal router still references require_api_key: {file}")
 
-    # 3) Default compose must not expose ingest/notification host ports.
+    # 3) Default compose must not expose ingest/notification/llm host ports.
     compose_path = PROJECT_ROOT / "docker-compose.yml"
     compose_text = compose_path.read_text(encoding="utf-8")
-    for service_name in ("ingest-service", "notification-service"):
+    for service_name in ("ingest-service", "notification-service", "llm-service"):
         body = _service_block(compose_text, service_name)
         if not body:
             errors.append(f"service block not found in docker-compose.yml: {service_name}")
@@ -69,6 +69,7 @@ def main() -> int:
         snapshot_dir / "ingest-service.json",
         snapshot_dir / "review-service.json",
         snapshot_dir / "notification-service.json",
+        snapshot_dir / "llm-service.json",
     ]
     for snapshot in expected_snapshots:
         if not snapshot.is_file():

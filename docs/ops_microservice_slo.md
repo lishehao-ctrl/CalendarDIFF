@@ -2,12 +2,13 @@
 
 ## Scope
 
-This runbook defines the minimal SLO checks for the 4-service runtime:
+This runbook defines the minimal SLO checks for the 5-service runtime:
 
 1. `input-service`
 2. `ingest-service`
-3. `review-service`
-4. `notification-service`
+3. `llm-service`
+4. `review-service`
+5. `notification-service`
 
 All checks are read from `GET /internal/v2/metrics` using service token headers:
 
@@ -35,12 +36,22 @@ Default thresholds:
 3. `notification.notify_fail_rate_24h <= 0.2`
 4. `ingest.event_lag_seconds_p95 <= 120`
 
+`llm-service` metrics are required contract fields for closure gating:
+
+1. `queue_depth_stream`
+2. `queue_depth_retry`
+3. `llm_calls_total_1m`
+4. `llm_calls_rate_limited_1m`
+5. `llm_call_latency_ms_p95_5m`
+6. `limiter_reject_rate_1m`
+
 ## Command
 
 ```bash
 python scripts/ops_slo_check.py \
   --input-base http://127.0.0.1:8001 \
   --ingest-base http://127.0.0.1:8002 \
+  --llm-base http://127.0.0.1:8005 \
   --review-base http://127.0.0.1:8000 \
   --notify-base http://127.0.0.1:8004 \
   --ops-token "${INTERNAL_SERVICE_TOKEN_OPS}" \

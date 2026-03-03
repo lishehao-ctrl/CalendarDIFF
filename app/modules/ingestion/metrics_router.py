@@ -3,11 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
 
 from app.core.security import require_internal_service_token
-from app.db.models import IngestJob, IngestJobStatus, IntegrationOutbox, OutboxStatus
+from app.db.models import IngestJob, IngestJobStatus, IntegrationOutbox, OutboxStatus, SyncRequest, SyncRequestStatus
 from app.db.session import get_db
 
 router = APIRouter(
@@ -59,6 +60,55 @@ def get_ingest_metrics(db: Session = Depends(get_db)) -> dict[str, object]:
     )
     event_lag_seconds_p95 = float(event_lag_seconds_p95_raw or 0.0)
 
+    older = aliased(IngestJob)
+    source_fifo_deferred_count_1m = int(
+        db.scalar(
+            select(func.count(IngestJob.id)).where(
+                IngestJob.status == IngestJobStatus.PENDING,
+                or_(IngestJob.next_retry_at.is_(None), IngestJob.next_retry_at <= now),
+                select(older.id)
+                .where(
+                    older.source_id == IngestJob.source_id,
+                    older.id < IngestJob.id,
+                    older.status.in_([IngestJobStatus.PENDING, IngestJobStatus.CLAIMED]),
+                )
+                .exists(),
+            )
+        )
+        or 0
+    )
+
+    llm_rate_limited_1h = int(
+        db.scalar(
+            select(func.count(SyncRequest.id)).where(
+                SyncRequest.updated_at >= one_hour_ago,
+                SyncRequest.error_code.is_not(None),
+                func.lower(SyncRequest.error_code).like("%rate_limit%"),
+            )
+        )
+        or 0
+    )
+
+    retryable_codes = [
+        "llm_rate_limited",
+        "parse_llm_timeout",
+        "parse_llm_upstream_error",
+        "parse_llm_calendar_upstream_error",
+        "parse_llm_gmail_upstream_error",
+        "llm_queue_unavailable",
+        "llm_retry_schedule_failed",
+    ]
+    llm_retry_scheduled_1h = int(
+        db.scalar(
+            select(func.count(SyncRequest.id)).where(
+                SyncRequest.updated_at >= one_hour_ago,
+                SyncRequest.status.in_([SyncRequestStatus.QUEUED, SyncRequestStatus.RUNNING]),
+                SyncRequest.error_code.in_(retryable_codes),
+            )
+        )
+        or 0
+    )
+
     return {
         "service_name": "ingest-service",
         "timestamp": now.isoformat(),
@@ -67,5 +117,8 @@ def get_ingest_metrics(db: Session = Depends(get_db)) -> dict[str, object]:
             "ingest_jobs_dead_letter": ingest_jobs_dead_letter,
             "dead_letter_rate_1h": dead_letter_rate_1h,
             "event_lag_seconds_p95": event_lag_seconds_p95,
+            "source_fifo_deferred_count_1m": source_fifo_deferred_count_1m,
+            "llm_rate_limited_1h": llm_rate_limited_1h,
+            "llm_retry_scheduled_1h": llm_retry_scheduled_1h,
         },
     }

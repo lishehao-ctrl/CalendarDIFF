@@ -1,6 +1,6 @@
 # CalendarDIFF
 
-CalendarDIFF runs as 4 services with shared PostgreSQL and event-driven domain boundaries.
+CalendarDIFF runs as 5 services with shared PostgreSQL + Redis and event-driven domain boundaries.
 
 Core flow:
 
@@ -9,13 +9,15 @@ Core flow:
 3. approve proposals into canonical events
 4. enqueue and send digest notifications
 
-## Runtime Topology (4 Services + PostgreSQL)
+## Runtime Topology (5 Services + PostgreSQL + Redis)
 
 1. `input-service` (`services.input_api.main:app`)
 2. `ingest-service` (`services.ingest_api.main:app`)
-3. `review-service` (`services.review_api.main:app`)
-4. `notification-service` (`services.notification_api.main:app`)
-5. `postgres`
+3. `llm-service` (`services.llm_api.main:app`)
+4. `review-service` (`services.review_api.main:app`)
+5. `notification-service` (`services.notification_api.main:app`)
+6. `postgres`
+7. `redis`
 
 ## Quick Start
 
@@ -50,6 +52,7 @@ alembic upgrade head
 ```bash
 SERVICE_NAME=input RUN_MIGRATIONS=false PORT=8001 ./scripts/start_service.sh
 SERVICE_NAME=ingest RUN_MIGRATIONS=false PORT=8002 ./scripts/start_service.sh
+SERVICE_NAME=llm RUN_MIGRATIONS=false PORT=8005 ./scripts/start_service.sh
 SERVICE_NAME=review RUN_MIGRATIONS=false PORT=8000 ./scripts/start_service.sh
 SERVICE_NAME=notification RUN_MIGRATIONS=false PORT=8004 ./scripts/start_service.sh
 ```
@@ -65,17 +68,19 @@ docker compose up --build
 Compose includes:
 
 1. `postgres`
-2. `input-service`
-3. `ingest-service`
-4. `review-service`
-5. `notification-service`
+2. `redis`
+3. `input-service`
+4. `ingest-service`
+5. `llm-service`
+6. `review-service`
+7. `notification-service`
 
 Default host-exposed ports:
 
 1. `input-service` on `localhost:8001`
 2. `review-service` on `localhost:8000`
 
-`ingest-service` and `notification-service` are internal-only in default compose. Use `docker-compose.dev.yml` for dev-only port exposure.
+`ingest-service`, `llm-service`, and `notification-service` are internal-only in default compose. Use `docker-compose.dev.yml` for dev-only port exposure.
 
 ## Core Environment Variables
 
@@ -88,8 +93,10 @@ INTERNAL_SERVICE_TOKEN_INPUT=dev-internal-token-input
 INTERNAL_SERVICE_TOKEN_INGEST=dev-internal-token-ingest
 INTERNAL_SERVICE_TOKEN_REVIEW=dev-internal-token-review
 INTERNAL_SERVICE_TOKEN_NOTIFICATION=dev-internal-token-notification
+INTERNAL_SERVICE_TOKEN_LLM=dev-internal-token-llm
 INTERNAL_SERVICE_TOKEN_OPS=dev-internal-token-ops
 DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/deadline_diff
+REDIS_URL=redis://localhost:6379/0
 PUBLIC_WEB_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
 ```
 
@@ -113,6 +120,7 @@ Worker intervals (embedded in service processes):
 
 ```env
 INGESTION_TICK_SECONDS=2
+LLM_SERVICE_ENABLE_WORKER=true
 REVIEW_APPLY_TICK_SECONDS=2
 NOTIFICATION_TICK_SECONDS=30
 ```
@@ -151,6 +159,7 @@ ENABLE_NOTIFICATIONS=false
 ```bash
 curl -s http://localhost:8001/health
 curl -s http://localhost:8002/health
+curl -s http://localhost:8005/health
 curl -s http://localhost:8000/health
 curl -s http://localhost:8004/health
 ```
@@ -171,7 +180,8 @@ python scripts/smoke_microservice_closure.py \
   --input-api-base http://127.0.0.1:8001 \
   --review-api-base http://127.0.0.1:8000 \
   --ingest-api-base http://127.0.0.1:8002 \
-  --notify-api-base http://127.0.0.1:8004
+  --notify-api-base http://127.0.0.1:8004 \
+  --llm-api-base http://127.0.0.1:8005
 ```
 
 SLO check:
@@ -182,6 +192,7 @@ python scripts/ops_slo_check.py \
   --ingest-base http://127.0.0.1:8002 \
   --review-base http://127.0.0.1:8000 \
   --notify-base http://127.0.0.1:8004 \
+  --llm-base http://127.0.0.1:8005 \
   --ops-token "${INTERNAL_SERVICE_TOKEN_OPS}" \
   --json
 ```

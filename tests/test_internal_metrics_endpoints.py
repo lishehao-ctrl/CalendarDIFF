@@ -26,12 +26,20 @@ def _call_metrics(app: FastAPI) -> dict:
     return payload
 
 
-def test_internal_metrics_endpoints(db_engine) -> None:
+def test_internal_metrics_endpoints(db_engine, monkeypatch) -> None:
     del db_engine
+    import app.modules.llm_runtime.metrics_router as llm_metrics_module
     from services.ingest_api.main import app as ingest_app
     from services.input_api.main import app as input_app
+    from services.llm_api.main import app as llm_app
     from services.notification_api.main import app as notify_app
     from services.review_api.main import app as review_app
+
+    monkeypatch.setattr(llm_metrics_module, "get_redis_client", lambda: object())
+    monkeypatch.setattr(llm_metrics_module, "queue_depth_stream", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(llm_metrics_module, "queue_depth_retry", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(llm_metrics_module, "read_metric_counter_1m", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(llm_metrics_module, "latency_p95_5m", lambda *_args, **_kwargs: 0.0)
 
     input_payload = _call_metrics(input_app)
     _assert_metrics_payload(
@@ -44,7 +52,15 @@ def test_internal_metrics_endpoints(db_engine) -> None:
     _assert_metrics_payload(
         ingest_payload,
         service_name="ingest-service",
-        keys=["ingest_jobs_pending", "ingest_jobs_dead_letter", "dead_letter_rate_1h", "event_lag_seconds_p95"],
+        keys=[
+            "ingest_jobs_pending",
+            "ingest_jobs_dead_letter",
+            "dead_letter_rate_1h",
+            "event_lag_seconds_p95",
+            "source_fifo_deferred_count_1m",
+            "llm_rate_limited_1h",
+            "llm_retry_scheduled_1h",
+        ],
     )
 
     review_payload = _call_metrics(review_app)
@@ -59,4 +75,18 @@ def test_internal_metrics_endpoints(db_engine) -> None:
         notify_payload,
         service_name="notification-service",
         keys=["notifications_pending", "digest_sent_24h", "digest_failed_24h", "notify_fail_rate_24h"],
+    )
+
+    llm_payload = _call_metrics(llm_app)
+    _assert_metrics_payload(
+        llm_payload,
+        service_name="llm-service",
+        keys=[
+            "queue_depth_stream",
+            "queue_depth_retry",
+            "llm_calls_total_1m",
+            "llm_calls_rate_limited_1m",
+            "llm_call_latency_ms_p95_5m",
+            "limiter_reject_rate_1m",
+        ],
     )

@@ -20,6 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--review-api-base", default=os.getenv("REVIEW_API_BASE_URL", "http://127.0.0.1:8000"))
     parser.add_argument("--ingest-api-base", default=os.getenv("INGEST_API_BASE_URL", "http://127.0.0.1:8002"))
     parser.add_argument("--notify-api-base", default=os.getenv("NOTIFY_API_BASE_URL", "http://127.0.0.1:8004"))
+    parser.add_argument("--llm-api-base", default=os.getenv("LLM_API_BASE_URL", "http://127.0.0.1:8005"))
     parser.add_argument("--api-key", default=os.getenv("APP_API_KEY", ""))
     parser.add_argument("--ops-token", default=os.getenv("INTERNAL_SERVICE_TOKEN_OPS", ""))
     parser.add_argument(
@@ -39,6 +40,21 @@ def _check_health(base_url: str, timeout_seconds: float) -> None:
     response = httpx.get(f"{base_url.rstrip('/')}/health", timeout=timeout_seconds)
     if response.status_code != 200:
         raise RuntimeError(f"health check failed base={base_url} status={response.status_code} body={response.text[:300]}")
+
+
+def _check_internal_metrics(base_url: str, *, ops_token: str, timeout_seconds: float) -> dict[str, Any]:
+    headers = {"X-Service-Name": "ops", "X-Service-Token": ops_token}
+    response = httpx.get(f"{base_url.rstrip('/')}/internal/v2/metrics", headers=headers, timeout=timeout_seconds)
+    if response.status_code != 200:
+        raise RuntimeError(
+            f"internal metrics failed base={base_url} status={response.status_code} body={response.text[:300]}"
+        )
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"internal metrics payload is not object base={base_url}")
+    if not isinstance(payload.get("metrics"), dict):
+        raise RuntimeError(f"internal metrics payload missing metrics object base={base_url}")
+    return payload
 
 
 def _render_text(result: dict[str, Any]) -> None:
@@ -69,11 +85,29 @@ def main() -> int:
         if args.notify_api_base:
             _check_health(args.notify_api_base, args.timeout_seconds)
             result["steps"].append({"name": "health_notify", "passed": True})
+        if args.llm_api_base:
+            _check_health(args.llm_api_base, args.timeout_seconds)
+            result["steps"].append({"name": "health_llm", "passed": True})
 
         if not args.api_key:
             raise RuntimeError("APP_API_KEY (or --api-key) is required")
         if not args.ops_token:
             raise RuntimeError("INTERNAL_SERVICE_TOKEN_OPS (or --ops-token) is required")
+        if not args.llm_api_base:
+            raise RuntimeError("LLM_API_BASE_URL (or --llm-api-base) is required")
+
+        llm_metrics_pre = _check_internal_metrics(
+            args.llm_api_base,
+            ops_token=args.ops_token,
+            timeout_seconds=args.timeout_seconds,
+        )
+        result["steps"].append(
+            {
+                "name": "llm_metrics_pre",
+                "passed": True,
+                "detail": json.dumps(llm_metrics_pre.get("metrics", {}), ensure_ascii=True)[:300],
+            }
+        )
 
         smoke_cmd = [
             sys.executable,
@@ -133,6 +167,8 @@ def main() -> int:
                 args.review_api_base,
                 "--notify-base",
                 args.notify_api_base,
+                "--llm-base",
+                args.llm_api_base,
                 "--ops-token",
                 args.ops_token,
                 "--json",
@@ -141,6 +177,19 @@ def main() -> int:
         if slo.returncode != 0:
             raise RuntimeError(f"slo check failed: {slo.stderr or slo.stdout}")
         result["steps"].append({"name": "slo_check", "passed": True, "detail": slo.stdout.strip()[:300]})
+
+        llm_metrics_post = _check_internal_metrics(
+            args.llm_api_base,
+            ops_token=args.ops_token,
+            timeout_seconds=args.timeout_seconds,
+        )
+        result["steps"].append(
+            {
+                "name": "llm_metrics_post",
+                "passed": True,
+                "detail": json.dumps(llm_metrics_post.get("metrics", {}), ensure_ascii=True)[:300],
+            }
+        )
         result["passed"] = True
     except Exception as exc:
         result["errors"].append(str(exc))

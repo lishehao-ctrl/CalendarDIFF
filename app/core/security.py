@@ -10,7 +10,7 @@ from app.core.config import get_settings
 
 InternalServiceName = str
 ALL_INTERNAL_SERVICES: frozenset[InternalServiceName] = frozenset(
-    {"input", "ingest", "review", "notification", "ops"}
+    {"input", "ingest", "review", "notification", "llm", "ops"}
 )
 
 
@@ -61,6 +61,7 @@ def _get_internal_service_tokens() -> dict[InternalServiceName, str]:
         "ingest": settings.internal_service_token_ingest,
         "review": settings.internal_service_token_review,
         "notification": settings.internal_service_token_notification,
+        "llm": settings.internal_service_token_llm,
         "ops": settings.internal_service_token_ops,
     }
 

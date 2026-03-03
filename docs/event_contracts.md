@@ -21,9 +21,9 @@ Consumer: ingest-service orchestrator (`orchestrator.sync_requested.v1`)
 }
 ```
 
-## 2) `ingest.result.ready` (ingest -> review)
+## 2) `ingest.result.ready` (llm -> review)
 
-Producer: ingest-service connector runtime  
+Producer: llm-service worker  
 Consumer: review-service apply worker (`core.ingest.apply.v1`)
 
 ```json

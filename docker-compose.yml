@@ -15,6 +15,15 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   input-service:
     build: .
     env_file:
@@ -40,6 +49,7 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
+      REDIS_URL: redis://redis:6379/0
       INGESTION_TICK_SECONDS: "2"
       SERVICE_NAME: ingest
       RUN_MIGRATIONS: "true"
@@ -48,6 +58,8 @@ services:
       - ./:/app
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     command: /app/scripts/start_service.sh
 
@@ -88,6 +100,25 @@ services:
       - ./:/app
     depends_on:
       postgres:
+        condition: service_healthy
+    command: /app/scripts/start_service.sh
+
+  llm-service:
+    build: .
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
+      REDIS_URL: redis://redis:6379/0
+      SERVICE_NAME: llm
+      RUN_MIGRATIONS: "true"
+      PORT: "8000"
+    volumes:
+      - ./:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     command: /app/scripts/start_service.sh
 

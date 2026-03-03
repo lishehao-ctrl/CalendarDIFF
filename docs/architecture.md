@@ -2,13 +2,15 @@
 
 ## 1) Runtime Topology
 
-Current target runtime is 4 service APIs + PostgreSQL:
+Current target runtime is 5 service APIs + PostgreSQL + Redis:
 
 1. `input-service` (`services.input_api.main:app`)
 2. `ingest-service` (`services.ingest_api.main:app`)
-3. `review-service` (`services.review_api.main:app`)
-4. `notification-service` (`services.notification_api.main:app`)
-5. `postgres`
+3. `llm-service` (`services.llm_api.main:app`)
+4. `review-service` (`services.review_api.main:app`)
+5. `notification-service` (`services.notification_api.main:app`)
+6. `postgres`
+7. `redis`
 
 Each service runs as an independent process and owns a bounded domain.
 
@@ -33,15 +35,27 @@ Primary write ownership:
 ### ingest-service
 
 1. orchestrator tick
-2. connector runtime tick
-3. LLM parser invocation (calendar/gmail)
-4. dead-letter replay internal APIs
+2. connector fetch runtime tick (fetch-only + llm task enqueue)
+3. dead-letter replay internal APIs
 
 Primary write ownership:
 
 1. `ingest_jobs`
 2. `ingest_results`
 3. ingest-related outbox/inbox rows
+
+### llm-service
+
+1. consumes Redis LLM parse queue
+2. enforces global LLM limiter (target/hard RPS)
+3. executes parser calls (`calendar_v2` / `gmail_v2`)
+4. writes `ingest_results` + emits `ingest.result.ready`
+
+Primary write ownership:
+
+1. `ingest_results` (idempotent by `request_id`)
+2. `ingest_jobs` runtime state for llm stage
+3. ingest-related outbox events (`ingest.result.ready`)
 
 ### review-service
 
@@ -97,14 +111,16 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 
 ## 6) LLM Runtime Placement
 
-1. LLM parsing remains in ingest-service (`app/modules/ingestion/llm_parsers/*`)
-2. gateway protocol remains OpenAI-compatible `chat/completions`
+1. LLM parsing runtime runs in `llm-service`
+2. parser code remains in shared module `app/modules/ingestion/llm_parsers/*`
+3. queue backend is Redis stream + retry zset
+4. gateway protocol remains OpenAI-compatible `chat/completions`
 
 ## 7) Operational Notes
 
 1. service APIs are independent; no single BFF gateway in target topology
 2. default exposure is `input-service + review-service` only
-3. `ingest-service + notification-service` are internal-only in default compose
+3. `ingest-service + llm-service + notification-service` are internal-only in default compose
 4. internal APIs use service token auth, not `X-API-Key`
 5. required internal headers:
    - `X-Service-Name`

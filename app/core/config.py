@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     internal_service_token_ingest: str = "dev-internal-token-ingest"
     internal_service_token_review: str = "dev-internal-token-review"
     internal_service_token_notification: str = "dev-internal-token-notification"
+    internal_service_token_llm: str = "dev-internal-token-llm"
     internal_service_token_ops: str = "dev-internal-token-ops"
     public_web_origins: str = "http://localhost:8000,http://127.0.0.1:8000"
 
@@ -37,6 +38,21 @@ class Settings(BaseSettings):
     ingestion_llm_base_url: str | None = None
     ingestion_llm_api_key: str | None = None
     ingestion_llm_model: str = "gpt-5.3-codex"
+    ingest_llm_execution_mode: str = "worker_only"
+
+    redis_url: str | None = None
+    llm_queue_stream_key: str = "llm:parse:stream:v1"
+    llm_queue_group: str = "llm-parse-workers"
+    llm_queue_consumer_poll_ms: int = 500
+    llm_worker_concurrency: int = 24
+    llm_rate_limit_target_rps: int = 40
+    llm_rate_limit_hard_rps: int = 50
+    llm_rate_limit_burst: int = 50
+    llm_retry_base_seconds: int = 30
+    llm_retry_max_seconds: int = 600
+    llm_retry_jitter_seconds: int = 5
+    llm_max_retry_attempts: int = 6
+    llm_claim_timeout_seconds: int = 300
 
     smtp_host: str = "localhost"
     smtp_port: int = 25

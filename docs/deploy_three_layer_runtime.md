@@ -2,13 +2,15 @@
 
 ## Goal
 
-Run backend as 4 microservices plus PostgreSQL:
+Run backend as 5 microservices plus PostgreSQL + Redis:
 
 1. input-service
 2. ingest-service
-3. review-service
-4. notification-service
-5. postgres
+3. llm-service
+4. review-service
+5. notification-service
+6. postgres
+7. redis
 
 ## Prerequisites
 
@@ -27,8 +29,10 @@ INTERNAL_SERVICE_TOKEN_INPUT=...
 INTERNAL_SERVICE_TOKEN_INGEST=...
 INTERNAL_SERVICE_TOKEN_REVIEW=...
 INTERNAL_SERVICE_TOKEN_NOTIFICATION=...
+INTERNAL_SERVICE_TOKEN_LLM=...
 INTERNAL_SERVICE_TOKEN_OPS=...
 DATABASE_URL=postgresql+psycopg://...
+REDIS_URL=redis://localhost:6379/0
 PUBLIC_WEB_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
 ```
 
@@ -70,6 +74,7 @@ alembic upgrade head
 ```bash
 SERVICE_NAME=input PORT=8001 ./scripts/start_service.sh
 SERVICE_NAME=ingest PORT=8002 ./scripts/start_service.sh
+SERVICE_NAME=llm PORT=8005 ./scripts/start_service.sh
 SERVICE_NAME=review PORT=8000 ./scripts/start_service.sh
 SERVICE_NAME=notification PORT=8004 ./scripts/start_service.sh
 ```
@@ -83,22 +88,25 @@ docker compose up --build
 Expected services:
 
 1. `postgres`
-2. `input-service`
-3. `ingest-service`
-4. `review-service`
-5. `notification-service`
+2. `redis`
+3. `input-service`
+4. `ingest-service`
+5. `llm-service`
+6. `review-service`
+7. `notification-service`
 
 Default exposure model:
 
 1. public: `input-service` (`8001`), `review-service` (`8000`)
-2. internal-only: `ingest-service`, `notification-service`
-3. use `docker-compose.dev.yml` for dev-only ingest/notification host port mappings
+2. internal-only: `ingest-service`, `llm-service`, `notification-service`
+3. use `docker-compose.dev.yml` for dev-only ingest/llm/notification host port mappings
 
 ## Health Checks
 
 ```bash
 curl -s http://localhost:8001/health
 curl -s http://localhost:8002/health
+curl -s http://localhost:8005/health
 curl -s http://localhost:8000/health
 curl -s http://localhost:8004/health
 ```
@@ -117,6 +125,7 @@ Import smoke:
 ```bash
 python -c "import services.input_api.main"
 python -c "import services.ingest_api.main"
+python -c "import services.llm_api.main"
 python -c "import services.review_api.main"
 python -c "import services.notification_api.main"
 ```
@@ -127,8 +136,9 @@ Because services are direct-exposed, client should configure per-domain base URL
 
 1. `INPUT_API_BASE_URL=http://127.0.0.1:8001`
 2. `INGEST_API_BASE_URL=http://127.0.0.1:8002` (internal ops)
-3. `REVIEW_API_BASE_URL=http://127.0.0.1:8000`
-4. `NOTIFY_API_BASE_URL=http://127.0.0.1:8004` (internal ops)
+3. `LLM_API_BASE_URL=http://127.0.0.1:8005` (internal ops)
+4. `REVIEW_API_BASE_URL=http://127.0.0.1:8000`
+5. `NOTIFY_API_BASE_URL=http://127.0.0.1:8004` (internal ops)
 
 ## E2E Smoke
 
@@ -146,7 +156,8 @@ python scripts/smoke_microservice_closure.py \
   --input-api-base http://127.0.0.1:8001 \
   --review-api-base http://127.0.0.1:8000 \
   --ingest-api-base http://127.0.0.1:8002 \
-  --notify-api-base http://127.0.0.1:8004
+  --notify-api-base http://127.0.0.1:8004 \
+  --llm-api-base http://127.0.0.1:8005
 ```
 
 SLO check:
@@ -155,6 +166,7 @@ SLO check:
 python scripts/ops_slo_check.py \
   --input-base http://127.0.0.1:8001 \
   --ingest-base http://127.0.0.1:8002 \
+  --llm-base http://127.0.0.1:8005 \
   --review-base http://127.0.0.1:8000 \
   --notify-base http://127.0.0.1:8004 \
   --ops-token "${INTERNAL_SERVICE_TOKEN_OPS}" \

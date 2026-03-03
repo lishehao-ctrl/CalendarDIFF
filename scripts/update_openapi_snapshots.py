@@ -11,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from services.ingest_api.main import app as ingest_app
 from services.input_api.main import app as input_app
+from services.llm_api.main import app as llm_app
 from services.notification_api.main import app as notification_app
 from services.review_api.main import app as review_app
 
@@ -21,6 +22,7 @@ APPS = {
     "ingest-service": ingest_app,
     "review-service": review_app,
     "notification-service": notification_app,
+    "llm-service": llm_app,
 }
 
 

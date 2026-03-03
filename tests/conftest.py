@@ -72,6 +72,7 @@ def configure_test_environment(test_database_url: str) -> Generator[None, None, 
     os.environ["INTERNAL_SERVICE_TOKEN_INGEST"] = "test-internal-token-ingest"
     os.environ["INTERNAL_SERVICE_TOKEN_REVIEW"] = "test-internal-token-review"
     os.environ["INTERNAL_SERVICE_TOKEN_NOTIFICATION"] = "test-internal-token-notification"
+    os.environ["INTERNAL_SERVICE_TOKEN_LLM"] = "test-internal-token-llm"
     os.environ["INTERNAL_SERVICE_TOKEN_OPS"] = "test-internal-token-ops"
     os.environ["DEFAULT_NOTIFY_EMAIL"] = "notify@example.com"
     os.environ["DATABASE_URL"] = test_database_url
@@ -79,6 +80,8 @@ def configure_test_environment(test_database_url: str) -> Generator[None, None, 
     os.environ["INGEST_SERVICE_ENABLE_WORKER"] = "false"
     os.environ["REVIEW_SERVICE_ENABLE_APPLY_WORKER"] = "false"
     os.environ["NOTIFICATION_SERVICE_ENABLE_WORKER"] = "false"
+    os.environ["LLM_SERVICE_ENABLE_WORKER"] = "false"
+    os.environ["REDIS_URL"] = "redis://127.0.0.1:6389/0"
 
     get_settings.cache_clear()
     reset_engine()

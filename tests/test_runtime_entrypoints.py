@@ -7,6 +7,7 @@ from pathlib import Path
 def test_microservice_runtime_entrypoints_importable() -> None:
     importlib.import_module("services.input_api.main")
     importlib.import_module("services.ingest_api.main")
+    importlib.import_module("services.llm_api.main")
     importlib.import_module("services.review_api.main")
     importlib.import_module("services.notification_api.main")
     importlib.import_module("services.ingestion_runtime.worker")

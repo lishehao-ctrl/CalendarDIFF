@@ -7,7 +7,7 @@ PORT="${PORT:-8000}"
 RUN_MIGRATIONS="${RUN_MIGRATIONS:-false}"
 
 if [ -z "${SERVICE_NAME}" ]; then
-  echo "SERVICE_NAME is required (input|ingest|review|notification)" >&2
+  echo "SERVICE_NAME is required (input|ingest|review|notification|llm)" >&2
   exit 1
 fi
 
@@ -24,8 +24,11 @@ case "${SERVICE_NAME}" in
   notification)
     APP_MODULE="services.notification_api.main:app"
     ;;
+  llm)
+    APP_MODULE="services.llm_api.main:app"
+    ;;
   *)
-    echo "invalid SERVICE_NAME='${SERVICE_NAME}' (expected input|ingest|review|notification)" >&2
+    echo "invalid SERVICE_NAME='${SERVICE_NAME}' (expected input|ingest|review|notification|llm)" >&2
     exit 1
     ;;
 esac
