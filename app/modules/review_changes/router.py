@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.security import require_api_key
+from app.core.security import require_public_api_key
 from app.db.session import get_db
 from app.modules.common.deps import get_onboarded_user_or_409
 from app.modules.review_changes.schemas import (
@@ -19,7 +19,11 @@ from app.modules.review_changes.service import (
     mark_review_change_viewed,
 )
 
-router = APIRouter(prefix="/v2/review-items/changes", tags=["review-items"], dependencies=[Depends(require_api_key)])
+router = APIRouter(
+    prefix="/v2/review-items/changes",
+    tags=["review-items"],
+    dependencies=[Depends(require_public_api_key)],
+)
 
 
 @router.get("", response_model=list[ReviewChangeItemResponse])

@@ -26,7 +26,12 @@ export function getEmailReviewQueue(
     search.set("cursor", params.cursor);
   }
   const query = search.toString();
-  return apiRequest<EmailQueueItem[]>(config, `/v2/review-items/emails${query ? `?${query}` : ""}`);
+  return apiRequest<EmailQueueItem[]>(
+    config,
+    `/v2/review-items/emails${query ? `?${query}` : ""}`,
+    {},
+    "review"
+  );
 }
 
 export function updateEmailRoute(
@@ -37,11 +42,11 @@ export function updateEmailRoute(
   return apiRequest<UpdateEmailRouteResponse>(config, `/v2/review-items/emails/${encodeURIComponent(emailId)}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
-  });
+  }, "review");
 }
 
 export function markEmailViewed(config: AppConfig, emailId: string): Promise<MarkEmailViewedResponse> {
   return apiRequest<MarkEmailViewedResponse>(config, `/v2/review-items/emails/${encodeURIComponent(emailId)}/views`, {
     method: "POST",
-  });
+  }, "review");
 }

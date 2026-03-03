@@ -1,0 +1,62 @@
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+
+def _assert_metrics_payload(payload: dict, *, service_name: str, keys: Sequence[str]) -> None:
+    assert payload["service_name"] == service_name
+    assert isinstance(payload["timestamp"], str) and payload["timestamp"]
+    metrics = payload.get("metrics")
+    assert isinstance(metrics, dict)
+    for key in keys:
+        assert key in metrics
+        assert isinstance(metrics[key], (int, float))
+
+
+def _call_metrics(app: FastAPI) -> dict:
+    headers = {"X-Service-Name": "ops", "X-Service-Token": "test-internal-token-ops"}
+    with TestClient(app) as client:
+        response = client.get("/internal/v2/metrics", headers=headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert isinstance(payload, dict)
+    return payload
+
+
+def test_internal_metrics_endpoints(db_engine) -> None:
+    del db_engine
+    from services.ingest_api.main import app as ingest_app
+    from services.input_api.main import app as input_app
+    from services.notification_api.main import app as notify_app
+    from services.review_api.main import app as review_app
+
+    input_payload = _call_metrics(input_app)
+    _assert_metrics_payload(
+        input_payload,
+        service_name="input-service",
+        keys=["active_sources", "due_sources", "sync_requests_pending", "sync_requests_failed_1h"],
+    )
+
+    ingest_payload = _call_metrics(ingest_app)
+    _assert_metrics_payload(
+        ingest_payload,
+        service_name="ingest-service",
+        keys=["ingest_jobs_pending", "ingest_jobs_dead_letter", "dead_letter_rate_1h", "event_lag_seconds_p95"],
+    )
+
+    review_payload = _call_metrics(review_app)
+    _assert_metrics_payload(
+        review_payload,
+        service_name="review-service",
+        keys=["pending_changes", "pending_backlog_age_seconds_max", "apply_queue_pending"],
+    )
+
+    notify_payload = _call_metrics(notify_app)
+    _assert_metrics_payload(
+        notify_payload,
+        service_name="notification-service",
+        keys=["notifications_pending", "digest_sent_24h", "digest_failed_24h", "notify_fail_rate_24h"],
+    )

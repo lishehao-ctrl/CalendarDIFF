@@ -23,6 +23,10 @@ def ui_app_config() -> Response:
     payload = {
         "apiBase": "",
         "apiKey": settings.app_api_key,
+        "inputApiBase": settings.input_api_base_url or "",
+        "reviewApiBase": settings.review_api_base_url or "",
+        "ingestApiBase": settings.ingest_api_base_url or "",
+        "notifyApiBase": settings.notify_api_base_url or "",
     }
     content = f"window.__APP_CONFIG__ = {json.dumps(payload)};"
     return Response(content=content, media_type="application/javascript")

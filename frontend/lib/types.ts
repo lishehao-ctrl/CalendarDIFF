@@ -1,6 +1,10 @@
 export type AppConfig = {
   apiBase: string;
   apiKey: string;
+  inputApiBase?: string;
+  reviewApiBase?: string;
+  ingestApiBase?: string;
+  notifyApiBase?: string;
 };
 
 export type SourceKindLiteral = "calendar" | "email" | "task" | "exam" | "announcement";

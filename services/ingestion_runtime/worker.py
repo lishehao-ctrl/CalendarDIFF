@@ -9,7 +9,6 @@ from app.core.config import get_settings
 from app.core.logging import configure_logging, sanitize_log_message
 from app.db.schema_guard import ensure_schema_ready
 from app.db.session import get_engine, get_session_factory
-from app.modules.core_ingest.worker import run_core_apply_tick
 from app.modules.ingestion.connector_runtime import run_connector_tick
 from app.modules.ingestion.orchestrator import run_orchestrator_tick
 
@@ -49,7 +48,6 @@ def main() -> None:
         started = time.monotonic()
         orchestrated_count = 0
         connector_processed = 0
-        apply_processed = 0
 
         try:
             with session_factory() as db:
@@ -72,16 +70,6 @@ def main() -> None:
                         worker_id,
                         sanitize_log_message(str(exc)),
                     )
-
-                try:
-                    apply_processed = run_core_apply_tick(db)
-                except Exception as exc:  # pragma: no cover - defensive worker loop
-                    db.rollback()
-                    logger.error(
-                        "ingestion runtime stage failed stage=apply worker_id=%s error=%s",
-                        worker_id,
-                        sanitize_log_message(str(exc)),
-                    )
         except Exception as exc:  # pragma: no cover - defensive worker loop
             logger.error(
                 "ingestion runtime tick failed worker_id=%s error=%s",
@@ -92,12 +80,10 @@ def main() -> None:
         elapsed = time.monotonic() - started
         latency_ms = int(elapsed * 1000)
         logger.info(
-            "ingestion runtime tick worker_id=%s orchestrated_count=%s connector_processed=%s "
-            "apply_processed=%s latency_ms=%s",
+            "ingestion runtime tick worker_id=%s orchestrated_count=%s connector_processed=%s latency_ms=%s",
             worker_id,
             orchestrated_count,
             connector_processed,
-            apply_processed,
             latency_ms,
         )
         time.sleep(max(0.1, tick_seconds - elapsed))

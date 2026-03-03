@@ -15,48 +15,81 @@ services:
       timeout: 5s
       retries: 10
 
-  api:
+  input-service:
     build: .
     env_file:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
+      APP_BASE_URL: http://localhost:8000
+      SERVICE_NAME: input
+      RUN_MIGRATIONS: "true"
+      PORT: "8000"
     volumes:
       - ./:/app
     depends_on:
       postgres:
         condition: service_healthy
-    command: /bin/sh -lc "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    command: /app/scripts/start_service.sh
     ports:
-      - "8000:8000"
+      - "8001:8000"
 
-  ingestion-worker:
+  ingest-service:
     build: .
     env_file:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
       INGESTION_TICK_SECONDS: "2"
+      SERVICE_NAME: ingest
+      RUN_MIGRATIONS: "true"
+      PORT: "8000"
     volumes:
       - ./:/app
     depends_on:
       postgres:
         condition: service_healthy
-    command: /bin/sh -lc "alembic upgrade head && python -m services.ingestion_runtime.worker"
+    command: /app/scripts/start_service.sh
 
-  notification-worker:
+  review-service:
+    build: .
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
+      REVIEW_APPLY_TICK_SECONDS: "2"
+      SERVICE_NAME: review
+      RUN_MIGRATIONS: "true"
+      PORT: "8000"
+      INPUT_API_BASE_URL: http://localhost:8001
+      REVIEW_API_BASE_URL: http://localhost:8000
+      INGEST_API_BASE_URL: ""
+      NOTIFY_API_BASE_URL: ""
+    volumes:
+      - ./:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: /app/scripts/start_service.sh
+    ports:
+      - "8000:8000"
+
+  notification-service:
     build: .
     env_file:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
       NOTIFICATION_TICK_SECONDS: "30"
+      SERVICE_NAME: notification
+      RUN_MIGRATIONS: "true"
+      PORT: "8000"
     volumes:
       - ./:/app
     depends_on:
       postgres:
         condition: service_healthy
-    command: /bin/sh -lc "alembic upgrade head && python -m services.notification.worker"
+    command: /app/scripts/start_service.sh
 
 volumes:
   pgdata:

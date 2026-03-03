@@ -13,6 +13,7 @@ from app.core.logging import configure_logging, sanitize_log_message
 from app.db.models import DigestSendLog
 from app.db.schema_guard import ensure_schema_ready
 from app.db.session import get_engine, get_session_factory
+from app.modules.notify.consumer import run_notification_enqueue_tick
 from app.modules.notify.digest_service import process_due_digests
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ def main() -> None:
 
     while True:
         started = time.monotonic()
+        enqueued_notifications = 0
         processed_slots = 0
         sent_count = 0
         failed_count = 0
@@ -73,6 +75,7 @@ def main() -> None:
         try:
             with session_factory() as db:
                 if settings.enable_notifications:
+                    enqueued_notifications = run_notification_enqueue_tick(db)
                     sent_before, failed_before = _count_digest_results(db)
                     processed_slots = process_due_digests(db)
                     sent_after, failed_after = _count_digest_results(db)
@@ -93,8 +96,10 @@ def main() -> None:
         elapsed = time.monotonic() - started
         tick_latency_ms = int(elapsed * 1000)
         logger.info(
-            "notification tick worker_id=%s processed_slots=%s sent_count=%s failed_count=%s tick_latency_ms=%s",
+            "notification tick worker_id=%s enqueued_notifications=%s processed_slots=%s sent_count=%s "
+            "failed_count=%s tick_latency_ms=%s",
             worker_id,
+            enqueued_notifications,
             processed_slots,
             sent_count,
             failed_count,

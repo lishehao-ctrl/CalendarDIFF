@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Change, ChangeType, Event, Input, ReviewStatus
+from app.contracts.events import new_event
+from app.db.models import Change, ChangeType, Event, Input, IntegrationOutbox, OutboxStatus, ReviewStatus
 
 
 class ReviewChangeNotFoundError(RuntimeError):
@@ -126,6 +127,30 @@ def decide_review_change(
     row.reviewed_at = now
     row.review_note = note
     row.reviewed_by_user_id = user_id
+
+    event = new_event(
+        event_type=f"review.decision.{decision}",
+        aggregate_type="change",
+        aggregate_id=str(row.id),
+        payload={
+            "change_id": row.id,
+            "event_uid": row.event_uid,
+            "review_status": row.review_status.value,
+            "reviewed_by_user_id": user_id,
+            "reviewed_at": now.isoformat(),
+        },
+    )
+    db.add(
+        IntegrationOutbox(
+            event_id=event.event_id,
+            event_type=event.event_type,
+            aggregate_type=event.aggregate_type,
+            aggregate_id=event.aggregate_id,
+            payload_json=event.payload,
+            status=OutboxStatus.PENDING,
+            available_at=event.available_at,
+        )
+    )
 
     db.commit()
     db.refresh(row)

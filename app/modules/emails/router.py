@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.security import require_api_key
+from app.core.security import require_public_api_key
 from app.db.session import get_db
 from app.modules.common.deps import get_onboarded_user_or_409
 from app.modules.emails.schemas import (
@@ -19,7 +19,7 @@ from app.modules.emails.service import (
     update_email_route,
 )
 
-router = APIRouter(prefix="/v2/review-items/emails", tags=["review-items"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/v2/review-items/emails", tags=["review-items"], dependencies=[Depends(require_public_api_key)])
 
 
 def _parse_offset_cursor(cursor: str | None) -> int:

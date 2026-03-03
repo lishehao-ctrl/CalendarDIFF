@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.security import require_api_key
+from app.core.security import require_public_api_key
 from app.db.session import get_db
 from app.modules.users.schemas import (
     UserResponse,
@@ -15,7 +15,7 @@ from app.modules.users.service import (
     user_not_initialized_detail,
 )
 
-router = APIRouter(prefix="/v2/users", tags=["users"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/v2/users", tags=["users"], dependencies=[Depends(require_public_api_key)])
 
 
 @router.get("/me", response_model=UserResponse)

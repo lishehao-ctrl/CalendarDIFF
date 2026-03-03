@@ -29,7 +29,12 @@ export function getFeed(
     search.set("view", params.view);
   }
   const query = search.toString();
-  return apiRequest<ChangeFeedRecord[]>(config, `/v2/change-events${query ? `?${query}` : ""}`);
+  return apiRequest<ChangeFeedRecord[]>(
+    config,
+    `/v2/change-events${query ? `?${query}` : ""}`,
+    {},
+    "review"
+  );
 }
 
 export function patchChangeViewed(
@@ -43,7 +48,7 @@ export function patchChangeViewed(
   return apiRequest<ChangeRecord>(config, `/v2/change-events/${changeId}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
-  });
+  }, "review");
 }
 
 export function getEvidencePreview(
@@ -53,6 +58,8 @@ export function getEvidencePreview(
 ): Promise<EvidencePreviewResponse> {
   return apiRequest<EvidencePreviewResponse>(
     config,
-    `/v2/change-events/${changeId}/evidence/${side}/preview`
+    `/v2/change-events/${changeId}/evidence/${side}/preview`,
+    {},
+    "review"
   );
 }

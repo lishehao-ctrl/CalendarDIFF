@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import get_settings
 from app.core.logging import sanitize_log_message
-from app.core.security import require_api_key
+from app.core.security import require_public_api_key
 from app.db.models import (
     Change,
     Input,
@@ -34,7 +34,7 @@ from app.modules.changes.schemas import (
 )
 from app.modules.evidence import EvidencePathError, resolve_evidence_file_path
 
-router = APIRouter(prefix="/v2", tags=["change-events"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/v2", tags=["change-events"], dependencies=[Depends(require_public_api_key)])
 SUMMARY_TIME_FIELDS = ("start_at_utc", "internal_date", "due_at", "end_at_utc")
 PREVIEW_MAX_BYTES = 64 * 1024
 logger = logging.getLogger(__name__)

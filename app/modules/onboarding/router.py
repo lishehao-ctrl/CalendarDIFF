@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.security import require_api_key
+from app.core.security import require_public_api_key
 from app.db.session import get_db
 from app.modules.onboarding.schemas import (
     OnboardingRegisterRequest,
@@ -12,7 +12,7 @@ from app.modules.onboarding.schemas import (
 )
 from app.modules.onboarding.service import OnboardingRegisterError, get_onboarding_status, register_onboarding
 
-router = APIRouter(prefix="/v2/onboarding", tags=["onboarding"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/v2/onboarding", tags=["onboarding"], dependencies=[Depends(require_public_api_key)])
 
 
 @router.get("/status", response_model=OnboardingStatusResponse)

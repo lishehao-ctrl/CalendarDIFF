@@ -17,7 +17,6 @@ from app.db.models import User
 from app.db.session import reset_engine
 from app.modules.input_control_plane.schemas import InputSourceCreateRequest
 from app.modules.input_control_plane.service import create_input_source
-from app.main import create_app
 from datetime import datetime, timezone
 
 
@@ -69,9 +68,17 @@ def test_database_url() -> str:
 def configure_test_environment(test_database_url: str) -> Generator[None, None, None]:
     os.environ["APP_API_KEY"] = "test-api-key"
     os.environ["APP_SECRET_KEY"] = "7J2Btjj4GW8jIP5MErM81QOZeK4c7xYknVxKsgKMnmk="
+    os.environ["INTERNAL_SERVICE_TOKEN_INPUT"] = "test-internal-token-input"
+    os.environ["INTERNAL_SERVICE_TOKEN_INGEST"] = "test-internal-token-ingest"
+    os.environ["INTERNAL_SERVICE_TOKEN_REVIEW"] = "test-internal-token-review"
+    os.environ["INTERNAL_SERVICE_TOKEN_NOTIFICATION"] = "test-internal-token-notification"
+    os.environ["INTERNAL_SERVICE_TOKEN_OPS"] = "test-internal-token-ops"
     os.environ["DEFAULT_NOTIFY_EMAIL"] = "notify@example.com"
     os.environ["DATABASE_URL"] = test_database_url
     os.environ["SCHEMA_GUARD_ENABLED"] = "true"
+    os.environ["INGEST_SERVICE_ENABLE_WORKER"] = "false"
+    os.environ["REVIEW_SERVICE_ENABLE_APPLY_WORKER"] = "false"
+    os.environ["NOTIFICATION_SERVICE_ENABLE_WORKER"] = "false"
 
     get_settings.cache_clear()
     reset_engine()
@@ -115,8 +122,21 @@ def db_session(db_session_factory: sessionmaker[Session]) -> Generator[Session, 
 def client(configure_test_environment: None) -> Generator[TestClient, None, None]:
     get_settings.cache_clear()
     reset_engine()
-    app = create_app()
-    with TestClient(app) as test_client:
+    from services.review_api.main import app as review_api_app
+
+    with TestClient(review_api_app) as test_client:
+        yield test_client
+    get_settings.cache_clear()
+    reset_engine()
+
+
+@pytest.fixture()
+def input_client(configure_test_environment: None) -> Generator[TestClient, None, None]:
+    get_settings.cache_clear()
+    reset_engine()
+    from services.input_api.main import app as input_api_app
+
+    with TestClient(input_api_app) as test_client:
         yield test_client
     get_settings.cache_clear()
     reset_engine()

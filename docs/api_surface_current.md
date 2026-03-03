@@ -1,24 +1,33 @@
-# API Surface Snapshot (Current, V2)
+# API Surface Snapshot (Current, V2, Multi-Service)
 
-This document captures the active HTTP API surface after the three-layer runtime cutover.
+This document captures active HTTP APIs after microservice split with shared PostgreSQL.
 
-Deployment note:
+## Service Endpoints
 
-1. Single HTTP backend entrypoint: `uvicorn app.main:app`
-2. No gateway proxy and no split API services
+1. input-service: `http://localhost:8001`
+2. ingest-service: `http://localhost:8002`
+3. review-service: `http://localhost:8000`
+4. notification-service: `http://localhost:8004`
 
-## Workspace
+Default compose exposure:
+
+1. external: input-service + review-service
+2. internal-only: ingest-service + notification-service
+
+## input-service (`/v2` public)
+
+### Workspace
 
 1. `GET /health`
 
-## Onboarding + User
+### Onboarding + User
 
 1. `GET /v2/onboarding/status`
 2. `POST /v2/onboarding/registrations`
 3. `GET /v2/users/me`
 4. `PATCH /v2/users/me`
 
-## Input Sources + Sync
+### Input Sources + Sync
 
 1. `POST /v2/input-sources`
 2. `GET /v2/input-sources`
@@ -29,41 +38,77 @@ Deployment note:
 7. `POST /v2/oauth-sessions`
 8. `GET /v2/oauth-callbacks/{provider}`
 9. `POST /v2/webhook-events/{source_id}/{provider}`
+10. `GET /internal/v2/metrics` (internal token auth)
 
-## Timeline + Change Events
+## ingest-service (`/internal/v2` ops + worker)
 
-1. `GET /v2/timeline-events`
-2. `GET /v2/change-events`
-3. `PATCH /v2/change-events/{change_id}`
-4. `GET /v2/change-events/{change_id}/evidence/{side}/preview`
+1. `GET /health`
+2. `POST /internal/v2/ingest-jobs/{job_id}/replays`
+3. `POST /internal/v2/ingest-jobs/dead-letter/replays`
+4. `GET /internal/v2/metrics`
+
+Runtime responsibilities:
+
+1. orchestrator tick
+2. connector tick
+3. LLM parsing
+4. emits `ingest.result.ready`
+
+## review-service (`/v2` read/review + internal apply)
+
+1. `GET /health`
+2. `GET /v2/review-items/emails`
+3. `PATCH /v2/review-items/emails/{email_id}`
+4. `POST /v2/review-items/emails/{email_id}/views`
+5. `GET /v2/review-items/changes`
+6. `PATCH /v2/review-items/changes/{change_id}/views`
+7. `POST /v2/review-items/changes/{change_id}/decisions`
+8. `GET /v2/timeline-events`
+9. `GET /v2/change-events`
+10. `PATCH /v2/change-events/{change_id}`
+11. `GET /v2/change-events/{change_id}/evidence/{side}/preview`
+12. `POST /internal/v2/ingest-results/applications`
+13. `GET /internal/v2/ingest-results/{request_id}`
+14. `GET /internal/v2/metrics`
 
 Notes:
 
-1. `GET /v2/change-events` defaults to approved changes only (`review_status=approved`).
-2. `GET /v2/timeline-events` reads canonical events after review approval.
-3. `source_id` mapping/filtering for new rows is based on `proposal_sources_json`.
+1. review-service consumes `ingest.result.ready` and emits `review.pending.created`
+2. approve mutates canonical events; reject does not
 
-## Review
+## notification-service (`/internal/v2` ops + worker)
 
-1. `GET /v2/review-items/emails`
-2. `PATCH /v2/review-items/emails/{email_id}`
-3. `POST /v2/review-items/emails/{email_id}/views`
-4. `GET /v2/review-items/changes`
-5. `PATCH /v2/review-items/changes/{change_id}/views`
-6. `POST /v2/review-items/changes/{change_id}/decisions`
+1. `GET /health`
+2. `GET /internal/v2/notification/status`
+3. `GET /internal/v2/metrics`
 
-## Internal APIs
+Runtime responsibilities:
 
-1. `POST /internal/v2/ingest-results/applications`
-2. `GET /internal/v2/ingest-results/{request_id}`
-3. `POST /internal/v2/ingest-jobs/{job_id}/replays`
-4. `POST /internal/v2/ingest-jobs/dead-letter/replays`
+1. consumes `review.pending.created`
+2. enqueues `notifications`
+3. processes digest sends (`digest_send_log`)
 
-## Ingestion LLM Runtime (No API Change)
+## Event Contracts
 
-1. Calendar/Gmail parsers call `app/modules/llm_gateway/*`.
-2. Gateway protocol is OpenAI-compatible `chat/completions`.
-3. Runtime env:
+1. `sync.requested` (input -> ingest)
+2. `ingest.result.ready` (ingest -> review)
+3. `review.pending.created` (review -> notification)
+4. `review.decision.approved|rejected` (review audit)
+
+See `docs/event_contracts.md`.
+
+## Internal Auth Contract
+
+All `/internal/v2/*` endpoints require:
+
+1. `X-Service-Name: <input|ingest|review|notification|ops>`
+2. `X-Service-Token: <matching token from INTERNAL_SERVICE_TOKEN_*>`
+
+## LLM Runtime
+
+1. parser location: ingest-service
+2. protocol: OpenAI-compatible `chat/completions`
+3. env:
    - `INGESTION_LLM_MODEL`
    - `INGESTION_LLM_BASE_URL`
    - `INGESTION_LLM_API_KEY`
@@ -72,12 +117,10 @@ Notes:
      - `GMAIL_OAUTH_TOKEN_URL`
      - `GMAIL_OAUTH_AUTHORIZE_URL`
 
-## Eval Tooling (CLI, Not HTTP)
+## OpenAPI Contract Snapshots
 
-1. `python scripts/eval_ingestion_llm_pass_rate.py --dataset-root data/synthetic/v2_ddlchange_160 --report data/synthetic/v2_ddlchange_160/qa/llm_pass_rate_report.json --fail-on-threshold`
-2. `python scripts/smoke_real_sources_three_rounds.py --api-base http://127.0.0.1:8000 --report data/synthetic/v2_ddlchange_160/qa/real_source_smoke_report.json`
+Update snapshots:
 
-Notes:
-
-1. No public HTTP API path changes are introduced by real-source smoke tooling.
-2. Smoke runner drives existing `/v2/input-sources`, `/v2/sync-requests`, `/v2/review-items/changes`, and `/v2/timeline-events`.
+```bash
+python scripts/update_openapi_snapshots.py
+```

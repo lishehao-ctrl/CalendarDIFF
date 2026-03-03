@@ -36,7 +36,26 @@ class SmokeFailure(RuntimeError):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run three-round real-source smoke (fake ICS + fake Gmail + online LLM).")
-    parser.add_argument("--api-base", default="http://127.0.0.1:8000", help="Base URL of CalendarDIFF API.")
+    parser.add_argument(
+        "--input-api-base",
+        required=True,
+        help="Input-service API base URL.",
+    )
+    parser.add_argument(
+        "--review-api-base",
+        required=True,
+        help="Review-service API base URL.",
+    )
+    parser.add_argument(
+        "--ingest-api-base",
+        default=None,
+        help="Optional ingest-service API base URL for health probe.",
+    )
+    parser.add_argument(
+        "--notify-api-base",
+        default=None,
+        help="Optional notification-service API base URL for health probe.",
+    )
     parser.add_argument("--api-key", default=os.getenv("APP_API_KEY", ""), help="API key. Defaults to APP_API_KEY.")
     parser.add_argument(
         "--report",
@@ -231,7 +250,10 @@ def main() -> int:
         "run_id": run_id,
         "started_at": started_at,
         "finished_at": None,
-        "api_base": args.api_base,
+        "input_api_base": args.input_api_base,
+        "review_api_base": args.review_api_base,
+        "ingest_api_base": args.ingest_api_base,
+        "notify_api_base": args.notify_api_base,
         "llm_model": None,
         "llm_base_url_hash": None,
         "merge_gate_mode": "strict_same_topic",
@@ -268,17 +290,39 @@ def main() -> int:
             raise SmokeFailure("missing api key: pass --api-key or set APP_API_KEY")
 
         api_headers = {"X-API-Key": args.api_key}
-        api_client = httpx.Client(base_url=args.api_base.rstrip("/"), headers=api_headers)
+        input_api_base = args.input_api_base.rstrip("/")
+        review_api_base = args.review_api_base.rstrip("/")
+        input_client = httpx.Client(base_url=input_api_base, headers=api_headers)
+        review_client = httpx.Client(base_url=review_api_base, headers=api_headers)
         try:
-            health = api_client.get("/health", timeout=8.0)
-            if health.status_code != 200:
-                raise SmokeFailure(f"health check failed status={health.status_code} body={health.text[:400]}")
+            input_health = input_client.get("/health", timeout=8.0)
+            review_health = review_client.get("/health", timeout=8.0)
+            if input_health.status_code != 200:
+                raise SmokeFailure(
+                    f"input health check failed status={input_health.status_code} body={input_health.text[:400]}"
+                )
+            if review_health.status_code != 200:
+                raise SmokeFailure(
+                    f"review health check failed status={review_health.status_code} body={review_health.text[:400]}"
+                )
+            if args.ingest_api_base:
+                ingest_health = httpx.get(f"{args.ingest_api_base.rstrip('/')}/health", timeout=8.0)
+                if ingest_health.status_code != 200:
+                    raise SmokeFailure(
+                        f"ingest health check failed status={ingest_health.status_code} body={ingest_health.text[:400]}"
+                    )
+            if args.notify_api_base:
+                notify_health = httpx.get(f"{args.notify_api_base.rstrip('/')}/health", timeout=8.0)
+                if notify_health.status_code != 200:
+                    raise SmokeFailure(
+                        f"notify health check failed status={notify_health.status_code} body={notify_health.text[:400]}"
+                    )
 
-            status_payload = _request_json(api_client, "GET", "/v2/onboarding/status")
+            status_payload = _request_json(input_client, "GET", "/v2/onboarding/status")
             stage = str(status_payload.get("stage") or "")
             if stage == "needs_user":
                 _request_json(
-                    api_client,
+                    input_client,
                     "POST",
                     "/v2/onboarding/registrations",
                     json_payload={"notify_email": args.notify_email},
@@ -302,7 +346,7 @@ def main() -> int:
             _poll_fake_provider_ready(fake_client)
 
             ics_source = _request_json(
-                api_client,
+                input_client,
                 "POST",
                 "/v2/input-sources",
                 json_payload={
@@ -316,7 +360,7 @@ def main() -> int:
                 },
             )
             gmail_source = _request_json(
-                api_client,
+                input_client,
                 "POST",
                 "/v2/input-sources",
                 json_payload={
@@ -340,7 +384,7 @@ def main() -> int:
 
             _set_fake_round(fake_client, round_id=0, run_tag=run_tag)
             baseline_req = _request_json(
-                api_client,
+                input_client,
                 "POST",
                 "/v2/sync-requests",
                 json_payload={"source_id": gmail_source_id, "metadata": {"kind": "smoke-baseline"}},
@@ -349,7 +393,7 @@ def main() -> int:
             baseline_request_id = str(baseline_req["request_id"])
             report["source"]["gmail_baseline_request_id"] = baseline_request_id
             baseline_status = _wait_sync_success(
-                api_client,
+                input_client,
                 request_id=baseline_request_id,
                 timeout_seconds=args.sync_timeout_seconds,
                 poll_interval_seconds=args.poll_interval_seconds,
@@ -370,7 +414,7 @@ def main() -> int:
                 _set_fake_round(fake_client, round_id=profile.round_id)
 
                 ics_req = _request_json(
-                    api_client,
+                    input_client,
                     "POST",
                     "/v2/sync-requests",
                     json_payload={
@@ -381,7 +425,7 @@ def main() -> int:
                 )
                 round_report["ics_request_id"] = str(ics_req["request_id"])
                 ics_status = _wait_sync_success(
-                    api_client,
+                    input_client,
                     request_id=round_report["ics_request_id"],
                     timeout_seconds=args.sync_timeout_seconds,
                     poll_interval_seconds=args.poll_interval_seconds,
@@ -389,7 +433,7 @@ def main() -> int:
                 round_report["ics_status"] = str((ics_status.get("connector_result") or {}).get("status") or "")
 
                 gmail_req = _request_json(
-                    api_client,
+                    input_client,
                     "POST",
                     "/v2/sync-requests",
                     json_payload={
@@ -400,7 +444,7 @@ def main() -> int:
                 )
                 round_report["gmail_request_id"] = str(gmail_req["request_id"])
                 gmail_status = _wait_sync_success(
-                    api_client,
+                    input_client,
                     request_id=round_report["gmail_request_id"],
                     timeout_seconds=args.sync_timeout_seconds,
                     poll_interval_seconds=args.poll_interval_seconds,
@@ -409,7 +453,7 @@ def main() -> int:
 
                 required_sources = {calendar_source_id, gmail_source_id}
                 pending_rows = _request_json_list(
-                    api_client,
+                    review_client,
                     "GET",
                     "/v2/review-items/changes?review_status=pending&limit=200",
                 )
@@ -503,7 +547,7 @@ def main() -> int:
                 round_approved_ids: list[int] = []
                 change_id = int(candidate_row["id"])
                 decision = _request_json(
-                    api_client,
+                    review_client,
                     "POST",
                     f"/v2/review-items/changes/{change_id}/decisions",
                     json_payload={
@@ -519,7 +563,7 @@ def main() -> int:
                 round_report["approved_change_ids"] = sorted(round_approved_ids)
 
                 pending_after = _request_json_list(
-                    api_client,
+                    review_client,
                     "GET",
                     "/v2/review-items/changes?review_status=pending&limit=200",
                 )
@@ -538,7 +582,7 @@ def main() -> int:
                 )
 
                 timeline_rows = _request_json_list(
-                    api_client,
+                    review_client,
                     "GET",
                     "/v2/timeline-events?limit=200",
                 )
@@ -556,7 +600,7 @@ def main() -> int:
                 )
 
                 feed_rows = _request_json_list(
-                    api_client,
+                    review_client,
                     "GET",
                     "/v2/change-events?review_status=approved&limit=200",
                 )
@@ -594,16 +638,28 @@ def main() -> int:
                 )
 
         finally:
-            api_client.close()
+            input_client.close()
+            review_client.close()
 
     except Exception as exc:
         report["fatal_errors"].append(str(exc))
         report["passed"] = False
     finally:
+        if created_source_ids:
+            cleanup_pending_cmd = [sys.executable, "scripts/ops_cleanup_smoke_state.py", "--apply", "--json"]
+            for source_id in created_source_ids:
+                cleanup_pending_cmd += ["--source-id", str(source_id)]
+            pending_cleanup = subprocess.run(cleanup_pending_cmd, check=False, capture_output=True, text=True)
+            if pending_cleanup.returncode != 0:
+                report["fatal_errors"].append(
+                    f"pending_cleanup_failed: {(pending_cleanup.stderr or pending_cleanup.stdout)[:600]}"
+                )
+
         if args.cleanup_sources and created_source_ids:
             try:
                 headers = {"X-API-Key": args.api_key} if args.api_key else {}
-                with httpx.Client(base_url=args.api_base.rstrip("/"), headers=headers) as cleanup_client:
+                cleanup_base = args.input_api_base.rstrip("/")
+                with httpx.Client(base_url=cleanup_base, headers=headers) as cleanup_client:
                     for source_id in created_source_ids:
                         cleanup_client.delete(f"/v2/input-sources/{source_id}", timeout=8.0)
             except Exception as exc:  # pragma: no cover - cleanup is best effort

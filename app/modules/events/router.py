@@ -5,7 +5,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.core.security import require_api_key
+from app.core.security import require_public_api_key
 from app.db.models import InputType
 from app.db.session import get_db
 from app.modules.common.deps import get_onboarded_user_or_409, require_onboarded_user_or_409
@@ -16,7 +16,7 @@ from app.modules.events.service import list_events_for_user
 router = APIRouter(
     prefix="/v2/timeline-events",
     tags=["timeline-events"],
-    dependencies=[Depends(require_api_key), Depends(require_onboarded_user_or_409)],
+    dependencies=[Depends(require_public_api_key), Depends(require_onboarded_user_or_409)],
 )
 
 

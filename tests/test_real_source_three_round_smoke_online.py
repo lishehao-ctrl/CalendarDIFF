@@ -20,24 +20,30 @@ def test_real_source_three_round_smoke_online(tmp_path: Path) -> None:
     if run_flag not in {"1", "true", "yes"}:
         pytest.skip("set RUN_REAL_SOURCE_SMOKE=true to run online real-source smoke")
 
-    api_base = os.getenv("REAL_SOURCE_SMOKE_API_BASE", "http://127.0.0.1:8000").rstrip("/")
+    input_api_base = os.getenv("REAL_SOURCE_SMOKE_INPUT_API_BASE", "http://127.0.0.1:8001").rstrip("/")
+    review_api_base = os.getenv("REAL_SOURCE_SMOKE_REVIEW_API_BASE", "http://127.0.0.1:8000").rstrip("/")
     api_key = (os.getenv("APP_API_KEY") or "").strip()
     if not api_key:
         pytest.skip("APP_API_KEY is required for online real-source smoke")
 
     try:
-        health = httpx.get(f"{api_base}/health", timeout=3.0)
+        input_health = httpx.get(f"{input_api_base}/health", timeout=3.0)
+        review_health = httpx.get(f"{review_api_base}/health", timeout=3.0)
     except Exception as exc:
         pytest.skip(f"api health check failed: {exc}")
-    if health.status_code != 200:
-        pytest.skip(f"api health check returned status={health.status_code}")
+    if input_health.status_code != 200:
+        pytest.skip(f"input api health check returned status={input_health.status_code}")
+    if review_health.status_code != 200:
+        pytest.skip(f"review api health check returned status={review_health.status_code}")
 
     report_path = tmp_path / "real_source_smoke_report.json"
     cmd = [
         sys.executable,
         "scripts/smoke_real_sources_three_rounds.py",
-        "--api-base",
-        api_base,
+        "--input-api-base",
+        input_api_base,
+        "--review-api-base",
+        review_api_base,
         "--api-key",
         api_key,
         "--report",

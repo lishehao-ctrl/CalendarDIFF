@@ -8,7 +8,16 @@ declare global {
 
 export function getRuntimeConfig(): AppConfig {
   if (typeof window === "undefined") {
-    return { apiBase: "", apiKey: "" };
+    return { apiBase: "", apiKey: "", inputApiBase: "", reviewApiBase: "", ingestApiBase: "", notifyApiBase: "" };
   }
-  return window.__APP_CONFIG__ ?? { apiBase: "", apiKey: "" };
+  return (
+    window.__APP_CONFIG__ ?? {
+      apiBase: "",
+      apiKey: "",
+      inputApiBase: "",
+      reviewApiBase: "",
+      ingestApiBase: "",
+      notifyApiBase: "",
+    }
+  );
 }

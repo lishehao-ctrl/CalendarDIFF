@@ -12,7 +12,7 @@ import {
 } from "@/lib/types";
 
 export function getInputSources(config: AppConfig): Promise<InputSource[]> {
-  return apiRequest<InputSource[]>(config, "/v2/input-sources");
+  return apiRequest<InputSource[]>(config, "/v2/input-sources", {}, "input");
 }
 
 export function createInputSource(
@@ -30,7 +30,7 @@ export function createInputSource(
   return apiRequest<InputSource>(config, "/v2/input-sources", {
     method: "POST",
     body: JSON.stringify(payload),
-  });
+  }, "input");
 }
 
 export function createOAuthSession(
@@ -40,13 +40,13 @@ export function createOAuthSession(
   return apiRequest<OAuthSessionCreateResponse>(config, "/v2/oauth-sessions", {
     method: "POST",
     body: JSON.stringify(payload),
-  });
+  }, "input");
 }
 
 export function deleteInputSource(config: AppConfig, sourceId: number): Promise<{ deleted: boolean }> {
   return apiRequest<{ deleted: boolean }>(config, `/v2/input-sources/${sourceId}`, {
     method: "DELETE",
-  });
+  }, "input");
 }
 
 export function createSyncRequest(
@@ -58,9 +58,9 @@ export function createSyncRequest(
     method: "POST",
     body: JSON.stringify(payload),
     headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
-  });
+  }, "input");
 }
 
 export function getSyncRequestStatus(config: AppConfig, requestId: string): Promise<SyncRequestStatusResponse> {
-  return apiRequest<SyncRequestStatusResponse>(config, `/v2/sync-requests/${encodeURIComponent(requestId)}`);
+  return apiRequest<SyncRequestStatusResponse>(config, `/v2/sync-requests/${encodeURIComponent(requestId)}`, {}, "input");
 }

@@ -1,21 +1,21 @@
 # CalendarDIFF
 
-CalendarDIFF runs as a V2 ingestion and review platform with one canonical flow:
+CalendarDIFF runs as 4 services with shared PostgreSQL and event-driven domain boundaries.
+
+Core flow:
 
 1. ingest input sources (ICS/Gmail) and parse with LLM
 2. build pending review proposals from observations
 3. approve proposals into canonical events
-4. send digest notifications on schedule
+4. enqueue and send digest notifications
 
-## Runtime Topology (Three Layers)
+## Runtime Topology (4 Services + PostgreSQL)
 
-The backend is intentionally collapsed to three runtime units:
-
-1. Input layer: `ingestion-worker` (orchestrator + connector + core apply)
-2. Review + DB layer: `api` (`app.main:app`) + PostgreSQL
-3. Notification layer: `notification-worker` (digest sender)
-
-There is no nginx gateway and no split control-plane/core API process.
+1. `input-service` (`services.input_api.main:app`)
+2. `ingest-service` (`services.ingest_api.main:app`)
+3. `review-service` (`services.review_api.main:app`)
+4. `notification-service` (`services.notification_api.main:app`)
+5. `postgres`
 
 ## Quick Start
 
@@ -45,23 +45,18 @@ docker compose up -d postgres
 alembic upgrade head
 ```
 
-4. Run API + workers (three processes):
+4. Run service APIs:
 
 ```bash
-uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-python -m services.ingestion_runtime.worker
-python -m services.notification.worker
-```
-
-5. Open UI:
-
-```text
-http://localhost:8000/ui
+SERVICE_NAME=input RUN_MIGRATIONS=false PORT=8001 ./scripts/start_service.sh
+SERVICE_NAME=ingest RUN_MIGRATIONS=false PORT=8002 ./scripts/start_service.sh
+SERVICE_NAME=review RUN_MIGRATIONS=false PORT=8000 ./scripts/start_service.sh
+SERVICE_NAME=notification RUN_MIGRATIONS=false PORT=8004 ./scripts/start_service.sh
 ```
 
 ## Docker Compose
 
-Run full local stack with one command:
+Run full local stack:
 
 ```bash
 docker compose up --build
@@ -70,9 +65,17 @@ docker compose up --build
 Compose includes:
 
 1. `postgres`
-2. `api`
-3. `ingestion-worker`
-4. `notification-worker`
+2. `input-service`
+3. `ingest-service`
+4. `review-service`
+5. `notification-service`
+
+Default host-exposed ports:
+
+1. `input-service` on `localhost:8001`
+2. `review-service` on `localhost:8000`
+
+`ingest-service` and `notification-service` are internal-only in default compose. Use `docker-compose.dev.yml` for dev-only port exposure.
 
 ## Core Environment Variables
 
@@ -81,7 +84,13 @@ Required:
 ```env
 APP_API_KEY=dev-api-key-change-me
 APP_SECRET_KEY=7J2Btjj4GW8jIP5MErM81QOZeK4c7xYknVxKsgKMnmk=
+INTERNAL_SERVICE_TOKEN_INPUT=dev-internal-token-input
+INTERNAL_SERVICE_TOKEN_INGEST=dev-internal-token-ingest
+INTERNAL_SERVICE_TOKEN_REVIEW=dev-internal-token-review
+INTERNAL_SERVICE_TOKEN_NOTIFICATION=dev-internal-token-notification
+INTERNAL_SERVICE_TOKEN_OPS=dev-internal-token-ops
 DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/deadline_diff
+PUBLIC_WEB_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
 ```
 
 Ingestion LLM (chat/completions only):
@@ -100,73 +109,95 @@ GMAIL_OAUTH_TOKEN_URL=http://127.0.0.1:8765/oauth2/token
 GMAIL_OAUTH_AUTHORIZE_URL=http://127.0.0.1:8765/oauth2/auth
 ```
 
-Worker intervals:
+Worker intervals (embedded in service processes):
 
 ```env
 INGESTION_TICK_SECONDS=2
+REVIEW_APPLY_TICK_SECONDS=2
 NOTIFICATION_TICK_SECONDS=30
 ```
 
-Notification control:
+Frontend multi-base routing (required when `input-service` and `review-service` are on different ports):
 
 ```env
+INPUT_API_BASE_URL=http://localhost:8001
+REVIEW_API_BASE_URL=http://localhost:8000
+INGEST_API_BASE_URL=http://localhost:8002
+NOTIFY_API_BASE_URL=http://localhost:8004
+```
+
+## Internal Ops Auth
+
+`/internal/v2/*` endpoints no longer accept `X-API-Key`.
+
+Use service token headers:
+
+```http
+X-Service-Name: ops
+X-Service-Token: <INTERNAL_SERVICE_TOKEN_OPS>
+```
+
+Worker toggles:
+
+```env
+INGEST_SERVICE_ENABLE_WORKER=true
+REVIEW_SERVICE_ENABLE_APPLY_WORKER=true
+NOTIFICATION_SERVICE_ENABLE_WORKER=true
 ENABLE_NOTIFICATIONS=false
 ```
 
-If `ENABLE_NOTIFICATIONS=false`, notification worker keeps polling loop but skips send.
-
-## Health and Smoke Checks
+## Health Checks
 
 ```bash
+curl -s http://localhost:8001/health
+curl -s http://localhost:8002/health
 curl -s http://localhost:8000/health
-python -c "import app.main"
-python -c "import services.ingestion_runtime.worker"
-python -c "import services.notification.worker"
+curl -s http://localhost:8004/health
 ```
 
 ## Real Source Smoke (3 Rounds)
 
-This smoke covers:
-
-1. input source -> sync request
-2. orchestrator + connector + online LLM parse
-3. pending review generation
-4. approve decision
-5. canonical timeline update
-
-Run prerequisites:
-
-1. API + ingestion-worker + notification-worker are running.
-2. Ingestion worker env includes:
-   - `INGESTION_LLM_MODEL`
-   - `INGESTION_LLM_BASE_URL`
-   - `INGESTION_LLM_API_KEY`
-3. For fake Gmail source, ingestion worker uses local overrides:
-   - `GMAIL_API_BASE_URL=http://127.0.0.1:8765/gmail/v1/users/me`
-   - `GMAIL_OAUTH_TOKEN_URL=http://127.0.0.1:8765/oauth2/token`
-   - `GMAIL_OAUTH_AUTHORIZE_URL=http://127.0.0.1:8765/oauth2/auth`
-
-Smoke command:
-
 ```bash
 python scripts/smoke_real_sources_three_rounds.py \
-  --api-base http://127.0.0.1:8000 \
+  --input-api-base http://127.0.0.1:8001 \
+  --review-api-base http://127.0.0.1:8000 \
   --report data/synthetic/v2_ddlchange_160/qa/real_source_smoke_report.json
 ```
 
-## API Surface (V2)
+Full closure check:
 
-Main API groups:
+```bash
+python scripts/smoke_microservice_closure.py \
+  --input-api-base http://127.0.0.1:8001 \
+  --review-api-base http://127.0.0.1:8000 \
+  --ingest-api-base http://127.0.0.1:8002 \
+  --notify-api-base http://127.0.0.1:8004
+```
 
-1. onboarding + users
-2. input sources + sync requests + oauth/webhooks
-3. review pool (`/v2/review-items/changes`)
-4. change/timeline reads (`/v2/change-events`, `/v2/timeline-events`)
-5. health + UI routes
+SLO check:
+
+```bash
+python scripts/ops_slo_check.py \
+  --input-base http://127.0.0.1:8001 \
+  --ingest-base http://127.0.0.1:8002 \
+  --review-base http://127.0.0.1:8000 \
+  --notify-base http://127.0.0.1:8004 \
+  --ops-token "${INTERNAL_SERVICE_TOKEN_OPS}" \
+  --json
+```
+
+OpenAPI snapshots:
+
+```bash
+python scripts/update_openapi_snapshots.py
+```
+
+## API Surface
 
 Detailed snapshot:
 
 1. `docs/api_surface_current.md`
+2. `docs/event_contracts.md`
 
 ## Testing
 
@@ -182,3 +213,6 @@ cd frontend && npm run typecheck && npm run lint && npm run build
 2. `docs/deploy_three_layer_runtime.md`
 3. `docs/api_surface_current.md`
 4. `docs/ops_retention_replay_smoke.md`
+5. `docs/service_table_ownership.md`
+6. `docs/event_contracts.md`
+7. `docs/ops_microservice_slo.md`

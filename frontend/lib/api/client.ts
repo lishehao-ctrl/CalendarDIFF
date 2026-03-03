@@ -22,14 +22,23 @@ export class ApiError extends Error {
   }
 }
 
-export async function apiRequest<T>(config: AppConfig, path: string, init: RequestInit = {}): Promise<T> {
+export type ApiService = "input" | "review" | "ingest" | "notify";
+
+export async function apiRequest<T>(
+  config: AppConfig,
+  path: string,
+  init: RequestInit = {},
+  service: ApiService = "review"
+): Promise<T> {
   const headers = new Headers(init.headers ?? {});
   headers.set("X-API-Key", config.apiKey);
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${config.apiBase}${path}`, {
+  const base = resolveApiBase(config, service);
+
+  const response = await fetch(`${base}${path}`, {
     ...init,
     headers,
   });
@@ -45,6 +54,19 @@ export async function apiRequest<T>(config: AppConfig, path: string, init: Reque
   }
 
   return (await response.json()) as T;
+}
+
+function resolveApiBase(config: AppConfig, service: ApiService): string {
+  if (service === "input") {
+    return config.inputApiBase ?? config.apiBase;
+  }
+  if (service === "ingest") {
+    return config.ingestApiBase ?? config.apiBase;
+  }
+  if (service === "notify") {
+    return config.notifyApiBase ?? config.apiBase;
+  }
+  return config.reviewApiBase ?? config.apiBase;
 }
 
 export function sanitizeHeaderMap(input: Headers): Headers {

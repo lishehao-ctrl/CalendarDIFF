@@ -28,5 +28,10 @@ export function getEvents(
     search.set("offset", String(params.offset));
   }
   const query = search.toString();
-  return apiRequest<EventListItem[]>(config, `/v2/timeline-events${query ? `?${query}` : ""}`);
+  return apiRequest<EventListItem[]>(
+    config,
+    `/v2/timeline-events${query ? `?${query}` : ""}`,
+    {},
+    "review"
+  );
 }

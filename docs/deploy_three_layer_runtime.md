@@ -1,38 +1,38 @@
-# Deploy Three-Layer Runtime
+# Deploy Microservice Runtime (Shared PostgreSQL)
 
 ## Goal
 
-Run backend with exactly three runtime units plus PostgreSQL:
+Run backend as 4 microservices plus PostgreSQL:
 
-1. API (`app.main`)
-2. Ingestion worker (`services.ingestion_runtime.worker`)
-3. Notification worker (`services.notification.worker`)
+1. input-service
+2. ingest-service
+3. review-service
+4. notification-service
+5. postgres
 
 ## Prerequisites
 
 1. `.env` configured with DB and app secrets
-2. PostgreSQL reachable from all runtime units
+2. PostgreSQL reachable from all services
 3. schema migrated to head (`alembic upgrade head`)
 
-## Environment
+## Core Environment
 
 Required:
 
 ```env
 APP_API_KEY=...
 APP_SECRET_KEY=...
+INTERNAL_SERVICE_TOKEN_INPUT=...
+INTERNAL_SERVICE_TOKEN_INGEST=...
+INTERNAL_SERVICE_TOKEN_REVIEW=...
+INTERNAL_SERVICE_TOKEN_NOTIFICATION=...
+INTERNAL_SERVICE_TOKEN_OPS=...
 DATABASE_URL=postgresql+psycopg://...
+PUBLIC_WEB_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
 ```
 
-Recommended worker tuning:
-
-```env
-INGESTION_TICK_SECONDS=2
-NOTIFICATION_TICK_SECONDS=30
-ENABLE_NOTIFICATIONS=false
-```
-
-LLM config for ingestion parsers:
+LLM config (ingest-service):
 
 ```env
 INGESTION_LLM_MODEL=...
@@ -40,7 +40,16 @@ INGESTION_LLM_BASE_URL=...
 INGESTION_LLM_API_KEY=...
 ```
 
-Optional Gmail endpoint overrides (for local fake-source smoke):
+Worker tuning:
+
+```env
+INGESTION_TICK_SECONDS=2
+REVIEW_APPLY_TICK_SECONDS=2
+NOTIFICATION_TICK_SECONDS=30
+ENABLE_NOTIFICATIONS=false
+```
+
+Optional Gmail fake-source overrides (ingest-service only):
 
 ```env
 GMAIL_API_BASE_URL=http://127.0.0.1:8765/gmail/v1/users/me
@@ -56,22 +65,13 @@ GMAIL_OAUTH_AUTHORIZE_URL=http://127.0.0.1:8765/oauth2/auth
 alembic upgrade head
 ```
 
-2. start API:
+2. start services:
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-3. start ingestion worker:
-
-```bash
-python -m services.ingestion_runtime.worker
-```
-
-4. start notification worker:
-
-```bash
-python -m services.notification.worker
+SERVICE_NAME=input PORT=8001 ./scripts/start_service.sh
+SERVICE_NAME=ingest PORT=8002 ./scripts/start_service.sh
+SERVICE_NAME=review PORT=8000 ./scripts/start_service.sh
+SERVICE_NAME=notification PORT=8004 ./scripts/start_service.sh
 ```
 
 ## Local Startup (Compose)
@@ -83,57 +83,90 @@ docker compose up --build
 Expected services:
 
 1. `postgres`
-2. `api`
-3. `ingestion-worker`
-4. `notification-worker`
+2. `input-service`
+3. `ingest-service`
+4. `review-service`
+5. `notification-service`
+
+Default exposure model:
+
+1. public: `input-service` (`8001`), `review-service` (`8000`)
+2. internal-only: `ingest-service`, `notification-service`
+3. use `docker-compose.dev.yml` for dev-only ingest/notification host port mappings
 
 ## Health Checks
 
-1. API health:
-
 ```bash
+curl -s http://localhost:8001/health
+curl -s http://localhost:8002/health
 curl -s http://localhost:8000/health
+curl -s http://localhost:8004/health
 ```
 
-2. Import smoke:
+## Internal API Auth
+
+`/internal/v2/*` endpoints require service identity headers:
+
+```http
+X-Service-Name: ops
+X-Service-Token: <INTERNAL_SERVICE_TOKEN_OPS>
+```
+
+Import smoke:
 
 ```bash
-python -c "import app.main"
-python -c "import services.ingestion_runtime.worker"
-python -c "import services.notification.worker"
+python -c "import services.input_api.main"
+python -c "import services.ingest_api.main"
+python -c "import services.review_api.main"
+python -c "import services.notification_api.main"
 ```
 
-3. Ingestion worker log fields per tick:
+## API Routing Suggestion
 
-`worker_id`, `orchestrated_count`, `connector_processed`, `apply_processed`, `latency_ms`
+Because services are direct-exposed, client should configure per-domain base URLs:
 
-4. Notification worker log fields per tick:
+1. `INPUT_API_BASE_URL=http://127.0.0.1:8001`
+2. `INGEST_API_BASE_URL=http://127.0.0.1:8002` (internal ops)
+3. `REVIEW_API_BASE_URL=http://127.0.0.1:8000`
+4. `NOTIFY_API_BASE_URL=http://127.0.0.1:8004` (internal ops)
 
-`processed_slots`, `sent_count`, `failed_count`, `tick_latency_ms`
-
-## Three-Round Real Source Smoke
-
-Run end-to-end smoke (`source -> pending review -> approve -> timeline`) with fake ICS + fake Gmail:
+## E2E Smoke
 
 ```bash
 python scripts/smoke_real_sources_three_rounds.py \
-  --api-base http://127.0.0.1:8000 \
+  --input-api-base http://127.0.0.1:8001 \
+  --review-api-base http://127.0.0.1:8000 \
   --report data/synthetic/v2_ddlchange_160/qa/real_source_smoke_report.json
 ```
 
-The smoke runner launches `scripts/fake_source_provider.py` and drives three rounds:
+Closure pipeline:
 
-1. Round 1 simple
-2. Round 2 medium
-3. Round 3 same-subject alias-heavy
+```bash
+python scripts/smoke_microservice_closure.py \
+  --input-api-base http://127.0.0.1:8001 \
+  --review-api-base http://127.0.0.1:8000 \
+  --ingest-api-base http://127.0.0.1:8002 \
+  --notify-api-base http://127.0.0.1:8004
+```
 
-Output report includes round-level sync IDs/status, review decisions, merge checks, and timeline assertions.
+SLO check:
 
-## Failure Triage
+```bash
+python scripts/ops_slo_check.py \
+  --input-base http://127.0.0.1:8001 \
+  --ingest-base http://127.0.0.1:8002 \
+  --review-base http://127.0.0.1:8000 \
+  --notify-base http://127.0.0.1:8004 \
+  --ops-token "${INTERNAL_SERVICE_TOKEN_OPS}" \
+  --json
+```
 
-1. `ModuleNotFoundError: app.state`
-   - ensure deployment uses `app.main:app` and does not reference removed legacy service entrypoints.
-2. `scheduler_tick_seconds` attribute errors
-   - ensure ingestion runtime uses `INGESTION_TICK_SECONDS` and `services.ingestion_runtime.worker`.
-3. schema mismatch (`503` on `/health`)
-   - run clean migration chain and verify current head.
+## Ownership Guard
+
+Run ownership check in CI/local:
+
+```bash
+python scripts/check_table_ownership.py
+python scripts/check_microservice_closure.py
+python scripts/update_openapi_snapshots.py
+```

@@ -14,8 +14,8 @@ COPY app /app/app
 COPY scripts /app/scripts
 
 RUN pip install --no-cache-dir .
-RUN chmod +x /app/scripts/start.sh
+RUN chmod +x /app/scripts/start_service.sh
 
 EXPOSE 8000
 
-CMD ["/app/scripts/start.sh"]
+CMD ["/app/scripts/start_service.sh"]

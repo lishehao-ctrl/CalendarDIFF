@@ -58,15 +58,17 @@ Recommended classification:
 1. Single-job canary replay:
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/internal/v2/ingest-jobs/<job_id>/replays" \
-  -H "X-API-Key: ${APP_API_KEY}"
+curl -X POST "http://127.0.0.1:8002/internal/v2/ingest-jobs/<job_id>/replays" \
+  -H "X-Service-Name: ops" \
+  -H "X-Service-Token: ${INTERNAL_SERVICE_TOKEN_OPS}"
 ```
 
 2. If canary succeeds, batch replay:
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/internal/v2/ingest-jobs/dead-letter/replays?limit=50" \
-  -H "X-API-Key: ${APP_API_KEY}"
+curl -X POST "http://127.0.0.1:8002/internal/v2/ingest-jobs/dead-letter/replays?limit=50" \
+  -H "X-Service-Name: ops" \
+  -H "X-Service-Token: ${INTERNAL_SERVICE_TOKEN_OPS}"
 ```
 
 ### Stop-Loss Rule

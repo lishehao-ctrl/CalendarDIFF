@@ -11,6 +11,12 @@ class Settings(BaseSettings):
 
     app_api_key: str = "dev-api-key-change-me"
     app_secret_key: str = "7J2Btjj4GW8jIP5MErM81QOZeK4c7xYknVxKsgKMnmk="
+    internal_service_token_input: str = "dev-internal-token-input"
+    internal_service_token_ingest: str = "dev-internal-token-ingest"
+    internal_service_token_review: str = "dev-internal-token-review"
+    internal_service_token_notification: str = "dev-internal-token-notification"
+    internal_service_token_ops: str = "dev-internal-token-ops"
+    public_web_origins: str = "http://localhost:8000,http://127.0.0.1:8000"
 
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/deadline_diff"
     test_database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/deadline_diff_test"
@@ -45,6 +51,10 @@ class Settings(BaseSettings):
         default=None, validation_alias=AliasChoices("DEFAULT_NOTIFY_EMAIL", "SMTP_TO")
     )
     app_base_url: str | None = None
+    input_api_base_url: str | None = None
+    review_api_base_url: str | None = None
+    ingest_api_base_url: str | None = None
+    notify_api_base_url: str | None = None
 
     digest_fixed_timezone: str = "America/Los_Angeles"
     digest_fixed_times: str = "09:00,18:00"
