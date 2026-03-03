@@ -1,7 +1,7 @@
 """add unified review status and source observations
 
 Revision ID: 20260302_0005_review_pool
-Revises: 20260302_0004_src_legacy_map
+Revises: 20260302_0004_src_bridge_map
 Create Date: 2026-03-02 18:30:00.000000
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 revision = "20260302_0005_review_pool"
-down_revision = "20260302_0004_src_legacy_map"
+down_revision = "20260302_0004_src_bridge_map"
 branch_labels = None
 depends_on = None
 

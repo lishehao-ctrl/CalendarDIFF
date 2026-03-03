@@ -1,4 +1,4 @@
-"""hard cut cleanup for legacy bridge/runtime and canonical-only inputs
+"""hard cut cleanup for bridge/runtime and canonical-only inputs
 
 Revision ID: 20260303_0006_hard_cut_cleanup
 Revises: 20260302_0005_review_pool
@@ -17,11 +17,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Legacy source<->input bridge is removed from runtime.
-    op.execute("DROP INDEX IF EXISTS ix_source_legacy_inputs_input_id")
-    op.execute("DROP TABLE IF EXISTS source_legacy_inputs")
+    # Source<->input bridge is removed from runtime.
+    op.execute("DROP INDEX IF EXISTS ix_source_input_bridge_input_id")
+    op.execute("DROP TABLE IF EXISTS source_input_bridge")
 
-    # Legacy sync_runs runtime table is removed.
+    # Removed sync_runs runtime table.
     op.execute("DROP INDEX IF EXISTS ix_sync_runs_input_started_desc")
     op.execute("DROP INDEX IF EXISTS ix_sync_runs_started_at")
     op.execute("DROP INDEX IF EXISTS ix_sync_runs_status_started_at")
@@ -53,10 +53,10 @@ def upgrade() -> None:
     op.execute("ALTER TABLE inputs DROP COLUMN IF EXISTS last_error")
     op.execute("ALTER TABLE inputs DROP COLUMN IF EXISTS provider")
 
-    # Drop now-unused enum types from legacy sync runtime.
+    # Drop now-unused enum types from removed sync runtime.
     op.execute("DROP TYPE IF EXISTS sync_run_status")
     op.execute("DROP TYPE IF EXISTS sync_trigger_type")
 
 
 def downgrade() -> None:
-    raise RuntimeError("irreversible migration: legacy cleanup hard cut")
+    raise RuntimeError("irreversible migration: hard cut cleanup")

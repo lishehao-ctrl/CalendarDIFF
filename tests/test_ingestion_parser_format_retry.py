@@ -47,7 +47,8 @@ def test_gmail_parser_retries_validation_error_then_succeeds(monkeypatch: pytest
                             "event_type": "assignment",
                             "due_at": "2026-03-05T23:59:00-08:00",
                             "confidence": 0.9,
-                            "raw_extract": "not-an-object",
+                            "raw_extract": {"deadline_text": "Mar 5 11:59pm"},
+                            "course_parse": "bad",
                         }
                     ]
                 }
@@ -62,6 +63,15 @@ def test_gmail_parser_retries_validation_error_then_succeeds(monkeypatch: pytest
                         "due_at": "2026-03-05T23:59:00-08:00",
                         "confidence": 0.9,
                         "raw_extract": {"deadline_text": "Mar 5 11:59pm"},
+                        "course_parse": {
+                            "dept": "CSE",
+                            "number": 8,
+                            "suffix": "A",
+                            "quarter": "WI",
+                            "year2": 26,
+                            "confidence": 0.8,
+                            "evidence": "CSE 8A WI26",
+                        },
                     }
                 ]
             }
@@ -77,7 +87,17 @@ def test_gmail_parser_retries_validation_error_then_succeeds(monkeypatch: pytest
 
 
 def test_calendar_parser_retries_validation_error_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
-    content = b"BEGIN:VCALENDAR\nEND:VCALENDAR\n"
+    content = (
+        b"BEGIN:VCALENDAR\n"
+        b"VERSION:2.0\n"
+        b"BEGIN:VEVENT\n"
+        b"UID:uid-1\n"
+        b"DTSTART:20260305T180000Z\n"
+        b"DTEND:20260305T190000Z\n"
+        b"SUMMARY:CSE 8A Lab\n"
+        b"END:VEVENT\n"
+        b"END:VCALENDAR\n"
+    )
     context = ParserContext(source_id=2, provider="ics", source_kind="calendar", request_id="req-cal-1")
     calls = {"count": 0}
 
@@ -87,30 +107,28 @@ def test_calendar_parser_retries_validation_error_then_succeeds(monkeypatch: pyt
         if calls["count"] == 1:
             return DummyInvokeResult(
                 json_object={
-                    "events": [
-                        {
-                            "uid": "uid-1",
-                            "title": "Lab",
-                            "start_at": "2026-03-05T10:00:00-08:00",
-                            "end_at": "2026-03-05T11:00:00-08:00",
-                            "course_label": "CSE 8A",
-                            "raw_confidence": "bad-number",
-                        }
-                    ]
+                    "course_parse": {
+                        "dept": "CSE",
+                        "number": "bad",
+                        "suffix": "A",
+                        "quarter": None,
+                        "year2": None,
+                        "confidence": 0.9,
+                        "evidence": "CSE 8A",
+                    }
                 }
             )
         return DummyInvokeResult(
             json_object={
-                "events": [
-                    {
-                        "uid": "uid-1",
-                        "title": "Lab",
-                        "start_at": "2026-03-05T10:00:00-08:00",
-                        "end_at": "2026-03-05T11:00:00-08:00",
-                        "course_label": "CSE 8A",
-                        "raw_confidence": 0.9,
-                    }
-                ]
+                "course_parse": {
+                    "dept": "CSE",
+                    "number": 8,
+                    "suffix": "A",
+                    "quarter": None,
+                    "year2": None,
+                    "confidence": 0.9,
+                    "evidence": "CSE 8A",
+                }
             }
         )
 
@@ -118,9 +136,13 @@ def test_calendar_parser_retries_validation_error_then_succeeds(monkeypatch: pyt
     parsed = calendar_parser.parse_calendar_content(db=None, content=content, context=context)  # type: ignore[arg-type]
 
     assert calls["count"] == 2
-    assert parsed.parser_name == "calendar_v2_llm"
+    assert parsed.parser_name == "calendar_v2_deterministic"
     assert len(parsed.records) == 1
     assert parsed.records[0]["record_type"] == "calendar.event.extracted"
+    payload = parsed.records[0]["payload"]
+    assert isinstance(payload.get("source_canonical"), dict)
+    assert isinstance(payload.get("enrichment"), dict)
+    assert payload["enrichment"]["course_parse"]["dept"] == "CSE"
 
 
 def test_gmail_parser_exhausts_validation_retries(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -148,7 +170,8 @@ def test_gmail_parser_exhausts_validation_retries(monkeypatch: pytest.MonkeyPatc
                         "event_type": "exam",
                         "due_at": None,
                         "confidence": 0.8,
-                        "raw_extract": "still-not-object",
+                        "raw_extract": {"snippet": "Exam reminder"},
+                        "course_parse": "still-not-object",
                     }
                 ]
             }
@@ -162,8 +185,20 @@ def test_gmail_parser_exhausts_validation_retries(monkeypatch: pytest.MonkeyPatc
     assert exc_info.value.code == "parse_llm_gmail_schema_invalid"
 
 
-def test_calendar_parser_exhausts_validation_retries(monkeypatch: pytest.MonkeyPatch) -> None:
-    content = b"BEGIN:VCALENDAR\nEND:VCALENDAR\n"
+def test_calendar_parser_exhausts_validation_retries_raises_schema_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = (
+        b"BEGIN:VCALENDAR\n"
+        b"VERSION:2.0\n"
+        b"BEGIN:VEVENT\n"
+        b"UID:uid-2\n"
+        b"DTSTART:20260310T180000Z\n"
+        b"DTEND:20260310T190000Z\n"
+        b"SUMMARY:Project update\n"
+        b"END:VEVENT\n"
+        b"END:VCALENDAR\n"
+    )
     context = ParserContext(source_id=4, provider="ics", source_kind="calendar", request_id="req-cal-2")
     calls = {"count": 0}
 
@@ -172,16 +207,15 @@ def test_calendar_parser_exhausts_validation_retries(monkeypatch: pytest.MonkeyP
         calls["count"] += 1
         return DummyInvokeResult(
             json_object={
-                "events": [
-                    {
-                        "uid": "uid-2",
-                        "title": "Project",
-                        "start_at": "2026-03-10T10:00:00-08:00",
-                        "end_at": "2026-03-10T11:00:00-08:00",
-                        "course_label": "CSE 100",
-                        "raw_confidence": "bad",
-                    }
-                ]
+                "course_parse": {
+                    "dept": "CSE",
+                    "number": "bad",
+                    "suffix": None,
+                    "quarter": None,
+                    "year2": None,
+                    "confidence": 0.7,
+                    "evidence": "Project",
+                }
             }
         )
 

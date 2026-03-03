@@ -121,6 +121,17 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
                 "end_at": (due + timedelta(hours=1)).isoformat(),
                 "course_label": "CSE 100",
                 "raw_confidence": 0.92,
+                "enrichment": {
+                    "course_parse": {
+                        "dept": "CSE",
+                        "number": 100,
+                        "suffix": None,
+                        "quarter": None,
+                        "year2": None,
+                        "confidence": 0.92,
+                        "evidence": "CSE 100",
+                    }
+                },
             },
         }
     ]
@@ -134,6 +145,17 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
                 "due_at": due.isoformat(),
                 "confidence": 0.87,
                 "raw_extract": {"course_hint": "cSe_100"},
+                "enrichment": {
+                    "course_parse": {
+                        "dept": "CSE",
+                        "number": 100,
+                        "suffix": None,
+                        "quarter": None,
+                        "year2": None,
+                        "confidence": 0.87,
+                        "evidence": "cSe_100",
+                    }
+                },
             },
         }
     ]
@@ -187,7 +209,7 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
     assert rejected_view.json() == []
 
     removed_apply_route = client.post(
-        "/v2/review-items/emails/legacy-id/applications",
+        "/v2/review-items/emails/removed-id/applications",
         headers=headers,
         json={"mode": "create_new"},
     )
@@ -209,6 +231,17 @@ def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session
                 "end_at": (due_round1 + timedelta(hours=1)).isoformat(),
                 "course_label": "CSE8A",
                 "raw_confidence": 0.95,
+                "enrichment": {
+                    "course_parse": {
+                        "dept": "CSE",
+                        "number": 8,
+                        "suffix": "A",
+                        "quarter": None,
+                        "year2": None,
+                        "confidence": 0.95,
+                        "evidence": "CSE8A",
+                    }
+                },
             },
         }
     ]
@@ -222,6 +255,17 @@ def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session
                 "due_at": due_round1.isoformat(),
                 "confidence": 0.9,
                 "raw_extract": {"course_hint": "cSe_8A"},
+                "enrichment": {
+                    "course_parse": {
+                        "dept": "CSE",
+                        "number": 8,
+                        "suffix": "A",
+                        "quarter": None,
+                        "year2": None,
+                        "confidence": 0.9,
+                        "evidence": "cSe_8A",
+                    }
+                },
             },
         }
     ]
@@ -260,6 +304,17 @@ def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session
                 "end_at": (due_round2 + timedelta(hours=1)).isoformat(),
                 "course_label": "CSE-8A",
                 "raw_confidence": 0.93,
+                "enrichment": {
+                    "course_parse": {
+                        "dept": "CSE",
+                        "number": 8,
+                        "suffix": "A",
+                        "quarter": None,
+                        "year2": None,
+                        "confidence": 0.93,
+                        "evidence": "CSE-8A",
+                    }
+                },
             },
         }
     ]
@@ -273,6 +328,17 @@ def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session
                 "due_at": due_round2.isoformat(),
                 "confidence": 0.88,
                 "raw_extract": {"course_alias": ["CSE8A", "cSe_8A", "CSE 8A"]},
+                "enrichment": {
+                    "course_parse": {
+                        "dept": "CSE",
+                        "number": 8,
+                        "suffix": "A",
+                        "quarter": None,
+                        "year2": None,
+                        "confidence": 0.88,
+                        "evidence": "CSE 8A",
+                    }
+                },
             },
         }
     ]

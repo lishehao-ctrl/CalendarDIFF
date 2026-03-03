@@ -1,0 +1,201 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.security import encrypt_secret
+from app.db.models import (
+    ConnectorResultStatus,
+    IngestResult,
+    IngestTriggerType,
+    InputSource,
+    InputSourceConfig,
+    InputSourceCursor,
+    InputSourceSecret,
+    SourceEventObservation,
+    SourceKind,
+    SyncRequest,
+    SyncRequestStatus,
+    User,
+)
+from app.modules.core_ingest.service import apply_ingest_result_idempotent
+
+
+def _create_calendar_source(db_session: Session) -> InputSource:
+    now = datetime.now(timezone.utc)
+    user = User(
+        email="calendar-delta-owner@example.com",
+        notify_email="calendar-delta-owner@example.com",
+        onboarding_completed_at=now,
+    )
+    db_session.add(user)
+    db_session.flush()
+
+    source = InputSource(
+        user_id=user.id,
+        source_kind=SourceKind.CALENDAR,
+        provider="ics",
+        source_key="calendar-delta-source",
+        display_name="Calendar Delta Source",
+        is_active=True,
+        poll_interval_seconds=900,
+        next_poll_at=now,
+    )
+    db_session.add(source)
+    db_session.flush()
+
+    db_session.add(InputSourceConfig(source_id=source.id, schema_version=1, config_json={}))
+    db_session.add(
+        InputSourceSecret(
+            source_id=source.id,
+            encrypted_payload=encrypt_secret(json.dumps({"url": "https://example.com/calendar-delta.ics"})),
+        )
+    )
+    db_session.add(InputSourceCursor(source_id=source.id, version=1, cursor_json={}))
+    db_session.commit()
+    db_session.refresh(source)
+    return source
+
+
+def _create_request_and_result(
+    db_session: Session,
+    *,
+    source: InputSource,
+    request_id: str,
+    records: list[dict],
+    status: ConnectorResultStatus = ConnectorResultStatus.CHANGED,
+) -> None:
+    db_session.add(
+        SyncRequest(
+            request_id=request_id,
+            source_id=source.id,
+            trigger_type=IngestTriggerType.MANUAL,
+            status=SyncRequestStatus.RUNNING,
+            idempotency_key=f"idemp:{request_id}",
+            metadata_json={"kind": "test"},
+        )
+    )
+    db_session.add(
+        IngestResult(
+            request_id=request_id,
+            source_id=source.id,
+            provider=source.provider,
+            status=status,
+            cursor_patch={},
+            records=records,
+            fetched_at=datetime.now(timezone.utc),
+            error_code=None,
+            error_message=None,
+        )
+    )
+    db_session.commit()
+
+
+def _calendar_record(
+    *,
+    uid: str,
+    title: str,
+    start_at: datetime,
+    end_at: datetime,
+    component_key: str | None = None,
+) -> dict:
+    payload: dict[str, object] = {
+        "uid": uid,
+        "title": title,
+        "start_at": start_at.isoformat(),
+        "end_at": end_at.isoformat(),
+        "course_label": "CSE 100",
+        "raw_confidence": 0.91,
+    }
+    if component_key is not None:
+        payload["component_key"] = component_key
+    return {
+        "record_type": "calendar.event.extracted",
+        "payload": payload,
+    }
+
+
+def test_calendar_delta_mode_skips_full_snapshot_deactivate(db_session: Session) -> None:
+    source = _create_calendar_source(db_session)
+    t0 = datetime(2026, 3, 1, 20, 0, tzinfo=timezone.utc)
+    _create_request_and_result(
+        db_session,
+        source=source,
+        request_id="calendar-delta-1",
+        records=[
+            _calendar_record(uid="evt-1", title="HW1", start_at=t0, end_at=t0 + timedelta(hours=1)),
+            _calendar_record(uid="evt-2", title="HW2", start_at=t0 + timedelta(days=1), end_at=t0 + timedelta(days=1, hours=1)),
+        ],
+    )
+    apply_ingest_result_idempotent(db_session, request_id="calendar-delta-1")
+
+    _create_request_and_result(
+        db_session,
+        source=source,
+        request_id="calendar-delta-2",
+        records=[
+            _calendar_record(
+                uid="evt-1",
+                title="HW1",
+                start_at=t0 + timedelta(hours=2),
+                end_at=t0 + timedelta(hours=3),
+                component_key="evt-1#",
+            )
+        ],
+    )
+    apply_ingest_result_idempotent(db_session, request_id="calendar-delta-2")
+
+    evt1 = db_session.scalar(
+        select(SourceEventObservation).where(
+            SourceEventObservation.source_id == source.id,
+            SourceEventObservation.external_event_id == "evt-1",
+        )
+    )
+    evt2 = db_session.scalar(
+        select(SourceEventObservation).where(
+            SourceEventObservation.source_id == source.id,
+            SourceEventObservation.external_event_id == "evt-2",
+        )
+    )
+    assert evt1 is not None and evt1.is_active is True
+    assert evt2 is not None and evt2.is_active is True
+
+
+def test_calendar_removed_record_deactivates_target_observation(db_session: Session) -> None:
+    source = _create_calendar_source(db_session)
+    t0 = datetime(2026, 3, 1, 20, 0, tzinfo=timezone.utc)
+    _create_request_and_result(
+        db_session,
+        source=source,
+        request_id="calendar-delta-remove-1",
+        records=[_calendar_record(uid="evt-remove", title="Lab", start_at=t0, end_at=t0 + timedelta(hours=1))],
+    )
+    apply_ingest_result_idempotent(db_session, request_id="calendar-delta-remove-1")
+
+    _create_request_and_result(
+        db_session,
+        source=source,
+        request_id="calendar-delta-remove-2",
+        records=[
+            {
+                "record_type": "calendar.event.removed",
+                "payload": {
+                    "component_key": "evt-remove#",
+                    "external_event_id": "evt-remove",
+                },
+            }
+        ],
+    )
+    apply_ingest_result_idempotent(db_session, request_id="calendar-delta-remove-2")
+
+    row = db_session.scalar(
+        select(SourceEventObservation).where(
+            SourceEventObservation.source_id == source.id,
+            SourceEventObservation.external_event_id == "evt-remove",
+        )
+    )
+    assert row is not None
+    assert row.is_active is False

@@ -31,7 +31,7 @@ def main() -> int:
         PROJECT_ROOT / "docker-compose.yml",
         PROJECT_ROOT / "docker-compose.dev.yml",
     ]
-    forbidden_patterns = ("app.main:app", "scripts/start.sh")
+    forbidden_patterns = ("app." + "main:app", "scripts/" + "start.sh")
     for path in scan_paths:
         files = [path] if path.is_file() else [p for p in path.rglob("*") if p.is_file()]
         for file in files:
@@ -44,6 +44,15 @@ def main() -> int:
             for token in forbidden_patterns:
                 if token in content:
                     errors.append(f"forbidden token '{token}' found in {file}")
+
+    # 1b) Removed worker entrypoints must remain absent.
+    removed_paths = [
+        PROJECT_ROOT / "services" / "ingestion_runtime" / "worker.py",
+        PROJECT_ROOT / "services" / "notification" / "worker.py",
+    ]
+    for path in removed_paths:
+        if path.exists():
+            errors.append(f"removed entrypoint should remain absent: {path}")
 
     # 2) Internal routers must not depend on require_api_key.
     for file in (PROJECT_ROOT / "app" / "modules").rglob("*.py"):

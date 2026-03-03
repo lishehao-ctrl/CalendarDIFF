@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import logging
 import random
 from datetime import datetime, timedelta, timezone
@@ -21,6 +20,11 @@ from app.db.models import (
     OutboxStatus,
     SyncRequest,
     SyncRequestStatus,
+)
+from app.modules.ingestion.ics_delta import (
+    ICS_COMPONENT_FINGERPRINT_HASH_VERSION,
+    IcsDeltaParseError,
+    build_ics_delta,
 )
 from app.modules.input_control_plane.service import decode_source_secrets
 from app.modules.llm_runtime.queue import ensure_stream_group, get_redis_client, queue_group, queue_stream_key
@@ -240,19 +244,6 @@ def _queue_llm_parse_task(
     cursor_patch: dict,
     parse_payload: dict,
 ) -> None:
-    settings = get_settings()
-    if settings.ingest_llm_execution_mode.strip().lower() != "worker_only":
-        _retry_or_fail_job(
-            db,
-            job=job,
-            sync_request=sync_request,
-            source=source,
-            result_status=ConnectorResultStatus.PARSE_FAILED,
-            error_code="ingest_llm_execution_mode_invalid",
-            error_message="INGEST_LLM_EXECUTION_MODE must be worker_only",
-        )
-        return
-
     try:
         redis_client = get_redis_client()
         stream_key = queue_stream_key()
@@ -276,6 +267,7 @@ def _queue_llm_parse_task(
         )
         return
 
+    settings = get_settings()
     now = datetime.now(timezone.utc)
     payload = _job_payload(job)
     payload["provider"] = source.provider
@@ -487,6 +479,7 @@ def _run_gmail_connector_fetch_only(
         message_payloads.append(
             {
                 "message_id": metadata.message_id,
+                "thread_id": metadata.thread_id,
                 "subject": metadata.subject,
                 "snippet": metadata.snippet,
                 "body_text": metadata.body_text,
@@ -536,7 +529,14 @@ def _run_calendar_connector_fetch_only(
     if fetched.not_modified:
         return (
             ConnectorResultStatus.NO_CHANGE,
-            {"etag": fetched.etag, "last_modified": fetched.last_modified},
+            {
+                "etag": fetched.etag,
+                "last_modified": fetched.last_modified,
+                "ics_delta_components_total": 0,
+                "ics_delta_changed_components": 0,
+                "ics_delta_removed_components": 0,
+                "ics_delta_invalid_components": 0,
+            },
             None,
             None,
             None,
@@ -544,13 +544,33 @@ def _run_calendar_connector_fetch_only(
     if fetched.content is None:
         return ConnectorResultStatus.FETCH_FAILED, {}, None, "calendar_empty_content", "calendar fetch returned empty content"
 
-    payload = {
-        "kind": "calendar",
-        "content_b64": base64.b64encode(fetched.content).decode("ascii"),
-    }
+    previous_fingerprints = _extract_ics_component_fingerprints(cursor)
+    try:
+        delta = build_ics_delta(content=fetched.content, previous_fingerprints=previous_fingerprints)
+    except IcsDeltaParseError as exc:
+        return ConnectorResultStatus.PARSE_FAILED, {}, None, "calendar_delta_parse_failed", str(exc)
+
     cursor_patch = {
         "etag": fetched.etag,
         "last_modified": fetched.last_modified,
+        "ics_component_fingerprints_v1": delta.next_fingerprints,
+        "ics_delta_components_total": delta.total_components,
+        "ics_delta_changed_components": delta.changed_components_count,
+        "ics_delta_removed_components": delta.removed_components_count,
+        "ics_delta_invalid_components": delta.invalid_components,
+    }
+    if delta.changed_components_count + delta.removed_components_count == 0:
+        return ConnectorResultStatus.NO_CHANGE, cursor_patch, None, None, None
+
+    payload = {
+        "kind": "calendar_delta_v1",
+        "changed_components": delta.changed_components,
+        "removed_component_keys": delta.removed_component_keys,
+        "snapshot_meta": {
+            "etag": fetched.etag,
+            "last_modified": fetched.last_modified,
+            "hash_version": ICS_COMPONENT_FINGERPRINT_HASH_VERSION,
+        },
     }
     return ConnectorResultStatus.CHANGED, cursor_patch, payload, None, None
 
@@ -581,6 +601,20 @@ def _matches_gmail_source_filters(*, metadata: GmailMessageMetadata, config: dic
                 return False
 
     return True
+
+
+def _extract_ics_component_fingerprints(cursor: dict) -> dict[str, str]:
+    raw = cursor.get("ics_component_fingerprints_v1")
+    if not isinstance(raw, dict):
+        return {}
+    normalized: dict[str, str] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str) or not key.strip():
+            continue
+        if not isinstance(value, str) or not value.strip():
+            continue
+        normalized[key.strip()] = value.strip()
+    return normalized
 
 
 def _compute_retry_delay_seconds(attempt: int) -> int:

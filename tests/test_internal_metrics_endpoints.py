@@ -60,6 +60,10 @@ def test_internal_metrics_endpoints(db_engine, monkeypatch) -> None:
             "source_fifo_deferred_count_1m",
             "llm_rate_limited_1h",
             "llm_retry_scheduled_1h",
+            "ics_delta_components_total_1m",
+            "ics_delta_changed_components_1m",
+            "ics_delta_removed_components_1m",
+            "ics_delta_parse_failures_1h",
         ],
     )
 
@@ -67,7 +71,18 @@ def test_internal_metrics_endpoints(db_engine, monkeypatch) -> None:
     _assert_metrics_payload(
         review_payload,
         service_name="review-service",
-        keys=["pending_changes", "pending_backlog_age_seconds_max", "apply_queue_pending"],
+        keys=[
+            "pending_changes",
+            "pending_backlog_age_seconds_max",
+            "apply_queue_pending",
+            "linker_auto_link_total",
+            "linker_candidate_total",
+            "linker_unlinked_total",
+            "linker_block_hit_total",
+            "linker_candidate_decision_approve_total",
+            "linker_candidate_decision_reject_total",
+            "linker_false_link_corrections_total",
+        ],
     )
 
     notify_payload = _call_metrics(notify_app)

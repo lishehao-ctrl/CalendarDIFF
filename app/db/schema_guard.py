@@ -59,7 +59,7 @@ def _schema_not_ready_message(current_revision: str | None, head_revision: str) 
     return (
         "Database schema is not ready for this app version. "
         f"Current revision: {current}. Expected revision: {head_revision}. "
-        "In-place upgrades from legacy migration chains are not supported. "
+        "In-place upgrades from prior migration chains are not supported. "
         "Reset database state (`scripts/reset_postgres_db.sh`) and run `alembic upgrade head` "
         "against a fresh database."
     )

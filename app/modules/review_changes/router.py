@@ -7,16 +7,23 @@ from app.core.security import require_public_api_key
 from app.db.session import get_db
 from app.modules.common.deps import get_onboarded_user_or_409
 from app.modules.review_changes.schemas import (
+    ManualCorrectionApplyResponse,
+    ManualCorrectionPreviewResponse,
+    ManualCorrectionRequest,
     ReviewChangeItemResponse,
     ReviewChangeViewRequest,
     ReviewDecisionRequest,
     ReviewDecisionResponse,
 )
 from app.modules.review_changes.service import (
+    ManualCorrectionNotFoundError,
+    ManualCorrectionValidationError,
     ReviewChangeNotFoundError,
+    apply_manual_correction,
     decide_review_change,
     list_review_changes,
     mark_review_change_viewed,
+    preview_manual_correction,
 )
 
 router = APIRouter(
@@ -121,3 +128,51 @@ def post_review_decision(
         review_note=row.review_note,
         idempotent=idempotent,
     )
+
+
+@router.post("/corrections/preview", response_model=ManualCorrectionPreviewResponse)
+def post_manual_correction_preview(
+    payload: ManualCorrectionRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> ManualCorrectionPreviewResponse:
+    try:
+        preview = preview_manual_correction(
+            db=db,
+            user_id=user.id,
+            change_id=payload.target.change_id,
+            event_uid=payload.target.event_uid,
+            due_at=payload.patch.due_at,
+            title=payload.patch.title,
+            course_label=payload.patch.course_label,
+            reason=payload.reason,
+        )
+    except ManualCorrectionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ManualCorrectionValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return ManualCorrectionPreviewResponse(**preview)
+
+
+@router.post("/corrections", response_model=ManualCorrectionApplyResponse)
+def post_manual_correction_apply(
+    payload: ManualCorrectionRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> ManualCorrectionApplyResponse:
+    try:
+        result = apply_manual_correction(
+            db=db,
+            user_id=user.id,
+            change_id=payload.target.change_id,
+            event_uid=payload.target.event_uid,
+            due_at=payload.patch.due_at,
+            title=payload.patch.title,
+            course_label=payload.patch.course_label,
+            reason=payload.reason,
+        )
+    except ManualCorrectionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ManualCorrectionValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return ManualCorrectionApplyResponse(**result)

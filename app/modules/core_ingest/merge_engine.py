@@ -10,6 +10,7 @@ SOURCE_PRIORITY = {
 }
 
 MERGE_KEY_VERSION = "v2"
+ENTITY_UID_VERSION = "v1"
 THREAD_PREFIX_PATTERN = re.compile(r"^(?:\s*(?:re|fw|fwd)\s*:\s*|\s*\[(?:update|reminder)\]\s*|\s*update\s*:\s*)+", re.I)
 COURSE_TOKEN_PATTERN = re.compile(r"\b([A-Za-z]{3,5})[\s_\-]*([0-9]{1,3}[A-Za-z]?)\b")
 HOMEWORK_TOKEN_PATTERN = re.compile(r"\bhomework[\s_\-]*([0-9]+)\b")
@@ -92,6 +93,35 @@ def build_merge_key(
     start_at: datetime | None,
     end_at: datetime | None,
     event_type: str | None,
+    source_kind: str | None = None,
+    external_event_id: str | None = None,
+    linked_entity_uid: str | None = None,
+) -> str:
+    if isinstance(linked_entity_uid, str) and linked_entity_uid.strip():
+        return linked_entity_uid.strip()[:128]
+
+    if isinstance(external_event_id, str) and external_event_id.strip():
+        normalized_kind = (source_kind or "").strip().lower() or "unknown"
+        identity = f"{normalized_kind}|{external_event_id.strip()}|{ENTITY_UID_VERSION}"
+        digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
+        return f"ent_{digest}"
+
+    return _legacy_build_merge_key(
+        course_label=course_label,
+        title=title,
+        start_at=start_at,
+        end_at=end_at,
+        event_type=event_type,
+    )
+
+
+def _legacy_build_merge_key(
+    *,
+    course_label: str | None,
+    title: str | None,
+    start_at: datetime | None,
+    end_at: datetime | None,
+    event_type: str | None,
 ) -> str:
     del start_at
     del end_at
@@ -114,7 +144,7 @@ def choose_primary_observation(observations: list[dict]) -> dict | None:
     if not observations:
         return None
 
-    def _sort_key(obs: dict) -> tuple[float, float, int]:
+    def _sort_key(obs: dict) -> tuple[float, float, float]:
         payload = obs.get("event_payload") if isinstance(obs.get("event_payload"), dict) else {}
         confidence = payload.get("confidence")
         if not isinstance(confidence, (int, float)):
@@ -124,7 +154,7 @@ def choose_primary_observation(observations: list[dict]) -> dict | None:
         observed_rank = _as_utc(observed_at).timestamp() if isinstance(observed_at, datetime) else 0.0
         source_kind = str(obs.get("source_kind") or "").lower()
         priority = SOURCE_PRIORITY.get(source_kind, 0)
-        return (observed_rank, confidence_value, priority)
+        return (float(priority), confidence_value, observed_rank)
 
     return max(observations, key=_sort_key)
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+from datetime import datetime, timedelta, timezone
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -40,7 +42,12 @@ def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -
             "{\"messages\":[{\"message_id\":string|null,\"subject\":string|null,"
             "\"event_type\":\"deadline\"|\"exam\"|\"schedule_change\"|\"assignment\"|"
             "\"action_required\"|\"announcement\"|\"grade\"|\"other\"|null,"
-            "\"due_at\":string|null,\"confidence\":number,\"raw_extract\":object}]} . "
+            "\"due_at\":string|null,\"confidence\":number,\"raw_extract\":object,"
+            "\"course_parse\":{\"dept\":string|null,\"number\":number|null,\"suffix\":string|null,"
+            "\"quarter\":\"WI\"|\"SP\"|\"SU\"|\"FA\"|null,\"year2\":number|null,"
+            "\"confidence\":number,\"evidence\":string},"
+            "\"link_signals\":{\"keywords\":[\"exam\"|\"midterm\"|\"final\"],\"exam_sequence\":number|null,"
+            "\"location_text\":string|null,\"instructor_hint\":string|null}|null}]} . "
             "Return empty messages array when no extraction is possible."
         ),
         user_payload={
@@ -110,21 +117,54 @@ def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -
 
     source_message_id = payload.get("message_id") if isinstance(payload.get("message_id"), str) else None
     source_subject = payload.get("subject") if isinstance(payload.get("subject"), str) else None
+    source_from_header = payload.get("from_header") if isinstance(payload.get("from_header"), str) else None
+    source_thread_id = payload.get("thread_id") if isinstance(payload.get("thread_id"), str) else None
+    source_internal_date = payload.get("internal_date") if isinstance(payload.get("internal_date"), str) else None
 
     records: list[dict] = []
     for index, message in enumerate(parsed.messages):
         message_id = message.message_id or source_message_id or f"gmail-{context.source_id}-{index}"
         subject = message.subject or source_subject
+        due_at = _parse_optional_iso_datetime(message.due_at)
+        due_iso = due_at.isoformat() if due_at is not None else None
+        end_iso = (due_at + timedelta(hours=1)).isoformat() if due_at is not None else None
+        course_parse = message.course_parse.model_dump()
+        link_signals = (
+            message.link_signals.model_dump()
+            if message.link_signals is not None
+            else _fallback_link_signals(
+                subject=subject or "",
+                event_type=message.event_type,
+                raw_extract=message.raw_extract if isinstance(message.raw_extract, dict) else {},
+                from_header=source_from_header,
+            )
+        )
         records.append(
             {
                 "record_type": "gmail.message.extracted",
                 "payload": {
                     "message_id": message_id,
+                    "thread_id": source_thread_id,
                     "subject": subject,
                     "event_type": message.event_type,
-                    "due_at": message.due_at,
+                    "due_at": due_iso,
                     "confidence": float(message.confidence),
                     "raw_extract": dict(message.raw_extract),
+                    "source_canonical": {
+                        "external_event_id": message_id,
+                        "source_title": subject,
+                        "source_summary": payload.get("snippet") if isinstance(payload.get("snippet"), str) else None,
+                        "source_dtstart_utc": due_iso,
+                        "source_dtend_utc": end_iso,
+                        "time_anchor_confidence": float(message.confidence),
+                        "from_header": source_from_header,
+                        "thread_id": source_thread_id,
+                        "internal_date": source_internal_date,
+                    },
+                    "enrichment": {
+                        "course_parse": course_parse,
+                        "link_signals": link_signals,
+                    },
                 },
             }
         )
@@ -177,3 +217,43 @@ def _map_llm_error(exc: LlmGatewayError, *, provider: str) -> LlmParseError:
         provider=provider,
         parser_version="v2",
     )
+def _parse_optional_iso_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    raw = value.strip()
+    normalized = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _fallback_link_signals(*, subject: str, event_type: str | None, raw_extract: dict, from_header: str | None) -> dict:
+    keywords: list[str] = []
+    lowered = subject.lower()
+    for token in ("exam", "midterm", "final"):
+        if token in lowered:
+            keywords.append(token)
+    if event_type == "exam" and "exam" not in keywords:
+        keywords.append("exam")
+
+    exam_sequence = None
+    sequence_match = re.search(r"\\bexam\\s*([0-9]+)\\b", subject, flags=re.I)
+    if sequence_match is not None:
+        try:
+            parsed = int(sequence_match.group(1))
+        except Exception:
+            parsed = None
+        if isinstance(parsed, int) and parsed > 0:
+            exam_sequence = parsed
+
+    location_text = raw_extract.get("location_text") if isinstance(raw_extract.get("location_text"), str) else None
+    return {
+        "keywords": keywords,
+        "exam_sequence": exam_sequence,
+        "location_text": location_text,
+        "instructor_hint": from_header,
+    }

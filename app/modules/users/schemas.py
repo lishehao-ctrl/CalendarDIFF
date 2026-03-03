@@ -11,6 +11,7 @@ class UserResponse(BaseModel):
     id: int
     email: str | None
     notify_email: str | None
+    timezone_name: str
     calendar_delay_seconds: int
     created_at: datetime
 
@@ -18,6 +19,7 @@ class UserResponse(BaseModel):
 class UserUpdateRequest(BaseModel):
     email: str | None = Field(default=None, max_length=255)
     notify_email: str | None = Field(default=None, max_length=255)
+    timezone_name: str | None = Field(default=None, max_length=64)
     calendar_delay_seconds: int | None = Field(default=None, ge=0, le=3600)
 
     model_config = {"extra": "forbid"}
@@ -32,4 +34,14 @@ class UserUpdateRequest(BaseModel):
             return None
         if not is_valid_email_address(stripped):
             raise ValueError("must be a valid email address")
+        return stripped
+
+    @field_validator("timezone_name")
+    @classmethod
+    def validate_timezone_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("timezone_name must not be blank")
         return stripped

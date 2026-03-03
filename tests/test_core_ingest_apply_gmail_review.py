@@ -127,6 +127,17 @@ def test_apply_gmail_records_write_audit_tables_and_pending_change(db_session) -
                 "due_at": "2026-03-03T23:59:00+00:00",
                 "confidence": 0.93,
                 "raw_extract": {"course_hint": "CSE 100", "location_text": "Gradescope"},
+                "enrichment": {
+                    "course_parse": {
+                        "dept": "CSE",
+                        "number": 100,
+                        "suffix": None,
+                        "quarter": None,
+                        "year2": None,
+                        "confidence": 0.9,
+                        "evidence": "CSE 100",
+                    }
+                },
             },
         },
         {
@@ -138,6 +149,17 @@ def test_apply_gmail_records_write_audit_tables_and_pending_change(db_session) -
                 "due_at": None,
                 "confidence": 0.71,
                 "raw_extract": {},
+                "enrichment": {
+                    "course_parse": {
+                        "dept": None,
+                        "number": None,
+                        "suffix": None,
+                        "quarter": None,
+                        "year2": None,
+                        "confidence": 0.0,
+                        "evidence": "",
+                    }
+                },
             },
         },
     ]
@@ -203,6 +225,17 @@ def test_apply_gmail_records_extract_course_hint_from_subject_alias(db_session) 
                 "due_at": "2026-03-11T21:00:00+00:00",
                 "confidence": 0.88,
                 "raw_extract": {},
+                "enrichment": {
+                    "course_parse": {
+                        "dept": "CSE",
+                        "number": 8,
+                        "suffix": "A",
+                        "quarter": None,
+                        "year2": None,
+                        "confidence": 0.88,
+                        "evidence": "cSe_8A",
+                    }
+                },
             },
         }
     ]
@@ -225,4 +258,4 @@ def test_apply_gmail_records_extract_course_hint_from_subject_alias(db_session) 
     )
     assert pending is not None
     assert isinstance(pending.after_json, dict)
-    assert pending.after_json["course_label"] == "CSE8A"
+    assert pending.after_json["course_label"] == "CSE 8A"

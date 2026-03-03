@@ -38,7 +38,6 @@ class Settings(BaseSettings):
     ingestion_llm_base_url: str | None = None
     ingestion_llm_api_key: str | None = None
     ingestion_llm_model: str = "gpt-5.3-codex"
-    ingest_llm_execution_mode: str = "worker_only"
 
     redis_url: str | None = None
     llm_queue_stream_key: str = "llm:parse:stream:v1"

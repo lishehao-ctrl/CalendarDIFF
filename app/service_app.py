@@ -43,7 +43,7 @@ def _database_exception_handler(_: Request, exc: Exception) -> JSONResponse:
             content={
                 "detail": (
                     "Database schema is not ready for this app version. "
-                    "In-place upgrades from legacy migration chains are not supported. "
+                    "In-place upgrades from prior migration chains are not supported. "
                     "Run `scripts/reset_postgres_db.sh` for local PostgreSQL reset, "
                     "then run `alembic upgrade head` against a fresh database."
                 )

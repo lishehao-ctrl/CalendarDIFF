@@ -50,6 +50,7 @@ class GmailHistoryResult:
 @dataclass(frozen=True)
 class GmailMessageMetadata:
     message_id: str
+    thread_id: str | None
     snippet: str
     body_text: str | None
     internal_date: str | None
@@ -184,6 +185,7 @@ class GmailClient:
             access_token=access_token,
             params={"format": "full"},
         )
+        thread_id = str(payload.get("threadId") or "") or None
         snippet = str(payload.get("snippet") or "")
         internal_date_raw = payload.get("internalDate")
         internal_date = _internal_date_ms_to_iso8601(internal_date_raw)
@@ -211,6 +213,7 @@ class GmailClient:
 
         return GmailMessageMetadata(
             message_id=message_id,
+            thread_id=thread_id,
             snippet=snippet,
             body_text=body_text,
             internal_date=internal_date,

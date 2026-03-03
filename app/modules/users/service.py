@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from zoneinfo import ZoneInfo
 
 from app.db.models import Input, InputSource, InputType, User
 from app.modules.users.email_utils import is_valid_email_address
@@ -128,7 +129,7 @@ def create_or_initialize_user(db: Session, *, notify_email: str) -> tuple[User, 
         db.refresh(user)
         return user, True
 
-    user = User(email=None, notify_email=normalized_notify_email)
+    user = User(email=None, notify_email=normalized_notify_email, timezone_name="UTC")
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -141,12 +142,15 @@ def update_current_user(
     user: User,
     email: str | None = None,
     notify_email: str | None = None,
+    timezone_name: str | None = None,
     calendar_delay_seconds: int | None = None,
 ) -> User:
     if email is not None:
         user.email = _normalize_optional_text(email)
     if notify_email is not None:
         user.notify_email = _normalize_required_email(notify_email)
+    if timezone_name is not None:
+        user.timezone_name = _normalize_timezone_name(timezone_name)
     if calendar_delay_seconds is not None:
         user.calendar_delay_seconds = calendar_delay_seconds
     db.commit()
@@ -172,3 +176,14 @@ def _normalize_required_email(value: str) -> str:
 
 def _is_valid_email(value: str | None) -> bool:
     return is_valid_email_address(value)
+
+
+def _normalize_timezone_name(value: str) -> str:
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("timezone_name must not be blank")
+    try:
+        ZoneInfo(stripped)
+    except Exception as exc:
+        raise ValueError("timezone_name must be a valid IANA timezone") from exc
+    return stripped

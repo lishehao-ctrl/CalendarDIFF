@@ -40,6 +40,7 @@ def patch_user(payload: UserUpdateRequest, db: Session = Depends(get_db)) -> Use
             user=user,
             email=payload.email,
             notify_email=payload.notify_email,
+            timezone_name=payload.timezone_name,
             calendar_delay_seconds=payload.calendar_delay_seconds,
         )
     except ValueError as exc:
@@ -52,6 +53,7 @@ def _to_user_response(user) -> UserResponse:
         id=user.id,
         email=user.email,
         notify_email=user.notify_email,
+        timezone_name=user.timezone_name,
         calendar_delay_seconds=user.calendar_delay_seconds,
         created_at=user.created_at,
     )

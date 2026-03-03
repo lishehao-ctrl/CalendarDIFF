@@ -8,7 +8,15 @@ from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
 
 from app.core.security import require_internal_service_token
-from app.db.models import IngestJob, IngestJobStatus, IntegrationOutbox, OutboxStatus, SyncRequest, SyncRequestStatus
+from app.db.models import (
+    IngestJob,
+    IngestJobStatus,
+    IngestResult,
+    IntegrationOutbox,
+    OutboxStatus,
+    SyncRequest,
+    SyncRequestStatus,
+)
 from app.db.session import get_db
 
 router = APIRouter(
@@ -22,6 +30,7 @@ router = APIRouter(
 def get_ingest_metrics(db: Session = Depends(get_db)) -> dict[str, object]:
     now = datetime.now(timezone.utc)
     one_hour_ago = now - timedelta(hours=1)
+    one_minute_ago = now - timedelta(minutes=1)
 
     ingest_jobs_pending = int(
         db.scalar(select(func.count(IngestJob.id)).where(IngestJob.status == IngestJobStatus.PENDING)) or 0
@@ -109,6 +118,48 @@ def get_ingest_metrics(db: Session = Depends(get_db)) -> dict[str, object]:
         or 0
     )
 
+    recent_calendar_results = db.scalars(
+        select(IngestResult).where(
+            IngestResult.created_at >= one_minute_ago,
+            IngestResult.provider.in_(["ics", "calendar"]),
+        )
+    ).all()
+    ics_delta_components_total_1m = 0
+    ics_delta_changed_components_1m = 0
+    ics_delta_removed_components_1m = 0
+    for row in recent_calendar_results:
+        row_records = row.records if isinstance(row.records, list) else []
+        changed_count = 0
+        removed_count = 0
+        for record in row_records:
+            if not isinstance(record, dict):
+                continue
+            record_type = record.get("record_type")
+            if record_type == "calendar.event.extracted":
+                changed_count += 1
+            elif record_type == "calendar.event.removed":
+                removed_count += 1
+        row_cursor_patch = row.cursor_patch if isinstance(row.cursor_patch, dict) else {}
+        row_total_raw = row_cursor_patch.get("ics_delta_components_total")
+        if isinstance(row_total_raw, (int, float)):
+            row_total = max(int(row_total_raw), 0)
+        else:
+            row_total = changed_count + removed_count
+        ics_delta_components_total_1m += row_total
+        ics_delta_changed_components_1m += changed_count
+        ics_delta_removed_components_1m += removed_count
+
+    ics_delta_parse_failures_1h = int(
+        db.scalar(
+            select(func.count(SyncRequest.id)).where(
+                SyncRequest.updated_at >= one_hour_ago,
+                SyncRequest.error_code.is_not(None),
+                func.lower(SyncRequest.error_code) == "calendar_delta_parse_failed",
+            )
+        )
+        or 0
+    )
+
     return {
         "service_name": "ingest-service",
         "timestamp": now.isoformat(),
@@ -120,5 +171,9 @@ def get_ingest_metrics(db: Session = Depends(get_db)) -> dict[str, object]:
             "source_fifo_deferred_count_1m": source_fifo_deferred_count_1m,
             "llm_rate_limited_1h": llm_rate_limited_1h,
             "llm_retry_scheduled_1h": llm_retry_scheduled_1h,
+            "ics_delta_components_total_1m": ics_delta_components_total_1m,
+            "ics_delta_changed_components_1m": ics_delta_changed_components_1m,
+            "ics_delta_removed_components_1m": ics_delta_removed_components_1m,
+            "ics_delta_parse_failures_1h": ics_delta_parse_failures_1h,
         },
     }
