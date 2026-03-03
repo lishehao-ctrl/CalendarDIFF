@@ -1,0 +1,226 @@
+{
+  "run_id": "real-source-smoke-2c03eb39e0bc",
+  "started_at": "2026-03-03T01:50:25.811641+00:00",
+  "finished_at": "2026-03-03T01:50:50.462240+00:00",
+  "input_api_base": "http://127.0.0.1:8001",
+  "review_api_base": "http://127.0.0.1:8000",
+  "ingest_api_base": "http://127.0.0.1:8002",
+  "notify_api_base": "http://127.0.0.1:8004",
+  "llm_model": "qwen-flash-us",
+  "llm_base_url_hash": "e8364293a810a18f",
+  "merge_gate_mode": "strict_same_topic",
+  "global_topic_uid": "mk_ee6851c2da5c5a392d4f195cd8a191f8",
+  "passed": true,
+  "fatal_errors": [],
+  "source": {
+    "calendar_source_id": 27,
+    "gmail_source_id": 28,
+    "gmail_baseline_request_id": "833781d2cef741e28d76130084ea0ab5"
+  },
+  "rounds": [
+    {
+      "round_id": 1,
+      "difficulty": "simple",
+      "alias_profile": "canonical",
+      "ics_request_id": "995439b679284015aea88e421d237ba8",
+      "gmail_request_id": "0ced600a3436430bb89b36bfa366170a",
+      "ics_status": "CHANGED",
+      "gmail_status": "CHANGED",
+      "pending_change_ids": [
+        19
+      ],
+      "approved_change_ids": [
+        19
+      ],
+      "timeline_count_after": 10,
+      "feed_count_after": 16,
+      "merge_verified": true,
+      "single_pending_enforced": true,
+      "merge_required_sources_present": true,
+      "same_topic_uid_enforced": true,
+      "topic_uid": "mk_ee6851c2da5c5a392d4f195cd8a191f8",
+      "errors": []
+    },
+    {
+      "round_id": 2,
+      "difficulty": "medium",
+      "alias_profile": "updated-wording",
+      "ics_request_id": "21ec51f8966649b5bfb53afafc649e94",
+      "gmail_request_id": "14ff368921dc4f8f8284baf879d8bad9",
+      "ics_status": "CHANGED",
+      "gmail_status": "CHANGED",
+      "pending_change_ids": [
+        20
+      ],
+      "approved_change_ids": [
+        20
+      ],
+      "timeline_count_after": 10,
+      "feed_count_after": 17,
+      "merge_verified": true,
+      "single_pending_enforced": true,
+      "merge_required_sources_present": true,
+      "same_topic_uid_enforced": true,
+      "topic_uid": "mk_ee6851c2da5c5a392d4f195cd8a191f8",
+      "errors": []
+    },
+    {
+      "round_id": 3,
+      "difficulty": "alias-heavy",
+      "alias_profile": "multi-alias-same-subject",
+      "ics_request_id": "99da1b7764ab492b861b4f3c3c4c96bd",
+      "gmail_request_id": "d79e60a824a14a02b5101132a87d1603",
+      "ics_status": "CHANGED",
+      "gmail_status": "CHANGED",
+      "pending_change_ids": [
+        21
+      ],
+      "approved_change_ids": [
+        21
+      ],
+      "timeline_count_after": 10,
+      "feed_count_after": 18,
+      "merge_verified": true,
+      "single_pending_enforced": true,
+      "merge_required_sources_present": true,
+      "same_topic_uid_enforced": true,
+      "topic_uid": "mk_ee6851c2da5c5a392d4f195cd8a191f8",
+      "errors": []
+    }
+  ],
+  "provider_counters": {
+    "ics_fetch_count": 4,
+    "gmail_profile_count": 5,
+    "gmail_history_count": 4,
+    "gmail_message_count": 3
+  },
+  "assertion_pass_rate": 1.0,
+  "failed_assertions": [],
+  "assertions": [
+    {
+      "name": "gmail_baseline_no_change",
+      "passed": true,
+      "detail": "connector_status=NO_CHANGE"
+    },
+    {
+      "name": "round_1_single_pending_enforced",
+      "passed": true,
+      "detail": "pending_ids=[19]"
+    },
+    {
+      "name": "round_1_merge_required_sources_present",
+      "passed": true,
+      "detail": "candidate_sources=[27, 28]"
+    },
+    {
+      "name": "round_1_same_topic_uid_enforced",
+      "passed": true,
+      "detail": "global_topic_uid=mk_ee6851c2da5c5a392d4f195cd8a191f8 candidate_topic_uid=mk_ee6851c2da5c5a392d4f195cd8a191f8"
+    },
+    {
+      "name": "round_1_pending_cleared",
+      "passed": true,
+      "detail": "remaining=[]"
+    },
+    {
+      "name": "round_1_timeline_contains_round_uids",
+      "passed": true,
+      "detail": "round_event_uids=['mk_ee6851c2da5c5a392d4f195cd8a191f8']"
+    },
+    {
+      "name": "round_1_approved_visible_in_feed",
+      "passed": true,
+      "detail": "approved_ids=[19]"
+    },
+    {
+      "name": "round_2_single_pending_enforced",
+      "passed": true,
+      "detail": "pending_ids=[20]"
+    },
+    {
+      "name": "round_2_merge_required_sources_present",
+      "passed": true,
+      "detail": "candidate_sources=[27, 28]"
+    },
+    {
+      "name": "round_2_same_topic_uid_enforced",
+      "passed": true,
+      "detail": "global_topic_uid=mk_ee6851c2da5c5a392d4f195cd8a191f8 candidate_topic_uid=mk_ee6851c2da5c5a392d4f195cd8a191f8"
+    },
+    {
+      "name": "round_2_pending_cleared",
+      "passed": true,
+      "detail": "remaining=[]"
+    },
+    {
+      "name": "round_2_timeline_contains_round_uids",
+      "passed": true,
+      "detail": "round_event_uids=['mk_ee6851c2da5c5a392d4f195cd8a191f8']"
+    },
+    {
+      "name": "round_2_approved_visible_in_feed",
+      "passed": true,
+      "detail": "approved_ids=[20]"
+    },
+    {
+      "name": "round_3_single_pending_enforced",
+      "passed": true,
+      "detail": "pending_ids=[21]"
+    },
+    {
+      "name": "round_3_merge_required_sources_present",
+      "passed": true,
+      "detail": "candidate_sources=[27, 28]"
+    },
+    {
+      "name": "round_3_same_topic_uid_enforced",
+      "passed": true,
+      "detail": "global_topic_uid=mk_ee6851c2da5c5a392d4f195cd8a191f8 candidate_topic_uid=mk_ee6851c2da5c5a392d4f195cd8a191f8"
+    },
+    {
+      "name": "round_3_pending_cleared",
+      "passed": true,
+      "detail": "remaining=[]"
+    },
+    {
+      "name": "round_3_timeline_contains_round_uids",
+      "passed": true,
+      "detail": "round_event_uids=['mk_ee6851c2da5c5a392d4f195cd8a191f8']"
+    },
+    {
+      "name": "round_3_approved_visible_in_feed",
+      "passed": true,
+      "detail": "approved_ids=[21]"
+    },
+    {
+      "name": "round_1_ics_status",
+      "passed": true,
+      "detail": "status=CHANGED"
+    },
+    {
+      "name": "round_1_gmail_status",
+      "passed": true,
+      "detail": "status=CHANGED"
+    },
+    {
+      "name": "round_2_ics_status",
+      "passed": true,
+      "detail": "status=CHANGED"
+    },
+    {
+      "name": "round_2_gmail_status",
+      "passed": true,
+      "detail": "status=CHANGED"
+    },
+    {
+      "name": "round_3_ics_status",
+      "passed": true,
+      "detail": "status=CHANGED"
+    },
+    {
+      "name": "round_3_gmail_status",
+      "passed": true,
+      "detail": "status=CHANGED"
+    }
+  ]
+}
