@@ -105,10 +105,12 @@ class OAuthSessionCreateResponse(BaseModel):
 
 
 class OAuthCallbackResponse(BaseModel):
-    source_id: int
+    source_id: int | None = None
     provider: str
-    request_id: str
+    request_id: str | None = None
     status: str
+    sync_request_status: SyncRequestStatusLiteral | None = None
+    message: str | None = None
 
 
 class WebhookEnqueueResponse(BaseModel):

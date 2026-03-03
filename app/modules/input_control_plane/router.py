@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-from urllib.parse import urlencode
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
-from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.core.logging import sanitize_log_message
 from app.core.security import require_public_api_key
 from app.db.models import IngestTriggerType
@@ -18,6 +15,7 @@ from app.modules.input_control_plane.schemas import (
     InputSourceCreateRequest,
     InputSourcePatchRequest,
     InputSourceResponse,
+    OAuthCallbackResponse,
     OAuthSessionCreateRequest,
     OAuthSessionCreateResponse,
     SyncRequestCreateRequest,
@@ -173,24 +171,42 @@ def oauth_callback(
     state: str | None = Query(default=None),
     error: str | None = Query(default=None),
     db: Session = Depends(get_db),
-) -> RedirectResponse:
-    if error:
-        return _redirect_oauth_status("error", message=sanitize_log_message(error))
-    if not code or not state:
-        return _redirect_oauth_status("error", message="oauth callback missing code/state")
+) -> OAuthCallbackResponse:
     normalized_provider = provider.strip().lower()
+    if error:
+        return OAuthCallbackResponse(
+            provider=normalized_provider,
+            status="error",
+            message=sanitize_log_message(error),
+        )
+    if not code or not state:
+        return OAuthCallbackResponse(
+            provider=normalized_provider,
+            status="error",
+            message="oauth callback missing code/state",
+        )
     if normalized_provider != "gmail":
-        return _redirect_oauth_status("error", message="unsupported oauth provider")
+        return OAuthCallbackResponse(
+            provider=normalized_provider,
+            status="error",
+            message="unsupported oauth provider",
+        )
     try:
         source, sync_request = handle_gmail_oauth_callback(db, code=code, state=state)
     except Exception as exc:
-        return _redirect_oauth_status("error", message=sanitize_log_message(str(exc)))
+        return OAuthCallbackResponse(
+            provider=normalized_provider,
+            status="error",
+            message=sanitize_log_message(str(exc)),
+        )
 
-    del normalized_provider
-    del sync_request
-    return _redirect_oauth_status(
-        "success",
+    return OAuthCallbackResponse(
+        provider=normalized_provider,
+        status="success",
         source_id=source.id,
+        request_id=sync_request.request_id,
+        sync_request_status=sync_request.status.value,  # type: ignore[arg-type]
+        message="oauth callback processed",
     )
 
 
@@ -236,25 +252,6 @@ async def webhook_ingest(
         trace_id=event_id,
     )
     return WebhookEnqueueResponse(request_id=row.request_id, status=row.status.value)
-
-
-def _redirect_oauth_status(
-    status_value: str,
-    *,
-    source_id: int | None = None,
-    message: str | None = None,
-) -> RedirectResponse:
-    settings = get_settings()
-    app_base_url = settings.app_base_url.rstrip("/") if settings.app_base_url else ""
-    params: dict[str, str] = {"gmail_oauth_status": status_value}
-    if source_id is not None:
-        params["source_id"] = str(source_id)
-    if message:
-        params["message"] = message[:256]
-    query = urlencode(params)
-    target_path = f"/ui/inputs?{query}"
-    target = f"{app_base_url}{target_path}" if app_base_url else target_path
-    return RedirectResponse(url=target, status_code=302)
 
 
 def _require_registered_user_or_409(db: Session):

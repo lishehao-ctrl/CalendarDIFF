@@ -16,7 +16,7 @@ from app.modules.health.router import router as health_router
 from app.modules.core_ingest.worker import run_core_apply_tick
 from app.modules.review_changes.metrics_router import router as review_metrics_router
 from app.modules.review_changes.router import router as review_changes_router
-from app.modules.ui.router import router as ui_router
+from app.modules.review_links.router import router as review_links_router
 from app.service_app import create_service_app
 
 logger = logging.getLogger(__name__)
@@ -97,12 +97,12 @@ app = create_service_app(
     routers=[
         health_router,
         review_changes_router,
+        review_links_router,
         changes_router,
         events_router,
         emails_router,
         core_ingest_router,
         review_metrics_router,
-        ui_router,
     ],
     worker_starter=_start_review_apply_worker,
 )
