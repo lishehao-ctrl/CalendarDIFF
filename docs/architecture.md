@@ -157,3 +157,5 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 6. replay APIs belong to ingest-service internal surface (`/internal/v2/ingest-jobs/*`)
 7. each service exposes `GET /internal/v2/metrics` for minimal SLO checks
 8. SLO runbook: `docs/ops_microservice_slo.md`
+9. worker lifecycle is unified under FastAPI lifespan + AnyIO task groups via shared runtime helper (`app/runtime/worker_loop.py`)
+10. worker tick failures are non-fatal by policy: log and continue next round

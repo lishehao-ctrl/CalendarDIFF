@@ -58,6 +58,7 @@ Runtime responsibilities:
 2. connector tick (`gmail` incremental fetch, `ics` delta parser)
 3. enqueue llm parse tasks to Redis only for changed payloads
 4. emits `ingest.result.ready`
+5. worker lifecycle runs under app lifespan via AnyIO task groups (no per-service thread starter)
 
 ## llm-service (`/internal/v2` worker + metrics)
 
@@ -71,6 +72,7 @@ Runtime responsibilities:
 3. process ICS removed delta records without LLM call
 4. manage retry zset and backoff
 5. write `ingest_results` and emit `ingest.result.ready`
+6. worker lifecycle runs under app lifespan via AnyIO task groups (no per-service thread starter)
 
 ## review-service (`/v2` read/review + internal apply)
 
@@ -122,6 +124,7 @@ Runtime responsibilities:
 1. consumes `review.pending.created`
 2. enqueues `notifications`
 3. processes digest sends (`digest_send_log`)
+4. worker lifecycle runs under app lifespan via AnyIO task groups (no per-service thread starter)
 
 ## Event Contracts
 
