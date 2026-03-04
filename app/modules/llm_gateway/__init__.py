@@ -6,7 +6,6 @@ from app.modules.llm_gateway.contracts import (
 )
 from app.modules.llm_gateway.gateway import invoke_llm_json
 from app.modules.llm_gateway.registry import (
-    clear_llm_registry_cache,
     llm_runtime_overrides,
     resolve_llm_profile,
     set_llm_runtime_defaults,
@@ -25,7 +24,6 @@ __all__ = [
     "ResolvedLlmProfile",
     "invoke_llm_json",
     "resolve_llm_profile",
-    "clear_llm_registry_cache",
     "validate_ingestion_llm_config",
     "set_llm_runtime_defaults",
     "llm_runtime_overrides",

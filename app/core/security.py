@@ -49,11 +49,6 @@ def require_internal_service_token(
     return _dependency
 
 
-def require_api_key(x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None) -> None:
-    # Backward-compatible alias for public API usage.
-    require_public_api_key(x_api_key)
-
-
 def _get_internal_service_tokens() -> dict[InternalServiceName, str]:
     settings = get_settings()
     return {

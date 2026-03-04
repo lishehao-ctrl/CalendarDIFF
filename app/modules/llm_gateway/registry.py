@@ -19,13 +19,6 @@ _runtime_defaults = {
     "max_retries": DEFAULT_MAX_RETRIES,
     "max_input_chars": DEFAULT_MAX_INPUT_CHARS,
 }
-
-
-def clear_llm_registry_cache() -> None:
-    # Kept for compatibility with existing imports.
-    return
-
-
 def validate_ingestion_llm_config() -> ResolvedLlmProfile:
     # db/source_id are intentionally not used in env-only profile resolution.
     return resolve_llm_profile(None, source_id=None)

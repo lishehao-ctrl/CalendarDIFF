@@ -64,11 +64,6 @@ def normalize_topic_signature(raw_title: str | None) -> str:
     return normalized[:160] or "untitled"
 
 
-def normalize_title(raw: str | None) -> str:
-    # Backward-compatible alias.
-    return normalize_topic_signature(raw)
-
-
 def _replace_course_token(match: re.Match[str]) -> str:
     prefix = match.group(1).lower()
     suffix = match.group(2).lower()
@@ -106,7 +101,7 @@ def build_merge_key(
         digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
         return f"ent_{digest}"
 
-    return _legacy_build_merge_key(
+    return _build_content_merge_key(
         course_label=course_label,
         title=title,
         start_at=start_at,
@@ -115,7 +110,7 @@ def build_merge_key(
     )
 
 
-def _legacy_build_merge_key(
+def _build_content_merge_key(
     *,
     course_label: str | None,
     title: str | None,
