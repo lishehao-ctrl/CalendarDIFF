@@ -95,3 +95,43 @@ class LinkRelinkResponse(BaseModel):
     source_id: int
     external_event_id: str
     cleared_blocks: int
+
+
+class LinkAlertItemResponse(BaseModel):
+    id: int
+    source_id: int
+    external_event_id: str
+    entity_uid: str
+    link_id: int | None
+    status: Literal["pending", "dismissed", "marked_safe", "resolved"]
+    reason_code: Literal["auto_link_without_canonical_change"]
+    resolution_code: Literal[
+        "dismissed_by_user",
+        "marked_safe_by_user",
+        "canonical_pending_created",
+        "candidate_opened",
+        "link_removed",
+        "link_relinked",
+    ] | None = None
+    risk_level: Literal["medium"]
+    evidence_snapshot: dict
+    reviewed_by_user_id: int | None
+    reviewed_at: datetime | None
+    review_note: str | None
+    created_at: datetime
+    updated_at: datetime
+    linked_entity: LinkCandidateEntityPreview | None = None
+
+
+class LinkAlertDecisionRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=512)
+
+    model_config = {"extra": "forbid"}
+
+
+class LinkAlertDecisionResponse(BaseModel):
+    id: int
+    status: Literal["pending", "dismissed", "marked_safe", "resolved"]
+    idempotent: bool
+    reviewed_at: datetime | None
+    review_note: str | None

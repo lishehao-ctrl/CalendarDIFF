@@ -8,6 +8,9 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     EventEntity,
     EventEntityLink,
+    EventLinkAlert,
+    EventLinkAlertResolution,
+    EventLinkAlertStatus,
     EventLinkBlock,
     EventLinkCandidate,
     EventLinkCandidateStatus,
@@ -16,6 +19,7 @@ from app.db.models import (
     SourceEventObservation,
     SourceKind,
 )
+from app.modules.review_links.alerts_service import resolve_pending_link_alerts_for_pair
 
 
 class LinkCandidateNotFoundError(RuntimeError):
@@ -31,6 +35,10 @@ class LinkCandidateDecisionError(RuntimeError):
 
 
 class LinkNotFoundError(RuntimeError):
+    pass
+
+
+class LinkAlertNotFoundError(RuntimeError):
     pass
 
 
@@ -171,6 +179,59 @@ def list_link_blocks(
     return db.scalars(stmt).all()
 
 
+def list_link_alerts(
+    db: Session,
+    *,
+    user_id: int,
+    status: str,
+    source_id: int | None,
+    limit: int,
+    offset: int,
+) -> list[dict]:
+    stmt = (
+        select(EventLinkAlert)
+        .where(EventLinkAlert.user_id == user_id)
+        .order_by(EventLinkAlert.created_at.desc(), EventLinkAlert.id.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    if status == "pending":
+        stmt = stmt.where(EventLinkAlert.status == EventLinkAlertStatus.PENDING)
+    elif status == "dismissed":
+        stmt = stmt.where(EventLinkAlert.status == EventLinkAlertStatus.DISMISSED)
+    elif status == "marked_safe":
+        stmt = stmt.where(EventLinkAlert.status == EventLinkAlertStatus.MARKED_SAFE)
+    elif status == "resolved":
+        stmt = stmt.where(EventLinkAlert.status == EventLinkAlertStatus.RESOLVED)
+    if source_id is not None:
+        stmt = stmt.where(EventLinkAlert.source_id == source_id)
+
+    rows = db.scalars(stmt).all()
+    out: list[dict] = []
+    for row in rows:
+        out.append(
+            {
+                "id": row.id,
+                "source_id": row.source_id,
+                "external_event_id": row.external_event_id,
+                "entity_uid": row.entity_uid,
+                "link_id": row.link_id,
+                "status": row.status.value,
+                "reason_code": row.reason_code.value,
+                "resolution_code": row.resolution_code.value if row.resolution_code is not None else None,
+                "risk_level": row.risk_level.value,
+                "evidence_snapshot": row.evidence_snapshot_json if isinstance(row.evidence_snapshot_json, dict) else {},
+                "reviewed_by_user_id": row.reviewed_by_user_id,
+                "reviewed_at": row.reviewed_at,
+                "review_note": row.review_note,
+                "created_at": row.created_at,
+                "updated_at": row.updated_at,
+                "linked_entity": _load_entity_preview(db=db, user_id=user_id, entity_uid=row.entity_uid),
+            }
+        )
+    return out
+
+
 def list_links(
     db: Session,
     *,
@@ -263,6 +324,14 @@ def delete_link(
             created_by_user_id=user_id,
             note=note,
         )
+    resolve_pending_link_alerts_for_pair(
+        db=db,
+        user_id=user_id,
+        source_id=row.source_id,
+        external_event_id=row.external_event_id,
+        resolution_code=EventLinkAlertResolution.LINK_REMOVED,
+        note="link_removed",
+    )
     db.delete(row)
     db.commit()
 
@@ -349,9 +418,85 @@ def relink_observation(
         candidate.reviewed_at = now
         candidate.review_note = "manual_relink"
 
+    resolve_pending_link_alerts_for_pair(
+        db=db,
+        user_id=user_id,
+        source_id=source_id,
+        external_event_id=external_event_id,
+        resolution_code=EventLinkAlertResolution.LINK_RELINKED,
+        note="link_relinked",
+    )
     db.commit()
     db.refresh(link_row)
     return link_row, cleared
+
+
+def dismiss_link_alert(
+    db: Session,
+    *,
+    user_id: int,
+    alert_id: int,
+    note: str | None,
+) -> tuple[EventLinkAlert, bool]:
+    row = db.scalar(
+        select(EventLinkAlert)
+        .where(
+            EventLinkAlert.id == alert_id,
+            EventLinkAlert.user_id == user_id,
+        )
+        .with_for_update()
+    )
+    if row is None:
+        raise LinkAlertNotFoundError("Link alert not found")
+    if row.status == EventLinkAlertStatus.DISMISSED:
+        return row, True
+    if row.status != EventLinkAlertStatus.PENDING:
+        return row, True
+
+    normalized_note = note.strip()[:512] if isinstance(note, str) and note.strip() else None
+    now = datetime.now(timezone.utc)
+    row.status = EventLinkAlertStatus.DISMISSED
+    row.resolution_code = EventLinkAlertResolution.DISMISSED_BY_USER
+    row.reviewed_by_user_id = user_id
+    row.reviewed_at = now
+    row.review_note = normalized_note
+    db.commit()
+    db.refresh(row)
+    return row, False
+
+
+def mark_safe_link_alert(
+    db: Session,
+    *,
+    user_id: int,
+    alert_id: int,
+    note: str | None,
+) -> tuple[EventLinkAlert, bool]:
+    row = db.scalar(
+        select(EventLinkAlert)
+        .where(
+            EventLinkAlert.id == alert_id,
+            EventLinkAlert.user_id == user_id,
+        )
+        .with_for_update()
+    )
+    if row is None:
+        raise LinkAlertNotFoundError("Link alert not found")
+    if row.status == EventLinkAlertStatus.MARKED_SAFE:
+        return row, True
+    if row.status != EventLinkAlertStatus.PENDING:
+        return row, True
+
+    normalized_note = note.strip()[:512] if isinstance(note, str) and note.strip() else None
+    now = datetime.now(timezone.utc)
+    row.status = EventLinkAlertStatus.MARKED_SAFE
+    row.resolution_code = EventLinkAlertResolution.MARKED_SAFE_BY_USER
+    row.reviewed_by_user_id = user_id
+    row.reviewed_at = now
+    row.review_note = normalized_note
+    db.commit()
+    db.refresh(row)
+    return row, False
 
 
 def _load_entity_preview(*, db: Session, user_id: int, entity_uid: str | None) -> dict | None:

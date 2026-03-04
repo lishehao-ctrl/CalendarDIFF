@@ -134,11 +134,13 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
    - `event_entity_links` (auto/manual accepted links)
    - `event_link_candidates` (review queue for deterministic rule misses / low anchor confidence)
    - `event_link_blocks` (permanent rejected pairs)
+   - `event_link_alerts` (medium-risk non-blocking queue for auto-link without canonical pending)
 13. Auto-link rules are deterministic:
    - require `dept+number` and `event_parts.type`
    - enforce suffix exact-match when inventory for that `dept+number` has any suffix
    - enforce `event_parts.index` exact-match when inventory for same course+type has multiple indexes
 14. blocked source/entity pairs are never auto-linked and never re-enter pending candidate flow until unblocked
+15. `event_link_alerts` is auto-resolved when higher-priority governance takes over (`candidate_opened`, `canonical_pending_created`, `link_removed`, `link_relinked`)
 
 ## 7) Operational Notes
 

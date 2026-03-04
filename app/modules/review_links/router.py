@@ -7,6 +7,9 @@ from app.core.security import require_public_api_key
 from app.db.session import get_db
 from app.modules.common.deps import get_onboarded_user_or_409
 from app.modules.review_links.schemas import (
+    LinkAlertDecisionRequest,
+    LinkAlertDecisionResponse,
+    LinkAlertItemResponse,
     LinkBlockDeleteResponse,
     LinkBlockItemResponse,
     LinkCandidateDecisionRequest,
@@ -18,6 +21,7 @@ from app.modules.review_links.schemas import (
     LinkRelinkResponse,
 )
 from app.modules.review_links.service import (
+    LinkAlertNotFoundError,
     LinkBlockNotFoundError,
     LinkCandidateDecisionError,
     LinkCandidateNotFoundError,
@@ -25,9 +29,12 @@ from app.modules.review_links.service import (
     decide_link_candidate,
     delete_link,
     delete_link_block,
+    dismiss_link_alert,
     list_link_blocks,
+    list_link_alerts,
     list_link_candidates,
     list_links,
+    mark_safe_link_alert,
     relink_observation,
 )
 
@@ -37,6 +44,7 @@ router = APIRouter(
 )
 candidate_router = APIRouter(prefix="/v2/review-items/link-candidates")
 links_router = APIRouter(prefix="/v2/review-items/links")
+alerts_router = APIRouter(prefix="/v2/review-items/link-alerts")
 
 
 @candidate_router.get("", response_model=list[LinkCandidateItemResponse])
@@ -204,5 +212,82 @@ def post_relink_observation(
     )
 
 
+@alerts_router.get("", response_model=list[LinkAlertItemResponse])
+def get_link_alerts(
+    status_filter: str = Query(default="pending", alias="status"),
+    source_id: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> list[LinkAlertItemResponse]:
+    normalized_status = status_filter.strip().lower() if isinstance(status_filter, str) else "pending"
+    if normalized_status not in {"pending", "dismissed", "marked_safe", "resolved", "all"}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="status must be one of: pending, dismissed, marked_safe, resolved, all",
+        )
+    rows = list_link_alerts(
+        db=db,
+        user_id=user.id,
+        status=normalized_status,
+        source_id=source_id,
+        limit=limit,
+        offset=offset,
+    )
+    return [LinkAlertItemResponse(**row) for row in rows]
+
+
+@alerts_router.post("/{alert_id}/dismiss", response_model=LinkAlertDecisionResponse)
+def post_link_alert_dismiss(
+    alert_id: int,
+    payload: LinkAlertDecisionRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> LinkAlertDecisionResponse:
+    try:
+        row, idempotent = dismiss_link_alert(
+            db=db,
+            user_id=user.id,
+            alert_id=alert_id,
+            note=payload.note,
+        )
+    except LinkAlertNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return LinkAlertDecisionResponse(
+        id=row.id,
+        status=row.status.value,
+        idempotent=idempotent,
+        reviewed_at=row.reviewed_at,
+        review_note=row.review_note,
+    )
+
+
+@alerts_router.post("/{alert_id}/mark-safe", response_model=LinkAlertDecisionResponse)
+def post_link_alert_mark_safe(
+    alert_id: int,
+    payload: LinkAlertDecisionRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> LinkAlertDecisionResponse:
+    try:
+        row, idempotent = mark_safe_link_alert(
+            db=db,
+            user_id=user.id,
+            alert_id=alert_id,
+            note=payload.note,
+        )
+    except LinkAlertNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return LinkAlertDecisionResponse(
+        id=row.id,
+        status=row.status.value,
+        idempotent=idempotent,
+        reviewed_at=row.reviewed_at,
+        review_note=row.review_note,
+    )
+
+
 router.include_router(candidate_router)
 router.include_router(links_router)
+router.include_router(alerts_router)

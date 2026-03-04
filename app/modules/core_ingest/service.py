@@ -24,6 +24,7 @@ from app.db.models import (
     EventEntity,
     EventEntityLink,
     EventLinkBlock,
+    EventLinkAlertResolution,
     EventLinkCandidate,
     EventLinkCandidateReason,
     EventLinkCandidateStatus,
@@ -53,6 +54,11 @@ from app.modules.core_ingest.payload_contracts import (
     validate_gmail_payload_v3,
 )
 from app.modules.ingestion.ics_delta import external_event_id_from_component_key
+from app.modules.review_links.alerts_service import (
+    resolve_pending_link_alerts_for_entities,
+    resolve_pending_link_alerts_for_pair,
+    upsert_pending_link_alert,
+)
 from app.modules.sync.email_rules import ACTIONABLE_EVENT_TYPES
 from app.modules.sync.types import CanonicalEventInput
 
@@ -136,6 +142,7 @@ def _apply_records(
     request_id: str,
 ) -> int:
     records = result.records if isinstance(result.records, list) else []
+    auto_link_contexts: list[dict] = []
 
     if result.status == ConnectorResultStatus.NO_CHANGE and not records:
         return 0
@@ -163,6 +170,7 @@ def _apply_records(
             records=records,
             applied_at=applied_at,
             request_id=request_id,
+            auto_link_contexts=auto_link_contexts,
         )
     else:
         return 0
@@ -171,13 +179,27 @@ def _apply_records(
         return 0
 
     db.flush()
-    return _rebuild_pending_change_proposals(
+    changes_created, pending_event_uids = _rebuild_pending_change_proposals(
         db=db,
         source=source,
         canonical_input=canonical_input,
         affected_merge_keys=affected_merge_keys,
         applied_at=applied_at,
     )
+    resolve_pending_link_alerts_for_entities(
+        db=db,
+        user_id=source.user_id,
+        entity_uids=pending_event_uids,
+        resolution_code=EventLinkAlertResolution.CANONICAL_PENDING_CREATED,
+        note="canonical_pending_created",
+    )
+    if source.source_kind == SourceKind.EMAIL and auto_link_contexts:
+        _upsert_auto_link_alerts_without_pending(
+            db=db,
+            auto_link_contexts=auto_link_contexts,
+            pending_event_uids=pending_event_uids,
+        )
+    return changes_created
 
 
 def _ensure_canonical_input_for_user(*, db: Session, user_id: int) -> Input:
@@ -359,6 +381,7 @@ def _apply_gmail_observations(
     records: list[dict],
     applied_at: datetime,
     request_id: str,
+    auto_link_contexts: list[dict] | None = None,
 ) -> set[str]:
     affected_entity_uids: set[str] = set()
 
@@ -473,7 +496,7 @@ def _apply_gmail_observations(
             )
 
         if link_decision.status == "linked" and link_decision.entity_uid is not None and existing_link is None:
-            _upsert_event_entity_link(
+            link_row = _upsert_event_entity_link(
                 db=db,
                 source=source,
                 external_event_id=external_event_id,
@@ -489,6 +512,30 @@ def _apply_gmail_observations(
                 external_event_id=external_event_id,
                 note="auto_link_resolved",
             )
+            if auto_link_contexts is not None:
+                auto_link_contexts.append(
+                    {
+                        "user_id": source.user_id,
+                        "source_id": source.id,
+                        "external_event_id": external_event_id,
+                        "entity_uid": link_decision.entity_uid,
+                        "link_row": link_row,
+                        "evidence_snapshot": {
+                            "request_id": request_id,
+                            "source_id": source.id,
+                            "external_event_id": external_event_id,
+                            "entity_uid": link_decision.entity_uid,
+                            "link_reason_code": link_decision.reason_code,
+                            "rule_evidence": link_decision.score_breakdown,
+                            "incoming_signals": _with_candidate_evidence(
+                                score_breakdown={},
+                                signals=link_signals,
+                            ).get("incoming_signals"),
+                            "source_time_anchor_confidence": source_canonical.get("time_anchor_confidence"),
+                            "source_dtstart_utc": source_canonical.get("source_dtstart_utc"),
+                        },
+                    }
+                )
         elif link_decision.status == "candidate":
             _upsert_link_candidate(
                 db=db,
@@ -1043,6 +1090,14 @@ def _upsert_link_candidate(
     score_breakdown: dict,
     reason_code: str,
 ) -> EventLinkCandidate:
+    resolve_pending_link_alerts_for_pair(
+        db=db,
+        user_id=user_id,
+        source_id=source_id,
+        external_event_id=external_event_id,
+        resolution_code=EventLinkAlertResolution.CANDIDATE_OPENED,
+        note="candidate_opened",
+    )
     pending_rows = db.scalars(
         select(EventLinkCandidate).where(
             EventLinkCandidate.user_id == user_id,
@@ -1384,7 +1439,7 @@ def _rebuild_pending_change_proposals(
     canonical_input: Input,
     affected_merge_keys: set[str],
     applied_at: datetime,
-) -> int:
+) -> tuple[int, set[str]]:
     created_changes: list[Change] = []
 
     for merge_key in sorted(affected_merge_keys):
@@ -1499,7 +1554,41 @@ def _rebuild_pending_change_proposals(
             detected_at=applied_at,
         )
 
-    return len(created_changes)
+    pending_event_uids = set(
+        db.scalars(
+            select(Change.event_uid).where(
+                Change.input_id == canonical_input.id,
+                Change.review_status == ReviewStatus.PENDING,
+                Change.event_uid.in_(sorted(affected_merge_keys)),
+            )
+        ).all()
+    )
+    return len(created_changes), pending_event_uids
+
+
+def _upsert_auto_link_alerts_without_pending(
+    *,
+    db: Session,
+    auto_link_contexts: list[dict],
+    pending_event_uids: set[str],
+) -> None:
+    for context in auto_link_contexts:
+        entity_uid = context.get("entity_uid")
+        if not isinstance(entity_uid, str) or not entity_uid.strip():
+            continue
+        if entity_uid in pending_event_uids:
+            continue
+        link_row = context.get("link_row")
+        link_id = int(link_row.id) if isinstance(getattr(link_row, "id", None), int) else None
+        upsert_pending_link_alert(
+            db=db,
+            user_id=int(context["user_id"]),
+            source_id=int(context["source_id"]),
+            external_event_id=str(context["external_event_id"]),
+            entity_uid=entity_uid,
+            link_id=link_id,
+            evidence_snapshot=context.get("evidence_snapshot") if isinstance(context.get("evidence_snapshot"), dict) else {},
+        )
 
 
 def _emit_review_pending_created_event(

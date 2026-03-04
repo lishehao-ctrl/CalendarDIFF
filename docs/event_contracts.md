@@ -105,6 +105,7 @@ Parser note:
 1. `course_parse` must be schema-valid from LLM output; invalid/missing objects are treated as parser failures (retry/dead-letter path), not downgraded by local inference.
 2. `event_parts` and `link_signals` are also required and schema-validated; missing/invalid objects fail the parser output.
 3. link-candidate review flow is storage/API-only (`event_link_candidates` + `/v2/review-items/link-candidates*`) and does not emit outbox notification events.
+4. link-alert flow is storage/API-only (`event_link_alerts` + `/v2/review-items/link-alerts*`) and does not emit outbox notification events.
 
 Example (`calendar.event.extracted`):
 

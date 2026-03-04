@@ -88,10 +88,16 @@ Runtime responsibilities:
 12. `POST /v2/review-items/link-candidates/{id}/decisions`
 13. `GET /v2/review-items/link-candidates/blocks`
 14. `DELETE /v2/review-items/link-candidates/blocks/{block_id}`
-15. `GET /v2/timeline-events`
-16. `POST /internal/v2/ingest-results/applications`
-17. `GET /internal/v2/ingest-results/{request_id}`
-18. `GET /internal/v2/metrics`
+15. `GET /v2/review-items/links`
+16. `DELETE /v2/review-items/links/{link_id}`
+17. `POST /v2/review-items/links/relink`
+18. `GET /v2/review-items/link-alerts`
+19. `POST /v2/review-items/link-alerts/{alert_id}/dismiss`
+20. `POST /v2/review-items/link-alerts/{alert_id}/mark-safe`
+21. `GET /v2/timeline-events`
+22. `POST /internal/v2/ingest-results/applications`
+23. `GET /internal/v2/ingest-results/{request_id}`
+24. `GET /internal/v2/metrics`
 
 Notes:
 
@@ -100,6 +106,7 @@ Notes:
 3. manual correction mutates canonical events directly and writes an approved audit change
 4. manual correction does not emit `review.pending.created` (no notification enqueue)
 5. link-candidate generation/decisions are parallel linker governance flow and do not emit `review.pending.created`
+6. link-alert queue is medium-risk, non-blocking, and only stores `auto-link` records that produced no canonical pending change in the same apply round
 
 ## notification-service (`/internal/v2` ops + worker)
 
