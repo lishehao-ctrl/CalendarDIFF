@@ -15,7 +15,7 @@ Out of scope:
 
 Important bypass rule:
 
-- manual correction (`/v2/review-items/changes/corrections`) is an audit/canonical bypass path and does **not** trigger `review.pending.created`
+- manual correction (`/review/corrections`) is an audit/canonical bypass path and does **not** trigger `review.pending.created`
 
 ## 2) High-Level Flow (Mermaid)
 

@@ -61,7 +61,6 @@ class SyncRequestCreateResponse(BaseModel):
 
 
 class SyncRequestCreateRequest(BaseModel):
-    source_id: int = Field(ge=1)
     trace_id: str | None = Field(default=None, max_length=64)
     metadata: dict = Field(default_factory=dict)
 
@@ -91,7 +90,6 @@ class OAuthStartResponse(BaseModel):
 
 
 class OAuthSessionCreateRequest(BaseModel):
-    source_id: int = Field(ge=1)
     provider: str = Field(min_length=1, max_length=64)
 
     model_config = {"extra": "forbid"}

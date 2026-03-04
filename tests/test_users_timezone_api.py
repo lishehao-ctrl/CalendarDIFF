@@ -16,7 +16,7 @@ def test_get_user_returns_timezone_name(input_client, db_session) -> None:
     db_session.add(user)
     db_session.commit()
 
-    response = input_client.get("/v2/users/me", headers={"X-API-Key": "test-api-key"})
+    response = input_client.get("/users/me", headers={"X-API-Key": "test-api-key"})
     assert response.status_code == 200
     payload = response.json()
     assert payload["timezone_name"] == "UTC"
@@ -32,7 +32,7 @@ def test_patch_user_timezone_name_validates_iana_name(input_client, db_session) 
     db_session.commit()
 
     patch_response = input_client.patch(
-        "/v2/users/me",
+        "/users/me",
         headers={"X-API-Key": "test-api-key"},
         json={"timezone_name": "America/Los_Angeles"},
     )
@@ -45,7 +45,7 @@ def test_patch_user_timezone_name_validates_iana_name(input_client, db_session) 
     assert refreshed.timezone_name == "America/Los_Angeles"
 
     invalid_response = input_client.patch(
-        "/v2/users/me",
+        "/users/me",
         headers={"X-API-Key": "test-api-key"},
         json={"timezone_name": "Mars/Olympus"},
     )

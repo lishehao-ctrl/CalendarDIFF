@@ -159,7 +159,7 @@ def _wait_sync_success(
 ) -> dict[str, Any]:
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
-        status_payload = _request_json(client, "GET", f"/v2/sync-requests/{request_id}")
+        status_payload = _request_json(client, "GET", f"/sync-requests/{request_id}")
         status = str(status_payload.get("status") or "")
         applied = bool(status_payload.get("applied"))
 
@@ -318,13 +318,13 @@ def main() -> int:
                         f"notify health check failed status={notify_health.status_code} body={notify_health.text[:400]}"
                     )
 
-            status_payload = _request_json(input_client, "GET", "/v2/onboarding/status")
+            status_payload = _request_json(input_client, "GET", "/onboarding/status")
             stage = str(status_payload.get("stage") or "")
             if stage == "needs_user":
                 _request_json(
                     input_client,
                     "POST",
-                    "/v2/onboarding/registrations",
+                    "/onboarding/registrations",
                     json_payload={"notify_email": args.notify_email},
                 )
 
@@ -348,7 +348,7 @@ def main() -> int:
             ics_source = _request_json(
                 input_client,
                 "POST",
-                "/v2/input-sources",
+                "/sources",
                 json_payload={
                     "source_kind": "calendar",
                     "provider": "ics",
@@ -362,7 +362,7 @@ def main() -> int:
             gmail_source = _request_json(
                 input_client,
                 "POST",
-                "/v2/input-sources",
+                "/sources",
                 json_payload={
                     "source_kind": "email",
                     "provider": "gmail",
@@ -386,8 +386,8 @@ def main() -> int:
             baseline_req = _request_json(
                 input_client,
                 "POST",
-                "/v2/sync-requests",
-                json_payload={"source_id": gmail_source_id, "metadata": {"kind": "smoke-baseline"}},
+                f"/sources/{gmail_source_id}/sync-requests",
+                json_payload={"metadata": {"kind": "smoke-baseline"}},
                 headers={"Idempotency-Key": f"{run_id}:baseline:gmail"},
             )
             baseline_request_id = str(baseline_req["request_id"])
@@ -416,9 +416,8 @@ def main() -> int:
                 ics_req = _request_json(
                     input_client,
                     "POST",
-                    "/v2/sync-requests",
+                    f"/sources/{calendar_source_id}/sync-requests",
                     json_payload={
-                        "source_id": calendar_source_id,
                         "metadata": {"kind": "smoke-round", "round": profile.round_id, "source": "ics"},
                     },
                     headers={"Idempotency-Key": f"{run_id}:round:{profile.round_id}:ics"},
@@ -435,9 +434,8 @@ def main() -> int:
                 gmail_req = _request_json(
                     input_client,
                     "POST",
-                    "/v2/sync-requests",
+                    f"/sources/{gmail_source_id}/sync-requests",
                     json_payload={
-                        "source_id": gmail_source_id,
                         "metadata": {"kind": "smoke-round", "round": profile.round_id, "source": "gmail"},
                     },
                     headers={"Idempotency-Key": f"{run_id}:round:{profile.round_id}:gmail"},
@@ -455,7 +453,7 @@ def main() -> int:
                 pending_rows = _request_json_list(
                     review_client,
                     "GET",
-                    "/v2/review-items/changes?review_status=pending&limit=200",
+                    "/review/changes?review_status=pending&limit=200",
                 )
                 round_pending_rows = []
                 for row in pending_rows:
@@ -549,7 +547,7 @@ def main() -> int:
                 decision = _request_json(
                     review_client,
                     "POST",
-                    f"/v2/review-items/changes/{change_id}/decisions",
+                    f"/review/changes/{change_id}/decisions",
                     json_payload={
                         "decision": "approve",
                         "note": f"real-source-smoke round {profile.round_id}",
@@ -565,7 +563,7 @@ def main() -> int:
                 pending_after = _request_json_list(
                     review_client,
                     "GET",
-                    "/v2/review-items/changes?review_status=pending&limit=200",
+                    "/review/changes?review_status=pending&limit=200",
                 )
                 pending_after_ids = {
                     int(item["id"])
@@ -584,7 +582,7 @@ def main() -> int:
                 feed_rows = _request_json_list(
                     review_client,
                     "GET",
-                    "/v2/review-items/changes?review_status=approved&limit=200",
+                    "/review/changes?review_status=approved&limit=200",
                 )
                 round_report["feed_count_after"] = len(feed_rows)
                 round_event_uids = {topic_uid}
@@ -651,7 +649,7 @@ def main() -> int:
                 cleanup_base = args.input_api_base.rstrip("/")
                 with httpx.Client(base_url=cleanup_base, headers=headers) as cleanup_client:
                     for source_id in created_source_ids:
-                        cleanup_client.delete(f"/v2/input-sources/{source_id}", timeout=8.0)
+                        cleanup_client.delete(f"/sources/{source_id}", timeout=8.0)
             except Exception as exc:  # pragma: no cover - cleanup is best effort
                 report["fatal_errors"].append(f"cleanup_failed: {exc}")
 

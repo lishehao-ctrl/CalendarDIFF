@@ -110,7 +110,7 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 1. ingestion only creates pending proposals
 2. `approve` mutates canonical `events`
 3. `reject` keeps canonical state unchanged
-4. manual correction (`/v2/review-items/changes/corrections`) mutates canonical `events` directly
+4. manual correction (`/review/corrections`) mutates canonical `events` directly
 5. manual correction auto-rejects conflicting pending changes for the same `event_uid`
 6. manual correction writes `review.decision.approved` audit event with `decision_origin=manual_correction`
 
@@ -141,9 +141,9 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 14. blocked source/entity pairs are never auto-linked and never re-enter pending candidate flow until unblocked
 15. `event_link_alerts` is auto-resolved when higher-priority governance takes over (`candidate_opened`, `canonical_pending_created`, `link_removed`, `link_relinked`)
 16. review API provides queue aggregation and bulk moderation helpers:
-   - `GET /v2/review-items/summary` (pending counts for `changes`, `link-candidates`, `link-alerts`)
-   - `POST /v2/review-items/link-candidates/batch/decisions` (`approve`/`reject`, partial success)
-   - `POST /v2/review-items/link-alerts/batch/decisions` (`dismiss`/`mark_safe`, partial success)
+   - `GET /review/summary` (pending counts for `changes`, `link-candidates`, `link-alerts`)
+   - `POST /review/link-candidates/batch/decisions` (`approve`/`reject`, partial success)
+   - `POST /review/link-alerts/batch/decisions` (`dismiss`/`mark_safe`, partial success)
 
 ## 7) Operational Notes
 
@@ -154,8 +154,8 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 5. required internal headers:
    - `X-Service-Name`
    - `X-Service-Token`
-6. replay APIs belong to ingest-service internal surface (`/internal/v2/ingest-jobs/*`)
-7. each service exposes `GET /internal/v2/metrics` for minimal SLO checks
+6. replay APIs belong to ingest-service internal surface (`/internal/ingest/jobs/*`)
+7. each service exposes `GET /internal/metrics` for minimal SLO checks
 8. SLO runbook: `docs/ops_microservice_slo.md`
 9. worker lifecycle is unified under FastAPI lifespan + AnyIO task groups via shared runtime helper (`app/runtime/worker_loop.py`)
 10. worker tick failures are non-fatal by policy: log and continue next round

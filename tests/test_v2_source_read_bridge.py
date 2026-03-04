@@ -117,7 +117,7 @@ def test_v2_feed_read_source_id_via_review_pool(client, db_session) -> None:
 
     headers = {"X-API-Key": "test-api-key"}
 
-    pending_response = client.get("/v2/review-items/changes?review_status=pending", headers=headers)
+    pending_response = client.get("/review/changes?review_status=pending", headers=headers)
     assert pending_response.status_code == 200
     pending_rows = pending_response.json()
     assert len(pending_rows) == 1
@@ -125,7 +125,7 @@ def test_v2_feed_read_source_id_via_review_pool(client, db_session) -> None:
     change_id = pending_rows[0]["id"]
 
     decision_response = client.post(
-        f"/v2/review-items/changes/{change_id}/decisions",
+        f"/review/changes/{change_id}/decisions",
         headers=headers,
         json={"decision": "approve", "note": "bridge-approve"},
     )
@@ -133,7 +133,7 @@ def test_v2_feed_read_source_id_via_review_pool(client, db_session) -> None:
     assert decision_response.json()["review_status"] == "approved"
 
     feed_response = client.get(
-        f"/v2/review-items/changes?review_status=approved&source_id={source.id}",
+        f"/review/changes?review_status=approved&source_id={source.id}",
         headers=headers,
     )
     assert feed_response.status_code == 200

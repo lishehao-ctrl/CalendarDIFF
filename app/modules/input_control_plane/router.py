@@ -38,11 +38,11 @@ from app.modules.input_control_plane.service import (
 )
 from app.modules.users.service import get_registered_user
 
-router = APIRouter(prefix="/v2", tags=["input-control-plane"], dependencies=[Depends(require_public_api_key)])
-public_router = APIRouter(prefix="/v2", tags=["input-control-plane-public"])
+router = APIRouter(tags=["input-control-plane"], dependencies=[Depends(require_public_api_key)])
+public_router = APIRouter(tags=["input-control-plane-public"])
 
 
-@router.post("/input-sources", response_model=InputSourceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/sources", response_model=InputSourceResponse, status_code=status.HTTP_201_CREATED)
 def create_source(
     payload: InputSourceCreateRequest,
     db: Session = Depends(get_db),
@@ -55,7 +55,7 @@ def create_source(
     return InputSourceResponse.model_validate(serialize_source(source))
 
 
-@router.get("/input-sources", response_model=list[InputSourceResponse])
+@router.get("/sources", response_model=list[InputSourceResponse])
 def list_sources(
     db: Session = Depends(get_db),
 ) -> list[InputSourceResponse]:
@@ -64,7 +64,7 @@ def list_sources(
     return [InputSourceResponse.model_validate(serialize_source(row)) for row in rows]
 
 
-@router.patch("/input-sources/{source_id}", response_model=InputSourceResponse)
+@router.patch("/sources/{source_id}", response_model=InputSourceResponse)
 def patch_source(
     source_id: int,
     payload: InputSourcePatchRequest,
@@ -81,7 +81,7 @@ def patch_source(
     return InputSourceResponse.model_validate(serialize_source(updated))
 
 
-@router.delete("/input-sources/{source_id}", status_code=status.HTTP_200_OK)
+@router.delete("/sources/{source_id}", status_code=status.HTTP_200_OK)
 def delete_source(
     source_id: int,
     db: Session = Depends(get_db),
@@ -94,14 +94,15 @@ def delete_source(
     return {"deleted": True}
 
 
-@router.post("/sync-requests", response_model=SyncRequestCreateResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/sources/{source_id}/sync-requests", response_model=SyncRequestCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_sync_request(
+    source_id: int,
     payload: SyncRequestCreateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     db: Session = Depends(get_db),
 ) -> SyncRequestCreateResponse:
     user = _require_registered_user_or_409(db)
-    source = get_input_source(db, user_id=user.id, source_id=payload.source_id)
+    source = get_input_source(db, user_id=user.id, source_id=source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="Input source not found")
     if not source.is_active:
@@ -109,7 +110,7 @@ def create_sync_request(
             status_code=409,
             detail={"code": "source_inactive", "message": "source is inactive and cannot be synced"},
         )
-    applied_idempotency_key = idempotency_key or f"manual:{payload.source_id}:{uuid4().hex}"
+    applied_idempotency_key = idempotency_key or f"manual:{source_id}:{uuid4().hex}"
     row = enqueue_sync_request_idempotent(
         db,
         source=source,
@@ -140,13 +141,14 @@ def get_sync_request(
     return SyncRequestStatusResponse.model_validate(build_sync_request_status_payload(db, sync_request=row))
 
 
-@router.post("/oauth-sessions", response_model=OAuthSessionCreateResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/sources/{source_id}/oauth-sessions", response_model=OAuthSessionCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_oauth_session(
+    source_id: int,
     payload: OAuthSessionCreateRequest,
     db: Session = Depends(get_db),
 ) -> OAuthSessionCreateResponse:
     user = _require_registered_user_or_409(db)
-    source = get_input_source(db, user_id=user.id, source_id=payload.source_id)
+    source = get_input_source(db, user_id=user.id, source_id=source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="Input source not found")
     provider = payload.provider.strip().lower()
@@ -164,7 +166,7 @@ def create_oauth_session(
     )
 
 
-@public_router.get("/oauth-callbacks/{provider}", include_in_schema=False)
+@public_router.get("/oauth/callbacks/{provider}", include_in_schema=False)
 def oauth_callback(
     provider: str,
     code: str | None = Query(default=None),
@@ -210,7 +212,7 @@ def oauth_callback(
     )
 
 
-@router.post("/webhook-events/{source_id}/{provider}", response_model=WebhookEnqueueResponse)
+@router.post("/sources/{source_id}/webhooks/{provider}", response_model=WebhookEnqueueResponse)
 async def webhook_ingest(
     request: Request,
     source_id: int,

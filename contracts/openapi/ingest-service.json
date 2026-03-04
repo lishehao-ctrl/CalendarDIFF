@@ -137,9 +137,9 @@
         ]
       }
     },
-    "/internal/v2/ingest-jobs/dead-letter/replays": {
+    "/internal/ingest/jobs/dead-letter/replays": {
       "post": {
-        "operationId": "replay_dead_letter_internal_v2_ingest_jobs_dead_letter_replays_post",
+        "operationId": "replay_dead_letter_internal_ingest_jobs_dead_letter_replays_post",
         "parameters": [
           {
             "in": "query",
@@ -214,9 +214,9 @@
         ]
       }
     },
-    "/internal/v2/ingest-jobs/{job_id}/replays": {
+    "/internal/ingest/jobs/{job_id}/replays": {
       "post": {
-        "operationId": "replay_single_ingest_job_internal_v2_ingest_jobs__job_id__replays_post",
+        "operationId": "replay_single_ingest_job_internal_ingest_jobs__job_id__replays_post",
         "parameters": [
           {
             "in": "path",
@@ -288,9 +288,9 @@
         ]
       }
     },
-    "/internal/v2/metrics": {
+    "/internal/metrics": {
       "get": {
-        "operationId": "get_ingest_metrics_internal_v2_metrics_get",
+        "operationId": "get_ingest_metrics_internal_metrics_get",
         "parameters": [
           {
             "in": "header",
@@ -331,7 +331,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Get Ingest Metrics Internal V2 Metrics Get",
+                  "title": "Response Get Ingest Metrics Internal Metrics Get",
                   "type": "object"
                 }
               }

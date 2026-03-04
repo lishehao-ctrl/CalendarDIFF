@@ -85,9 +85,9 @@
         ]
       }
     },
-    "/internal/v2/metrics": {
+    "/internal/metrics": {
       "get": {
-        "operationId": "get_notify_metrics_internal_v2_metrics_get",
+        "operationId": "get_notify_metrics_internal_metrics_get",
         "parameters": [
           {
             "in": "header",
@@ -128,7 +128,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Get Notify Metrics Internal V2 Metrics Get",
+                  "title": "Response Get Notify Metrics Internal Metrics Get",
                   "type": "object"
                 }
               }
@@ -152,9 +152,9 @@
         ]
       }
     },
-    "/internal/v2/notification/status": {
+    "/internal/notifications/status": {
       "get": {
-        "operationId": "get_notification_status_internal_v2_notification_status_get",
+        "operationId": "get_notification_status_internal_notifications_status_get",
         "parameters": [
           {
             "in": "header",
@@ -197,7 +197,7 @@
                   "additionalProperties": {
                     "type": "integer"
                   },
-                  "title": "Response Get Notification Status Internal V2 Notification Status Get",
+                  "title": "Response Get Notification Status Internal Notifications Status Get",
                   "type": "object"
                 }
               }

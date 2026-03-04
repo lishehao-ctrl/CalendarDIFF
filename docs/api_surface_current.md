@@ -15,7 +15,7 @@ Default compose exposure:
 1. external: input-service + review-service
 2. internal-only: ingest-service + llm-service + notification-service
 
-## input-service (`/v2` public)
+## input-service (public)
 
 ### Workspace
 
@@ -23,10 +23,10 @@ Default compose exposure:
 
 ### Onboarding + User
 
-1. `GET /v2/onboarding/status`
-2. `POST /v2/onboarding/registrations`
-3. `GET /v2/users/me`
-4. `PATCH /v2/users/me`
+1. `GET /onboarding/status`
+2. `POST /onboarding/registrations`
+3. `GET /users/me`
+4. `PATCH /users/me`
 
 User profile includes:
 
@@ -34,23 +34,23 @@ User profile includes:
 
 ### Input Sources + Sync
 
-1. `POST /v2/input-sources`
-2. `GET /v2/input-sources`
-3. `PATCH /v2/input-sources/{source_id}`
-4. `DELETE /v2/input-sources/{source_id}`
-5. `POST /v2/sync-requests`
-6. `GET /v2/sync-requests/{request_id}`
-7. `POST /v2/oauth-sessions`
-8. `GET /v2/oauth-callbacks/{provider}`
-9. `POST /v2/webhook-events/{source_id}/{provider}`
-10. `GET /internal/v2/metrics` (internal token auth)
+1. `POST /sources`
+2. `GET /sources`
+3. `PATCH /sources/{source_id}`
+4. `DELETE /sources/{source_id}`
+5. `POST /sources/{source_id}/sync-requests`
+6. `GET /sync-requests/{request_id}`
+7. `POST /sources/{source_id}/oauth-sessions`
+8. `GET /oauth/callbacks/{provider}`
+9. `POST /sources/{source_id}/webhooks/{provider}`
+10. `GET /internal/metrics` (internal token auth)
 
-## ingest-service (`/internal/v2` ops + worker)
+## ingest-service (internal ops + worker)
 
 1. `GET /health`
-2. `POST /internal/v2/ingest-jobs/{job_id}/replays`
-3. `POST /internal/v2/ingest-jobs/dead-letter/replays`
-4. `GET /internal/v2/metrics`
+2. `POST /internal/ingest/jobs/{job_id}/replays`
+3. `POST /internal/ingest/jobs/dead-letter/replays`
+4. `GET /internal/metrics`
 
 Runtime responsibilities:
 
@@ -60,10 +60,10 @@ Runtime responsibilities:
 4. emits `ingest.result.ready`
 5. worker lifecycle runs under app lifespan via AnyIO task groups (no per-service thread starter)
 
-## llm-service (`/internal/v2` worker + metrics)
+## llm-service (internal worker + metrics)
 
 1. `GET /health`
-2. `GET /internal/v2/metrics`
+2. `GET /internal/metrics`
 
 Runtime responsibilities:
 
@@ -74,31 +74,31 @@ Runtime responsibilities:
 5. write `ingest_results` and emit `ingest.result.ready`
 6. worker lifecycle runs under app lifespan via AnyIO task groups (no per-service thread starter)
 
-## review-service (`/v2` read/review + internal apply)
+## review-service (read/review + internal apply)
 
 1. `GET /health`
-2. `GET /v2/review-items/summary`
-3. `GET /v2/review-items/changes`
-4. `PATCH /v2/review-items/changes/{change_id}/views`
-5. `POST /v2/review-items/changes/{change_id}/decisions`
-6. `GET /v2/review-items/changes/{change_id}/evidence/{side}/preview`
-7. `POST /v2/review-items/changes/corrections/preview`
-8. `POST /v2/review-items/changes/corrections`
-9. `GET /v2/review-items/link-candidates`
-10. `POST /v2/review-items/link-candidates/{id}/decisions`
-11. `POST /v2/review-items/link-candidates/batch/decisions`
-12. `GET /v2/review-items/link-candidates/blocks`
-13. `DELETE /v2/review-items/link-candidates/blocks/{block_id}`
-14. `GET /v2/review-items/links`
-15. `DELETE /v2/review-items/links/{link_id}`
-16. `POST /v2/review-items/links/relink`
-17. `GET /v2/review-items/link-alerts`
-18. `POST /v2/review-items/link-alerts/{alert_id}/dismiss`
-19. `POST /v2/review-items/link-alerts/{alert_id}/mark-safe`
-20. `POST /v2/review-items/link-alerts/batch/decisions`
-21. `POST /internal/v2/ingest-results/applications`
-22. `GET /internal/v2/ingest-results/{request_id}`
-23. `GET /internal/v2/metrics`
+2. `GET /review/summary`
+3. `GET /review/changes`
+4. `PATCH /review/changes/{change_id}/views`
+5. `POST /review/changes/{change_id}/decisions`
+6. `GET /review/changes/{change_id}/evidence/{side}/preview`
+7. `POST /review/corrections/preview`
+8. `POST /review/corrections`
+9. `GET /review/link-candidates`
+10. `POST /review/link-candidates/{id}/decisions`
+11. `POST /review/link-candidates/batch/decisions`
+12. `GET /review/link-candidates/blocks`
+13. `DELETE /review/link-candidates/blocks/{block_id}`
+14. `GET /review/links`
+15. `DELETE /review/links/{link_id}`
+16. `POST /review/links/relink`
+17. `GET /review/link-alerts`
+18. `POST /review/link-alerts/{alert_id}/dismiss`
+19. `POST /review/link-alerts/{alert_id}/mark-safe`
+20. `POST /review/link-alerts/batch/decisions`
+21. `POST /internal/review/ingest-results/applications`
+22. `GET /internal/review/ingest-results/{request_id}`
+23. `GET /internal/metrics`
 
 Notes:
 
@@ -108,16 +108,16 @@ Notes:
 4. manual correction does not emit `review.pending.created` (no notification enqueue)
 5. link-candidate generation/decisions are parallel linker governance flow and do not emit `review.pending.created`
 6. link-alert queue is medium-risk, non-blocking, and only stores `auto-link` records that produced no canonical pending change in the same apply round
-7. `GET /v2/review-items/summary` returns pending counts only (`changes`, `link-candidates`, `link-alerts`) for top-level badge rendering
+7. `GET /review/summary` returns pending counts only (`changes`, `link-candidates`, `link-alerts`) for top-level badge rendering
 8. batch decision endpoints are partial-success by design and return per-item results:
-   - `POST /v2/review-items/link-candidates/batch/decisions`
-   - `POST /v2/review-items/link-alerts/batch/decisions`
+   - `POST /review/link-candidates/batch/decisions`
+   - `POST /review/link-alerts/batch/decisions`
 
-## notification-service (`/internal/v2` ops + worker)
+## notification-service (internal ops + worker)
 
 1. `GET /health`
-2. `GET /internal/v2/notification/status`
-3. `GET /internal/v2/metrics`
+2. `GET /internal/notifications/status`
+3. `GET /internal/metrics`
 
 Runtime responsibilities:
 
@@ -137,7 +137,7 @@ See `docs/event_contracts.md`.
 
 ## Internal Auth Contract
 
-All `/internal/v2/*` endpoints require:
+All `/internal/*` endpoints require:
 
 1. `X-Service-Name: <input|ingest|review|notification|ops>`
 2. `X-Service-Token: <matching token from INTERNAL_SERVICE_TOKEN_*>`

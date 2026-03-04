@@ -9,13 +9,13 @@ from app.db.models import DigestSendLog, Notification, NotificationStatus
 from app.db.session import get_db
 
 router = APIRouter(
-    prefix="/internal/v2",
+    prefix="/internal",
     tags=["internal-notify-ops"],
     dependencies=[Depends(require_internal_service_token({"ops", "notification"}))],
 )
 
 
-@router.get("/notification/status")
+@router.get("/notifications/status")
 def get_notification_status(db: Session = Depends(get_db)) -> dict[str, int]:
     pending = int(
         db.scalar(select(func.count(Notification.id)).where(Notification.status == NotificationStatus.PENDING)) or 0

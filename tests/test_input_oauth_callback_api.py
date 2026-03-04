@@ -16,7 +16,7 @@ def test_oauth_callback_success_returns_json(input_client, monkeypatch) -> None:
     monkeypatch.setattr(input_router, "handle_gmail_oauth_callback", _fake_handle)
 
     response = input_client.get(
-        "/v2/oauth-callbacks/gmail",
+        "/oauth/callbacks/gmail",
         params={"code": "oauth-code", "state": "oauth-state"},
     )
     assert response.status_code == 200
@@ -32,7 +32,7 @@ def test_oauth_callback_success_returns_json(input_client, monkeypatch) -> None:
 
 def test_oauth_callback_unsupported_provider_returns_error(input_client) -> None:
     response = input_client.get(
-        "/v2/oauth-callbacks/ics",
+        "/oauth/callbacks/ics",
         params={"code": "oauth-code", "state": "oauth-state"},
     )
     assert response.status_code == 200

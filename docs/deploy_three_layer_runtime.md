@@ -135,7 +135,7 @@ curl -s http://localhost:8004/health
 
 ## Internal API Auth
 
-`/internal/v2/*` endpoints require service identity headers:
+`/internal/*` endpoints require service identity headers:
 
 ```http
 X-Service-Name: ops

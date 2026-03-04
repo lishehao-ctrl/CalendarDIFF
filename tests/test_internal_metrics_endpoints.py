@@ -19,7 +19,7 @@ def _assert_metrics_payload(payload: dict, *, service_name: str, keys: Sequence[
 def _call_metrics(app: FastAPI) -> dict:
     headers = {"X-Service-Name": "ops", "X-Service-Token": "test-internal-token-ops"}
     with TestClient(app) as client:
-        response = client.get("/internal/v2/metrics", headers=headers)
+        response = client.get("/internal/metrics", headers=headers)
     assert response.status_code == 200
     payload = response.json()
     assert isinstance(payload, dict)

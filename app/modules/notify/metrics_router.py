@@ -11,7 +11,7 @@ from app.db.models import DigestSendLog, Notification, NotificationStatus
 from app.db.session import get_db
 
 router = APIRouter(
-    prefix="/internal/v2",
+    prefix="/internal",
     tags=["internal-notify-metrics"],
     dependencies=[Depends(require_internal_service_token({"ops", "notification"}))],
 )

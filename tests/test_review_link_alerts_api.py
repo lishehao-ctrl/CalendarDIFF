@@ -98,7 +98,7 @@ def test_link_alerts_list_and_decisions(client, db_session) -> None:
     db_session.commit()
 
     headers = {"X-API-Key": "test-api-key"}
-    list_pending = client.get("/v2/review-items/link-alerts", headers=headers)
+    list_pending = client.get("/review/link-alerts", headers=headers)
     assert list_pending.status_code == 200
     rows = list_pending.json()
     assert len(rows) == 1
@@ -107,7 +107,7 @@ def test_link_alerts_list_and_decisions(client, db_session) -> None:
     assert rows[0]["reason_code"] == "auto_link_without_canonical_change"
 
     dismiss = client.post(
-        f"/v2/review-items/link-alerts/{alert.id}/dismiss",
+        f"/review/link-alerts/{alert.id}/dismiss",
         headers=headers,
         json={"note": "looks noisy"},
     )
@@ -117,14 +117,14 @@ def test_link_alerts_list_and_decisions(client, db_session) -> None:
     assert dismiss_payload["idempotent"] is False
 
     dismiss_again = client.post(
-        f"/v2/review-items/link-alerts/{alert.id}/dismiss",
+        f"/review/link-alerts/{alert.id}/dismiss",
         headers=headers,
         json={"note": "noop"},
     )
     assert dismiss_again.status_code == 200
     assert dismiss_again.json()["idempotent"] is True
 
-    list_dismissed = client.get("/v2/review-items/link-alerts?status=dismissed", headers=headers)
+    list_dismissed = client.get("/review/link-alerts?status=dismissed", headers=headers)
     assert list_dismissed.status_code == 200
     assert len(list_dismissed.json()) == 1
 
@@ -138,7 +138,7 @@ def test_link_alerts_list_and_decisions(client, db_session) -> None:
     db_session.commit()
 
     mark_safe = client.post(
-        f"/v2/review-items/link-alerts/{alert_safe.id}/mark-safe",
+        f"/review/link-alerts/{alert_safe.id}/mark-safe",
         headers=headers,
         json={"note": "confirmed"},
     )
@@ -148,14 +148,14 @@ def test_link_alerts_list_and_decisions(client, db_session) -> None:
     assert mark_payload["idempotent"] is False
 
     mark_safe_again = client.post(
-        f"/v2/review-items/link-alerts/{alert_safe.id}/mark-safe",
+        f"/review/link-alerts/{alert_safe.id}/mark-safe",
         headers=headers,
         json={"note": "noop"},
     )
     assert mark_safe_again.status_code == 200
     assert mark_safe_again.json()["idempotent"] is True
 
-    list_all = client.get("/v2/review-items/link-alerts?status=all", headers=headers)
+    list_all = client.get("/review/link-alerts?status=all", headers=headers)
     assert list_all.status_code == 200
     statuses = {row["status"] for row in list_all.json()}
     assert "dismissed" in statuses
@@ -210,7 +210,7 @@ def test_link_alert_resolved_by_link_delete_and_relink(client, db_session) -> No
     db_session.commit()
 
     headers = {"X-API-Key": "test-api-key"}
-    delete_resp = client.delete(f"/v2/review-items/links/{link.id}", headers=headers)
+    delete_resp = client.delete(f"/review/links/{link.id}", headers=headers)
     assert delete_resp.status_code == 200
 
     resolved_after_delete = db_session.scalar(
@@ -247,7 +247,7 @@ def test_link_alert_resolved_by_link_delete_and_relink(client, db_session) -> No
     db_session.commit()
 
     relink_resp = client.post(
-        "/v2/review-items/links/relink",
+        "/review/links/relink",
         headers=headers,
         json={
             "source_id": source.id,
@@ -307,7 +307,7 @@ def test_link_alert_batch_dismiss_partial_success(client, db_session) -> None:
 
     headers = {"X-API-Key": "test-api-key"}
     resp = client.post(
-        "/v2/review-items/link-alerts/batch/decisions",
+        "/review/link-alerts/batch/decisions",
         headers=headers,
         json={
             "decision": "dismiss",
@@ -371,7 +371,7 @@ def test_link_alert_batch_mark_safe_success(client, db_session) -> None:
 
     headers = {"X-API-Key": "test-api-key"}
     resp = client.post(
-        "/v2/review-items/link-alerts/batch/decisions",
+        "/review/link-alerts/batch/decisions",
         headers=headers,
         json={
             "decision": "mark_safe",
@@ -399,14 +399,14 @@ def test_link_alert_batch_decisions_validate_payload(client, db_session) -> None
     headers = {"X-API-Key": "test-api-key"}
 
     empty_ids = client.post(
-        "/v2/review-items/link-alerts/batch/decisions",
+        "/review/link-alerts/batch/decisions",
         headers=headers,
         json={"decision": "dismiss", "ids": []},
     )
     assert empty_ids.status_code == 422
 
     non_positive_id = client.post(
-        "/v2/review-items/link-alerts/batch/decisions",
+        "/review/link-alerts/batch/decisions",
         headers=headers,
         json={"decision": "dismiss", "ids": [0]},
     )

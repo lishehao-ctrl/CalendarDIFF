@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 from app.db.models import Input, InputSource, InputType, User
 from app.modules.users.email_utils import is_valid_email_address
 
-USER_NOT_INITIALIZED_MESSAGE = "Initialize user via POST /v2/onboarding/registrations"
-USER_ONBOARDING_INCOMPLETE_MESSAGE = "Connect at least one active input source via /v2/input-sources"
+USER_NOT_INITIALIZED_MESSAGE = "Initialize user via POST /onboarding/registrations"
+USER_ONBOARDING_INCOMPLETE_MESSAGE = "Connect at least one active input source via /sources"
 
 
 class UserNotInitializedError(RuntimeError):

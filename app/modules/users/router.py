@@ -15,7 +15,7 @@ from app.modules.users.service import (
     user_not_initialized_detail,
 )
 
-router = APIRouter(prefix="/v2/users", tags=["users"], dependencies=[Depends(require_public_api_key)])
+router = APIRouter(prefix="/users", tags=["users"], dependencies=[Depends(require_public_api_key)])
 
 
 @router.get("/me", response_model=UserResponse)

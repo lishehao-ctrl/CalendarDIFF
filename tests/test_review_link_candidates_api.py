@@ -72,14 +72,14 @@ def test_link_candidate_approve_creates_manual_link(client, db_session) -> None:
     db_session.commit()
 
     headers = {"X-API-Key": "test-api-key"}
-    response = client.get("/v2/review-items/link-candidates?status=pending", headers=headers)
+    response = client.get("/review/link-candidates?status=pending", headers=headers)
     assert response.status_code == 200
     rows = response.json()
     assert len(rows) == 1
     candidate_id = rows[0]["id"]
 
     decide = client.post(
-        f"/v2/review-items/link-candidates/{candidate_id}/decisions",
+        f"/review/link-candidates/{candidate_id}/decisions",
         headers=headers,
         json={"decision": "approve", "note": "looks correct"},
     )
@@ -101,7 +101,7 @@ def test_link_candidate_approve_creates_manual_link(client, db_session) -> None:
     assert link_row.link_origin == EventLinkOrigin.MANUAL_CANDIDATE
 
     decide_again = client.post(
-        f"/v2/review-items/link-candidates/{candidate_id}/decisions",
+        f"/review/link-candidates/{candidate_id}/decisions",
         headers=headers,
         json={"decision": "approve", "note": "noop"},
     )
@@ -126,12 +126,12 @@ def test_link_candidate_reject_creates_block_and_unblock(client, db_session) -> 
     db_session.commit()
 
     headers = {"X-API-Key": "test-api-key"}
-    rows = client.get("/v2/review-items/link-candidates?status=pending", headers=headers).json()
+    rows = client.get("/review/link-candidates?status=pending", headers=headers).json()
     assert len(rows) == 1
     candidate_id = rows[0]["id"]
 
     reject = client.post(
-        f"/v2/review-items/link-candidates/{candidate_id}/decisions",
+        f"/review/link-candidates/{candidate_id}/decisions",
         headers=headers,
         json={"decision": "reject", "note": "wrong binding"},
     )
@@ -141,7 +141,7 @@ def test_link_candidate_reject_creates_block_and_unblock(client, db_session) -> 
     assert reject_payload["idempotent"] is False
     assert isinstance(reject_payload["block_id"], int)
 
-    blocks_resp = client.get("/v2/review-items/link-candidates/blocks", headers=headers)
+    blocks_resp = client.get("/review/link-candidates/blocks", headers=headers)
     assert blocks_resp.status_code == 200
     blocks = blocks_resp.json()
     assert len(blocks) == 1
@@ -155,11 +155,11 @@ def test_link_candidate_reject_creates_block_and_unblock(client, db_session) -> 
     )
     assert block_row is not None
 
-    delete_resp = client.delete(f"/v2/review-items/link-candidates/blocks/{block_id}", headers=headers)
+    delete_resp = client.delete(f"/review/link-candidates/blocks/{block_id}", headers=headers)
     assert delete_resp.status_code == 200
     assert delete_resp.json() == {"deleted": True, "id": block_id}
 
-    blocks_after = client.get("/v2/review-items/link-candidates/blocks", headers=headers)
+    blocks_after = client.get("/review/link-candidates/blocks", headers=headers)
     assert blocks_after.status_code == 200
     assert blocks_after.json() == []
 
@@ -204,7 +204,7 @@ def test_links_api_list_delete_and_relink(client, db_session) -> None:
     db_session.commit()
 
     headers = {"X-API-Key": "test-api-key"}
-    links_resp = client.get("/v2/review-items/links", headers=headers)
+    links_resp = client.get("/review/links", headers=headers)
     assert links_resp.status_code == 200
     rows = links_resp.json()
     assert len(rows) == 1
@@ -212,19 +212,19 @@ def test_links_api_list_delete_and_relink(client, db_session) -> None:
     assert rows[0]["entity_uid"] == "ent_target_a"
     assert rows[0]["link_origin"] == "auto"
 
-    delete_resp = client.delete(f"/v2/review-items/links/{link_id}", headers=headers)
+    delete_resp = client.delete(f"/review/links/{link_id}", headers=headers)
     assert delete_resp.status_code == 200
     delete_payload = delete_resp.json()
     assert delete_payload["deleted"] is True
     assert delete_payload["id"] == link_id
     assert isinstance(delete_payload["block_id"], int)
 
-    links_after_delete = client.get("/v2/review-items/links", headers=headers)
+    links_after_delete = client.get("/review/links", headers=headers)
     assert links_after_delete.status_code == 200
     assert links_after_delete.json() == []
 
     relink_resp = client.post(
-        "/v2/review-items/links/relink",
+        "/review/links/relink",
         headers=headers,
         json={
             "source_id": source.id,
@@ -241,7 +241,7 @@ def test_links_api_list_delete_and_relink(client, db_session) -> None:
     assert relink_payload["external_event_id"] == "gmail-msg-link-1"
     assert relink_payload["cleared_blocks"] >= 0
 
-    final_links = client.get("/v2/review-items/links", headers=headers)
+    final_links = client.get("/review/links", headers=headers)
     assert final_links.status_code == 200
     final_rows = final_links.json()
     assert len(final_rows) == 1
@@ -289,7 +289,7 @@ def test_link_candidate_batch_approve_partial_success(client, db_session) -> Non
 
     headers = {"X-API-Key": "test-api-key"}
     resp = client.post(
-        "/v2/review-items/link-candidates/batch/decisions",
+        "/review/link-candidates/batch/decisions",
         headers=headers,
         json={
             "decision": "approve",
@@ -347,7 +347,7 @@ def test_link_candidate_batch_reject_creates_blocks(client, db_session) -> None:
 
     headers = {"X-API-Key": "test-api-key"}
     resp = client.post(
-        "/v2/review-items/link-candidates/batch/decisions",
+        "/review/link-candidates/batch/decisions",
         headers=headers,
         json={
             "decision": "reject",
@@ -374,14 +374,14 @@ def test_link_candidate_batch_decisions_validate_payload(client, db_session) -> 
     headers = {"X-API-Key": "test-api-key"}
 
     empty_ids = client.post(
-        "/v2/review-items/link-candidates/batch/decisions",
+        "/review/link-candidates/batch/decisions",
         headers=headers,
         json={"decision": "approve", "ids": []},
     )
     assert empty_ids.status_code == 422
 
     non_positive_id = client.post(
-        "/v2/review-items/link-candidates/batch/decisions",
+        "/review/link-candidates/batch/decisions",
         headers=headers,
         json={"decision": "approve", "ids": [0]},
     )

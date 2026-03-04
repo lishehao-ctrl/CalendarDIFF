@@ -15,7 +15,7 @@ from app.modules.llm_runtime.queue import (
 )
 
 router = APIRouter(
-    prefix="/internal/v2",
+    prefix="/internal",
     tags=["internal-llm-metrics"],
     dependencies=[Depends(require_internal_service_token({"ops", "llm"}))],
 )

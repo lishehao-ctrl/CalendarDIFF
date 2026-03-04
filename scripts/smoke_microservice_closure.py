@@ -44,7 +44,7 @@ def _check_health(base_url: str, timeout_seconds: float) -> None:
 
 def _check_internal_metrics(base_url: str, *, ops_token: str, timeout_seconds: float) -> dict[str, Any]:
     headers = {"X-Service-Name": "ops", "X-Service-Token": ops_token}
-    response = httpx.get(f"{base_url.rstrip('/')}/internal/v2/metrics", headers=headers, timeout=timeout_seconds)
+    response = httpx.get(f"{base_url.rstrip('/')}/internal/metrics", headers=headers, timeout=timeout_seconds)
     if response.status_code != 200:
         raise RuntimeError(
             f"internal metrics failed base={base_url} status={response.status_code} body={response.text[:300]}"

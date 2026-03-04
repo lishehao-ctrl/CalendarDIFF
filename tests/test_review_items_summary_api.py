@@ -202,7 +202,7 @@ def test_review_items_summary_counts_pending_only_for_current_user(client, db_se
     db_session.commit()
 
     headers = {"X-API-Key": "test-api-key"}
-    response = client.get("/v2/review-items/summary", headers=headers)
+    response = client.get("/review/summary", headers=headers)
     assert response.status_code == 200
     payload = response.json()
 

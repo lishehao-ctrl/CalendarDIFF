@@ -59,7 +59,7 @@ def _fetch_metrics(base_url: str, *, token: str, timeout_seconds: float) -> dict
         "X-Service-Token": token,
     }
     with httpx.Client(timeout=timeout_seconds) as client:
-        response = client.get(f"{normalized_base}/internal/v2/metrics", headers=headers)
+        response = client.get(f"{normalized_base}/internal/metrics", headers=headers)
     if response.status_code >= 400:
         raise RuntimeError(f"metrics request failed base={normalized_base} status={response.status_code} body={response.text[:400]}")
     payload = response.json()

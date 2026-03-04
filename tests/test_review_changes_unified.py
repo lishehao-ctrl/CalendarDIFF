@@ -166,7 +166,7 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
     assert second_apply["changes_created"] == 0
 
     headers = {"X-API-Key": "test-api-key"}
-    review_response = client.get("/v2/review-items/changes?review_status=pending", headers=headers)
+    review_response = client.get("/review/changes?review_status=pending", headers=headers)
     assert review_response.status_code == 200
     review_rows = review_response.json()
     assert len(review_rows) == 1
@@ -177,7 +177,7 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
 
     change_id = review_rows[0]["id"]
     approve_response = client.post(
-        f"/v2/review-items/changes/{change_id}/decisions",
+        f"/review/changes/{change_id}/decisions",
         headers=headers,
         json={"decision": "approve", "note": "merge approve"},
     )
@@ -186,7 +186,7 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
     assert approve_response.json()["idempotent"] is False
 
     approve_again = client.post(
-        f"/v2/review-items/changes/{change_id}/decisions",
+        f"/review/changes/{change_id}/decisions",
         headers=headers,
         json={"decision": "approve", "note": "noop"},
     )
@@ -194,20 +194,20 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
     assert approve_again.json()["idempotent"] is True
 
     feed_response = client.get(
-        f"/v2/review-items/changes?review_status=approved&source_id={calendar_source.id}",
+        f"/review/changes?review_status=approved&source_id={calendar_source.id}",
         headers=headers,
     )
     assert feed_response.status_code == 200
     assert len(feed_response.json()) == 1
 
     feed_response_gmail = client.get(
-        f"/v2/review-items/changes?review_status=approved&source_id={gmail_source.id}",
+        f"/review/changes?review_status=approved&source_id={gmail_source.id}",
         headers=headers,
     )
     assert feed_response_gmail.status_code == 200
     assert len(feed_response_gmail.json()) == 1
 
-    rejected_view = client.get("/v2/review-items/changes?review_status=pending", headers=headers)
+    rejected_view = client.get("/review/changes?review_status=pending", headers=headers)
     assert rejected_view.status_code == 200
     assert rejected_view.json() == []
 
@@ -283,7 +283,7 @@ def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session
     apply_ingest_result_idempotent(db_session, request_id="merge-round1-gmail")
 
     headers = {"X-API-Key": "test-api-key"}
-    pending_round1 = client.get("/v2/review-items/changes?review_status=pending", headers=headers)
+    pending_round1 = client.get("/review/changes?review_status=pending", headers=headers)
     assert pending_round1.status_code == 200
     round1_rows = pending_round1.json()
     assert len(round1_rows) == 1
@@ -294,7 +294,7 @@ def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session
     assert source_ids == {calendar_source.id, gmail_source.id}
 
     approve_round1 = client.post(
-        f"/v2/review-items/changes/{round1_change['id']}/decisions",
+        f"/review/changes/{round1_change['id']}/decisions",
         headers=headers,
         json={"decision": "approve", "note": "approve round1"},
     )
@@ -347,7 +347,7 @@ def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session
     _seed_result(db_session, source=gmail_source, request_id="merge-round2-gmail", records=round2_gmail_records)
     apply_ingest_result_idempotent(db_session, request_id="merge-round2-gmail")
 
-    pending_round2 = client.get("/v2/review-items/changes?review_status=pending", headers=headers)
+    pending_round2 = client.get("/review/changes?review_status=pending", headers=headers)
     assert pending_round2.status_code == 200
     round2_rows = pending_round2.json()
     assert len(round2_rows) == 1

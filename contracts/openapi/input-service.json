@@ -288,15 +288,9 @@
             "minLength": 1,
             "title": "Provider",
             "type": "string"
-          },
-          "source_id": {
-            "minimum": 1.0,
-            "title": "Source Id",
-            "type": "integer"
           }
         },
         "required": [
-          "source_id",
           "provider"
         ],
         "title": "OAuthSessionCreateRequest",
@@ -450,11 +444,6 @@
             "title": "Metadata",
             "type": "object"
           },
-          "source_id": {
-            "minimum": 1.0,
-            "title": "Source Id",
-            "type": "integer"
-          },
           "trace_id": {
             "anyOf": [
               {
@@ -468,9 +457,6 @@
             "title": "Trace Id"
           }
         },
-        "required": [
-          "source_id"
-        ],
         "title": "SyncRequestCreateRequest",
         "type": "object"
       },
@@ -858,9 +844,9 @@
         ]
       }
     },
-    "/internal/v2/metrics": {
+    "/internal/metrics": {
       "get": {
-        "operationId": "get_input_metrics_internal_v2_metrics_get",
+        "operationId": "get_input_metrics_internal_metrics_get",
         "parameters": [
           {
             "in": "header",
@@ -901,7 +887,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Get Input Metrics Internal V2 Metrics Get",
+                  "title": "Response Get Input Metrics Internal Metrics Get",
                   "type": "object"
                 }
               }
@@ -925,9 +911,117 @@
         ]
       }
     },
-    "/v2/input-sources": {
+    "/onboarding/registrations": {
+      "post": {
+        "operationId": "create_registration_onboarding_registrations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingRegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingRegisterResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Registration",
+        "tags": [
+          "onboarding"
+        ]
+      }
+    },
+    "/onboarding/status": {
       "get": {
-        "operationId": "list_sources_v2_input_sources_get",
+        "operationId": "get_status_onboarding_status_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Status",
+        "tags": [
+          "onboarding"
+        ]
+      }
+    },
+    "/sources": {
+      "get": {
+        "operationId": "list_sources_sources_get",
         "parameters": [
           {
             "in": "header",
@@ -954,7 +1048,7 @@
                   "items": {
                     "$ref": "#/components/schemas/InputSourceResponse"
                   },
-                  "title": "Response List Sources V2 Input Sources Get",
+                  "title": "Response List Sources Sources Get",
                   "type": "array"
                 }
               }
@@ -978,7 +1072,7 @@
         ]
       },
       "post": {
-        "operationId": "create_source_v2_input_sources_post",
+        "operationId": "create_source_sources_post",
         "parameters": [
           {
             "in": "header",
@@ -1035,9 +1129,9 @@
         ]
       }
     },
-    "/v2/input-sources/{source_id}": {
+    "/sources/{source_id}": {
       "delete": {
-        "operationId": "delete_source_v2_input_sources__source_id__delete",
+        "operationId": "delete_source_sources__source_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -1073,7 +1167,7 @@
                   "additionalProperties": {
                     "type": "boolean"
                   },
-                  "title": "Response Delete Source V2 Input Sources  Source Id  Delete",
+                  "title": "Response Delete Source Sources  Source Id  Delete",
                   "type": "object"
                 }
               }
@@ -1097,7 +1191,7 @@
         ]
       },
       "patch": {
-        "operationId": "patch_source_v2_input_sources__source_id__patch",
+        "operationId": "patch_source_sources__source_id__patch",
         "parameters": [
           {
             "in": "path",
@@ -1163,10 +1257,19 @@
         ]
       }
     },
-    "/v2/oauth-sessions": {
+    "/sources/{source_id}/oauth-sessions": {
       "post": {
-        "operationId": "create_oauth_session_v2_oauth_sessions_post",
+        "operationId": "create_oauth_session_sources__source_id__oauth_sessions_post",
         "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "integer"
+            }
+          },
           {
             "in": "header",
             "name": "X-API-Key",
@@ -1222,118 +1325,19 @@
         ]
       }
     },
-    "/v2/onboarding/registrations": {
+    "/sources/{source_id}/sync-requests": {
       "post": {
-        "operationId": "create_registration_v2_onboarding_registrations_post",
+        "operationId": "create_sync_request_sources__source_id__sync_requests_post",
         "parameters": [
           {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
+            "in": "path",
+            "name": "source_id",
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/OnboardingRegisterRequest"
-              }
+              "title": "Source Id",
+              "type": "integer"
             }
           },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OnboardingRegisterResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create Registration",
-        "tags": [
-          "onboarding"
-        ]
-      }
-    },
-    "/v2/onboarding/status": {
-      "get": {
-        "operationId": "get_status_v2_onboarding_status_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OnboardingStatusResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Status",
-        "tags": [
-          "onboarding"
-        ]
-      }
-    },
-    "/v2/sync-requests": {
-      "post": {
-        "operationId": "create_sync_request_v2_sync_requests_post",
-        "parameters": [
           {
             "in": "header",
             "name": "Idempotency-Key",
@@ -1405,173 +1409,9 @@
         ]
       }
     },
-    "/v2/sync-requests/{request_id}": {
-      "get": {
-        "operationId": "get_sync_request_v2_sync_requests__request_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "request_id",
-            "required": true,
-            "schema": {
-              "title": "Request Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SyncRequestStatusResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Sync Request",
-        "tags": [
-          "input-control-plane"
-        ]
-      }
-    },
-    "/v2/users/me": {
-      "get": {
-        "operationId": "get_user_v2_users_me_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get User",
-        "tags": [
-          "users"
-        ]
-      },
-      "patch": {
-        "operationId": "patch_user_v2_users_me_patch",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UserUpdateRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Patch User",
-        "tags": [
-          "users"
-        ]
-      }
-    },
-    "/v2/webhook-events/{source_id}/{provider}": {
+    "/sources/{source_id}/webhooks/{provider}": {
       "post": {
-        "operationId": "webhook_ingest_v2_webhook_events__source_id___provider__post",
+        "operationId": "webhook_ingest_sources__source_id__webhooks__provider__post",
         "parameters": [
           {
             "in": "path",
@@ -1649,6 +1489,170 @@
         "summary": "Webhook Ingest",
         "tags": [
           "input-control-plane"
+        ]
+      }
+    },
+    "/sync-requests/{request_id}": {
+      "get": {
+        "operationId": "get_sync_request_sync_requests__request_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncRequestStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Sync Request",
+        "tags": [
+          "input-control-plane"
+        ]
+      }
+    },
+    "/users/me": {
+      "get": {
+        "operationId": "get_user_users_me_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get User",
+        "tags": [
+          "users"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_user_users_me_patch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch User",
+        "tags": [
+          "users"
         ]
       }
     }

@@ -12,7 +12,7 @@ from app.modules.onboarding.schemas import (
 )
 from app.modules.onboarding.service import OnboardingRegisterError, get_onboarding_status, register_onboarding
 
-router = APIRouter(prefix="/v2/onboarding", tags=["onboarding"], dependencies=[Depends(require_public_api_key)])
+router = APIRouter(prefix="/onboarding", tags=["onboarding"], dependencies=[Depends(require_public_api_key)])
 
 
 @router.get("/status", response_model=OnboardingStatusResponse)

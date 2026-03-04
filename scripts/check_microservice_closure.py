@@ -57,7 +57,7 @@ def main() -> int:
     # 2) Internal routers must not depend on require_api_key.
     for file in (PROJECT_ROOT / "app" / "modules").rglob("*.py"):
         content = file.read_text(encoding="utf-8")
-        if 'prefix="/internal/v2"' in content and "require_api_key" in content:
+        if 'prefix="/internal' in content and "require_api_key" in content:
             errors.append(f"internal router still references require_api_key: {file}")
 
     # 3) Default compose must not expose ingest/notification/llm host ports.

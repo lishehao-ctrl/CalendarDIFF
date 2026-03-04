@@ -7,7 +7,7 @@ def test_internal_ingest_ops_requires_service_token(db_engine) -> None:
     del db_engine
     from services.ingest_api.main import app as ingest_app
 
-    endpoint = "/internal/v2/ingest-jobs/999999/replays"
+    endpoint = "/internal/ingest/jobs/999999/replays"
     with TestClient(ingest_app) as client:
         unauthorized = client.post(endpoint)
         assert unauthorized.status_code == 401
@@ -42,7 +42,7 @@ def test_internal_llm_metrics_requires_service_token(db_engine, monkeypatch) -> 
     monkeypatch.setattr(llm_metrics_module, "read_metric_counter_1m", lambda *_args, **_kwargs: 0)
     monkeypatch.setattr(llm_metrics_module, "latency_p95_5m", lambda *_args, **_kwargs: 0.0)
 
-    endpoint = "/internal/v2/metrics"
+    endpoint = "/internal/metrics"
     with TestClient(llm_app) as client:
         unauthorized = client.get(endpoint)
         assert unauthorized.status_code == 401

@@ -122,7 +122,7 @@ def test_manual_correction_preview_uses_date_only_as_local_2359(client, db_sessi
     db_session.commit()
 
     response = client.post(
-        "/v2/review-items/changes/corrections/preview",
+        "/review/corrections/preview",
         headers=_headers(),
         json={
             "target": {"change_id": target_change.id, "event_uid": None},
@@ -179,7 +179,7 @@ def test_manual_correction_apply_updates_canonical_and_rejects_pending(client, d
     db_session.commit()
 
     response = client.post(
-        "/v2/review-items/changes/corrections",
+        "/review/corrections",
         headers=_headers(),
         json={
             "target": {"change_id": None, "event_uid": event_uid},
@@ -259,7 +259,7 @@ def test_manual_correction_apply_can_create_canonical_event_from_pending(client,
     db_session.commit()
 
     response = client.post(
-        "/v2/review-items/changes/corrections",
+        "/review/corrections",
         headers=_headers(),
         json={
             "target": {"change_id": None, "event_uid": event_uid},
@@ -307,7 +307,7 @@ def test_manual_correction_apply_idempotent_when_candidate_matches_canonical(cli
 
     before_count = db_session.scalar(select(func.count(Change.id))) or 0
     response = client.post(
-        "/v2/review-items/changes/corrections",
+        "/review/corrections",
         headers=_headers(),
         json={
             "target": {"change_id": None, "event_uid": event_uid},
@@ -355,7 +355,7 @@ def test_manual_correction_rejects_mismatched_target(client, db_session) -> None
     db_session.commit()
 
     response = client.post(
-        "/v2/review-items/changes/corrections/preview",
+        "/review/corrections/preview",
         headers=_headers(),
         json={
             "target": {"change_id": change.id, "event_uid": "mismatch-uid"},

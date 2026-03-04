@@ -85,9 +85,9 @@
         ]
       }
     },
-    "/internal/v2/metrics": {
+    "/internal/metrics": {
       "get": {
-        "operationId": "get_llm_metrics_internal_v2_metrics_get",
+        "operationId": "get_llm_metrics_internal_metrics_get",
         "parameters": [
           {
             "in": "header",
@@ -128,7 +128,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Get Llm Metrics Internal V2 Metrics Get",
+                  "title": "Response Get Llm Metrics Internal Metrics Get",
                   "type": "object"
                 }
               }

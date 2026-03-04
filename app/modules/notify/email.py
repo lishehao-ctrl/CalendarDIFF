@@ -53,7 +53,7 @@ def _build_email_body(input_id: int, input_label: str, items: list[ChangeDigestI
         base_url = settings.app_base_url.rstrip("/")
     else:
         base_url = ""
-    link_path = f"/v2/review-items/changes?review_status=pending&source_id={input_id}"
+    link_path = f"/review/changes?review_status=pending&source_id={input_id}"
     link = f"{base_url}{link_path}" if base_url else link_path
 
     lines: list[str] = [f"Input: {input_label}", f"Changes: {len(items)}", ""]

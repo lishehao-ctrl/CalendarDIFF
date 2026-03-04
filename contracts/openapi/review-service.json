@@ -2097,9 +2097,76 @@
         ]
       }
     },
-    "/internal/v2/ingest-results/applications": {
+    "/internal/metrics": {
+      "get": {
+        "operationId": "get_review_metrics_internal_metrics_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Service-Name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Service-Name"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Service-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Service-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Review Metrics Internal Metrics Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Review Metrics",
+        "tags": [
+          "internal-review-metrics"
+        ]
+      }
+    },
+    "/internal/review/ingest-results/applications": {
       "post": {
-        "operationId": "apply_ingest_result_internal_v2_ingest_results_applications_post",
+        "operationId": "apply_ingest_result_internal_review_ingest_results_applications_post",
         "parameters": [
           {
             "in": "header",
@@ -2188,9 +2255,9 @@
         ]
       }
     },
-    "/internal/v2/ingest-results/{request_id}": {
+    "/internal/review/ingest-results/{request_id}": {
       "get": {
-        "operationId": "get_ingest_result_status_internal_v2_ingest_results__request_id__get",
+        "operationId": "get_ingest_result_status_internal_review_ingest_results__request_id__get",
         "parameters": [
           {
             "in": "path",
@@ -2262,76 +2329,9 @@
         ]
       }
     },
-    "/internal/v2/metrics": {
+    "/review/changes": {
       "get": {
-        "operationId": "get_review_metrics_internal_v2_metrics_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-Service-Name",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Service-Name"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Service-Token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Service-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Review Metrics Internal V2 Metrics Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Review Metrics",
-        "tags": [
-          "internal-review-metrics"
-        ]
-      }
-    },
-    "/v2/review-items/changes": {
-      "get": {
-        "operationId": "get_review_changes_v2_review_items_changes_get",
+        "operationId": "get_review_changes_review_changes_get",
         "parameters": [
           {
             "in": "query",
@@ -2408,7 +2408,7 @@
                   "items": {
                     "$ref": "#/components/schemas/ReviewChangeItemResponse"
                   },
-                  "title": "Response Get Review Changes V2 Review Items Changes Get",
+                  "title": "Response Get Review Changes Review Changes Get",
                   "type": "array"
                 }
               }
@@ -2432,127 +2432,9 @@
         ]
       }
     },
-    "/v2/review-items/changes/corrections": {
+    "/review/changes/{change_id}/decisions": {
       "post": {
-        "operationId": "post_manual_correction_apply_v2_review_items_changes_corrections_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ManualCorrectionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ManualCorrectionApplyResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Post Manual Correction Apply",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/v2/review-items/changes/corrections/preview": {
-      "post": {
-        "operationId": "post_manual_correction_preview_v2_review_items_changes_corrections_preview_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ManualCorrectionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ManualCorrectionPreviewResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Post Manual Correction Preview",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/v2/review-items/changes/{change_id}/decisions": {
-      "post": {
-        "operationId": "post_review_decision_v2_review_items_changes__change_id__decisions_post",
+        "operationId": "post_review_decision_review_changes__change_id__decisions_post",
         "parameters": [
           {
             "in": "path",
@@ -2618,9 +2500,9 @@
         ]
       }
     },
-    "/v2/review-items/changes/{change_id}/evidence/{side}/preview": {
+    "/review/changes/{change_id}/evidence/{side}/preview": {
       "get": {
-        "operationId": "get_review_change_evidence_preview_v2_review_items_changes__change_id__evidence__side__preview_get",
+        "operationId": "get_review_change_evidence_preview_review_changes__change_id__evidence__side__preview_get",
         "parameters": [
           {
             "in": "path",
@@ -2689,9 +2571,9 @@
         ]
       }
     },
-    "/v2/review-items/changes/{change_id}/views": {
+    "/review/changes/{change_id}/views": {
       "patch": {
-        "operationId": "patch_review_change_view_v2_review_items_changes__change_id__views_patch",
+        "operationId": "patch_review_change_view_review_changes__change_id__views_patch",
         "parameters": [
           {
             "in": "path",
@@ -2757,9 +2639,127 @@
         ]
       }
     },
-    "/v2/review-items/link-alerts": {
+    "/review/corrections": {
+      "post": {
+        "operationId": "post_manual_correction_apply_review_corrections_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualCorrectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualCorrectionApplyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Manual Correction Apply",
+        "tags": [
+          "review-items"
+        ]
+      }
+    },
+    "/review/corrections/preview": {
+      "post": {
+        "operationId": "post_manual_correction_preview_review_corrections_preview_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualCorrectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualCorrectionPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Manual Correction Preview",
+        "tags": [
+          "review-items"
+        ]
+      }
+    },
+    "/review/link-alerts": {
       "get": {
-        "operationId": "get_link_alerts_v2_review_items_link_alerts_get",
+        "operationId": "get_link_alerts_review_link_alerts_get",
         "parameters": [
           {
             "in": "query",
@@ -2836,7 +2836,7 @@
                   "items": {
                     "$ref": "#/components/schemas/LinkAlertItemResponse"
                   },
-                  "title": "Response Get Link Alerts V2 Review Items Link Alerts Get",
+                  "title": "Response Get Link Alerts Review Link Alerts Get",
                   "type": "array"
                 }
               }
@@ -2860,9 +2860,9 @@
         ]
       }
     },
-    "/v2/review-items/link-alerts/batch/decisions": {
+    "/review/link-alerts/batch/decisions": {
       "post": {
-        "operationId": "post_link_alert_batch_decisions_v2_review_items_link_alerts_batch_decisions_post",
+        "operationId": "post_link_alert_batch_decisions_review_link_alerts_batch_decisions_post",
         "parameters": [
           {
             "in": "header",
@@ -2919,9 +2919,9 @@
         ]
       }
     },
-    "/v2/review-items/link-alerts/{alert_id}/dismiss": {
+    "/review/link-alerts/{alert_id}/dismiss": {
       "post": {
-        "operationId": "post_link_alert_dismiss_v2_review_items_link_alerts__alert_id__dismiss_post",
+        "operationId": "post_link_alert_dismiss_review_link_alerts__alert_id__dismiss_post",
         "parameters": [
           {
             "in": "path",
@@ -2987,9 +2987,9 @@
         ]
       }
     },
-    "/v2/review-items/link-alerts/{alert_id}/mark-safe": {
+    "/review/link-alerts/{alert_id}/mark-safe": {
       "post": {
-        "operationId": "post_link_alert_mark_safe_v2_review_items_link_alerts__alert_id__mark_safe_post",
+        "operationId": "post_link_alert_mark_safe_review_link_alerts__alert_id__mark_safe_post",
         "parameters": [
           {
             "in": "path",
@@ -3055,9 +3055,9 @@
         ]
       }
     },
-    "/v2/review-items/link-candidates": {
+    "/review/link-candidates": {
       "get": {
-        "operationId": "get_link_candidates_v2_review_items_link_candidates_get",
+        "operationId": "get_link_candidates_review_link_candidates_get",
         "parameters": [
           {
             "in": "query",
@@ -3134,7 +3134,7 @@
                   "items": {
                     "$ref": "#/components/schemas/LinkCandidateItemResponse"
                   },
-                  "title": "Response Get Link Candidates V2 Review Items Link Candidates Get",
+                  "title": "Response Get Link Candidates Review Link Candidates Get",
                   "type": "array"
                 }
               }
@@ -3158,9 +3158,9 @@
         ]
       }
     },
-    "/v2/review-items/link-candidates/batch/decisions": {
+    "/review/link-candidates/batch/decisions": {
       "post": {
-        "operationId": "post_link_candidate_batch_decisions_v2_review_items_link_candidates_batch_decisions_post",
+        "operationId": "post_link_candidate_batch_decisions_review_link_candidates_batch_decisions_post",
         "parameters": [
           {
             "in": "header",
@@ -3217,9 +3217,9 @@
         ]
       }
     },
-    "/v2/review-items/link-candidates/blocks": {
+    "/review/link-candidates/blocks": {
       "get": {
-        "operationId": "get_link_blocks_v2_review_items_link_candidates_blocks_get",
+        "operationId": "get_link_blocks_review_link_candidates_blocks_get",
         "parameters": [
           {
             "in": "query",
@@ -3286,7 +3286,7 @@
                   "items": {
                     "$ref": "#/components/schemas/LinkBlockItemResponse"
                   },
-                  "title": "Response Get Link Blocks V2 Review Items Link Candidates Blocks Get",
+                  "title": "Response Get Link Blocks Review Link Candidates Blocks Get",
                   "type": "array"
                 }
               }
@@ -3310,9 +3310,9 @@
         ]
       }
     },
-    "/v2/review-items/link-candidates/blocks/{block_id}": {
+    "/review/link-candidates/blocks/{block_id}": {
       "delete": {
-        "operationId": "delete_link_block_route_v2_review_items_link_candidates_blocks__block_id__delete",
+        "operationId": "delete_link_block_route_review_link_candidates_blocks__block_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -3368,9 +3368,9 @@
         ]
       }
     },
-    "/v2/review-items/link-candidates/{candidate_id}/decisions": {
+    "/review/link-candidates/{candidate_id}/decisions": {
       "post": {
-        "operationId": "post_link_candidate_decision_v2_review_items_link_candidates__candidate_id__decisions_post",
+        "operationId": "post_link_candidate_decision_review_link_candidates__candidate_id__decisions_post",
         "parameters": [
           {
             "in": "path",
@@ -3436,9 +3436,9 @@
         ]
       }
     },
-    "/v2/review-items/links": {
+    "/review/links": {
       "get": {
-        "operationId": "get_links_v2_review_items_links_get",
+        "operationId": "get_links_review_links_get",
         "parameters": [
           {
             "in": "query",
@@ -3505,7 +3505,7 @@
                   "items": {
                     "$ref": "#/components/schemas/LinkItemResponse"
                   },
-                  "title": "Response Get Links V2 Review Items Links Get",
+                  "title": "Response Get Links Review Links Get",
                   "type": "array"
                 }
               }
@@ -3529,9 +3529,9 @@
         ]
       }
     },
-    "/v2/review-items/links/relink": {
+    "/review/links/relink": {
       "post": {
-        "operationId": "post_relink_observation_v2_review_items_links_relink_post",
+        "operationId": "post_relink_observation_review_links_relink_post",
         "parameters": [
           {
             "in": "header",
@@ -3588,9 +3588,9 @@
         ]
       }
     },
-    "/v2/review-items/links/{link_id}": {
+    "/review/links/{link_id}": {
       "delete": {
-        "operationId": "delete_link_route_v2_review_items_links__link_id__delete",
+        "operationId": "delete_link_route_review_links__link_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -3673,9 +3673,9 @@
         ]
       }
     },
-    "/v2/review-items/summary": {
+    "/review/summary": {
       "get": {
-        "operationId": "get_review_items_summary_route_v2_review_items_summary_get",
+        "operationId": "get_review_items_summary_route_review_summary_get",
         "parameters": [
           {
             "in": "header",

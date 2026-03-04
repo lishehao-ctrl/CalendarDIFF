@@ -9,13 +9,13 @@ from app.modules.input_control_plane.schemas import DeadLetterReplayResponse, In
 from app.modules.input_control_plane.service import replay_dead_letter_jobs, replay_ingest_job
 
 router = APIRouter(
-    prefix="/internal/v2",
+    prefix="/internal/ingest",
     tags=["internal-ingest-ops"],
     dependencies=[Depends(require_internal_service_token({"ops", "ingest"}))],
 )
 
 
-@router.post("/ingest-jobs/{job_id}/replays", response_model=IngestJobReplayResponse)
+@router.post("/jobs/{job_id}/replays", response_model=IngestJobReplayResponse)
 def replay_single_ingest_job(
     job_id: int,
     db: Session = Depends(get_db),
@@ -35,7 +35,7 @@ def replay_single_ingest_job(
     )
 
 
-@router.post("/ingest-jobs/dead-letter/replays", response_model=DeadLetterReplayResponse)
+@router.post("/jobs/dead-letter/replays", response_model=DeadLetterReplayResponse)
 def replay_dead_letter(
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),

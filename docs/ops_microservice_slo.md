@@ -10,7 +10,7 @@ This runbook defines the minimal SLO checks for the 5-service runtime:
 4. `review-service`
 5. `notification-service`
 
-All checks are read from `GET /internal/v2/metrics` using service token headers:
+All checks are read from `GET /internal/metrics` using service token headers:
 
 - `X-Service-Name: ops`
 - `X-Service-Token: ${INTERNAL_SERVICE_TOKEN_OPS}`
