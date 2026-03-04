@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import IntegrationInbox, IntegrationOutbox, OutboxStatus, SyncRequest, SyncRequestStatus
-from app.modules.core_ingest.service import apply_ingest_result_idempotent
+from app.modules.core_ingest.apply_service import apply_ingest_result_idempotent
 
 CORE_APPLY_CONSUMER = "core.ingest.apply.v1"
 CORE_APPLY_BATCH_SIZE = 200
