@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class LinkCandidateEntityPreview(BaseModel):
@@ -135,3 +135,70 @@ class LinkAlertDecisionResponse(BaseModel):
     idempotent: bool
     reviewed_at: datetime | None
     review_note: str | None
+
+
+class ReviewItemsSummaryResponse(BaseModel):
+    changes_pending: int
+    link_candidates_pending: int
+    link_alerts_pending: int
+    generated_at: datetime
+
+
+class BatchIdsDecisionBase(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=200)
+    note: str | None = Field(default=None, max_length=512)
+
+    model_config = {"extra": "forbid"}
+
+    @field_validator("ids")
+    @classmethod
+    def _validate_ids_positive(cls, value: list[int]) -> list[int]:
+        if any((not isinstance(item, int) or item <= 0) for item in value):
+            raise ValueError("ids must contain positive integers")
+        return value
+
+
+class LinkAlertBatchDecisionRequest(BatchIdsDecisionBase):
+    decision: Literal["dismiss", "mark_safe"]
+
+
+class LinkAlertBatchDecisionItemResult(BaseModel):
+    id: int
+    ok: bool
+    status: Literal["pending", "dismissed", "marked_safe", "resolved"] | None
+    idempotent: bool
+    reviewed_at: datetime | None
+    review_note: str | None
+    error_code: Literal["not_found"] | None
+    error_detail: str | None
+
+
+class LinkAlertBatchDecisionResponse(BaseModel):
+    decision: Literal["dismiss", "mark_safe"]
+    total_requested: int
+    succeeded: int
+    failed: int
+    results: list[LinkAlertBatchDecisionItemResult]
+
+
+class LinkCandidateBatchDecisionRequest(BatchIdsDecisionBase):
+    decision: Literal["approve", "reject"]
+
+
+class LinkCandidateBatchDecisionItemResult(BaseModel):
+    id: int
+    ok: bool
+    status: Literal["pending", "approved", "rejected"] | None
+    idempotent: bool
+    link_id: int | None
+    block_id: int | None
+    error_code: Literal["not_found", "invalid_state"] | None
+    error_detail: str | None
+
+
+class LinkCandidateBatchDecisionResponse(BaseModel):
+    decision: Literal["approve", "reject"]
+    total_requested: int
+    succeeded: int
+    failed: int
+    results: list[LinkCandidateBatchDecisionItemResult]

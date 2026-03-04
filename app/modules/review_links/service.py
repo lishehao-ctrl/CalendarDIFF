@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
+    Change,
     EventEntity,
     EventEntityLink,
     EventLinkAlert,
@@ -15,7 +16,9 @@ from app.db.models import (
     EventLinkCandidate,
     EventLinkCandidateStatus,
     EventLinkOrigin,
+    Input,
     InputSource,
+    ReviewStatus,
     SourceEventObservation,
     SourceKind,
 )
@@ -40,6 +43,180 @@ class LinkNotFoundError(RuntimeError):
 
 class LinkAlertNotFoundError(RuntimeError):
     pass
+
+
+def get_review_items_summary(
+    db: Session,
+    *,
+    user_id: int,
+) -> dict:
+    changes_pending = int(
+        db.scalar(
+            select(func.count(Change.id))
+            .join(Input, Input.id == Change.input_id)
+            .where(
+                Input.user_id == user_id,
+                Change.review_status == ReviewStatus.PENDING,
+            )
+        )
+        or 0
+    )
+    link_candidates_pending = int(
+        db.scalar(
+            select(func.count(EventLinkCandidate.id)).where(
+                EventLinkCandidate.user_id == user_id,
+                EventLinkCandidate.status == EventLinkCandidateStatus.PENDING,
+            )
+        )
+        or 0
+    )
+    link_alerts_pending = int(
+        db.scalar(
+            select(func.count(EventLinkAlert.id)).where(
+                EventLinkAlert.user_id == user_id,
+                EventLinkAlert.status == EventLinkAlertStatus.PENDING,
+            )
+        )
+        or 0
+    )
+    return {
+        "changes_pending": changes_pending,
+        "link_candidates_pending": link_candidates_pending,
+        "link_alerts_pending": link_alerts_pending,
+        "generated_at": datetime.now(timezone.utc),
+    }
+
+
+def batch_decide_link_alerts(
+    db: Session,
+    *,
+    user_id: int,
+    decision: str,
+    ids: list[int],
+    note: str | None,
+) -> dict:
+    deduped_ids = _dedupe_ids_preserve_order(ids)
+    results: list[dict] = []
+    succeeded = 0
+    for alert_id in deduped_ids:
+        try:
+            if decision == "dismiss":
+                row, idempotent = dismiss_link_alert(
+                    db=db,
+                    user_id=user_id,
+                    alert_id=alert_id,
+                    note=note,
+                )
+            else:
+                row, idempotent = mark_safe_link_alert(
+                    db=db,
+                    user_id=user_id,
+                    alert_id=alert_id,
+                    note=note,
+                )
+            results.append(
+                {
+                    "id": alert_id,
+                    "ok": True,
+                    "status": row.status.value,
+                    "idempotent": idempotent,
+                    "reviewed_at": row.reviewed_at,
+                    "review_note": row.review_note,
+                    "error_code": None,
+                    "error_detail": None,
+                }
+            )
+            succeeded += 1
+        except LinkAlertNotFoundError as exc:
+            results.append(
+                {
+                    "id": alert_id,
+                    "ok": False,
+                    "status": None,
+                    "idempotent": False,
+                    "reviewed_at": None,
+                    "review_note": None,
+                    "error_code": "not_found",
+                    "error_detail": str(exc),
+                }
+            )
+    failed = len(results) - succeeded
+    return {
+        "decision": decision,
+        "total_requested": len(deduped_ids),
+        "succeeded": succeeded,
+        "failed": failed,
+        "results": results,
+    }
+
+
+def batch_decide_link_candidates(
+    db: Session,
+    *,
+    user_id: int,
+    decision: str,
+    ids: list[int],
+    note: str | None,
+) -> dict:
+    deduped_ids = _dedupe_ids_preserve_order(ids)
+    results: list[dict] = []
+    succeeded = 0
+    for candidate_id in deduped_ids:
+        try:
+            row, idempotent, link_row, block_row = decide_link_candidate(
+                db=db,
+                user_id=user_id,
+                candidate_id=candidate_id,
+                decision=decision,
+                note=note,
+            )
+            results.append(
+                {
+                    "id": candidate_id,
+                    "ok": True,
+                    "status": row.status.value,
+                    "idempotent": idempotent,
+                    "link_id": int(link_row.id) if link_row is not None else None,
+                    "block_id": int(block_row.id) if block_row is not None else None,
+                    "error_code": None,
+                    "error_detail": None,
+                }
+            )
+            succeeded += 1
+        except LinkCandidateNotFoundError as exc:
+            results.append(
+                {
+                    "id": candidate_id,
+                    "ok": False,
+                    "status": None,
+                    "idempotent": False,
+                    "link_id": None,
+                    "block_id": None,
+                    "error_code": "not_found",
+                    "error_detail": str(exc),
+                }
+            )
+        except LinkCandidateDecisionError as exc:
+            results.append(
+                {
+                    "id": candidate_id,
+                    "ok": False,
+                    "status": None,
+                    "idempotent": False,
+                    "link_id": None,
+                    "block_id": None,
+                    "error_code": "invalid_state",
+                    "error_detail": str(exc),
+                }
+            )
+    failed = len(results) - succeeded
+    return {
+        "decision": decision,
+        "total_requested": len(deduped_ids),
+        "succeeded": succeeded,
+        "failed": failed,
+        "results": results,
+    }
 
 
 def list_link_candidates(
@@ -633,3 +810,15 @@ def _upsert_link_block(
     )
     db.add(row)
     return row
+
+
+def _dedupe_ids_preserve_order(ids: list[int]) -> list[int]:
+    seen: set[int] = set()
+    out: list[int] = []
+    for raw in ids:
+        normalized = int(raw)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        out.append(normalized)
+    return out

@@ -7,11 +7,15 @@ from app.core.security import require_public_api_key
 from app.db.session import get_db
 from app.modules.common.deps import get_onboarded_user_or_409
 from app.modules.review_links.schemas import (
+    LinkAlertBatchDecisionRequest,
+    LinkAlertBatchDecisionResponse,
     LinkAlertDecisionRequest,
     LinkAlertDecisionResponse,
     LinkAlertItemResponse,
     LinkBlockDeleteResponse,
     LinkBlockItemResponse,
+    LinkCandidateBatchDecisionRequest,
+    LinkCandidateBatchDecisionResponse,
     LinkCandidateDecisionRequest,
     LinkCandidateDecisionResponse,
     LinkCandidateItemResponse,
@@ -19,6 +23,7 @@ from app.modules.review_links.schemas import (
     LinkItemResponse,
     LinkRelinkRequest,
     LinkRelinkResponse,
+    ReviewItemsSummaryResponse,
 )
 from app.modules.review_links.service import (
     LinkAlertNotFoundError,
@@ -26,10 +31,13 @@ from app.modules.review_links.service import (
     LinkCandidateDecisionError,
     LinkCandidateNotFoundError,
     LinkNotFoundError,
+    batch_decide_link_alerts,
+    batch_decide_link_candidates,
     decide_link_candidate,
     delete_link,
     delete_link_block,
     dismiss_link_alert,
+    get_review_items_summary,
     list_link_blocks,
     list_link_alerts,
     list_link_candidates,
@@ -45,6 +53,15 @@ router = APIRouter(
 candidate_router = APIRouter(prefix="/v2/review-items/link-candidates")
 links_router = APIRouter(prefix="/v2/review-items/links")
 alerts_router = APIRouter(prefix="/v2/review-items/link-alerts")
+
+
+@router.get("/v2/review-items/summary", response_model=ReviewItemsSummaryResponse)
+def get_review_items_summary_route(
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> ReviewItemsSummaryResponse:
+    payload = get_review_items_summary(db=db, user_id=user.id)
+    return ReviewItemsSummaryResponse(**payload)
 
 
 @candidate_router.get("", response_model=list[LinkCandidateItemResponse])
@@ -72,6 +89,22 @@ def get_link_candidates(
         offset=offset,
     )
     return [LinkCandidateItemResponse(**row) for row in rows]
+
+
+@candidate_router.post("/batch/decisions", response_model=LinkCandidateBatchDecisionResponse)
+def post_link_candidate_batch_decisions(
+    payload: LinkCandidateBatchDecisionRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> LinkCandidateBatchDecisionResponse:
+    result = batch_decide_link_candidates(
+        db=db,
+        user_id=user.id,
+        decision=payload.decision,
+        ids=payload.ids,
+        note=payload.note,
+    )
+    return LinkCandidateBatchDecisionResponse(**result)
 
 
 @candidate_router.post("/{candidate_id}/decisions", response_model=LinkCandidateDecisionResponse)
@@ -236,6 +269,22 @@ def get_link_alerts(
         offset=offset,
     )
     return [LinkAlertItemResponse(**row) for row in rows]
+
+
+@alerts_router.post("/batch/decisions", response_model=LinkAlertBatchDecisionResponse)
+def post_link_alert_batch_decisions(
+    payload: LinkAlertBatchDecisionRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> LinkAlertBatchDecisionResponse:
+    result = batch_decide_link_alerts(
+        db=db,
+        user_id=user.id,
+        decision=payload.decision,
+        ids=payload.ids,
+        note=payload.note,
+    )
+    return LinkAlertBatchDecisionResponse(**result)
 
 
 @alerts_router.post("/{alert_id}/dismiss", response_model=LinkAlertDecisionResponse)
