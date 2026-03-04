@@ -34,11 +34,6 @@ Rules:
 | snapshots | review-service | read | Snapshot metadata |
 | snapshot_events | review-service | read | Snapshot event materialization |
 | changes | review-service | read | Review lifecycle |
-| email_messages | review-service | read | Gmail audit table |
-| email_rule_labels | review-service | read | Gmail audit labels |
-| email_action_items | review-service | read | Gmail audit actions |
-| email_rule_analysis | review-service | read | Gmail audit analysis |
-| email_routes | review-service | read | Legacy email queue visibility |
 | notifications | notification-service | read | Notification queue |
 | digest_send_log | notification-service | read | Digest send ledger |
 

@@ -170,10 +170,6 @@ class User(Base):
         foreign_keys="EventLinkAlert.user_id",
     )
     digest_send_logs: Mapped[list[DigestSendLog]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    email_messages: Mapped[list[EmailMessage]] = relationship(
-        back_populates="user",
-        cascade="all, delete-orphan",
-    )
 
 class Input(Base):
     __tablename__ = "inputs"
@@ -502,121 +498,6 @@ class Change(Base):
         back_populates="changes_as_after",
     )
     notifications: Mapped[list[Notification]] = relationship(back_populates="change", cascade="all, delete-orphan")
-
-
-class EmailMessage(Base):
-    __tablename__ = "email_messages"
-    __table_args__ = (
-        Index("ix_email_messages_user_received_at_desc", "user_id", "received_at"),
-    )
-
-    email_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, default=1, server_default="1")
-    from_addr: Mapped[str | None] = mapped_column(Text, nullable=True)
-    subject: Mapped[str | None] = mapped_column(Text, nullable=True)
-    date_rfc822: Mapped[str | None] = mapped_column(Text, nullable=True)
-    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    evidence_key: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-
-    user: Mapped[User] = relationship(back_populates="email_messages")
-    rule_label: Mapped[EmailRuleLabel | None] = relationship(
-        back_populates="email_message",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
-    action_items: Mapped[list[EmailActionItem]] = relationship(
-        back_populates="email_message",
-        cascade="all, delete-orphan",
-    )
-    rule_analysis: Mapped[EmailRuleAnalysis | None] = relationship(
-        back_populates="email_message",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
-    route: Mapped[EmailRoute | None] = relationship(
-        back_populates="email_message",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
-
-
-class EmailRuleLabel(Base):
-    __tablename__ = "email_rule_labels"
-    __table_args__ = (
-        CheckConstraint("label IN ('KEEP', 'DROP')", name="ck_email_rule_labels_label"),
-        CheckConstraint(
-            "event_type IS NULL OR event_type IN ('deadline','exam','schedule_change','assignment','grade','action_required','announcement','other')",
-            name="ck_email_rule_labels_event_type",
-        ),
-        Index("ix_email_rule_labels_event_type", "event_type"),
-    )
-
-    email_id: Mapped[str] = mapped_column(
-        ForeignKey("email_messages.email_id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    label: Mapped[str] = mapped_column(String(16), nullable=False)
-    confidence: Mapped[float] = mapped_column(Float, nullable=False)
-    reasons: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
-    course_hints: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
-    event_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    raw_extract: Mapped[dict] = mapped_column(
-        JSON,
-        nullable=False,
-        default=lambda: {"deadline_text": None, "time_text": None, "location_text": None},
-        server_default='{"deadline_text":null,"time_text":null,"location_text":null}',
-    )
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-    email_message: Mapped[EmailMessage] = relationship(back_populates="rule_label")
-
-
-class EmailActionItem(Base):
-    __tablename__ = "email_action_items"
-    __table_args__ = (
-        Index("ix_email_action_items_email_id", "email_id"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    email_id: Mapped[str] = mapped_column(ForeignKey("email_messages.email_id", ondelete="CASCADE"), nullable=False)
-    action: Mapped[str | None] = mapped_column(Text, nullable=True)
-    due_iso: Mapped[str | None] = mapped_column(Text, nullable=True)
-    where_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-    email_message: Mapped[EmailMessage] = relationship(back_populates="action_items")
-
-
-class EmailRuleAnalysis(Base):
-    __tablename__ = "email_rule_analysis"
-
-    email_id: Mapped[str] = mapped_column(
-        ForeignKey("email_messages.email_id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    event_flags: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
-    matched_snippets: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
-    drop_reason_codes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
-
-    email_message: Mapped[EmailMessage] = relationship(back_populates="rule_analysis")
-
-
-class EmailRoute(Base):
-    __tablename__ = "email_routes"
-    __table_args__ = (
-        CheckConstraint("route IN ('drop', 'archive', 'review')", name="ck_email_routes_route"),
-        Index("ix_email_routes_route_routed_at_desc", "route", "routed_at"),
-    )
-
-    email_id: Mapped[str] = mapped_column(
-        ForeignKey("email_messages.email_id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    route: Mapped[str] = mapped_column(String(16), nullable=False)
-    routed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    email_message: Mapped[EmailMessage] = relationship(back_populates="route")
 
 
 class Notification(Base):

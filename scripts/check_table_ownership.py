@@ -43,11 +43,6 @@ TABLE_OWNERSHIP: dict[str, str] = {
     "snapshots": "review-service",
     "snapshot_events": "review-service",
     "changes": "review-service",
-    "email_messages": "review-service",
-    "email_rule_labels": "review-service",
-    "email_action_items": "review-service",
-    "email_rule_analysis": "review-service",
-    "email_routes": "review-service",
     "notifications": "notification-service",
     "digest_send_log": "notification-service",
 }

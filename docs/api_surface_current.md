@@ -75,29 +75,25 @@ Runtime responsibilities:
 ## review-service (`/v2` read/review + internal apply)
 
 1. `GET /health`
-2. `GET /v2/review-items/emails`
-3. `PATCH /v2/review-items/emails/{email_id}`
-4. `POST /v2/review-items/emails/{email_id}/views`
-5. `GET /v2/review-items/changes`
-6. `PATCH /v2/review-items/changes/{change_id}/views`
-7. `POST /v2/review-items/changes/{change_id}/decisions`
-8. `GET /v2/review-items/changes/{change_id}/evidence/{side}/preview`
-9. `POST /v2/review-items/changes/corrections/preview`
-10. `POST /v2/review-items/changes/corrections`
-11. `GET /v2/review-items/link-candidates`
-12. `POST /v2/review-items/link-candidates/{id}/decisions`
-13. `GET /v2/review-items/link-candidates/blocks`
-14. `DELETE /v2/review-items/link-candidates/blocks/{block_id}`
-15. `GET /v2/review-items/links`
-16. `DELETE /v2/review-items/links/{link_id}`
-17. `POST /v2/review-items/links/relink`
-18. `GET /v2/review-items/link-alerts`
-19. `POST /v2/review-items/link-alerts/{alert_id}/dismiss`
-20. `POST /v2/review-items/link-alerts/{alert_id}/mark-safe`
-21. `GET /v2/timeline-events`
-22. `POST /internal/v2/ingest-results/applications`
-23. `GET /internal/v2/ingest-results/{request_id}`
-24. `GET /internal/v2/metrics`
+2. `GET /v2/review-items/changes`
+3. `PATCH /v2/review-items/changes/{change_id}/views`
+4. `POST /v2/review-items/changes/{change_id}/decisions`
+5. `GET /v2/review-items/changes/{change_id}/evidence/{side}/preview`
+6. `POST /v2/review-items/changes/corrections/preview`
+7. `POST /v2/review-items/changes/corrections`
+8. `GET /v2/review-items/link-candidates`
+9. `POST /v2/review-items/link-candidates/{id}/decisions`
+10. `GET /v2/review-items/link-candidates/blocks`
+11. `DELETE /v2/review-items/link-candidates/blocks/{block_id}`
+12. `GET /v2/review-items/links`
+13. `DELETE /v2/review-items/links/{link_id}`
+14. `POST /v2/review-items/links/relink`
+15. `GET /v2/review-items/link-alerts`
+16. `POST /v2/review-items/link-alerts/{alert_id}/dismiss`
+17. `POST /v2/review-items/link-alerts/{alert_id}/mark-safe`
+18. `POST /internal/v2/ingest-results/applications`
+19. `GET /internal/v2/ingest-results/{request_id}`
+20. `GET /internal/v2/metrics`
 
 Notes:
 

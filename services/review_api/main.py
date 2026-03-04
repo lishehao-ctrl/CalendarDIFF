@@ -9,8 +9,6 @@ import time
 from app.core.logging import sanitize_log_message
 from app.db.session import get_session_factory
 from app.modules.core_ingest.router import router as core_ingest_router
-from app.modules.emails.router import router as emails_router
-from app.modules.events.router import router as events_router
 from app.modules.health.router import router as health_router
 from app.modules.core_ingest.worker import run_core_apply_tick
 from app.modules.review_changes.metrics_router import router as review_metrics_router
@@ -97,8 +95,6 @@ app = create_service_app(
         health_router,
         review_changes_router,
         review_links_router,
-        events_router,
-        emails_router,
         core_ingest_router,
         review_metrics_router,
     ],

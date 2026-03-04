@@ -200,20 +200,35 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
     assert feed_response.status_code == 200
     assert len(feed_response.json()) == 1
 
-    timeline_response = client.get(f"/v2/timeline-events?source_id={gmail_source.id}", headers=headers)
-    assert timeline_response.status_code == 200
-    assert len(timeline_response.json()) == 1
+    feed_response_gmail = client.get(
+        f"/v2/review-items/changes?review_status=approved&source_id={gmail_source.id}",
+        headers=headers,
+    )
+    assert feed_response_gmail.status_code == 200
+    assert len(feed_response_gmail.json()) == 1
 
     rejected_view = client.get("/v2/review-items/changes?review_status=pending", headers=headers)
     assert rejected_view.status_code == 200
     assert rejected_view.json() == []
 
-    removed_apply_route = client.post(
-        "/v2/review-items/emails/removed-id/applications",
+    removed_email_queue = client.get("/v2/review-items/emails", headers=headers)
+    assert removed_email_queue.status_code == 404
+
+    removed_email_patch = client.patch(
+        "/v2/review-items/emails/removed-id",
         headers=headers,
-        json={"mode": "create_new"},
+        json={"route": "archive"},
     )
-    assert removed_apply_route.status_code == 404
+    assert removed_email_patch.status_code == 404
+
+    removed_email_view = client.post(
+        "/v2/review-items/emails/removed-id/views",
+        headers=headers,
+    )
+    assert removed_email_view.status_code == 404
+
+    removed_timeline = client.get("/v2/timeline-events", headers=headers)
+    assert removed_timeline.status_code == 404
 
 
 def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session) -> None:

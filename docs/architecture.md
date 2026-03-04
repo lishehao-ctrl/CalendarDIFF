@@ -65,7 +65,7 @@ Primary write ownership:
 2. builds `source_event_observations` and pending `changes`
 3. approve/reject decision APIs
 4. canonical event projection (`events`)
-5. read APIs: timeline/review-items
+5. read APIs: review-items
 
 Primary write ownership:
 
@@ -74,8 +74,7 @@ Primary write ownership:
 3. `events`
 4. `changes`
 5. `snapshots` + `snapshot_events`
-6. gmail audit tables (`email_*`)
-7. `ingest_apply_log`
+6. `ingest_apply_log`
 
 ### notification-service
 

@@ -9,13 +9,8 @@ from app.core.security import encrypt_secret
 from app.db.models import (
     Change,
     ConnectorResultStatus,
-    EmailActionItem,
-    EmailMessage,
-    EmailRoute,
-    EmailRuleLabel,
     EventLinkCandidate,
     EventLinkCandidateStatus,
-    Event,
     IngestResult,
     IngestTriggerType,
     Input,
@@ -123,7 +118,7 @@ def _canonical_input_id(db_session, *, user_id: int) -> int:
     return row.id
 
 
-def test_apply_gmail_records_write_audit_tables_and_pending_change(db_session) -> None:
+def test_apply_gmail_records_create_candidates_and_pending_change(db_session) -> None:
     source = _create_gmail_source(db_session)
     records = [
         {
@@ -203,16 +198,6 @@ def test_apply_gmail_records_write_audit_tables_and_pending_change(db_session) -
         == 0
     )
 
-    assert db_session.scalar(select(func.count(EmailMessage.email_id))) == 2
-    assert db_session.scalar(select(func.count(EmailRuleLabel.email_id))) == 2
-    assert db_session.scalar(select(func.count(EmailRoute.email_id))) == 2
-    assert db_session.scalar(select(func.count(EmailActionItem.id))) == 1
-
-    route_1 = db_session.scalar(select(EmailRoute).where(EmailRoute.email_id == "gmail-msg-1"))
-    route_2 = db_session.scalar(select(EmailRoute).where(EmailRoute.email_id == "gmail-msg-2"))
-    assert route_1 is not None and route_1.route == "archive"
-    assert route_2 is not None and route_2.route == "archive"
-
     canonical_input_id = _canonical_input_id(db_session, user_id=source.user_id)
     pending_count = db_session.scalar(
         select(func.count(Change.id)).where(Change.input_id == canonical_input_id, Change.review_status == ReviewStatus.PENDING)
@@ -232,7 +217,7 @@ def test_apply_gmail_records_write_audit_tables_and_pending_change(db_session) -
     assert candidate.score_breakdown_json.get("rule_reason") == "no_rule_match"
 
 
-def test_apply_gmail_records_extract_course_hint_from_subject_alias(db_session) -> None:
+def test_apply_gmail_records_with_subject_alias_still_processes(db_session) -> None:
     source = _create_gmail_source(db_session)
     records = [
         {
@@ -272,9 +257,13 @@ def test_apply_gmail_records_extract_course_hint_from_subject_alias(db_session) 
     applied = apply_ingest_result_idempotent(db_session, request_id="gmail-req-alias")
     assert applied["changes_created"] == 0
 
-    label = db_session.scalar(
-        select(EmailRuleLabel).where(EmailRuleLabel.email_id == "gmail-msg-alias")
+    candidate = db_session.scalar(
+        select(EventLinkCandidate).where(
+            EventLinkCandidate.user_id == source.user_id,
+            EventLinkCandidate.source_id == source.id,
+            EventLinkCandidate.external_event_id == "gmail-msg-alias",
+            EventLinkCandidate.status == EventLinkCandidateStatus.PENDING,
+        )
     )
-    assert label is not None
-    hints = label.course_hints if isinstance(label.course_hints, list) else []
-    assert any(str(item).upper().startswith("CSE 8A") for item in hints)
+    assert candidate is not None
+    assert isinstance(candidate.score_breakdown_json, dict)

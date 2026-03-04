@@ -110,7 +110,7 @@ def _seed_calendar_ingest_result(db_session, *, source: InputSource, request_id:
     db_session.commit()
 
 
-def test_v2_feed_and_timeline_read_source_id_via_review_pool(client, db_session) -> None:
+def test_v2_feed_read_source_id_via_review_pool(client, db_session) -> None:
     source = _create_calendar_source(db_session)
     _seed_calendar_ingest_result(db_session, source=source, request_id="bridge-read-req-1")
     apply_ingest_result_idempotent(db_session, request_id="bridge-read-req-1")
@@ -141,8 +141,5 @@ def test_v2_feed_and_timeline_read_source_id_via_review_pool(client, db_session)
     assert len(feed_rows) == 1
     assert feed_rows[0]["source_id"] == source.id
 
-    timeline_response = client.get(f"/v2/timeline-events?source_id={source.id}", headers=headers)
-    assert timeline_response.status_code == 200
-    timeline_rows = timeline_response.json()
-    assert len(timeline_rows) == 1
-    assert timeline_rows[0]["source_id"] == source.id
+    removed_timeline = client.get(f"/v2/timeline-events?source_id={source.id}", headers=headers)
+    assert removed_timeline.status_code == 404

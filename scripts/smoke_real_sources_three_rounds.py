@@ -581,30 +581,14 @@ def main() -> int:
                     detail=f"remaining={round_pending_left}",
                 )
 
-                timeline_rows = _request_json_list(
-                    review_client,
-                    "GET",
-                    "/v2/timeline-events?limit=200",
-                )
-                round_report["timeline_count_after"] = len(timeline_rows)
-                if not timeline_rows:
-                    raise SmokeFailure(f"round {profile.round_id}: timeline is empty after approve")
-
-                round_event_uids = {topic_uid}
-                timeline_uids = {str(item["uid"]) for item in timeline_rows if isinstance(item.get("uid"), str)}
-                _assert(
-                    report["assertions"],
-                    name=f"round_{profile.round_id}_timeline_contains_round_uids",
-                    passed=round_event_uids.issubset(timeline_uids),
-                    detail=f"round_event_uids={sorted(round_event_uids)}",
-                )
-
                 feed_rows = _request_json_list(
                     review_client,
                     "GET",
                     "/v2/review-items/changes?review_status=approved&limit=200",
                 )
                 round_report["feed_count_after"] = len(feed_rows)
+                round_event_uids = {topic_uid}
+                feed_event_uids = {str(item["event_uid"]) for item in feed_rows if isinstance(item.get("event_uid"), str)}
                 approved_feed_ids = {
                     int(item["id"])
                     for item in feed_rows
@@ -615,6 +599,12 @@ def main() -> int:
                     name=f"round_{profile.round_id}_approved_visible_in_feed",
                     passed=set(round_approved_ids).issubset(approved_feed_ids),
                     detail=f"approved_ids={sorted(round_approved_ids)}",
+                )
+                _assert(
+                    report["assertions"],
+                    name=f"round_{profile.round_id}_approved_feed_contains_round_uids",
+                    passed=round_event_uids.issubset(feed_event_uids),
+                    detail=f"round_event_uids={sorted(round_event_uids)}",
                 )
 
             provider_state = _request_json(fake_client, "GET", "/__admin/state")
