@@ -313,6 +313,177 @@
         "title": "IngestApplyStatusResponse",
         "type": "object"
       },
+      "LinkAlertBatchDecisionItemResult": {
+        "properties": {
+          "error_code": {
+            "anyOf": [
+              {
+                "const": "not_found",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Detail"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "idempotent": {
+            "title": "Idempotent",
+            "type": "boolean"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "dismissed",
+                  "marked_safe",
+                  "resolved"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "id",
+          "ok",
+          "status",
+          "idempotent",
+          "reviewed_at",
+          "review_note",
+          "error_code",
+          "error_detail"
+        ],
+        "title": "LinkAlertBatchDecisionItemResult",
+        "type": "object"
+      },
+      "LinkAlertBatchDecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "dismiss",
+              "mark_safe"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "ids",
+          "decision"
+        ],
+        "title": "LinkAlertBatchDecisionRequest",
+        "type": "object"
+      },
+      "LinkAlertBatchDecisionResponse": {
+        "properties": {
+          "decision": {
+            "enum": [
+              "dismiss",
+              "mark_safe"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/LinkAlertBatchDecisionItemResult"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "succeeded": {
+            "title": "Succeeded",
+            "type": "integer"
+          },
+          "total_requested": {
+            "title": "Total Requested",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "decision",
+          "total_requested",
+          "succeeded",
+          "failed",
+          "results"
+        ],
+        "title": "LinkAlertBatchDecisionResponse",
+        "type": "object"
+      },
       "LinkAlertDecisionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -595,6 +766,178 @@
           "created_at"
         ],
         "title": "LinkBlockItemResponse",
+        "type": "object"
+      },
+      "LinkCandidateBatchDecisionItemResult": {
+        "properties": {
+          "block_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Id"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_found",
+                  "invalid_state"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Detail"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "idempotent": {
+            "title": "Idempotent",
+            "type": "boolean"
+          },
+          "link_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Id"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "approved",
+                  "rejected"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "id",
+          "ok",
+          "status",
+          "idempotent",
+          "link_id",
+          "block_id",
+          "error_code",
+          "error_detail"
+        ],
+        "title": "LinkCandidateBatchDecisionItemResult",
+        "type": "object"
+      },
+      "LinkCandidateBatchDecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "approve",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "ids",
+          "decision"
+        ],
+        "title": "LinkCandidateBatchDecisionRequest",
+        "type": "object"
+      },
+      "LinkCandidateBatchDecisionResponse": {
+        "properties": {
+          "decision": {
+            "enum": [
+              "approve",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/LinkCandidateBatchDecisionItemResult"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "succeeded": {
+            "title": "Succeeded",
+            "type": "integer"
+          },
+          "total_requested": {
+            "title": "Total Requested",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "decision",
+          "total_requested",
+          "succeeded",
+          "failed",
+          "results"
+        ],
+        "title": "LinkCandidateBatchDecisionResponse",
         "type": "object"
       },
       "LinkCandidateDecisionRequest": {
@@ -1597,6 +1940,35 @@
         "title": "ReviewDecisionResponse",
         "type": "object"
       },
+      "ReviewItemsSummaryResponse": {
+        "properties": {
+          "changes_pending": {
+            "title": "Changes Pending",
+            "type": "integer"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "link_alerts_pending": {
+            "title": "Link Alerts Pending",
+            "type": "integer"
+          },
+          "link_candidates_pending": {
+            "title": "Link Candidates Pending",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "changes_pending",
+          "link_candidates_pending",
+          "link_alerts_pending",
+          "generated_at"
+        ],
+        "title": "ReviewItemsSummaryResponse",
+        "type": "object"
+      },
       "ReviewSourceRef": {
         "properties": {
           "confidence": {
@@ -2488,6 +2860,65 @@
         ]
       }
     },
+    "/v2/review-items/link-alerts/batch/decisions": {
+      "post": {
+        "operationId": "post_link_alert_batch_decisions_v2_review_items_link_alerts_batch_decisions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkAlertBatchDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkAlertBatchDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Link Alert Batch Decisions",
+        "tags": [
+          "review-items"
+        ]
+      }
+    },
     "/v2/review-items/link-alerts/{alert_id}/dismiss": {
       "post": {
         "operationId": "post_link_alert_dismiss_v2_review_items_link_alerts__alert_id__dismiss_post",
@@ -2722,6 +3153,65 @@
           }
         },
         "summary": "Get Link Candidates",
+        "tags": [
+          "review-items"
+        ]
+      }
+    },
+    "/v2/review-items/link-candidates/batch/decisions": {
+      "post": {
+        "operationId": "post_link_candidate_batch_decisions_v2_review_items_link_candidates_batch_decisions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkCandidateBatchDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkCandidateBatchDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Link Candidate Batch Decisions",
         "tags": [
           "review-items"
         ]
@@ -3178,6 +3668,55 @@
           }
         },
         "summary": "Delete Link Route",
+        "tags": [
+          "review-items"
+        ]
+      }
+    },
+    "/v2/review-items/summary": {
+      "get": {
+        "operationId": "get_review_items_summary_route_v2_review_items_summary_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewItemsSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Review Items Summary Route",
         "tags": [
           "review-items"
         ]

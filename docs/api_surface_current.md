@@ -75,25 +75,28 @@ Runtime responsibilities:
 ## review-service (`/v2` read/review + internal apply)
 
 1. `GET /health`
-2. `GET /v2/review-items/changes`
-3. `PATCH /v2/review-items/changes/{change_id}/views`
-4. `POST /v2/review-items/changes/{change_id}/decisions`
-5. `GET /v2/review-items/changes/{change_id}/evidence/{side}/preview`
-6. `POST /v2/review-items/changes/corrections/preview`
-7. `POST /v2/review-items/changes/corrections`
-8. `GET /v2/review-items/link-candidates`
-9. `POST /v2/review-items/link-candidates/{id}/decisions`
-10. `GET /v2/review-items/link-candidates/blocks`
-11. `DELETE /v2/review-items/link-candidates/blocks/{block_id}`
-12. `GET /v2/review-items/links`
-13. `DELETE /v2/review-items/links/{link_id}`
-14. `POST /v2/review-items/links/relink`
-15. `GET /v2/review-items/link-alerts`
-16. `POST /v2/review-items/link-alerts/{alert_id}/dismiss`
-17. `POST /v2/review-items/link-alerts/{alert_id}/mark-safe`
-18. `POST /internal/v2/ingest-results/applications`
-19. `GET /internal/v2/ingest-results/{request_id}`
-20. `GET /internal/v2/metrics`
+2. `GET /v2/review-items/summary`
+3. `GET /v2/review-items/changes`
+4. `PATCH /v2/review-items/changes/{change_id}/views`
+5. `POST /v2/review-items/changes/{change_id}/decisions`
+6. `GET /v2/review-items/changes/{change_id}/evidence/{side}/preview`
+7. `POST /v2/review-items/changes/corrections/preview`
+8. `POST /v2/review-items/changes/corrections`
+9. `GET /v2/review-items/link-candidates`
+10. `POST /v2/review-items/link-candidates/{id}/decisions`
+11. `POST /v2/review-items/link-candidates/batch/decisions`
+12. `GET /v2/review-items/link-candidates/blocks`
+13. `DELETE /v2/review-items/link-candidates/blocks/{block_id}`
+14. `GET /v2/review-items/links`
+15. `DELETE /v2/review-items/links/{link_id}`
+16. `POST /v2/review-items/links/relink`
+17. `GET /v2/review-items/link-alerts`
+18. `POST /v2/review-items/link-alerts/{alert_id}/dismiss`
+19. `POST /v2/review-items/link-alerts/{alert_id}/mark-safe`
+20. `POST /v2/review-items/link-alerts/batch/decisions`
+21. `POST /internal/v2/ingest-results/applications`
+22. `GET /internal/v2/ingest-results/{request_id}`
+23. `GET /internal/v2/metrics`
 
 Notes:
 
@@ -103,6 +106,10 @@ Notes:
 4. manual correction does not emit `review.pending.created` (no notification enqueue)
 5. link-candidate generation/decisions are parallel linker governance flow and do not emit `review.pending.created`
 6. link-alert queue is medium-risk, non-blocking, and only stores `auto-link` records that produced no canonical pending change in the same apply round
+7. `GET /v2/review-items/summary` returns pending counts only (`changes`, `link-candidates`, `link-alerts`) for top-level badge rendering
+8. batch decision endpoints are partial-success by design and return per-item results:
+   - `POST /v2/review-items/link-candidates/batch/decisions`
+   - `POST /v2/review-items/link-alerts/batch/decisions`
 
 ## notification-service (`/internal/v2` ops + worker)
 

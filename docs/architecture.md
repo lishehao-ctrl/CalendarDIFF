@@ -140,6 +140,10 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
    - enforce `event_parts.index` exact-match when inventory for same course+type has multiple indexes
 14. blocked source/entity pairs are never auto-linked and never re-enter pending candidate flow until unblocked
 15. `event_link_alerts` is auto-resolved when higher-priority governance takes over (`candidate_opened`, `canonical_pending_created`, `link_removed`, `link_relinked`)
+16. review API provides queue aggregation and bulk moderation helpers:
+   - `GET /v2/review-items/summary` (pending counts for `changes`, `link-candidates`, `link-alerts`)
+   - `POST /v2/review-items/link-candidates/batch/decisions` (`approve`/`reject`, partial success)
+   - `POST /v2/review-items/link-alerts/batch/decisions` (`dismiss`/`mark_safe`, partial success)
 
 ## 7) Operational Notes
 
