@@ -57,3 +57,41 @@ class LinkBlockItemResponse(BaseModel):
 class LinkBlockDeleteResponse(BaseModel):
     deleted: bool
     id: int
+
+
+class LinkItemResponse(BaseModel):
+    id: int
+    source_id: int
+    source_kind: str
+    external_event_id: str
+    entity_uid: str
+    link_origin: str
+    link_score: float | None = None
+    created_at: datetime
+    updated_at: datetime
+    signals: dict | None = None
+    linked_entity: LinkCandidateEntityPreview | None = None
+
+
+class LinkDeleteResponse(BaseModel):
+    deleted: bool
+    id: int
+    block_id: int | None = None
+
+
+class LinkRelinkRequest(BaseModel):
+    source_id: int = Field(ge=1)
+    external_event_id: str = Field(min_length=1, max_length=255)
+    entity_uid: str = Field(min_length=1, max_length=128)
+    clear_block: bool = True
+    note: str | None = Field(default=None, max_length=512)
+
+    model_config = {"extra": "forbid"}
+
+
+class LinkRelinkResponse(BaseModel):
+    link_id: int
+    entity_uid: str
+    source_id: int
+    external_event_id: str
+    cleared_blocks: int

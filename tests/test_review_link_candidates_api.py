@@ -162,3 +162,87 @@ def test_link_candidate_reject_creates_block_and_unblock(client, db_session) -> 
     blocks_after = client.get("/v2/review-items/link-candidates/blocks", headers=headers)
     assert blocks_after.status_code == 200
     assert blocks_after.json() == []
+
+
+def test_links_api_list_delete_and_relink(client, db_session) -> None:
+    user, source = _create_user_and_email_source(db_session)
+    db_session.add(
+        EventEntity(
+            user_id=user.id,
+            entity_uid="ent_target_a",
+            course_best_json={"display_name": "CSE 151A WI26"},
+            course_best_strength=5,
+            course_aliases_json=[],
+            title_aliases_json=[],
+            metadata_json={},
+        )
+    )
+    db_session.add(
+        EventEntity(
+            user_id=user.id,
+            entity_uid="ent_target_b",
+            course_best_json={"display_name": "CSE 151B WI26"},
+            course_best_strength=5,
+            course_aliases_json=[],
+            title_aliases_json=[],
+            metadata_json={},
+        )
+    )
+    db_session.flush()
+    db_session.add(
+        EventEntityLink(
+            user_id=user.id,
+            source_id=source.id,
+            source_kind=SourceKind.EMAIL,
+            external_event_id="gmail-msg-link-1",
+            entity_uid="ent_target_a",
+            link_origin=EventLinkOrigin.AUTO,
+            link_score=0.9,
+            signals_json={"keywords": ["exam"]},
+        )
+    )
+    db_session.commit()
+
+    headers = {"X-API-Key": "test-api-key"}
+    links_resp = client.get("/v2/review-items/links", headers=headers)
+    assert links_resp.status_code == 200
+    rows = links_resp.json()
+    assert len(rows) == 1
+    link_id = rows[0]["id"]
+    assert rows[0]["entity_uid"] == "ent_target_a"
+    assert rows[0]["link_origin"] == "auto"
+
+    delete_resp = client.delete(f"/v2/review-items/links/{link_id}", headers=headers)
+    assert delete_resp.status_code == 200
+    delete_payload = delete_resp.json()
+    assert delete_payload["deleted"] is True
+    assert delete_payload["id"] == link_id
+    assert isinstance(delete_payload["block_id"], int)
+
+    links_after_delete = client.get("/v2/review-items/links", headers=headers)
+    assert links_after_delete.status_code == 200
+    assert links_after_delete.json() == []
+
+    relink_resp = client.post(
+        "/v2/review-items/links/relink",
+        headers=headers,
+        json={
+            "source_id": source.id,
+            "external_event_id": "gmail-msg-link-1",
+            "entity_uid": "ent_target_b",
+            "clear_block": True,
+            "note": "manual relink",
+        },
+    )
+    assert relink_resp.status_code == 200
+    relink_payload = relink_resp.json()
+    assert relink_payload["entity_uid"] == "ent_target_b"
+    assert relink_payload["source_id"] == source.id
+    assert relink_payload["external_event_id"] == "gmail-msg-link-1"
+    assert relink_payload["cleared_blocks"] >= 0
+
+    final_links = client.get("/v2/review-items/links", headers=headers)
+    assert final_links.status_code == 200
+    final_rows = final_links.json()
+    assert len(final_rows) == 1
+    assert final_rows[0]["entity_uid"] == "ent_target_b"

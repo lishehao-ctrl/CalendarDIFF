@@ -12,25 +12,34 @@ from app.modules.review_links.schemas import (
     LinkCandidateDecisionRequest,
     LinkCandidateDecisionResponse,
     LinkCandidateItemResponse,
+    LinkDeleteResponse,
+    LinkItemResponse,
+    LinkRelinkRequest,
+    LinkRelinkResponse,
 )
 from app.modules.review_links.service import (
     LinkBlockNotFoundError,
     LinkCandidateDecisionError,
     LinkCandidateNotFoundError,
+    LinkNotFoundError,
     decide_link_candidate,
+    delete_link,
     delete_link_block,
     list_link_blocks,
     list_link_candidates,
+    list_links,
+    relink_observation,
 )
 
 router = APIRouter(
-    prefix="/v2/review-items/link-candidates",
     tags=["review-items"],
     dependencies=[Depends(require_public_api_key)],
 )
+candidate_router = APIRouter(prefix="/v2/review-items/link-candidates")
+links_router = APIRouter(prefix="/v2/review-items/links")
 
 
-@router.get("", response_model=list[LinkCandidateItemResponse])
+@candidate_router.get("", response_model=list[LinkCandidateItemResponse])
 def get_link_candidates(
     status_filter: str = Query(default="pending", alias="status"),
     source_id: int | None = Query(default=None, ge=1),
@@ -57,7 +66,7 @@ def get_link_candidates(
     return [LinkCandidateItemResponse(**row) for row in rows]
 
 
-@router.post("/{candidate_id}/decisions", response_model=LinkCandidateDecisionResponse)
+@candidate_router.post("/{candidate_id}/decisions", response_model=LinkCandidateDecisionResponse)
 def post_link_candidate_decision(
     candidate_id: int,
     payload: LinkCandidateDecisionRequest,
@@ -86,7 +95,7 @@ def post_link_candidate_decision(
     )
 
 
-@router.get("/blocks", response_model=list[LinkBlockItemResponse])
+@candidate_router.get("/blocks", response_model=list[LinkBlockItemResponse])
 def get_link_blocks(
     source_id: int | None = Query(default=None, ge=1),
     limit: int = Query(default=50, ge=1, le=200),
@@ -114,7 +123,7 @@ def get_link_blocks(
     ]
 
 
-@router.delete("/blocks/{block_id}", response_model=LinkBlockDeleteResponse)
+@candidate_router.delete("/blocks/{block_id}", response_model=LinkBlockDeleteResponse)
 def delete_link_block_route(
     block_id: int,
     db: Session = Depends(get_db),
@@ -126,3 +135,74 @@ def delete_link_block_route(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     return LinkBlockDeleteResponse(deleted=True, id=row.id)
+
+
+@links_router.get("", response_model=list[LinkItemResponse])
+def get_links(
+    source_id: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> list[LinkItemResponse]:
+    rows = list_links(
+        db=db,
+        user_id=user.id,
+        source_id=source_id,
+        limit=limit,
+        offset=offset,
+    )
+    return [LinkItemResponse(**row) for row in rows]
+
+
+@links_router.delete("/{link_id}", response_model=LinkDeleteResponse)
+def delete_link_route(
+    link_id: int,
+    block: bool = Query(default=True),
+    note: str | None = Query(default=None, max_length=512),
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> LinkDeleteResponse:
+    try:
+        deleted_id, block_row = delete_link(
+            db=db,
+            user_id=user.id,
+            link_id=link_id,
+            create_block=block,
+            note=note,
+        )
+    except LinkNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return LinkDeleteResponse(deleted=True, id=deleted_id, block_id=block_row.id if block_row is not None else None)
+
+
+@links_router.post("/relink", response_model=LinkRelinkResponse)
+def post_relink_observation(
+    payload: LinkRelinkRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> LinkRelinkResponse:
+    try:
+        row, cleared = relink_observation(
+            db=db,
+            user_id=user.id,
+            source_id=payload.source_id,
+            external_event_id=payload.external_event_id.strip(),
+            entity_uid=payload.entity_uid.strip(),
+            clear_block=payload.clear_block,
+            note=payload.note,
+        )
+    except LinkCandidateDecisionError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    return LinkRelinkResponse(
+        link_id=row.id,
+        entity_uid=row.entity_uid,
+        source_id=row.source_id,
+        external_event_id=row.external_event_id,
+        cleared_blocks=cleared,
+    )
+
+
+router.include_router(candidate_router)
+router.include_router(links_router)

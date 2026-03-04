@@ -269,7 +269,7 @@ def test_gmail_weak_course_links_to_ics_entity_without_overwrite(db_session: Ses
     assert any("CSE 151" in alias for alias in aliases)
 
 
-def test_prefix_match_without_extra_evidence_does_not_auto_link(db_session: Session) -> None:
+def test_non_ambiguous_prefix_course_auto_links_without_score_threshold(db_session: Session) -> None:
     calendar_source, gmail_source = _create_sources(db_session)
     due_at = datetime(2026, 3, 9, 20, 0, tzinfo=timezone.utc)
     end_at = due_at + timedelta(hours=1)
@@ -370,7 +370,9 @@ def test_prefix_match_without_extra_evidence_does_not_auto_link(db_session: Sess
             EventEntityLink.external_event_id == "gmail-cse151-prefix-1",
         )
     )
-    assert link_row is None
+    assert link_row is not None
+    assert link_row.link_origin == EventLinkOrigin.AUTO
+    assert link_row.entity_uid == pending.event_uid
     candidate_count = db_session.scalar(
         select(func.count(EventLinkCandidate.id)).where(
             EventLinkCandidate.user_id == calendar_source.user_id,
@@ -382,7 +384,7 @@ def test_prefix_match_without_extra_evidence_does_not_auto_link(db_session: Sess
     assert int(candidate_count or 0) == 0
 
 
-def test_candidate_band_creates_silent_link_candidate(db_session: Session) -> None:
+def test_variant_ambiguous_course_without_suffix_stays_candidate(db_session: Session) -> None:
     calendar_source, gmail_source = _create_sources(db_session)
     due_at = datetime(2026, 3, 10, 20, 0, tzinfo=timezone.utc)
     end_at = due_at + timedelta(hours=1)
@@ -420,25 +422,54 @@ def test_candidate_band_creates_silent_link_candidate(db_session: Session) -> No
                     },
                     "raw_confidence": 0.95,
                 },
-            }
+            },
+            {
+                "record_type": "calendar.event.extracted",
+                "payload": {
+                    "uid": "ics-cse151b-exam2",
+                    "title": "CSE 151B exam 2",
+                    "start_at": (due_at + timedelta(minutes=5)).isoformat(),
+                    "end_at": (end_at + timedelta(minutes=5)).isoformat(),
+                    "course_label": "CSE 151B WI26",
+                    "source_canonical": {
+                        "external_event_id": "ics-cse151b-exam2",
+                        "source_title": "CSE 151B exam 2",
+                        "source_dtstart_utc": (due_at + timedelta(minutes=5)).isoformat(),
+                        "source_dtend_utc": (end_at + timedelta(minutes=5)).isoformat(),
+                        "location": "Center Hall 201",
+                    },
+                    "enrichment": {
+                        "course_parse": {
+                            "dept": "CSE",
+                            "number": 151,
+                            "suffix": "B",
+                            "quarter": "WI",
+                            "year2": 26,
+                            "confidence": 0.95,
+                            "evidence": "CSE 151B WI26",
+                        }
+                    },
+                    "raw_confidence": 0.95,
+                },
+            },
         ],
     )
     apply_ingest_result_idempotent(db_session, request_id="linker-candidate-cal-1")
     canonical_input_id = _canonical_input_id(db_session, user_id=calendar_source.user_id)
-    pending = db_session.scalar(
+    pending_rows = db_session.scalars(
         select(Change)
         .where(Change.input_id == canonical_input_id, Change.review_status == ReviewStatus.PENDING)
         .order_by(Change.id.desc())
-        .limit(1)
-    )
-    assert pending is not None
-    decide_review_change(
-        db_session,
-        user_id=calendar_source.user_id,
-        change_id=pending.id,
-        decision="approve",
-        note="approve seed",
-    )
+    ).all()
+    assert pending_rows
+    for row in pending_rows:
+        decide_review_change(
+            db_session,
+            user_id=calendar_source.user_id,
+            change_id=row.id,
+            decision="approve",
+            note="approve seed",
+        )
 
     _seed_result(
         db_session,
@@ -488,7 +519,10 @@ def test_candidate_band_creates_silent_link_candidate(db_session: Session) -> No
         )
     )
     assert candidate is not None
-    assert candidate.proposed_entity_uid == pending.event_uid
+    assert candidate.proposed_entity_uid is not None
+    assert isinstance(candidate.score_breakdown_json, dict)
+    assert candidate.score_breakdown_json.get("variant_ambiguous") is True
+    assert candidate.score_breakdown_json.get("incoming_suffix_missing") is True
     link_row = db_session.scalar(
         select(EventEntityLink).where(
             EventEntityLink.user_id == calendar_source.user_id,
@@ -505,6 +539,204 @@ def test_candidate_band_creates_silent_link_candidate(db_session: Session) -> No
         )
     )
     assert gmail_obs is None or gmail_obs.is_active is False
+
+
+def test_variant_ambiguous_requires_exact_suffix_for_auto_link(db_session: Session) -> None:
+    calendar_source, gmail_source = _create_sources(db_session)
+    due_at = datetime(2026, 3, 12, 20, 0, tzinfo=timezone.utc)
+    end_at = due_at + timedelta(hours=1)
+
+    _seed_result(
+        db_session,
+        source=calendar_source,
+        request_id="linker-ambiguous-cal-1",
+        records=[
+            {
+                "record_type": "calendar.event.extracted",
+                "payload": {
+                    "uid": "ics-cse151a-variant",
+                    "title": "CSE 151A variant",
+                    "start_at": due_at.isoformat(),
+                    "end_at": end_at.isoformat(),
+                    "course_label": "CSE 151A WI26",
+                    "source_canonical": {
+                        "external_event_id": "ics-cse151a-variant",
+                        "source_title": "CSE 151A variant",
+                        "source_dtstart_utc": due_at.isoformat(),
+                        "source_dtend_utc": end_at.isoformat(),
+                    },
+                    "enrichment": {
+                        "course_parse": {
+                            "dept": "CSE",
+                            "number": 151,
+                            "suffix": "A",
+                            "quarter": "WI",
+                            "year2": 26,
+                            "confidence": 0.95,
+                            "evidence": "CSE 151A",
+                        }
+                    },
+                },
+            },
+            {
+                "record_type": "calendar.event.extracted",
+                "payload": {
+                    "uid": "ics-cse151b-variant",
+                    "title": "CSE 151B variant",
+                    "start_at": (due_at + timedelta(minutes=1)).isoformat(),
+                    "end_at": (end_at + timedelta(minutes=1)).isoformat(),
+                    "course_label": "CSE 151B WI26",
+                    "source_canonical": {
+                        "external_event_id": "ics-cse151b-variant",
+                        "source_title": "CSE 151B variant",
+                        "source_dtstart_utc": (due_at + timedelta(minutes=1)).isoformat(),
+                        "source_dtend_utc": (end_at + timedelta(minutes=1)).isoformat(),
+                    },
+                    "enrichment": {
+                        "course_parse": {
+                            "dept": "CSE",
+                            "number": 151,
+                            "suffix": "B",
+                            "quarter": "WI",
+                            "year2": 26,
+                            "confidence": 0.95,
+                            "evidence": "CSE 151B",
+                        }
+                    },
+                },
+            },
+        ],
+    )
+    apply_ingest_result_idempotent(db_session, request_id="linker-ambiguous-cal-1")
+    canonical_input_id = _canonical_input_id(db_session, user_id=calendar_source.user_id)
+    pending_rows = db_session.scalars(
+        select(Change)
+        .where(Change.input_id == canonical_input_id, Change.review_status == ReviewStatus.PENDING)
+        .order_by(Change.id.desc())
+    ).all()
+    assert pending_rows
+    for row in pending_rows:
+        decide_review_change(
+            db_session,
+            user_id=calendar_source.user_id,
+            change_id=row.id,
+            decision="approve",
+            note="approve seed",
+        )
+
+    # Suffix mismatch path -> candidate, no auto-link.
+    _seed_result(
+        db_session,
+        source=gmail_source,
+        request_id="linker-ambiguous-gmail-mismatch",
+        records=[
+            {
+                "record_type": "gmail.message.extracted",
+                "payload": {
+                    "message_id": "gmail-cse151c-mismatch",
+                    "subject": "CSE151C reminder",
+                    "event_type": "exam",
+                    "due_at": (due_at + timedelta(minutes=1)).isoformat(),
+                    "confidence": 0.92,
+                    "source_canonical": {
+                        "external_event_id": "gmail-cse151c-mismatch",
+                        "source_title": "CSE151C reminder",
+                        "source_dtstart_utc": (due_at + timedelta(minutes=1)).isoformat(),
+                        "source_dtend_utc": (end_at + timedelta(minutes=1)).isoformat(),
+                        "time_anchor_confidence": 0.92,
+                    },
+                    "enrichment": {
+                        "course_parse": {
+                            "dept": "CSE",
+                            "number": 151,
+                            "suffix": "C",
+                            "quarter": None,
+                            "year2": None,
+                            "confidence": 0.88,
+                            "evidence": "CSE151C",
+                        }
+                    },
+                },
+            }
+        ],
+    )
+    apply_ingest_result_idempotent(db_session, request_id="linker-ambiguous-gmail-mismatch")
+
+    mismatch_link = db_session.scalar(
+        select(EventEntityLink).where(
+            EventEntityLink.user_id == calendar_source.user_id,
+            EventEntityLink.source_id == gmail_source.id,
+            EventEntityLink.external_event_id == "gmail-cse151c-mismatch",
+        )
+    )
+    assert mismatch_link is None
+    mismatch_candidate = db_session.scalar(
+        select(EventLinkCandidate).where(
+            EventLinkCandidate.user_id == calendar_source.user_id,
+            EventLinkCandidate.source_id == gmail_source.id,
+            EventLinkCandidate.external_event_id == "gmail-cse151c-mismatch",
+            EventLinkCandidate.status == EventLinkCandidateStatus.PENDING,
+        )
+    )
+    assert mismatch_candidate is not None
+    assert isinstance(mismatch_candidate.score_breakdown_json, dict)
+    assert mismatch_candidate.score_breakdown_json.get("variant_ambiguous") is True
+    assert mismatch_candidate.score_breakdown_json.get("suffix_exact_required") is True
+
+    # Exact suffix path -> auto-link.
+    _seed_result(
+        db_session,
+        source=gmail_source,
+        request_id="linker-ambiguous-gmail-exact",
+        records=[
+            {
+                "record_type": "gmail.message.extracted",
+                "payload": {
+                    "message_id": "gmail-cse151b-exact",
+                    "subject": "CSE151B reminder",
+                    "event_type": "exam",
+                    "due_at": (due_at + timedelta(minutes=1)).isoformat(),
+                    "confidence": 0.92,
+                    "source_canonical": {
+                        "external_event_id": "gmail-cse151b-exact",
+                        "source_title": "CSE151B reminder",
+                        "source_dtstart_utc": (due_at + timedelta(minutes=1)).isoformat(),
+                        "source_dtend_utc": (end_at + timedelta(minutes=1)).isoformat(),
+                        "time_anchor_confidence": 0.92,
+                    },
+                    "enrichment": {
+                        "course_parse": {
+                            "dept": "CSE",
+                            "number": 151,
+                            "suffix": "B",
+                            "quarter": None,
+                            "year2": None,
+                            "confidence": 0.9,
+                            "evidence": "CSE151B",
+                        }
+                    },
+                },
+            }
+        ],
+    )
+    apply_ingest_result_idempotent(db_session, request_id="linker-ambiguous-gmail-exact")
+    exact_link = db_session.scalar(
+        select(EventEntityLink).where(
+            EventEntityLink.user_id == calendar_source.user_id,
+            EventEntityLink.source_id == gmail_source.id,
+            EventEntityLink.external_event_id == "gmail-cse151b-exact",
+        )
+    )
+    assert exact_link is not None
+    target_entity = db_session.scalar(
+        select(EventEntity).where(
+            EventEntity.user_id == calendar_source.user_id,
+            EventEntity.entity_uid == exact_link.entity_uid,
+        )
+    )
+    assert target_entity is not None
+    target_best = target_entity.course_best_json if isinstance(target_entity.course_best_json, dict) else {}
+    assert str(target_best.get("display_name") or "").startswith("CSE 151B")
 
 
 def test_blocked_pair_skips_candidate_creation(db_session: Session) -> None:

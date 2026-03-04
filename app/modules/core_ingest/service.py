@@ -952,10 +952,25 @@ def _link_gmail_observation_to_entity(
         source_id=source.id,
         external_event_id=external_event_id,
     )
+    variant_suffix_index = _build_variant_suffix_index(candidates)
+
+    incoming_dept = _coerce_text(course_parse.get("dept"))
+    incoming_number = course_parse.get("number") if isinstance(course_parse.get("number"), int) else None
+    incoming_suffix = _coerce_text(course_parse.get("suffix"))
+    incoming_has_anchor = incoming_dept is not None and isinstance(incoming_number, int)
+    incoming_variant_key = (incoming_dept, int(incoming_number)) if incoming_has_anchor else None
+    variant_suffixes = (
+        variant_suffix_index.get(incoming_variant_key, set()) if incoming_variant_key is not None else set()
+    )
+    variant_ambiguous = len(variant_suffixes) >= 2
 
     best_uid: str | None = None
     best_score = 0.0
     best_breakdown: dict = {"reason": "no_candidate_in_window"}
+    best_candidate_suffix: str | None = None
+    best_exact_suffix_uid: str | None = None
+    best_exact_suffix_score = 0.0
+    best_exact_suffix_breakdown: dict = {"reason": "no_exact_suffix_candidate"}
     blocked_hit = False
     for row in candidates:
         payload = row.event_payload if isinstance(row.event_payload, dict) else {}
@@ -987,10 +1002,17 @@ def _link_gmail_observation_to_entity(
             blocked_hit = True
             continue
 
+        candidate_suffix = _coerce_text(candidate_parse.get("suffix"))
         if score > best_score:
             best_score = score
             best_uid = row.merge_key
             best_breakdown = score_breakdown
+            best_candidate_suffix = candidate_suffix
+
+        if variant_ambiguous and incoming_suffix and candidate_suffix == incoming_suffix and score > best_exact_suffix_score:
+            best_exact_suffix_score = score
+            best_exact_suffix_uid = row.merge_key
+            best_exact_suffix_breakdown = score_breakdown
 
     if best_uid is None:
         reason = "blocked" if blocked_hit else "no_candidate_in_window"
@@ -1002,35 +1024,79 @@ def _link_gmail_observation_to_entity(
             reason_code=reason,
             score_breakdown={"reason": reason},
         )
-    incoming_has_anchor = (
-        _coerce_text(course_parse.get("dept")) is not None
-        and isinstance(course_parse.get("number"), int)
-    )
-    if incoming_has_anchor and best_score >= 0.85:
-        return _LinkDecision(
-            entity_uid=best_uid,
-            status="linked",
-            score=best_score,
-            candidate_entity_uid=best_uid,
-            reason_code="auto_link_threshold",
-            score_breakdown=best_breakdown,
-        )
-    if best_score >= 0.65:
+
+    if not incoming_has_anchor:
+        breakdown = dict(best_breakdown)
+        breakdown["missing_dept_or_number"] = True
+        breakdown["variant_ambiguous"] = variant_ambiguous
+        if variant_suffixes:
+            breakdown["variant_suffixes"] = sorted(variant_suffixes)
         return _LinkDecision(
             entity_uid=None,
             status="candidate",
             score=best_score,
             candidate_entity_uid=best_uid,
             reason_code=EventLinkCandidateReason.SCORE_BAND.value,
-            score_breakdown=best_breakdown,
+            score_breakdown=breakdown,
         )
+
+    if variant_ambiguous:
+        if not incoming_suffix:
+            breakdown = dict(best_breakdown)
+            breakdown["variant_ambiguous"] = True
+            breakdown["incoming_suffix_missing"] = True
+            breakdown["suffix_exact_required"] = True
+            breakdown["variant_suffixes"] = sorted(variant_suffixes)
+            return _LinkDecision(
+                entity_uid=None,
+                status="candidate",
+                score=best_score,
+                candidate_entity_uid=best_uid,
+                reason_code=EventLinkCandidateReason.SCORE_BAND.value,
+                score_breakdown=breakdown,
+            )
+
+        if best_exact_suffix_uid is None:
+            breakdown = dict(best_breakdown)
+            breakdown["variant_ambiguous"] = True
+            breakdown["suffix_exact_required"] = True
+            breakdown["suffix_mismatch"] = True
+            breakdown["incoming_suffix"] = incoming_suffix
+            breakdown["candidate_suffix"] = best_candidate_suffix
+            breakdown["variant_suffixes"] = sorted(variant_suffixes)
+            return _LinkDecision(
+                entity_uid=None,
+                status="candidate",
+                score=best_score,
+                candidate_entity_uid=best_uid,
+                reason_code=EventLinkCandidateReason.SCORE_BAND.value,
+                score_breakdown=breakdown,
+            )
+
+        breakdown = dict(best_exact_suffix_breakdown)
+        breakdown["variant_ambiguous"] = True
+        breakdown["suffix_exact_required"] = True
+        breakdown["incoming_suffix"] = incoming_suffix
+        breakdown["candidate_suffix"] = incoming_suffix
+        breakdown["variant_suffixes"] = sorted(variant_suffixes)
+        return _LinkDecision(
+            entity_uid=best_exact_suffix_uid,
+            status="linked",
+            score=best_exact_suffix_score,
+            candidate_entity_uid=best_exact_suffix_uid,
+            reason_code="auto_link_variant_suffix_exact",
+            score_breakdown=breakdown,
+        )
+
+    breakdown = dict(best_breakdown)
+    breakdown["variant_ambiguous"] = False
     return _LinkDecision(
-        entity_uid=None,
-        status="unlinked",
+        entity_uid=best_uid,
+        status="linked",
         score=best_score,
         candidate_entity_uid=best_uid,
-        reason_code="below_threshold",
-        score_breakdown=best_breakdown,
+        reason_code="auto_link_anchor_present",
+        score_breakdown=breakdown,
     )
 
 
@@ -1216,6 +1282,25 @@ def _blocked_entity_uid_set(
         for row in rows
         if isinstance(row.blocked_entity_uid, str) and row.blocked_entity_uid.strip()
     }
+
+
+def _build_variant_suffix_index(observations: list[SourceEventObservation]) -> dict[tuple[str, int], set[str]]:
+    index: dict[tuple[str, int], set[str]] = {}
+    for row in observations:
+        payload = row.event_payload if isinstance(row.event_payload, dict) else {}
+        course_parse = _extract_enrichment_course_parse(payload=payload)
+        dept = _coerce_text(course_parse.get("dept"))
+        number = course_parse.get("number")
+        suffix = _coerce_text(course_parse.get("suffix"))
+        if dept is None or not isinstance(number, int) or suffix is None:
+            continue
+        key = (dept, int(number))
+        bucket = index.get(key)
+        if bucket is None:
+            bucket = set()
+            index[key] = bucket
+        bucket.add(suffix)
+    return index
 
 
 def _score_link_candidate(
