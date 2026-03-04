@@ -13,6 +13,8 @@ from app.db.models import (
     EmailMessage,
     EmailRoute,
     EmailRuleLabel,
+    EventLinkCandidate,
+    EventLinkCandidateStatus,
     Event,
     IngestResult,
     IngestTriggerType,
@@ -30,6 +32,12 @@ from app.db.models import (
 )
 from app.modules.core_ingest.service import apply_ingest_result_idempotent
 from app.modules.review_changes.service import decide_review_change
+from tests.support.payload_builders import (
+    build_course_parse,
+    build_event_parts,
+    build_gmail_payload,
+    build_link_signals,
+)
 
 
 def _create_gmail_source(db_session) -> InputSource:
@@ -120,47 +128,59 @@ def test_apply_gmail_records_write_audit_tables_and_pending_change(db_session) -
     records = [
         {
             "record_type": "gmail.message.extracted",
-            "payload": {
-                "message_id": "gmail-msg-1",
-                "subject": "HW deadline extended",
-                "event_type": "deadline",
-                "due_at": "2026-03-03T23:59:00+00:00",
-                "confidence": 0.93,
-                "raw_extract": {"course_hint": "CSE 100", "location_text": "Gradescope"},
-                "enrichment": {
-                    "course_parse": {
-                        "dept": "CSE",
-                        "number": 100,
-                        "suffix": None,
-                        "quarter": None,
-                        "year2": None,
-                        "confidence": 0.9,
-                        "evidence": "CSE 100",
-                    }
-                },
-            },
+            "payload": build_gmail_payload(
+                message_id="gmail-msg-1",
+                title="HW deadline extended",
+                due_at=datetime(2026, 3, 3, 23, 59, tzinfo=timezone.utc),
+                time_anchor_confidence=0.93,
+                course_parse=build_course_parse(
+                    dept="CSE",
+                    number=100,
+                    suffix=None,
+                    quarter=None,
+                    year2=None,
+                    confidence=0.9,
+                    evidence="CSE 100",
+                ),
+                event_parts=build_event_parts(
+                    type="deadline",
+                    index=1,
+                    qualifier="hw",
+                    confidence=0.93,
+                    evidence="HW deadline",
+                ),
+                link_signals=build_link_signals(
+                    keywords=[],
+                    exam_sequence=None,
+                    location_text="Gradescope",
+                ),
+            ),
         },
         {
             "record_type": "gmail.message.extracted",
-            "payload": {
-                "message_id": "gmail-msg-2",
-                "subject": "Campus announcement",
-                "event_type": "announcement",
-                "due_at": None,
-                "confidence": 0.71,
-                "raw_extract": {},
-                "enrichment": {
-                    "course_parse": {
-                        "dept": None,
-                        "number": None,
-                        "suffix": None,
-                        "quarter": None,
-                        "year2": None,
-                        "confidence": 0.0,
-                        "evidence": "",
-                    }
-                },
-            },
+            "payload": build_gmail_payload(
+                message_id="gmail-msg-2",
+                title="Campus announcement",
+                due_at=None,
+                time_anchor_confidence=0.71,
+                course_parse=build_course_parse(
+                    dept=None,
+                    number=None,
+                    suffix=None,
+                    quarter=None,
+                    year2=None,
+                    confidence=0.0,
+                    evidence="",
+                ),
+                event_parts=build_event_parts(
+                    type="other",
+                    index=None,
+                    qualifier=None,
+                    confidence=0.71,
+                    evidence="announcement",
+                ),
+                link_signals=build_link_signals(),
+            ),
         },
     ]
     _create_gmail_request_and_result(
@@ -171,7 +191,7 @@ def test_apply_gmail_records_write_audit_tables_and_pending_change(db_session) -
     )
 
     applied = apply_ingest_result_idempotent(db_session, request_id="gmail-req-1")
-    assert applied["changes_created"] == 1
+    assert applied["changes_created"] == 0
     assert applied["idempotent_replay"] is False
     assert (
         db_session.scalar(
@@ -194,23 +214,22 @@ def test_apply_gmail_records_write_audit_tables_and_pending_change(db_session) -
     assert route_2 is not None and route_2.route == "archive"
 
     canonical_input_id = _canonical_input_id(db_session, user_id=source.user_id)
-    pending = db_session.scalar(
-        select(Change)
-        .where(Change.input_id == canonical_input_id, Change.review_status == ReviewStatus.PENDING)
-        .order_by(Change.id.desc())
-        .limit(1)
+    pending_count = db_session.scalar(
+        select(func.count(Change.id)).where(Change.input_id == canonical_input_id, Change.review_status == ReviewStatus.PENDING)
     )
-    assert pending is not None
-    assert pending.proposal_sources_json is not None
+    assert int(pending_count or 0) == 0
 
-    decide_review_change(
-        db_session,
-        user_id=source.user_id,
-        change_id=pending.id,
-        decision="approve",
-        note="approve gmail proposal",
+    candidate = db_session.scalar(
+        select(EventLinkCandidate).where(
+            EventLinkCandidate.user_id == source.user_id,
+            EventLinkCandidate.source_id == source.id,
+            EventLinkCandidate.external_event_id == "gmail-msg-1",
+            EventLinkCandidate.status == EventLinkCandidateStatus.PENDING,
+        )
     )
-    assert db_session.scalar(select(func.count(Event.id)).where(Event.input_id == canonical_input_id)) == 1
+    assert candidate is not None
+    assert isinstance(candidate.score_breakdown_json, dict)
+    assert candidate.score_breakdown_json.get("rule_reason") == "no_rule_match"
 
 
 def test_apply_gmail_records_extract_course_hint_from_subject_alias(db_session) -> None:
@@ -218,25 +237,29 @@ def test_apply_gmail_records_extract_course_hint_from_subject_alias(db_session) 
     records = [
         {
             "record_type": "gmail.message.extracted",
-            "payload": {
-                "message_id": "gmail-msg-alias",
-                "subject": "Re: Update cSe_8A hw1 deadline moved",
-                "event_type": "deadline",
-                "due_at": "2026-03-11T21:00:00+00:00",
-                "confidence": 0.88,
-                "raw_extract": {},
-                "enrichment": {
-                    "course_parse": {
-                        "dept": "CSE",
-                        "number": 8,
-                        "suffix": "A",
-                        "quarter": None,
-                        "year2": None,
-                        "confidence": 0.88,
-                        "evidence": "cSe_8A",
-                    }
-                },
-            },
+            "payload": build_gmail_payload(
+                message_id="gmail-msg-alias",
+                title="Re: Update cSe_8A hw1 deadline moved",
+                due_at=datetime(2026, 3, 11, 21, 0, tzinfo=timezone.utc),
+                time_anchor_confidence=0.88,
+                course_parse=build_course_parse(
+                    dept="CSE",
+                    number=8,
+                    suffix="A",
+                    quarter=None,
+                    year2=None,
+                    confidence=0.88,
+                    evidence="cSe_8A",
+                ),
+                event_parts=build_event_parts(
+                    type="deadline",
+                    index=1,
+                    qualifier="hw1",
+                    confidence=0.88,
+                    evidence="hw1 deadline moved",
+                ),
+                link_signals=build_link_signals(),
+            ),
         }
     ]
     _create_gmail_request_and_result(
@@ -247,15 +270,11 @@ def test_apply_gmail_records_extract_course_hint_from_subject_alias(db_session) 
     )
 
     applied = apply_ingest_result_idempotent(db_session, request_id="gmail-req-alias")
-    assert applied["changes_created"] == 1
+    assert applied["changes_created"] == 0
 
-    canonical_input_id = _canonical_input_id(db_session, user_id=source.user_id)
-    pending = db_session.scalar(
-        select(Change)
-        .where(Change.input_id == canonical_input_id, Change.review_status == ReviewStatus.PENDING)
-        .order_by(Change.id.desc())
-        .limit(1)
+    label = db_session.scalar(
+        select(EmailRuleLabel).where(EmailRuleLabel.email_id == "gmail-msg-alias")
     )
-    assert pending is not None
-    assert isinstance(pending.after_json, dict)
-    assert pending.after_json["course_label"] == "CSE 8A"
+    assert label is not None
+    hints = label.course_hints if isinstance(label.course_hints, list) else []
+    assert any(str(item).upper().startswith("CSE 8A") for item in hints)

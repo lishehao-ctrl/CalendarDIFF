@@ -43,12 +43,22 @@ def test_gmail_parser_retries_validation_error_then_succeeds(monkeypatch: pytest
                     "messages": [
                         {
                             "message_id": "msg-1",
-                            "subject": "HW due update",
-                            "event_type": "assignment",
                             "due_at": "2026-03-05T23:59:00-08:00",
-                            "confidence": 0.9,
-                            "raw_extract": {"deadline_text": "Mar 5 11:59pm"},
+                            "time_anchor_confidence": 0.9,
                             "course_parse": "bad",
+                            "event_parts": {
+                                "type": "deadline",
+                                "index": 1,
+                                "qualifier": "hw",
+                                "confidence": 0.9,
+                                "evidence": "Homework due",
+                            },
+                            "link_signals": {
+                                "keywords": [],
+                                "exam_sequence": None,
+                                "location_text": None,
+                                "instructor_hint": "staff@example.edu",
+                            },
                         }
                     ]
                 }
@@ -58,11 +68,8 @@ def test_gmail_parser_retries_validation_error_then_succeeds(monkeypatch: pytest
                 "messages": [
                     {
                         "message_id": "msg-1",
-                        "subject": "HW due update",
-                        "event_type": "assignment",
                         "due_at": "2026-03-05T23:59:00-08:00",
-                        "confidence": 0.9,
-                        "raw_extract": {"deadline_text": "Mar 5 11:59pm"},
+                        "time_anchor_confidence": 0.9,
                         "course_parse": {
                             "dept": "CSE",
                             "number": 8,
@@ -71,6 +78,19 @@ def test_gmail_parser_retries_validation_error_then_succeeds(monkeypatch: pytest
                             "year2": 26,
                             "confidence": 0.8,
                             "evidence": "CSE 8A WI26",
+                        },
+                        "event_parts": {
+                            "type": "deadline",
+                            "index": 1,
+                            "qualifier": "hw",
+                            "confidence": 0.9,
+                            "evidence": "Homework due",
+                        },
+                        "link_signals": {
+                            "keywords": [],
+                            "exam_sequence": None,
+                            "location_text": None,
+                            "instructor_hint": "staff@example.edu",
                         },
                     }
                 ]
@@ -84,6 +104,9 @@ def test_gmail_parser_retries_validation_error_then_succeeds(monkeypatch: pytest
     assert parsed.parser_name == "gmail_v2_llm"
     assert len(parsed.records) == 1
     assert parsed.records[0]["record_type"] == "gmail.message.extracted"
+    parsed_payload = parsed.records[0]["payload"]
+    assert set(parsed_payload.keys()) == {"message_id", "source_canonical", "enrichment"}
+    assert parsed_payload["enrichment"]["payload_schema_version"] == "obs_v3"
 
 
 def test_calendar_parser_retries_validation_error_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -115,6 +138,19 @@ def test_calendar_parser_retries_validation_error_then_succeeds(monkeypatch: pyt
                         "year2": None,
                         "confidence": 0.9,
                         "evidence": "CSE 8A",
+                    },
+                    "event_parts": {
+                        "type": "lecture",
+                        "index": 1,
+                        "qualifier": None,
+                        "confidence": 0.8,
+                        "evidence": "Lab",
+                    },
+                    "link_signals": {
+                        "keywords": [],
+                        "exam_sequence": None,
+                        "location_text": None,
+                        "instructor_hint": None,
                     }
                 }
             )
@@ -128,7 +164,20 @@ def test_calendar_parser_retries_validation_error_then_succeeds(monkeypatch: pyt
                     "year2": None,
                     "confidence": 0.9,
                     "evidence": "CSE 8A",
-                }
+                },
+                "event_parts": {
+                    "type": "lecture",
+                    "index": 1,
+                    "qualifier": None,
+                    "confidence": 0.8,
+                    "evidence": "Lab",
+                },
+                "link_signals": {
+                    "keywords": [],
+                    "exam_sequence": None,
+                    "location_text": None,
+                    "instructor_hint": None,
+                },
             }
         )
 
@@ -143,6 +192,7 @@ def test_calendar_parser_retries_validation_error_then_succeeds(monkeypatch: pyt
     assert isinstance(payload.get("source_canonical"), dict)
     assert isinstance(payload.get("enrichment"), dict)
     assert payload["enrichment"]["course_parse"]["dept"] == "CSE"
+    assert payload["enrichment"]["payload_schema_version"] == "obs_v3"
 
 
 def test_gmail_parser_exhausts_validation_retries(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -166,12 +216,22 @@ def test_gmail_parser_exhausts_validation_retries(monkeypatch: pytest.MonkeyPatc
                 "messages": [
                     {
                         "message_id": "msg-2",
-                        "subject": "Exam reminder",
-                        "event_type": "exam",
                         "due_at": None,
-                        "confidence": 0.8,
-                        "raw_extract": {"snippet": "Exam reminder"},
+                        "time_anchor_confidence": 0.8,
                         "course_parse": "still-not-object",
+                        "event_parts": {
+                            "type": "exam",
+                            "index": 1,
+                            "qualifier": None,
+                            "confidence": 0.8,
+                            "evidence": "Exam reminder",
+                        },
+                        "link_signals": {
+                            "keywords": ["exam"],
+                            "exam_sequence": 1,
+                            "location_text": None,
+                            "instructor_hint": None,
+                        },
                     }
                 ]
             }
@@ -215,7 +275,20 @@ def test_calendar_parser_exhausts_validation_retries_raises_schema_error(
                     "year2": None,
                     "confidence": 0.7,
                     "evidence": "Project",
-                }
+                },
+                "event_parts": {
+                    "type": "project",
+                    "index": 1,
+                    "qualifier": None,
+                    "confidence": 0.8,
+                    "evidence": "Project update",
+                },
+                "link_signals": {
+                    "keywords": [],
+                    "exam_sequence": None,
+                    "location_text": None,
+                    "instructor_hint": None,
+                },
             }
         )
 

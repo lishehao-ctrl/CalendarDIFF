@@ -4,9 +4,7 @@ import hashlib
 import json
 import logging
 import re
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -42,12 +40,17 @@ from app.db.models import (
     SourceKind,
     SyncRequest,
     SyncRequestStatus,
-    User,
 )
+from app.modules.core_ingest.linking_rules import LinkDecision, decide_inventory_link
 from app.modules.core_ingest.merge_engine import (
     build_merge_key,
     choose_primary_observation,
     normalize_topic_signature,
+)
+from app.modules.core_ingest.payload_contracts import (
+    PayloadContractError,
+    validate_calendar_payload_v3,
+    validate_gmail_payload_v3,
 )
 from app.modules.ingestion.ics_delta import external_event_id_from_component_key
 from app.modules.sync.email_rules import ACTIONABLE_EVENT_TYPES
@@ -56,16 +59,6 @@ from app.modules.sync.types import CanonicalEventInput
 GMAIL_EVENT_TYPES = ACTIONABLE_EVENT_TYPES | {"announcement", "grade", "other"}
 EMAIL_EVENT_KEYS = sorted(ACTIONABLE_EVENT_TYPES | {"announcement", "grade", "other"})
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class _LinkDecision:
-    entity_uid: str | None
-    status: str
-    score: float
-    candidate_entity_uid: str | None
-    reason_code: str | None
-    score_breakdown: dict
 
 
 def get_ingest_apply_status(db: Session, *, request_id: str) -> dict:
@@ -233,6 +226,11 @@ def _apply_calendar_observations(
             if record_type == "calendar.event.extracted":
                 raise RuntimeError(f"calendar record payload at index {index} must be object")
             continue
+        if record_type == "calendar.event.extracted":
+            try:
+                validate_calendar_payload_v3(payload=payload, record_index=index)
+            except PayloadContractError as exc:
+                raise RuntimeError(str(exc)) from exc
 
         if record_type == "calendar.event.removed":
             delta_mode = True
@@ -250,7 +248,7 @@ def _apply_calendar_observations(
             )
             continue
 
-        event = _coerce_calendar_payload(payload=payload, source_id=source.id, fallback_index=index)
+        event = _coerce_calendar_payload(payload=payload)
         resolved_external_event_id = _resolve_calendar_external_event_id(payload=payload)
         external_event_id = resolved_external_event_id or event.uid
         if resolved_external_event_id is not None:
@@ -259,13 +257,13 @@ def _apply_calendar_observations(
             delta_mode = True
         source_canonical = _extract_source_canonical_from_calendar_payload(
             payload=payload,
-            fallback_title=event.title,
-            fallback_start=event.start_at_utc,
-            fallback_end=event.end_at_utc,
             external_event_id=external_event_id,
         )
         course_parse = _extract_enrichment_course_parse(payload=payload)
-        confidence = float(course_parse.get("confidence") or 0.0)
+        event_parts = _extract_enrichment_event_parts(payload=payload)
+        link_signals = _extract_link_signals(payload=payload, source_canonical=source_canonical)
+        confidence = float(course_parse.get("confidence") or event_parts.get("confidence") or 0.0)
+        event_type = _coerce_text(event_parts.get("type")) or "other"
         entity_uid = build_merge_key(
             course_label=None,
             title=None,
@@ -301,10 +299,13 @@ def _apply_calendar_observations(
             "end_at_utc": end_iso,
             "confidence": confidence,
             "raw_confidence": confidence,
-            "event_type": "event",
+            "event_type": event_type,
             "source_canonical": source_canonical,
             "enrichment": {
                 "course_parse": course_parse,
+                "event_parts": event_parts,
+                "link_signals": link_signals,
+                "payload_schema_version": "obs_v3",
             },
         }
         seen_external_ids.add(external_event_id)
@@ -360,7 +361,6 @@ def _apply_gmail_observations(
     request_id: str,
 ) -> set[str]:
     affected_entity_uids: set[str] = set()
-    timezone_name = _resolve_user_timezone_name(db=db, user_id=source.user_id)
 
     for index, record in enumerate(records):
         if not isinstance(record, dict) or record.get("record_type") != "gmail.message.extracted":
@@ -368,14 +368,18 @@ def _apply_gmail_observations(
         payload = record.get("payload")
         if not isinstance(payload, dict):
             continue
+        try:
+            validate_gmail_payload_v3(payload=payload, record_index=index)
+        except PayloadContractError as exc:
+            raise RuntimeError(str(exc)) from exc
 
         message_id = payload.get("message_id")
         if not isinstance(message_id, str) or not message_id.strip():
             continue
         external_event_id = message_id.strip()
 
-        event_type_raw = payload.get("event_type")
-        event_type = event_type_raw.strip().lower() if isinstance(event_type_raw, str) and event_type_raw.strip() else None
+        event_parts = _extract_enrichment_event_parts(payload=payload)
+        event_type = _coerce_text(event_parts.get("type"))
         source_canonical = _extract_source_canonical_from_gmail_payload(payload=payload)
         due_at = _parse_optional_iso_datetime(source_canonical.get("source_dtstart_utc"))
         is_actionable_type = event_type in ACTIONABLE_EVENT_TYPES
@@ -393,22 +397,20 @@ def _apply_gmail_observations(
             continue
 
         course_parse = _extract_enrichment_course_parse(payload=payload)
+        event_parts = _extract_enrichment_event_parts(payload=payload)
         link_signals = _extract_link_signals(
             payload=payload,
             source_canonical=source_canonical,
-            fallback_title=str(source_canonical.get("source_title") or ""),
         )
-        confidence_raw = payload.get("confidence")
-        confidence = float(confidence_raw) if isinstance(confidence_raw, (int, float)) else float(course_parse.get("confidence") or 0.0)
+        confidence = float(course_parse.get("confidence") or 0.0)
         if due_at is None:
             link_decision = _link_gmail_observation_to_entity(
                 db=db,
                 source=source,
                 external_event_id=external_event_id,
-                due_at=None,
-                timezone_name=timezone_name,
                 course_parse=course_parse,
-                confidence=confidence,
+                event_parts=event_parts,
+                time_anchor_confidence=float(source_canonical.get("time_anchor_confidence") or confidence),
                 signals=link_signals,
             )
             if link_decision.status == "candidate":
@@ -451,7 +453,7 @@ def _apply_gmail_observations(
             external_event_id=external_event_id,
         )
         if existing_link is not None:
-            link_decision = _LinkDecision(
+            link_decision = LinkDecision(
                 entity_uid=existing_link.entity_uid,
                 status="linked",
                 score=float(existing_link.link_score or 1.0),
@@ -464,10 +466,9 @@ def _apply_gmail_observations(
                 db=db,
                 source=source,
                 external_event_id=external_event_id,
-                due_at=due_at,
-                timezone_name=timezone_name,
                 course_parse=course_parse,
-                confidence=confidence,
+                event_parts=event_parts,
+                time_anchor_confidence=float(source_canonical.get("time_anchor_confidence") or confidence),
                 signals=link_signals,
             )
 
@@ -574,23 +575,28 @@ def _apply_gmail_observations(
 def _extract_source_canonical_from_calendar_payload(
     *,
     payload: dict,
-    fallback_title: str,
-    fallback_start: datetime,
-    fallback_end: datetime,
     external_event_id: str,
 ) -> dict:
-    raw = payload.get("source_canonical") if isinstance(payload.get("source_canonical"), dict) else {}
-    source_title = raw.get("source_title") if isinstance(raw.get("source_title"), str) else fallback_title
-    source_summary = raw.get("source_summary") if isinstance(raw.get("source_summary"), str) else source_title
-    source_dtstart = raw.get("source_dtstart_utc") if isinstance(raw.get("source_dtstart_utc"), str) else fallback_start.isoformat()
-    source_dtend = raw.get("source_dtend_utc") if isinstance(raw.get("source_dtend_utc"), str) else fallback_end.isoformat()
+    raw = payload.get("source_canonical") if isinstance(payload.get("source_canonical"), dict) else None
+    if raw is None:
+        raise RuntimeError("core_ingest_payload_invalid: calendar payload missing source_canonical")
+    source_title = raw.get("source_title")
+    source_summary = raw.get("source_summary")
+    source_dtstart = raw.get("source_dtstart_utc")
+    source_dtend = raw.get("source_dtend_utc")
+    if not isinstance(source_title, str) or not source_title.strip():
+        raise RuntimeError("core_ingest_payload_invalid: calendar payload missing source_canonical.source_title")
+    if not isinstance(source_dtstart, str) or not source_dtstart.strip():
+        raise RuntimeError("core_ingest_payload_invalid: calendar payload missing source_canonical.source_dtstart_utc")
+    if not isinstance(source_dtend, str) or not source_dtend.strip():
+        raise RuntimeError("core_ingest_payload_invalid: calendar payload missing source_canonical.source_dtend_utc")
     return {
         "external_event_id": external_event_id,
         "component_key": raw.get("component_key") if isinstance(raw.get("component_key"), str) else payload.get("component_key"),
-        "source_title": source_title[:512],
+        "source_title": source_title.strip()[:512],
         "source_summary": source_summary[:1024] if isinstance(source_summary, str) else None,
-        "source_dtstart_utc": source_dtstart,
-        "source_dtend_utc": source_dtend,
+        "source_dtstart_utc": source_dtstart.strip(),
+        "source_dtend_utc": source_dtend.strip(),
         "status": raw.get("status") if isinstance(raw.get("status"), str) else None,
         "location": raw.get("location") if isinstance(raw.get("location"), str) else None,
         "organizer": raw.get("organizer") if isinstance(raw.get("organizer"), str) else None,
@@ -598,78 +604,75 @@ def _extract_source_canonical_from_calendar_payload(
 
 
 def _extract_source_canonical_from_gmail_payload(*, payload: dict) -> dict:
-    raw = payload.get("source_canonical") if isinstance(payload.get("source_canonical"), dict) else {}
-    message_id = payload.get("message_id") if isinstance(payload.get("message_id"), str) else None
-    subject = payload.get("subject") if isinstance(payload.get("subject"), str) else None
-    snippet = payload.get("snippet") if isinstance(payload.get("snippet"), str) else None
-    from_header = payload.get("from_header") if isinstance(payload.get("from_header"), str) else None
-    thread_id = payload.get("thread_id") if isinstance(payload.get("thread_id"), str) else None
-    internal_date = payload.get("internal_date") if isinstance(payload.get("internal_date"), str) else None
-    due_at = payload.get("due_at") if isinstance(payload.get("due_at"), str) else None
-    parsed_due_at = _parse_optional_iso_datetime(due_at or raw.get("source_dtstart_utc"))
+    raw = payload.get("source_canonical") if isinstance(payload.get("source_canonical"), dict) else None
+    if raw is None:
+        raise RuntimeError("core_ingest_payload_invalid: gmail payload missing source_canonical")
+    parsed_due_at = _parse_optional_iso_datetime(raw.get("source_dtstart_utc"))
     parsed_end = _parse_optional_iso_datetime(raw.get("source_dtend_utc"))
     if parsed_due_at is not None and parsed_end is None:
         parsed_end = parsed_due_at + timedelta(hours=1)
+    source_title = raw.get("source_title")
+    if not isinstance(source_title, str) or not source_title.strip():
+        raise RuntimeError("core_ingest_payload_invalid: gmail payload missing source_canonical.source_title")
+    external_event_id = raw.get("external_event_id")
+    if not isinstance(external_event_id, str) or not external_event_id.strip():
+        raise RuntimeError("core_ingest_payload_invalid: gmail payload missing source_canonical.external_event_id")
     return {
-        "external_event_id": message_id,
-        "source_title": (raw.get("source_title") if isinstance(raw.get("source_title"), str) else subject or "Untitled")[:512],
-        "source_summary": raw.get("source_summary") if isinstance(raw.get("source_summary"), str) else snippet,
+        "external_event_id": external_event_id.strip(),
+        "source_title": source_title.strip()[:512],
+        "source_summary": raw.get("source_summary") if isinstance(raw.get("source_summary"), str) else None,
         "source_dtstart_utc": parsed_due_at.isoformat() if parsed_due_at is not None else None,
         "source_dtend_utc": parsed_end.isoformat() if parsed_end is not None else None,
         "time_anchor_confidence": float(raw.get("time_anchor_confidence"))
         if isinstance(raw.get("time_anchor_confidence"), (int, float))
-        else float(payload.get("confidence"))
-        if isinstance(payload.get("confidence"), (int, float))
         else 0.0,
-        "from_header": raw.get("from_header") if isinstance(raw.get("from_header"), str) else from_header,
-        "thread_id": raw.get("thread_id") if isinstance(raw.get("thread_id"), str) else thread_id,
-        "internal_date": raw.get("internal_date") if isinstance(raw.get("internal_date"), str) else internal_date,
+        "from_header": raw.get("from_header") if isinstance(raw.get("from_header"), str) else None,
+        "thread_id": raw.get("thread_id") if isinstance(raw.get("thread_id"), str) else None,
+        "internal_date": raw.get("internal_date") if isinstance(raw.get("internal_date"), str) else None,
     }
 
 
 def _extract_enrichment_course_parse(*, payload: dict) -> dict:
-    enrichment = payload.get("enrichment") if isinstance(payload.get("enrichment"), dict) else {}
+    enrichment = payload.get("enrichment") if isinstance(payload.get("enrichment"), dict) else None
+    if enrichment is None:
+        raise RuntimeError("core_ingest_payload_invalid: payload missing enrichment")
     raw_course_parse = enrichment.get("course_parse")
-    if raw_course_parse is None and isinstance(payload.get("course_parse"), dict):
-        raw_course_parse = payload.get("course_parse")
+    if not isinstance(raw_course_parse, dict):
+        raise RuntimeError("core_ingest_payload_invalid: payload missing enrichment.course_parse")
     return _normalize_course_parse(raw_course_parse)
+
+
+def _extract_enrichment_event_parts(*, payload: dict) -> dict:
+    enrichment = payload.get("enrichment") if isinstance(payload.get("enrichment"), dict) else None
+    if enrichment is None:
+        raise RuntimeError("core_ingest_payload_invalid: payload missing enrichment")
+    raw_event_parts = enrichment.get("event_parts")
+    if not isinstance(raw_event_parts, dict):
+        raise RuntimeError("core_ingest_payload_invalid: payload missing enrichment.event_parts")
+    return _normalize_event_parts(raw_event_parts)
 
 
 def _extract_link_signals(
     *,
     payload: dict,
     source_canonical: dict,
-    fallback_title: str,
 ) -> dict:
-    enrichment = payload.get("enrichment") if isinstance(payload.get("enrichment"), dict) else {}
-    raw_signals = enrichment.get("link_signals") if isinstance(enrichment.get("link_signals"), dict) else {}
-
-    source_summary = _coerce_text(source_canonical.get("source_summary")) or _coerce_text(payload.get("snippet"))
-    title = _coerce_text(source_canonical.get("source_title")) or _coerce_text(fallback_title) or ""
-    combined_text = " ".join(item for item in [title, source_summary] if item).strip()
-
+    enrichment = payload.get("enrichment") if isinstance(payload.get("enrichment"), dict) else None
+    if enrichment is None:
+        raise RuntimeError("core_ingest_payload_invalid: payload missing enrichment")
+    raw_signals = enrichment.get("link_signals")
+    if not isinstance(raw_signals, dict):
+        raise RuntimeError("core_ingest_payload_invalid: payload missing enrichment.link_signals")
+    title = _coerce_text(source_canonical.get("source_title")) or ""
     keywords = _normalize_keyword_list(raw_signals.get("keywords"))
-    if not keywords:
-        keywords = _keywords_from_text(combined_text)
-
     exam_sequence = _coerce_exam_sequence(raw_signals.get("exam_sequence"))
-    if exam_sequence is None:
-        exam_sequence = _extract_exam_sequence(combined_text)
-
-    location_text = (
-        _coerce_text(raw_signals.get("location_text"))
-        or _coerce_text(source_canonical.get("location"))
-        or _coerce_text(payload.get("location_text"))
-        or _coerce_text((payload.get("raw_extract") or {}).get("location_text") if isinstance(payload.get("raw_extract"), dict) else None)
-    )
-    instructor_hint = _coerce_text(raw_signals.get("instructor_hint")) or _coerce_text(source_canonical.get("from_header")) or _coerce_text(payload.get("from_header"))
-    from_header = _coerce_text(source_canonical.get("from_header")) or _coerce_text(payload.get("from_header"))
+    location_text = _coerce_text(raw_signals.get("location_text")) or _coerce_text(source_canonical.get("location"))
+    instructor_hint = _coerce_text(raw_signals.get("instructor_hint")) or _coerce_text(source_canonical.get("from_header")) or _coerce_text(source_canonical.get("organizer"))
+    from_header = _coerce_text(source_canonical.get("from_header"))
     organizer = _coerce_text(source_canonical.get("organizer"))
-    thread_id = _coerce_text(source_canonical.get("thread_id")) or _coerce_text(payload.get("thread_id"))
+    thread_id = _coerce_text(source_canonical.get("thread_id"))
 
     time_anchor_confidence = source_canonical.get("time_anchor_confidence")
-    if not isinstance(time_anchor_confidence, (int, float)):
-        time_anchor_confidence = payload.get("confidence")
     normalized_conf = float(time_anchor_confidence) if isinstance(time_anchor_confidence, (int, float)) else 0.0
     normalized_conf = max(0.0, min(1.0, normalized_conf))
 
@@ -704,15 +707,6 @@ def _normalize_keyword_list(raw: object) -> list[str]:
     return out
 
 
-def _keywords_from_text(text: str) -> list[str]:
-    lowered = (text or "").lower()
-    out: list[str] = []
-    for token in ("exam", "midterm", "final"):
-        if token in lowered:
-            out.append(token)
-    return out
-
-
 def _coerce_exam_sequence(value: object) -> int | None:
     if isinstance(value, int) and value > 0:
         return value
@@ -720,17 +714,6 @@ def _coerce_exam_sequence(value: object) -> int | None:
         parsed = int(value.strip())
         return parsed if parsed > 0 else None
     return None
-
-
-def _extract_exam_sequence(text: str) -> int | None:
-    match = re.search(r"\\bexam\\s*([0-9]+)\\b", text, flags=re.I)
-    if match is None:
-        return None
-    try:
-        value = int(match.group(1))
-    except Exception:
-        return None
-    return value if value > 0 else None
 
 
 def _normalize_course_parse(raw: object) -> dict:
@@ -761,6 +744,38 @@ def _normalize_course_parse(raw: object) -> dict:
         "quarter": normalized_quarter,
         "year2": normalized_year2,
         "confidence": normalized_conf,
+        "evidence": normalized_evidence,
+    }
+
+
+def _normalize_event_parts(raw: object) -> dict:
+    if not isinstance(raw, dict):
+        return {
+            "type": None,
+            "index": None,
+            "qualifier": None,
+            "confidence": 0.0,
+            "evidence": "",
+        }
+    type_value = raw.get("type")
+    index_value = raw.get("index")
+    qualifier_value = raw.get("qualifier")
+    confidence_value = raw.get("confidence")
+    evidence_value = raw.get("evidence")
+
+    normalized_type = type_value.strip().lower() if isinstance(type_value, str) and type_value.strip() else None
+    if normalized_type not in {"exam", "deadline", "quiz", "project", "lecture", "other"}:
+        normalized_type = None
+    normalized_index = int(index_value) if isinstance(index_value, int) and int(index_value) > 0 else None
+    normalized_qualifier = qualifier_value.strip().lower()[:128] if isinstance(qualifier_value, str) and qualifier_value.strip() else None
+    normalized_confidence = float(confidence_value) if isinstance(confidence_value, (int, float)) else 0.0
+    normalized_confidence = max(0.0, min(1.0, normalized_confidence))
+    normalized_evidence = evidence_value.strip()[:120] if isinstance(evidence_value, str) else ""
+    return {
+        "type": normalized_type,
+        "index": normalized_index,
+        "qualifier": normalized_qualifier,
+        "confidence": normalized_confidence,
         "evidence": normalized_evidence,
     }
 
@@ -900,220 +915,43 @@ def _link_gmail_observation_to_entity(
     db: Session,
     source: InputSource,
     external_event_id: str,
-    due_at: datetime | None,
-    timezone_name: str,
     course_parse: dict,
-    confidence: float,
+    event_parts: dict,
+    time_anchor_confidence: float,
     signals: dict,
-) -> _LinkDecision:
-    if due_at is None:
-        return _LinkDecision(
-            entity_uid=None,
-            status="candidate",
-            score=0.0,
-            candidate_entity_uid=None,
-            reason_code=EventLinkCandidateReason.NO_TIME_ANCHOR.value,
-            score_breakdown={"reason": EventLinkCandidateReason.NO_TIME_ANCHOR.value},
-        )
-    time_anchor_confidence = float(signals.get("time_anchor_confidence")) if isinstance(signals.get("time_anchor_confidence"), (int, float)) else float(confidence)
-    if time_anchor_confidence < 0.5:
-        return _LinkDecision(
-            entity_uid=None,
-            status="candidate",
-            score=0.0,
-            candidate_entity_uid=None,
-            reason_code=EventLinkCandidateReason.LOW_CONFIDENCE.value,
-            score_breakdown={
-                "reason": EventLinkCandidateReason.LOW_CONFIDENCE.value,
-                "time_anchor_confidence": round(float(time_anchor_confidence), 4),
-            },
-        )
-
-    candidates = db.scalars(
-        select(SourceEventObservation).where(
-            SourceEventObservation.user_id == source.user_id,
-            SourceEventObservation.source_kind == SourceKind.CALENDAR,
-            SourceEventObservation.is_active.is_(True),
-        )
-    ).all()
-    if not candidates:
-        return _LinkDecision(
-            entity_uid=None,
-            status="unlinked",
-            score=0.0,
-            candidate_entity_uid=None,
-            reason_code="no_candidates",
-            score_breakdown={"reason": "no_candidates"},
-        )
-
+) -> LinkDecision:
     blocked_entity_uids = _blocked_entity_uid_set(
         db=db,
         user_id=source.user_id,
         source_id=source.id,
         external_event_id=external_event_id,
     )
-    variant_suffix_index = _build_variant_suffix_index(candidates)
-
-    incoming_dept = _coerce_text(course_parse.get("dept"))
-    incoming_number = course_parse.get("number") if isinstance(course_parse.get("number"), int) else None
-    incoming_suffix = _coerce_text(course_parse.get("suffix"))
-    incoming_has_anchor = incoming_dept is not None and isinstance(incoming_number, int)
-    incoming_variant_key = (incoming_dept, int(incoming_number)) if incoming_has_anchor else None
-    variant_suffixes = (
-        variant_suffix_index.get(incoming_variant_key, set()) if incoming_variant_key is not None else set()
+    decision = decide_inventory_link(
+        db,
+        source=source,
+        external_event_id=external_event_id,
+        course_parse=course_parse,
+        event_parts=event_parts,
+        time_anchor_confidence=time_anchor_confidence,
+        blocked_entity_uids=blocked_entity_uids,
     )
-    variant_ambiguous = len(variant_suffixes) >= 2
-
-    best_uid: str | None = None
-    best_score = 0.0
-    best_breakdown: dict = {"reason": "no_candidate_in_window"}
-    best_candidate_suffix: str | None = None
-    best_exact_suffix_uid: str | None = None
-    best_exact_suffix_score = 0.0
-    best_exact_suffix_breakdown: dict = {"reason": "no_exact_suffix_candidate"}
-    blocked_hit = False
-    for row in candidates:
-        payload = row.event_payload if isinstance(row.event_payload, dict) else {}
-        source_canonical = payload.get("source_canonical") if isinstance(payload.get("source_canonical"), dict) else {}
-        candidate_start = _parse_optional_iso_datetime(source_canonical.get("source_dtstart_utc") or payload.get("start_at_utc"))
-        if candidate_start is None:
-            continue
-        if not _same_local_day(due_at, candidate_start, timezone_name=timezone_name):
-            continue
-        delta_minutes = abs((candidate_start - due_at).total_seconds()) / 60.0
-        if delta_minutes > 30:
-            continue
-
-        candidate_parse = _extract_enrichment_course_parse(payload=payload)
-        candidate_signals = _extract_link_signals(
-            payload=payload,
-            source_canonical=source_canonical,
-            fallback_title=str(source_canonical.get("source_title") or payload.get("title") or ""),
-        )
-        score_breakdown = _score_link_candidate(
-            delta_minutes=delta_minutes,
-            incoming_parse=course_parse,
-            candidate_parse=candidate_parse,
-            incoming_signals=signals,
-            candidate_signals=candidate_signals,
-        )
-        score = float(score_breakdown.get("total") or 0.0)
-        if row.merge_key in blocked_entity_uids:
-            blocked_hit = True
-            continue
-
-        candidate_suffix = _coerce_text(candidate_parse.get("suffix"))
-        if score > best_score:
-            best_score = score
-            best_uid = row.merge_key
-            best_breakdown = score_breakdown
-            best_candidate_suffix = candidate_suffix
-
-        if variant_ambiguous and incoming_suffix and candidate_suffix == incoming_suffix and score > best_exact_suffix_score:
-            best_exact_suffix_score = score
-            best_exact_suffix_uid = row.merge_key
-            best_exact_suffix_breakdown = score_breakdown
-
-    if best_uid is None:
-        reason = "blocked" if blocked_hit else "no_candidate_in_window"
-        return _LinkDecision(
-            entity_uid=None,
-            status="unlinked",
-            score=0.0,
-            candidate_entity_uid=None,
-            reason_code=reason,
-            score_breakdown={"reason": reason},
-        )
-
-    if not incoming_has_anchor:
-        breakdown = dict(best_breakdown)
-        breakdown["missing_dept_or_number"] = True
-        breakdown["variant_ambiguous"] = variant_ambiguous
-        if variant_suffixes:
-            breakdown["variant_suffixes"] = sorted(variant_suffixes)
-        return _LinkDecision(
-            entity_uid=None,
-            status="candidate",
-            score=best_score,
-            candidate_entity_uid=best_uid,
-            reason_code=EventLinkCandidateReason.SCORE_BAND.value,
-            score_breakdown=breakdown,
-        )
-
-    if variant_ambiguous:
-        if not incoming_suffix:
-            breakdown = dict(best_breakdown)
-            breakdown["variant_ambiguous"] = True
-            breakdown["incoming_suffix_missing"] = True
-            breakdown["suffix_exact_required"] = True
-            breakdown["variant_suffixes"] = sorted(variant_suffixes)
-            return _LinkDecision(
-                entity_uid=None,
-                status="candidate",
-                score=best_score,
-                candidate_entity_uid=best_uid,
-                reason_code=EventLinkCandidateReason.SCORE_BAND.value,
-                score_breakdown=breakdown,
-            )
-
-        if best_exact_suffix_uid is None:
-            breakdown = dict(best_breakdown)
-            breakdown["variant_ambiguous"] = True
-            breakdown["suffix_exact_required"] = True
-            breakdown["suffix_mismatch"] = True
-            breakdown["incoming_suffix"] = incoming_suffix
-            breakdown["candidate_suffix"] = best_candidate_suffix
-            breakdown["variant_suffixes"] = sorted(variant_suffixes)
-            return _LinkDecision(
-                entity_uid=None,
-                status="candidate",
-                score=best_score,
-                candidate_entity_uid=best_uid,
-                reason_code=EventLinkCandidateReason.SCORE_BAND.value,
-                score_breakdown=breakdown,
-            )
-
-        breakdown = dict(best_exact_suffix_breakdown)
-        breakdown["variant_ambiguous"] = True
-        breakdown["suffix_exact_required"] = True
-        breakdown["incoming_suffix"] = incoming_suffix
-        breakdown["candidate_suffix"] = incoming_suffix
-        breakdown["variant_suffixes"] = sorted(variant_suffixes)
-        return _LinkDecision(
-            entity_uid=best_exact_suffix_uid,
-            status="linked",
-            score=best_exact_suffix_score,
-            candidate_entity_uid=best_exact_suffix_uid,
-            reason_code="auto_link_variant_suffix_exact",
-            score_breakdown=breakdown,
-        )
-
-    breakdown = dict(best_breakdown)
-    breakdown["variant_ambiguous"] = False
-    return _LinkDecision(
-        entity_uid=best_uid,
-        status="linked",
-        score=best_score,
-        candidate_entity_uid=best_uid,
-        reason_code="auto_link_anchor_present",
+    breakdown = dict(decision.score_breakdown)
+    breakdown["incoming_signals"] = {
+        "keywords": signals.get("keywords"),
+        "exam_sequence": signals.get("exam_sequence"),
+        "instructor_hint": signals.get("instructor_hint"),
+        "location_text": signals.get("location_text"),
+        "from_header": signals.get("from_header"),
+        "thread_id": signals.get("thread_id"),
+    }
+    return LinkDecision(
+        entity_uid=decision.entity_uid,
+        status=decision.status,
+        score=decision.score,
+        candidate_entity_uid=decision.candidate_entity_uid,
+        reason_code=decision.reason_code,
         score_breakdown=breakdown,
     )
-
-
-def _resolve_user_timezone_name(*, db: Session, user_id: int) -> str:
-    row = db.get(User, user_id)
-    timezone_name = row.timezone_name if row is not None else None
-    if isinstance(timezone_name, str) and timezone_name.strip():
-        return timezone_name.strip()
-    return "UTC"
-
-
-def _same_local_day(left: datetime, right: datetime, *, timezone_name: str) -> bool:
-    try:
-        tz = ZoneInfo(timezone_name)
-    except Exception:
-        tz = timezone.utc
-    return left.astimezone(tz).date() == right.astimezone(tz).date()
 
 
 def _find_existing_entity_link(
@@ -1284,224 +1122,6 @@ def _blocked_entity_uid_set(
     }
 
 
-def _build_variant_suffix_index(observations: list[SourceEventObservation]) -> dict[tuple[str, int], set[str]]:
-    index: dict[tuple[str, int], set[str]] = {}
-    for row in observations:
-        payload = row.event_payload if isinstance(row.event_payload, dict) else {}
-        course_parse = _extract_enrichment_course_parse(payload=payload)
-        dept = _coerce_text(course_parse.get("dept"))
-        number = course_parse.get("number")
-        suffix = _coerce_text(course_parse.get("suffix"))
-        if dept is None or not isinstance(number, int) or suffix is None:
-            continue
-        key = (dept, int(number))
-        bucket = index.get(key)
-        if bucket is None:
-            bucket = set()
-            index[key] = bucket
-        bucket.add(suffix)
-    return index
-
-
-def _score_link_candidate(
-    *,
-    delta_minutes: float,
-    incoming_parse: dict,
-    candidate_parse: dict,
-    incoming_signals: dict,
-    candidate_signals: dict,
-) -> dict:
-    time_score = _time_score(delta_minutes)
-    if time_score <= 0:
-        return {
-            "time_score": 0.0,
-            "course_score": 0.0,
-            "keyword_score": 0.0,
-            "exam_sequence_score": 0.0,
-            "instructor_score": 0.0,
-            "location_score": 0.0,
-            "title_score": 0.0,
-            "course_match": "none",
-            "prefix_constraint_passed": False,
-            "delta_minutes": round(delta_minutes, 3),
-            "total": 0.0,
-        }
-
-    keyword_score = _keyword_overlap_score(
-        incoming_keywords=_normalize_keyword_set(incoming_signals.get("keywords")),
-        candidate_keywords=_normalize_keyword_set(candidate_signals.get("keywords")),
-    )
-    exam_sequence_score = _exam_sequence_score(
-        incoming_sequence=incoming_signals.get("exam_sequence"),
-        candidate_sequence=candidate_signals.get("exam_sequence"),
-    )
-    instructor_score = _instructor_signal_score(
-        incoming=_pick_instructor_signal(incoming_signals),
-        candidate=_pick_instructor_signal(candidate_signals),
-    )
-    location_score = _location_signal_score(
-        incoming_text=_coerce_text(incoming_signals.get("location_text")),
-        candidate_text=_coerce_text(candidate_signals.get("location_text")),
-    )
-
-    extra_evidence = keyword_score > 0 or instructor_score > 0 or location_score > 0
-    exact_match = _course_parse_exact_match(a=incoming_parse, b=candidate_parse)
-    prefix_match = _course_parse_prefix_match(a=incoming_parse, b=candidate_parse)
-    prefix_constraint_passed = False
-    course_score = 0.0
-    course_match = "none"
-    if exact_match:
-        course_score = 0.25
-        course_match = "exact"
-    elif prefix_match:
-        course_match = "prefix"
-        if delta_minutes <= 15 and extra_evidence:
-            prefix_constraint_passed = True
-            course_score = 0.12
-        else:
-            prefix_constraint_passed = False
-
-    title_score = 0.0
-    if exact_match:
-        incoming_signature = _coerce_text(incoming_signals.get("title_signature"))
-        candidate_signature = _coerce_text(candidate_signals.get("title_signature"))
-        if incoming_signature and candidate_signature and incoming_signature == candidate_signature:
-            title_score = 0.15
-
-    total = time_score + course_score + keyword_score + exam_sequence_score + instructor_score + location_score + title_score
-    return {
-        "time_score": round(time_score, 4),
-        "course_score": round(course_score, 4),
-        "keyword_score": round(keyword_score, 4),
-        "exam_sequence_score": round(exam_sequence_score, 4),
-        "instructor_score": round(instructor_score, 4),
-        "location_score": round(location_score, 4),
-        "title_score": round(title_score, 4),
-        "course_match": course_match,
-        "prefix_constraint_passed": prefix_constraint_passed,
-        "delta_minutes": round(delta_minutes, 3),
-        "total": round(total, 4),
-    }
-
-
-def _time_score(delta_minutes: float) -> float:
-    if delta_minutes <= 5:
-        return 0.5
-    if delta_minutes <= 15:
-        return 0.35
-    if delta_minutes <= 30:
-        return 0.2
-    return 0.0
-
-
-def _normalize_keyword_set(raw: object) -> set[str]:
-    if not isinstance(raw, list):
-        return set()
-    allowed = {"exam", "midterm", "final"}
-    out: set[str] = set()
-    for item in raw:
-        if not isinstance(item, str):
-            continue
-        normalized = item.strip().lower()
-        if normalized in allowed:
-            out.add(normalized)
-    return out
-
-
-def _keyword_overlap_score(*, incoming_keywords: set[str], candidate_keywords: set[str]) -> float:
-    if not incoming_keywords or not candidate_keywords:
-        return 0.0
-    return 0.1 if incoming_keywords.intersection(candidate_keywords) else 0.0
-
-
-def _exam_sequence_score(*, incoming_sequence: object, candidate_sequence: object) -> float:
-    if not isinstance(incoming_sequence, int) or not isinstance(candidate_sequence, int):
-        return 0.0
-    return 0.05 if incoming_sequence == candidate_sequence else 0.0
-
-
-def _pick_instructor_signal(signals: dict) -> str | None:
-    return _coerce_text(signals.get("instructor_hint")) or _coerce_text(signals.get("from_header")) or _coerce_text(signals.get("organizer"))
-
-
-def _normalize_person_token(value: str | None) -> str | None:
-    if value is None:
-        return None
-    lowered = value.lower()
-    email_match = re.search(r"([a-z0-9._%+-]+@[a-z0-9.-]+)", lowered)
-    if email_match:
-        email = email_match.group(1)
-        local = email.split("@", 1)[0]
-        return local.strip() or email.strip()
-    cleaned = re.sub(r"[^a-z0-9]+", " ", lowered).strip()
-    if not cleaned:
-        return None
-    tokens = cleaned.split()
-    return " ".join(tokens[:3])
-
-
-def _instructor_signal_score(*, incoming: str | None, candidate: str | None) -> float:
-    left = _normalize_person_token(incoming)
-    right = _normalize_person_token(candidate)
-    if not left or not right:
-        return 0.0
-    if left == right or left in right or right in left:
-        return 0.15
-    return 0.0
-
-
-def _tokenize_location(value: str | None) -> set[str]:
-    if value is None:
-        return set()
-    normalized = re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
-    if not normalized:
-        return set()
-    return {token for token in normalized.split() if len(token) > 1}
-
-
-def _location_signal_score(*, incoming_text: str | None, candidate_text: str | None) -> float:
-    left = _tokenize_location(incoming_text)
-    right = _tokenize_location(candidate_text)
-    if not left or not right:
-        return 0.0
-    return 0.1 if left.intersection(right) else 0.0
-
-
-def _course_parse_exact_match(*, a: dict, b: dict) -> bool:
-    if not (
-        _coerce_text(a.get("dept")) == _coerce_text(b.get("dept"))
-        and isinstance(a.get("number"), int)
-        and isinstance(b.get("number"), int)
-        and int(a.get("number")) == int(b.get("number"))
-    ):
-        return False
-    suffix_a = _coerce_text(a.get("suffix"))
-    suffix_b = _coerce_text(b.get("suffix"))
-    return suffix_a == suffix_b
-
-
-def _course_parse_prefix_match(*, a: dict, b: dict) -> bool:
-    if not (
-        _coerce_text(a.get("dept")) == _coerce_text(b.get("dept"))
-        and isinstance(a.get("number"), int)
-        and isinstance(b.get("number"), int)
-        and int(a.get("number")) == int(b.get("number"))
-    ):
-        return False
-    suffix_a = _coerce_text(a.get("suffix"))
-    suffix_b = _coerce_text(b.get("suffix"))
-    if suffix_a is None or suffix_b is None:
-        return suffix_a != suffix_b
-    return suffix_a != suffix_b and (suffix_a.startswith(suffix_b) or suffix_b.startswith(suffix_a))
-
-
-def _has_prefix_extra_evidence(*, title: str, event_type: str | None) -> bool:
-    lowered = title.lower()
-    if event_type == "exam":
-        return True
-    return any(token in lowered for token in ("exam", "midterm", "final"))
-
-
 def _upsert_gmail_audit_tables(
     *,
     db: Session,
@@ -1522,21 +1142,21 @@ def _upsert_gmail_audit_tables(
         latest_by_email[message_id.strip()] = payload
 
     for message_id, payload in latest_by_email.items():
-        event_type_raw = payload.get("event_type")
-        event_type = event_type_raw.strip().lower() if isinstance(event_type_raw, str) and event_type_raw.strip() else None
+        source_canonical = _extract_source_canonical_from_gmail_payload(payload=payload)
+        course_parse = _extract_enrichment_course_parse(payload=payload)
+        event_parts = _extract_enrichment_event_parts(payload=payload)
+        link_signals = _extract_link_signals(payload=payload, source_canonical=source_canonical)
+
+        event_type = _coerce_text(event_parts.get("type"))
         if event_type not in GMAIL_EVENT_TYPES:
             event_type = None
 
-        confidence_raw = payload.get("confidence")
-        confidence = float(confidence_raw) if isinstance(confidence_raw, (int, float)) else 0.5
+        confidence = float(course_parse.get("confidence") or event_parts.get("confidence") or 0.0)
         confidence = max(0.0, min(1.0, confidence))
 
-        subject_raw = payload.get("subject")
-        subject = subject_raw.strip()[:512] if isinstance(subject_raw, str) and subject_raw.strip() else None
-        due_at_raw = payload.get("due_at")
-        due_at = due_at_raw.strip() if isinstance(due_at_raw, str) and due_at_raw.strip() else None
-
-        raw_extract = payload.get("raw_extract") if isinstance(payload.get("raw_extract"), dict) else {}
+        subject = _coerce_text(source_canonical.get("source_title"))
+        due_at = _coerce_text(source_canonical.get("source_dtstart_utc"))
+        location_text = _coerce_text(link_signals.get("location_text")) or _coerce_text(source_canonical.get("location"))
 
         email_row = db.get(EmailMessage, message_id)
         evidence_key = {"kind": "gmail", "message_id": message_id}
@@ -1563,12 +1183,12 @@ def _upsert_gmail_audit_tables(
         label_row.label = "KEEP" if event_type in ACTIONABLE_EVENT_TYPES else "DROP"
         label_row.confidence = confidence
         label_row.reasons = ["v2_llm_ingest"]
-        label_row.course_hints = _extract_course_hints(raw_extract)
+        label_row.course_hints = _derive_course_hints(course_parse=course_parse, source_title=subject)
         label_row.event_type = event_type
         label_row.raw_extract = {
-            "deadline_text": _coerce_text(raw_extract.get("deadline_text")) or due_at,
-            "time_text": _coerce_text(raw_extract.get("time_text")) or due_at,
-            "location_text": _coerce_text(raw_extract.get("location_text")),
+            "deadline_text": due_at,
+            "time_text": due_at,
+            "location_text": location_text,
         }
         label_row.notes = "generated by v2 ingestion gmail parser"
 
@@ -1579,7 +1199,7 @@ def _upsert_gmail_audit_tables(
                     email_id=message_id,
                     action="Review extracted email event",
                     due_iso=due_at,
-                    where_text=_coerce_text(raw_extract.get("location_text")),
+                    where_text=location_text,
                 )
             )
 
@@ -1683,12 +1303,7 @@ def _canonical_payload_for_hash(payload: dict) -> dict:
     source_canonical = payload.get("source_canonical")
     if isinstance(source_canonical, dict):
         return source_canonical
-    return {
-        "title": payload.get("title"),
-        "start_at_utc": payload.get("start_at_utc"),
-        "end_at_utc": payload.get("end_at_utc"),
-        "event_type": payload.get("event_type"),
-    }
+    return {}
 
 
 def _apply_title_degradation_guard(*, old_payload: object, new_payload: dict) -> dict:
@@ -1709,7 +1324,6 @@ def _apply_title_degradation_guard(*, old_payload: object, new_payload: dict) ->
     source_canonical["source_title"] = old_title
     source_canonical["source_summary"] = old_title
     adjusted["source_canonical"] = source_canonical
-    adjusted["title"] = old_title
     enrichment = adjusted.get("enrichment") if isinstance(adjusted.get("enrichment"), dict) else {}
     enrichment["title_aliases"] = _append_alias(enrichment.get("title_aliases"), new_title, limit=24)
     adjusted["enrichment"] = enrichment
@@ -1721,12 +1335,6 @@ def _extract_observation_title_and_times(payload: dict) -> tuple[str, str, str] 
     title = source_canonical.get("source_title")
     start = source_canonical.get("source_dtstart_utc")
     end = source_canonical.get("source_dtend_utc")
-    if not isinstance(title, str):
-        title = payload.get("title") if isinstance(payload.get("title"), str) else None
-    if not isinstance(start, str):
-        start = payload.get("start_at_utc") if isinstance(payload.get("start_at_utc"), str) else None
-    if not isinstance(end, str):
-        end = payload.get("end_at_utc") if isinstance(payload.get("end_at_utc"), str) else None
     if not isinstance(title, str) or not isinstance(start, str) or not isinstance(end, str):
         return None
     return title, start, end
@@ -2077,10 +1685,6 @@ def _candidate_after_json(*, merge_key: str, payload: dict) -> dict | None:
     source_canonical = payload.get("source_canonical") if isinstance(payload.get("source_canonical"), dict) else {}
     start_raw = source_canonical.get("source_dtstart_utc")
     end_raw = source_canonical.get("source_dtend_utc")
-    if not isinstance(start_raw, str):
-        start_raw = payload.get("start_at_utc") if isinstance(payload.get("start_at_utc"), str) else payload.get("start_at")
-    if not isinstance(end_raw, str):
-        end_raw = payload.get("end_at_utc") if isinstance(payload.get("end_at_utc"), str) else payload.get("end_at")
     if not isinstance(start_raw, str) or not isinstance(end_raw, str):
         return None
     start_at = _parse_iso_datetime(start_raw, field="start_at_utc", uid=merge_key)
@@ -2089,8 +1693,6 @@ def _candidate_after_json(*, merge_key: str, payload: dict) -> dict | None:
         return None
 
     title = source_canonical.get("source_title") if isinstance(source_canonical.get("source_title"), str) else None
-    if not isinstance(title, str):
-        title = payload.get("title") if isinstance(payload.get("title"), str) else None
     course_label = payload.get("course_label") if isinstance(payload.get("course_label"), str) else None
     if not course_label:
         course_label = _course_display_name(course_parse=_extract_enrichment_course_parse(payload=payload)) or "Unknown"
@@ -2131,30 +1733,22 @@ def _safe_delta_seconds(*, before_json: dict, after_json: dict) -> int | None:
     return int((after - before).total_seconds())
 
 
-def _coerce_calendar_payload(*, payload: dict, source_id: int, fallback_index: int) -> CanonicalEventInput:
+def _coerce_calendar_payload(*, payload: dict) -> CanonicalEventInput:
     source_canonical = payload.get("source_canonical") if isinstance(payload.get("source_canonical"), dict) else {}
-    uid_value = payload.get("uid")
-    uid = uid_value.strip() if isinstance(uid_value, str) else ""
+    uid_raw = source_canonical.get("external_event_id")
+    uid = uid_raw.strip() if isinstance(uid_raw, str) and uid_raw.strip() else ""
     if not uid:
-        uid_raw = source_canonical.get("external_event_id")
-        uid = uid_raw.strip() if isinstance(uid_raw, str) else ""
-    if not uid:
-        uid = f"calendar-{source_id}-{fallback_index}"
+        raise RuntimeError("core_ingest_payload_invalid: calendar payload missing source_canonical.external_event_id")
 
-    title_raw = source_canonical.get("source_title") if isinstance(source_canonical.get("source_title"), str) else payload.get("title")
+    title_raw = source_canonical.get("source_title")
     if not isinstance(title_raw, str) or not title_raw.strip():
-        raise RuntimeError(f"calendar record uid={uid} missing non-empty title")
+        raise RuntimeError(f"calendar record uid={uid} missing non-empty source_canonical.source_title")
     title = title_raw.strip()
 
-    course_label_raw = payload.get("course_label")
-    course_label = course_label_raw.strip() if isinstance(course_label_raw, str) and course_label_raw.strip() else "Unknown"
+    course_label = _course_display_name(course_parse=_extract_enrichment_course_parse(payload=payload)) or "Unknown"
 
     start_value = source_canonical.get("source_dtstart_utc")
     end_value = source_canonical.get("source_dtend_utc")
-    if not isinstance(start_value, str):
-        start_value = payload.get("start_at_utc") if isinstance(payload.get("start_at_utc"), str) else payload.get("start_at")
-    if not isinstance(end_value, str):
-        end_value = payload.get("end_at_utc") if isinstance(payload.get("end_at_utc"), str) else payload.get("end_at")
     start_at = _parse_iso_datetime(start_value, field="start_at", uid=uid)
     end_at = _parse_iso_datetime(end_value, field="end_at", uid=uid)
     if end_at <= start_at:
@@ -2198,25 +1792,16 @@ def _compute_payload_hash(payload: dict) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
-def _extract_course_hints(raw_extract: dict) -> list[str]:
+def _derive_course_hints(*, course_parse: dict, source_title: str | None) -> list[str]:
     candidates: list[str] = []
-
-    course_hint = raw_extract.get("course_hint")
-    if isinstance(course_hint, str) and course_hint.strip():
-        candidates.append(course_hint.strip()[:64])
-
-    course_hints = raw_extract.get("course_hints")
-    if isinstance(course_hints, list):
-        candidates.extend([item.strip()[:64] for item in course_hints if isinstance(item, str) and item.strip()])
-
-    course = raw_extract.get("course")
-    if isinstance(course, str) and course.strip():
-        candidates.append(course.strip()[:64])
-
-    course_alias = raw_extract.get("course_alias")
-    if isinstance(course_alias, list):
-        candidates.extend([item.strip()[:64] for item in course_alias if isinstance(item, str) and item.strip()])
-
+    display = _course_display_name(course_parse=course_parse)
+    if display:
+        candidates.append(display[:64])
+    evidence = _coerce_text(course_parse.get("evidence"))
+    if evidence:
+        candidates.append(evidence[:64])
+    if source_title:
+        candidates.append(source_title[:64])
     deduped: list[str] = []
     seen: set[str] = set()
     for candidate in candidates:

@@ -28,6 +28,12 @@ from app.db.models import (
 )
 from app.modules.core_ingest.service import apply_ingest_result_idempotent
 from app.modules.review_changes.service import decide_review_change
+from tests.support.payload_builders import (
+    build_calendar_payload,
+    build_course_parse,
+    build_event_parts,
+    build_link_signals,
+)
 
 
 def _create_calendar_source(db_session: Session) -> InputSource:
@@ -117,31 +123,28 @@ def test_title_degradation_does_not_create_pending(db_session: Session) -> None:
         records=[
             {
                 "record_type": "calendar.event.extracted",
-                "payload": {
-                    "uid": "cse151a-exam1",
-                    "title": "CSE 151A exam 1",
-                    "start_at": start_at.isoformat(),
-                    "end_at": end_at.isoformat(),
-                    "course_label": "CSE 151A",
-                    "source_canonical": {
-                        "external_event_id": "cse151a-exam1",
-                        "source_title": "CSE 151A exam 1",
-                        "source_dtstart_utc": start_at.isoformat(),
-                        "source_dtend_utc": end_at.isoformat(),
-                    },
-                    "enrichment": {
-                        "course_parse": {
-                            "dept": "CSE",
-                            "number": 151,
-                            "suffix": "A",
-                            "quarter": None,
-                            "year2": None,
-                            "confidence": 0.92,
-                            "evidence": "CSE 151A",
-                        }
-                    },
-                    "raw_confidence": 0.92,
-                },
+                "payload": build_calendar_payload(
+                    external_event_id="cse151a-exam1",
+                    title="CSE 151A exam 1",
+                    start_at=start_at,
+                    end_at=end_at,
+                    course_parse=build_course_parse(
+                        dept="CSE",
+                        number=151,
+                        suffix="A",
+                        quarter=None,
+                        year2=None,
+                        confidence=0.92,
+                        evidence="CSE 151A",
+                    ),
+                    event_parts=build_event_parts(
+                        type="exam",
+                        index=1,
+                        confidence=0.92,
+                        evidence="exam 1",
+                    ),
+                    link_signals=build_link_signals(keywords=["exam"], exam_sequence=1),
+                ),
             }
         ],
     )
@@ -171,31 +174,28 @@ def test_title_degradation_does_not_create_pending(db_session: Session) -> None:
         records=[
             {
                 "record_type": "calendar.event.extracted",
-                "payload": {
-                    "uid": "cse151a-exam1",
-                    "title": "CSE 151 Exam",
-                    "start_at": start_at.isoformat(),
-                    "end_at": end_at.isoformat(),
-                    "course_label": "CSE 151",
-                    "source_canonical": {
-                        "external_event_id": "cse151a-exam1",
-                        "source_title": "CSE 151 Exam",
-                        "source_dtstart_utc": start_at.isoformat(),
-                        "source_dtend_utc": end_at.isoformat(),
-                    },
-                    "enrichment": {
-                        "course_parse": {
-                            "dept": "CSE",
-                            "number": 151,
-                            "suffix": None,
-                            "quarter": None,
-                            "year2": None,
-                            "confidence": 0.7,
-                            "evidence": "CSE 151",
-                        }
-                    },
-                    "raw_confidence": 0.7,
-                },
+                "payload": build_calendar_payload(
+                    external_event_id="cse151a-exam1",
+                    title="CSE 151 Exam",
+                    start_at=start_at,
+                    end_at=end_at,
+                    course_parse=build_course_parse(
+                        dept="CSE",
+                        number=151,
+                        suffix=None,
+                        quarter=None,
+                        year2=None,
+                        confidence=0.7,
+                        evidence="CSE 151",
+                    ),
+                    event_parts=build_event_parts(
+                        type="exam",
+                        index=1,
+                        confidence=0.7,
+                        evidence="exam 1",
+                    ),
+                    link_signals=build_link_signals(keywords=["exam"], exam_sequence=1),
+                ),
             }
         ],
     )
@@ -215,7 +215,8 @@ def test_title_degradation_does_not_create_pending(db_session: Session) -> None:
     )
     assert observation is not None
     payload = observation.event_payload if isinstance(observation.event_payload, dict) else {}
-    assert payload.get("title") == "CSE 151A exam 1"
+    source_canonical = payload.get("source_canonical") if isinstance(payload.get("source_canonical"), dict) else {}
+    assert source_canonical.get("source_title") == "CSE 151A exam 1"
     enrichment = payload.get("enrichment") if isinstance(payload.get("enrichment"), dict) else {}
     aliases = enrichment.get("title_aliases") if isinstance(enrichment.get("title_aliases"), list) else []
     assert "CSE 151 Exam" in aliases

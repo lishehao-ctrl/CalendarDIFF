@@ -22,6 +22,12 @@ from app.db.models import (
     User,
 )
 from app.modules.core_ingest.service import apply_ingest_result_idempotent
+from tests.support.payload_builders import (
+    build_calendar_payload,
+    build_course_parse,
+    build_event_parts,
+    build_link_signals,
+)
 
 
 def _create_calendar_source(db_session: Session) -> InputSource:
@@ -102,14 +108,22 @@ def _calendar_record(
     end_at: datetime,
     component_key: str | None = None,
 ) -> dict:
-    payload: dict[str, object] = {
-        "uid": uid,
-        "title": title,
-        "start_at": start_at.isoformat(),
-        "end_at": end_at.isoformat(),
-        "course_label": "CSE 100",
-        "raw_confidence": 0.91,
-    }
+    payload = build_calendar_payload(
+        external_event_id=uid,
+        title=title,
+        start_at=start_at,
+        end_at=end_at,
+        course_parse=build_course_parse(
+            dept="CSE",
+            number=100,
+            quarter="WI",
+            year2=26,
+            confidence=0.91,
+            evidence="CSE 100",
+        ),
+        event_parts=build_event_parts(type="deadline", index=1, confidence=0.8, evidence=title),
+        link_signals=build_link_signals(),
+    )
     if component_key is not None:
         payload["component_key"] = component_key
     return {
