@@ -26,7 +26,7 @@ from app.db.models import (
 from app.db.session import get_db
 
 router = APIRouter(
-    prefix="/internal/v2",
+    prefix="/internal",
     tags=["internal-review-metrics"],
     dependencies=[Depends(require_internal_service_token({"ops", "review"}))],
 )

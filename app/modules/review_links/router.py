@@ -25,37 +25,35 @@ from app.modules.review_links.schemas import (
     LinkRelinkResponse,
     ReviewItemsSummaryResponse,
 )
-from app.modules.review_links.service import (
+from app.modules.review_links.alerts_service import (
     LinkAlertNotFoundError,
+    batch_decide_link_alerts,
+    dismiss_link_alert,
+    list_link_alerts,
+    mark_safe_link_alert,
+)
+from app.modules.review_links.candidates_decision_service import (
     LinkBlockNotFoundError,
     LinkCandidateDecisionError,
     LinkCandidateNotFoundError,
-    LinkNotFoundError,
-    batch_decide_link_alerts,
     batch_decide_link_candidates,
     decide_link_candidate,
-    delete_link,
     delete_link_block,
-    dismiss_link_alert,
-    get_review_items_summary,
-    list_link_blocks,
-    list_link_alerts,
-    list_link_candidates,
-    list_links,
-    mark_safe_link_alert,
-    relink_observation,
 )
+from app.modules.review_links.candidates_query_service import list_link_blocks, list_link_candidates
+from app.modules.review_links.links_service import LinkNotFoundError, delete_link, list_links, relink_observation
+from app.modules.review_links.summary_service import get_review_items_summary
 
 router = APIRouter(
     tags=["review-items"],
     dependencies=[Depends(require_public_api_key)],
 )
-candidate_router = APIRouter(prefix="/v2/review-items/link-candidates")
-links_router = APIRouter(prefix="/v2/review-items/links")
-alerts_router = APIRouter(prefix="/v2/review-items/link-alerts")
+candidate_router = APIRouter(prefix="/review/link-candidates")
+links_router = APIRouter(prefix="/review/links")
+alerts_router = APIRouter(prefix="/review/link-alerts")
 
 
-@router.get("/v2/review-items/summary", response_model=ReviewItemsSummaryResponse)
+@router.get("/review/summary", response_model=ReviewItemsSummaryResponse)
 def get_review_items_summary_route(
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),

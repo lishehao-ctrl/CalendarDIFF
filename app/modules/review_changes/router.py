@@ -18,28 +18,32 @@ from app.modules.review_changes.schemas import (
     ReviewDecisionRequest,
     ReviewDecisionResponse,
 )
-from app.modules.review_changes.service import (
-    ManualCorrectionNotFoundError,
+from app.modules.review_changes.change_decision_service import (
+    ReviewChangeNotFoundError,
+    decide_review_change,
+    mark_review_change_viewed,
+)
+from app.modules.review_changes.change_listing_service import list_review_changes
+from app.modules.review_changes.evidence_preview_service import (
     ReviewChangeEvidenceNotFoundError,
     ReviewChangeEvidenceReadError,
-    ManualCorrectionValidationError,
-    ReviewChangeNotFoundError,
-    apply_manual_correction,
-    decide_review_change,
-    list_review_changes,
-    mark_review_change_viewed,
     preview_review_change_evidence,
+)
+from app.modules.review_changes.manual_correction_service import (
+    ManualCorrectionNotFoundError,
+    ManualCorrectionValidationError,
+    apply_manual_correction,
     preview_manual_correction,
 )
 
 router = APIRouter(
-    prefix="/v2/review-items/changes",
+    prefix="/review",
     tags=["review-items"],
     dependencies=[Depends(require_public_api_key)],
 )
 
 
-@router.get("", response_model=list[ReviewChangeItemResponse])
+@router.get("/changes", response_model=list[ReviewChangeItemResponse])
 def get_review_changes(
     review_status: str = Query(default="pending"),
     source_id: int | None = Query(default=None, ge=1),
@@ -66,7 +70,7 @@ def get_review_changes(
     return [ReviewChangeItemResponse(**row) for row in rows]
 
 
-@router.patch("/{change_id}/views", response_model=ReviewChangeItemResponse)
+@router.patch("/changes/{change_id}/views", response_model=ReviewChangeItemResponse)
 def patch_review_change_view(
     change_id: int,
     payload: ReviewChangeViewRequest,
@@ -109,7 +113,7 @@ def patch_review_change_view(
     )
 
 
-@router.post("/{change_id}/decisions", response_model=ReviewDecisionResponse)
+@router.post("/changes/{change_id}/decisions", response_model=ReviewDecisionResponse)
 def post_review_decision(
     change_id: int,
     payload: ReviewDecisionRequest,
@@ -136,7 +140,7 @@ def post_review_decision(
     )
 
 
-@router.get("/{change_id}/evidence/{side}/preview", response_model=EvidencePreviewResponse)
+@router.get("/changes/{change_id}/evidence/{side}/preview", response_model=EvidencePreviewResponse)
 def get_review_change_evidence_preview(
     change_id: int,
     side: Literal["before", "after"],
