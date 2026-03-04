@@ -1,45 +1,51 @@
 from __future__ import annotations
 
 import logging
-import os
-import socket
-import threading
 
 from app.db.session import get_session_factory
 from app.modules.health.router import router as health_router
 from app.modules.llm_runtime.metrics_router import router as llm_metrics_router
-from app.modules.llm_runtime.worker import run_llm_worker_loop
+from app.modules.llm_runtime.queue import get_redis_client
+from app.modules.llm_runtime.worker import run_llm_worker_tick
+from app.runtime.worker_loop import build_worker_id, read_worker_enabled, run_periodic_sync_worker
 from app.service_app import create_service_app
 
 logger = logging.getLogger(__name__)
 
 
-def _build_worker_id() -> str:
-    env_worker_id = os.getenv("LLM_WORKER_ID")
-    if env_worker_id:
-        return env_worker_id
-    return f"llm-service:{socket.gethostname()}:{os.getpid()}"
+async def _run_llm_worker() -> None:
+    worker_id = build_worker_id(service_name="llm-service", env_var="LLM_WORKER_ID")
+    enabled = read_worker_enabled(env_var="LLM_SERVICE_ENABLE_WORKER", default=True)
+    session_factory = get_session_factory()
+    redis_client = get_redis_client()
 
-
-def _is_worker_enabled() -> bool:
-    raw = os.getenv("LLM_SERVICE_ENABLE_WORKER", "true").strip().lower()
-    return raw in {"1", "true", "yes", "on"}
-
-
-def _start_llm_worker(stop_event: threading.Event) -> threading.Thread:
-    def _runner() -> None:
-        if not _is_worker_enabled():
-            logger.info("llm worker disabled by LLM_SERVICE_ENABLE_WORKER")
-            return
-        worker_id = _build_worker_id()
-        session_factory = get_session_factory()
-        run_llm_worker_loop(
-            stop_event=stop_event,
-            worker_id=worker_id,
+    def _tick() -> int:
+        return run_llm_worker_tick(
+            redis_client=redis_client,
             session_factory=session_factory,
+            worker_id=worker_id,
         )
 
-    return threading.Thread(target=_runner, name="llm-service-worker", daemon=True)
+    def _log_success(result: dict[str, object] | int | None, latency_ms: int) -> str | None:
+        processed = int(result) if isinstance(result, int) else 0
+        if processed <= 0:
+            return None
+        return "llm worker tick worker_id=%s processed=%s latency_ms=%s" % (
+            worker_id,
+            processed,
+            latency_ms,
+        )
+
+    await run_periodic_sync_worker(
+        worker_name="llm",
+        worker_id=worker_id,
+        tick_seconds=0.05,
+        tick_sync_fn=_tick,
+        logger=logger,
+        enabled=enabled,
+        disabled_env_var="LLM_SERVICE_ENABLE_WORKER",
+        log_success=_log_success,
+    )
 
 
 app = create_service_app(
@@ -49,5 +55,5 @@ app = create_service_app(
         health_router,
         llm_metrics_router,
     ],
-    worker_starter=_start_llm_worker,
+    worker_tasks=[_run_llm_worker],
 )
