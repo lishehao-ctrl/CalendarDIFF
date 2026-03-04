@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import logging
-import threading
-from collections.abc import Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from contextlib import asynccontextmanager
 
+import anyio
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -18,7 +18,7 @@ from app.db.session import get_engine
 logger = logging.getLogger(__name__)
 
 
-WorkerStarter = Callable[[threading.Event], threading.Thread]
+WorkerTask = Callable[[], Awaitable[None]]
 
 
 def _assert_postgres_runtime() -> None:
@@ -66,7 +66,7 @@ def create_service_app(
     version: str,
     routers: Iterable[APIRouter],
     public_api: bool = False,
-    worker_starter: WorkerStarter | None = None,
+    worker_tasks: Iterable[WorkerTask] | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -91,18 +91,18 @@ def create_service_app(
         if not schema_ready:
             logger.warning("service startup warnings because database schema is not ready")
 
-        stop_event = threading.Event()
-        worker_thread: threading.Thread | None = None
-        if worker_starter is not None:
-            worker_thread = worker_starter(stop_event)
-            worker_thread.start()
+        task_list = list(worker_tasks or [])
 
-        try:
+        if task_list:
+            async with anyio.create_task_group() as task_group:
+                for task in task_list:
+                    task_group.start_soon(task)
+                try:
+                    yield
+                finally:
+                    task_group.cancel_scope.cancel()
+        else:
             yield
-        finally:
-            stop_event.set()
-            if worker_thread is not None:
-                worker_thread.join(timeout=5)
 
     app = FastAPI(title=title, version=version, lifespan=lifespan)
     app.add_exception_handler(SchemaNotReadyError, _schema_not_ready_exception_handler)
