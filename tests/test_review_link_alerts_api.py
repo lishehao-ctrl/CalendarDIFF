@@ -270,3 +270,144 @@ def test_link_alert_resolved_by_link_delete_and_relink(client, db_session) -> No
     assert resolved_after_relink is not None
     assert resolved_after_relink.status == EventLinkAlertStatus.RESOLVED
     assert resolved_after_relink.resolution_code == EventLinkAlertResolution.LINK_RELINKED
+
+
+def test_link_alert_batch_dismiss_partial_success(client, db_session) -> None:
+    user, source = _create_user_and_email_source(db_session)
+    db_session.add(
+        EventEntity(
+            user_id=user.id,
+            entity_uid="ent_alert_batch",
+            course_best_json={"display_name": "CSE 142 SP26"},
+            course_best_strength=5,
+            course_aliases_json=[],
+            title_aliases_json=[],
+            metadata_json={},
+        )
+    )
+    db_session.flush()
+
+    pending_alert = _add_alert(
+        db_session,
+        user_id=user.id,
+        source_id=source.id,
+        external_event_id="gmail-alert-batch-pending",
+        entity_uid="ent_alert_batch",
+        status=EventLinkAlertStatus.PENDING,
+    )
+    dismissed_alert = _add_alert(
+        db_session,
+        user_id=user.id,
+        source_id=source.id,
+        external_event_id="gmail-alert-batch-dismissed",
+        entity_uid="ent_alert_batch",
+        status=EventLinkAlertStatus.DISMISSED,
+    )
+    db_session.commit()
+
+    headers = {"X-API-Key": "test-api-key"}
+    resp = client.post(
+        "/v2/review-items/link-alerts/batch/decisions",
+        headers=headers,
+        json={
+            "decision": "dismiss",
+            "ids": [pending_alert.id, dismissed_alert.id, 999999, pending_alert.id],
+            "note": "batch dismiss",
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["decision"] == "dismiss"
+    assert payload["total_requested"] == 3
+    assert payload["succeeded"] == 2
+    assert payload["failed"] == 1
+
+    by_id = {row["id"]: row for row in payload["results"]}
+    assert by_id[pending_alert.id]["ok"] is True
+    assert by_id[pending_alert.id]["status"] == "dismissed"
+    assert by_id[pending_alert.id]["idempotent"] is False
+    assert by_id[pending_alert.id]["error_code"] is None
+
+    assert by_id[dismissed_alert.id]["ok"] is True
+    assert by_id[dismissed_alert.id]["status"] == "dismissed"
+    assert by_id[dismissed_alert.id]["idempotent"] is True
+    assert by_id[dismissed_alert.id]["error_code"] is None
+
+    assert by_id[999999]["ok"] is False
+    assert by_id[999999]["status"] is None
+    assert by_id[999999]["error_code"] == "not_found"
+
+
+def test_link_alert_batch_mark_safe_success(client, db_session) -> None:
+    user, source = _create_user_and_email_source(db_session)
+    db_session.add(
+        EventEntity(
+            user_id=user.id,
+            entity_uid="ent_alert_batch_safe",
+            course_best_json={"display_name": "CSE 143 SP26"},
+            course_best_strength=5,
+            course_aliases_json=[],
+            title_aliases_json=[],
+            metadata_json={},
+        )
+    )
+    db_session.flush()
+
+    first_alert = _add_alert(
+        db_session,
+        user_id=user.id,
+        source_id=source.id,
+        external_event_id="gmail-alert-batch-safe-1",
+        entity_uid="ent_alert_batch_safe",
+    )
+    second_alert = _add_alert(
+        db_session,
+        user_id=user.id,
+        source_id=source.id,
+        external_event_id="gmail-alert-batch-safe-2",
+        entity_uid="ent_alert_batch_safe",
+    )
+    db_session.commit()
+
+    headers = {"X-API-Key": "test-api-key"}
+    resp = client.post(
+        "/v2/review-items/link-alerts/batch/decisions",
+        headers=headers,
+        json={
+            "decision": "mark_safe",
+            "ids": [first_alert.id, second_alert.id],
+            "note": "batch safe",
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["decision"] == "mark_safe"
+    assert payload["total_requested"] == 2
+    assert payload["succeeded"] == 2
+    assert payload["failed"] == 0
+
+    for row in payload["results"]:
+        assert row["ok"] is True
+        assert row["status"] == "marked_safe"
+        assert row["idempotent"] is False
+        assert row["error_code"] is None
+        assert row["reviewed_at"] is not None
+
+
+def test_link_alert_batch_decisions_validate_payload(client, db_session) -> None:
+    _create_user_and_email_source(db_session)
+    headers = {"X-API-Key": "test-api-key"}
+
+    empty_ids = client.post(
+        "/v2/review-items/link-alerts/batch/decisions",
+        headers=headers,
+        json={"decision": "dismiss", "ids": []},
+    )
+    assert empty_ids.status_code == 422
+
+    non_positive_id = client.post(
+        "/v2/review-items/link-alerts/batch/decisions",
+        headers=headers,
+        json={"decision": "dismiss", "ids": [0]},
+    )
+    assert non_positive_id.status_code == 422

@@ -246,3 +246,143 @@ def test_links_api_list_delete_and_relink(client, db_session) -> None:
     final_rows = final_links.json()
     assert len(final_rows) == 1
     assert final_rows[0]["entity_uid"] == "ent_target_b"
+
+
+def test_link_candidate_batch_approve_partial_success(client, db_session) -> None:
+    user, source = _create_user_and_email_source(db_session)
+    db_session.add(
+        EventEntity(
+            user_id=user.id,
+            entity_uid="ent_batch_a",
+            course_best_json={"display_name": "CSE 101 SP26"},
+            course_best_strength=5,
+            course_aliases_json=[],
+            title_aliases_json=[],
+            metadata_json={},
+        )
+    )
+    db_session.flush()
+
+    candidate_ok = EventLinkCandidate(
+        user_id=user.id,
+        source_id=source.id,
+        external_event_id="gmail-batch-ok",
+        proposed_entity_uid="ent_batch_a",
+        score=0.91,
+        score_breakdown_json={"rule_reason": "unique_match"},
+        reason_code=EventLinkCandidateReason.SCORE_BAND,
+        status=EventLinkCandidateStatus.PENDING,
+    )
+    candidate_invalid = EventLinkCandidate(
+        user_id=user.id,
+        source_id=source.id,
+        external_event_id="gmail-batch-invalid",
+        proposed_entity_uid=None,
+        score=0.5,
+        score_breakdown_json={"rule_reason": "missing_entity"},
+        reason_code=EventLinkCandidateReason.SCORE_BAND,
+        status=EventLinkCandidateStatus.PENDING,
+    )
+    db_session.add(candidate_ok)
+    db_session.add(candidate_invalid)
+    db_session.commit()
+
+    headers = {"X-API-Key": "test-api-key"}
+    resp = client.post(
+        "/v2/review-items/link-candidates/batch/decisions",
+        headers=headers,
+        json={
+            "decision": "approve",
+            "ids": [candidate_ok.id, candidate_invalid.id, 999999, candidate_ok.id],
+            "note": "bulk approve",
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["decision"] == "approve"
+    assert payload["total_requested"] == 3
+    assert payload["succeeded"] == 1
+    assert payload["failed"] == 2
+
+    by_id = {row["id"]: row for row in payload["results"]}
+    assert by_id[candidate_ok.id]["ok"] is True
+    assert by_id[candidate_ok.id]["status"] == "approved"
+    assert by_id[candidate_ok.id]["idempotent"] is False
+    assert isinstance(by_id[candidate_ok.id]["link_id"], int)
+    assert by_id[candidate_ok.id]["block_id"] is None
+
+    assert by_id[candidate_invalid.id]["ok"] is False
+    assert by_id[candidate_invalid.id]["status"] is None
+    assert by_id[candidate_invalid.id]["error_code"] == "invalid_state"
+
+    assert by_id[999999]["ok"] is False
+    assert by_id[999999]["error_code"] == "not_found"
+
+
+def test_link_candidate_batch_reject_creates_blocks(client, db_session) -> None:
+    user, source = _create_user_and_email_source(db_session)
+    candidate_a = EventLinkCandidate(
+        user_id=user.id,
+        source_id=source.id,
+        external_event_id="gmail-batch-reject-a",
+        proposed_entity_uid="ent_batch_reject_a",
+        score=0.8,
+        score_breakdown_json={"rule_reason": "manual_review"},
+        reason_code=EventLinkCandidateReason.SCORE_BAND,
+        status=EventLinkCandidateStatus.PENDING,
+    )
+    candidate_b = EventLinkCandidate(
+        user_id=user.id,
+        source_id=source.id,
+        external_event_id="gmail-batch-reject-b",
+        proposed_entity_uid="ent_batch_reject_b",
+        score=0.82,
+        score_breakdown_json={"rule_reason": "manual_review"},
+        reason_code=EventLinkCandidateReason.SCORE_BAND,
+        status=EventLinkCandidateStatus.PENDING,
+    )
+    db_session.add(candidate_a)
+    db_session.add(candidate_b)
+    db_session.commit()
+
+    headers = {"X-API-Key": "test-api-key"}
+    resp = client.post(
+        "/v2/review-items/link-candidates/batch/decisions",
+        headers=headers,
+        json={
+            "decision": "reject",
+            "ids": [candidate_a.id, candidate_b.id],
+            "note": "bulk reject",
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["decision"] == "reject"
+    assert payload["succeeded"] == 2
+    assert payload["failed"] == 0
+
+    for row in payload["results"]:
+        assert row["ok"] is True
+        assert row["status"] == "rejected"
+        assert row["idempotent"] is False
+        assert row["link_id"] is None
+        assert isinstance(row["block_id"], int)
+
+
+def test_link_candidate_batch_decisions_validate_payload(client, db_session) -> None:
+    _create_user_and_email_source(db_session)
+    headers = {"X-API-Key": "test-api-key"}
+
+    empty_ids = client.post(
+        "/v2/review-items/link-candidates/batch/decisions",
+        headers=headers,
+        json={"decision": "approve", "ids": []},
+    )
+    assert empty_ids.status_code == 422
+
+    non_positive_id = client.post(
+        "/v2/review-items/link-candidates/batch/decisions",
+        headers=headers,
+        json={"decision": "approve", "ids": [0]},
+    )
+    assert non_positive_id.status_code == 422
