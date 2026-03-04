@@ -18,6 +18,12 @@ from app.db.models import (
     User,
 )
 from app.modules.core_ingest.service import apply_ingest_result_idempotent
+from tests.support.payload_builders import (
+    build_calendar_payload,
+    build_course_parse,
+    build_event_parts,
+    build_link_signals,
+)
 
 
 def _create_calendar_source(db_session) -> InputSource:
@@ -61,14 +67,22 @@ def _seed_calendar_ingest_result(db_session, *, source: InputSource, request_id:
     start = datetime(2026, 3, 2, 10, 0, tzinfo=timezone.utc)
     record = {
         "record_type": "calendar.event.extracted",
-        "payload": {
-            "uid": "bridge-evt-1",
-            "title": "Bridge Homework",
-            "start_at": start.isoformat(),
-            "end_at": (start + timedelta(hours=1)).isoformat(),
-            "course_label": "CSE 120",
-            "raw_confidence": 0.88,
-        },
+        "payload": build_calendar_payload(
+            external_event_id="bridge-evt-1",
+            title="Bridge Homework",
+            start_at=start,
+            end_at=start + timedelta(hours=1),
+            course_parse=build_course_parse(
+                dept="CSE",
+                number=120,
+                quarter="WI",
+                year2=26,
+                confidence=0.88,
+                evidence="CSE 120",
+            ),
+            event_parts=build_event_parts(type="deadline", index=1, confidence=0.8, evidence="Bridge Homework"),
+            link_signals=build_link_signals(),
+        ),
     }
     db_session.add(
         SyncRequest(
@@ -118,7 +132,10 @@ def test_v2_feed_and_timeline_read_source_id_via_review_pool(client, db_session)
     assert decision_response.status_code == 200
     assert decision_response.json()["review_status"] == "approved"
 
-    feed_response = client.get(f"/v2/change-events?source_id={source.id}", headers=headers)
+    feed_response = client.get(
+        f"/v2/review-items/changes?review_status=approved&source_id={source.id}",
+        headers=headers,
+    )
     assert feed_response.status_code == 200
     feed_rows = feed_response.json()
     assert len(feed_rows) == 1

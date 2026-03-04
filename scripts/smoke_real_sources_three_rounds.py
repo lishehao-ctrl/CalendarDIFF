@@ -602,7 +602,7 @@ def main() -> int:
                 feed_rows = _request_json_list(
                     review_client,
                     "GET",
-                    "/v2/change-events?review_status=approved&limit=200",
+                    "/v2/review-items/changes?review_status=approved&limit=200",
                 )
                 round_report["feed_count_after"] = len(feed_rows)
                 approved_feed_ids = {

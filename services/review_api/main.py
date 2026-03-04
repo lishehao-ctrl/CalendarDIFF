@@ -8,7 +8,6 @@ import time
 
 from app.core.logging import sanitize_log_message
 from app.db.session import get_session_factory
-from app.modules.changes.router import router as changes_router
 from app.modules.core_ingest.router import router as core_ingest_router
 from app.modules.emails.router import router as emails_router
 from app.modules.events.router import router as events_router
@@ -98,7 +97,6 @@ app = create_service_app(
         health_router,
         review_changes_router,
         review_links_router,
-        changes_router,
         events_router,
         emails_router,
         core_ingest_router,

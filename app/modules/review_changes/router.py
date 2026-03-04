@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -7,6 +9,7 @@ from app.core.security import require_public_api_key
 from app.db.session import get_db
 from app.modules.common.deps import get_onboarded_user_or_409
 from app.modules.review_changes.schemas import (
+    EvidencePreviewResponse,
     ManualCorrectionApplyResponse,
     ManualCorrectionPreviewResponse,
     ManualCorrectionRequest,
@@ -17,12 +20,15 @@ from app.modules.review_changes.schemas import (
 )
 from app.modules.review_changes.service import (
     ManualCorrectionNotFoundError,
+    ReviewChangeEvidenceNotFoundError,
+    ReviewChangeEvidenceReadError,
     ManualCorrectionValidationError,
     ReviewChangeNotFoundError,
     apply_manual_correction,
     decide_review_change,
     list_review_changes,
     mark_review_change_viewed,
+    preview_review_change_evidence,
     preview_manual_correction,
 )
 
@@ -128,6 +134,29 @@ def post_review_decision(
         review_note=row.review_note,
         idempotent=idempotent,
     )
+
+
+@router.get("/{change_id}/evidence/{side}/preview", response_model=EvidencePreviewResponse)
+def get_review_change_evidence_preview(
+    change_id: int,
+    side: Literal["before", "after"],
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> EvidencePreviewResponse:
+    try:
+        preview = preview_review_change_evidence(
+            db,
+            user_id=user.id,
+            change_id=change_id,
+            side=side,
+        )
+    except ReviewChangeNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ReviewChangeEvidenceNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ReviewChangeEvidenceReadError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+    return EvidencePreviewResponse(**preview)
 
 
 @router.post("/corrections/preview", response_model=ManualCorrectionPreviewResponse)

@@ -18,6 +18,13 @@ from app.db.models import (
     User,
 )
 from app.modules.core_ingest.service import apply_ingest_result_idempotent
+from tests.support.payload_builders import (
+    build_calendar_payload,
+    build_course_parse,
+    build_event_parts,
+    build_gmail_payload,
+    build_link_signals,
+)
 
 
 def _create_sources(db_session) -> tuple[User, InputSource, InputSource]:
@@ -114,49 +121,39 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
     calendar_records = [
         {
             "record_type": "calendar.event.extracted",
-            "payload": {
-                "uid": "calendar-hw1",
-                "title": "HW1 Due",
-                "start_at": due.isoformat(),
-                "end_at": (due + timedelta(hours=1)).isoformat(),
-                "course_label": "CSE 100",
-                "raw_confidence": 0.92,
-                "enrichment": {
-                    "course_parse": {
-                        "dept": "CSE",
-                        "number": 100,
-                        "suffix": None,
-                        "quarter": None,
-                        "year2": None,
-                        "confidence": 0.92,
-                        "evidence": "CSE 100",
-                    }
-                },
-            },
+            "payload": build_calendar_payload(
+                external_event_id="calendar-hw1",
+                title="HW1 Due",
+                start_at=due,
+                end_at=due + timedelta(hours=1),
+                course_parse=build_course_parse(
+                    dept="CSE",
+                    number=100,
+                    confidence=0.92,
+                    evidence="CSE 100",
+                ),
+                event_parts=build_event_parts(type="deadline", index=1, confidence=0.9, evidence="HW1"),
+                link_signals=build_link_signals(),
+            ),
         }
     ]
     gmail_records = [
         {
             "record_type": "gmail.message.extracted",
-            "payload": {
-                "message_id": "gmail-hw1",
-                "subject": "HW1 Due",
-                "event_type": "deadline",
-                "due_at": due.isoformat(),
-                "confidence": 0.87,
-                "raw_extract": {"course_hint": "cSe_100"},
-                "enrichment": {
-                    "course_parse": {
-                        "dept": "CSE",
-                        "number": 100,
-                        "suffix": None,
-                        "quarter": None,
-                        "year2": None,
-                        "confidence": 0.87,
-                        "evidence": "cSe_100",
-                    }
-                },
-            },
+            "payload": build_gmail_payload(
+                message_id="gmail-hw1",
+                title="HW1 Due",
+                due_at=due,
+                time_anchor_confidence=0.87,
+                course_parse=build_course_parse(
+                    dept="CSE",
+                    number=100,
+                    confidence=0.87,
+                    evidence="cSe_100",
+                ),
+                event_parts=build_event_parts(type="deadline", index=1, confidence=0.87, evidence="HW1"),
+                link_signals=build_link_signals(),
+            ),
         }
     ]
 
@@ -196,7 +193,10 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
     assert approve_again.status_code == 200
     assert approve_again.json()["idempotent"] is True
 
-    feed_response = client.get(f"/v2/change-events?source_id={calendar_source.id}", headers=headers)
+    feed_response = client.get(
+        f"/v2/review-items/changes?review_status=approved&source_id={calendar_source.id}",
+        headers=headers,
+    )
     assert feed_response.status_code == 200
     assert len(feed_response.json()) == 1
 
@@ -224,49 +224,41 @@ def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session
     round1_calendar_records = [
         {
             "record_type": "calendar.event.extracted",
-            "payload": {
-                "uid": "calendar-hw1",
-                "title": "CSE8A HW1 Deadline",
-                "start_at": due_round1.isoformat(),
-                "end_at": (due_round1 + timedelta(hours=1)).isoformat(),
-                "course_label": "CSE8A",
-                "raw_confidence": 0.95,
-                "enrichment": {
-                    "course_parse": {
-                        "dept": "CSE",
-                        "number": 8,
-                        "suffix": "A",
-                        "quarter": None,
-                        "year2": None,
-                        "confidence": 0.95,
-                        "evidence": "CSE8A",
-                    }
-                },
-            },
+            "payload": build_calendar_payload(
+                external_event_id="calendar-hw1",
+                title="CSE8A HW1 Deadline",
+                start_at=due_round1,
+                end_at=due_round1 + timedelta(hours=1),
+                course_parse=build_course_parse(
+                    dept="CSE",
+                    number=8,
+                    suffix="A",
+                    confidence=0.95,
+                    evidence="CSE8A",
+                ),
+                event_parts=build_event_parts(type="deadline", index=1, confidence=0.95, evidence="HW1"),
+                link_signals=build_link_signals(),
+            ),
         }
     ]
     round1_gmail_records = [
         {
             "record_type": "gmail.message.extracted",
-            "payload": {
-                "message_id": "gmail-hw1-round1",
-                "subject": "CSE8A HW1 Deadline",
-                "event_type": "deadline",
-                "due_at": due_round1.isoformat(),
-                "confidence": 0.9,
-                "raw_extract": {"course_hint": "cSe_8A"},
-                "enrichment": {
-                    "course_parse": {
-                        "dept": "CSE",
-                        "number": 8,
-                        "suffix": "A",
-                        "quarter": None,
-                        "year2": None,
-                        "confidence": 0.9,
-                        "evidence": "cSe_8A",
-                    }
-                },
-            },
+            "payload": build_gmail_payload(
+                message_id="gmail-hw1-round1",
+                title="CSE8A HW1 Deadline",
+                due_at=due_round1,
+                time_anchor_confidence=0.9,
+                course_parse=build_course_parse(
+                    dept="CSE",
+                    number=8,
+                    suffix="A",
+                    confidence=0.9,
+                    evidence="cSe_8A",
+                ),
+                event_parts=build_event_parts(type="deadline", index=1, confidence=0.9, evidence="HW1"),
+                link_signals=build_link_signals(),
+            ),
         }
     ]
 
@@ -297,49 +289,41 @@ def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session
     round2_calendar_records = [
         {
             "record_type": "calendar.event.extracted",
-            "payload": {
-                "uid": "calendar-hw1",
-                "title": "[Update] CSE 8A HW1 deadline moved",
-                "start_at": due_round2.isoformat(),
-                "end_at": (due_round2 + timedelta(hours=1)).isoformat(),
-                "course_label": "CSE-8A",
-                "raw_confidence": 0.93,
-                "enrichment": {
-                    "course_parse": {
-                        "dept": "CSE",
-                        "number": 8,
-                        "suffix": "A",
-                        "quarter": None,
-                        "year2": None,
-                        "confidence": 0.93,
-                        "evidence": "CSE-8A",
-                    }
-                },
-            },
+            "payload": build_calendar_payload(
+                external_event_id="calendar-hw1",
+                title="[Update] CSE 8A HW1 deadline moved",
+                start_at=due_round2,
+                end_at=due_round2 + timedelta(hours=1),
+                course_parse=build_course_parse(
+                    dept="CSE",
+                    number=8,
+                    suffix="A",
+                    confidence=0.93,
+                    evidence="CSE-8A",
+                ),
+                event_parts=build_event_parts(type="deadline", index=1, confidence=0.93, evidence="HW1"),
+                link_signals=build_link_signals(),
+            ),
         }
     ]
     round2_gmail_records = [
         {
             "record_type": "gmail.message.extracted",
-            "payload": {
-                "message_id": "gmail-hw1-round2",
-                "subject": "Fwd: cSe_8A hw-1 DEADLINE reminder",
-                "event_type": "deadline",
-                "due_at": due_round2.isoformat(),
-                "confidence": 0.88,
-                "raw_extract": {"course_alias": ["CSE8A", "cSe_8A", "CSE 8A"]},
-                "enrichment": {
-                    "course_parse": {
-                        "dept": "CSE",
-                        "number": 8,
-                        "suffix": "A",
-                        "quarter": None,
-                        "year2": None,
-                        "confidence": 0.88,
-                        "evidence": "CSE 8A",
-                    }
-                },
-            },
+            "payload": build_gmail_payload(
+                message_id="gmail-hw1-round2",
+                title="Fwd: cSe_8A hw-1 DEADLINE reminder",
+                due_at=due_round2,
+                time_anchor_confidence=0.88,
+                course_parse=build_course_parse(
+                    dept="CSE",
+                    number=8,
+                    suffix="A",
+                    confidence=0.88,
+                    evidence="CSE 8A",
+                ),
+                event_parts=build_event_parts(type="deadline", index=1, confidence=0.88, evidence="HW1"),
+                link_signals=build_link_signals(),
+            ),
         }
     ]
 

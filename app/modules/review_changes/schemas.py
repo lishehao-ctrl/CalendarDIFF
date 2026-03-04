@@ -14,6 +14,18 @@ class ReviewSourceRef(BaseModel):
     confidence: float | None = None
 
 
+class ChangeSummarySide(BaseModel):
+    value_time: datetime | None = None
+    source_label: str | None = None
+    source_kind: Literal["calendar", "email"] | None = None
+    source_observed_at: datetime | None = None
+
+
+class ChangeSummary(BaseModel):
+    old: ChangeSummarySide
+    new: ChangeSummarySide
+
+
 class ReviewChangeItemResponse(BaseModel):
     id: int
     event_uid: str
@@ -29,6 +41,12 @@ class ReviewChangeItemResponse(BaseModel):
     viewed_note: str | None
     reviewed_at: datetime | None
     review_note: str | None
+    source_kind: str | None = None
+    priority_rank: int | None = None
+    priority_label: str | None = None
+    notification_state: str | None = None
+    deliver_after: datetime | None = None
+    change_summary: ChangeSummary | None = None
 
 
 class ReviewChangeViewRequest(BaseModel):
@@ -51,6 +69,25 @@ class ReviewDecisionResponse(BaseModel):
     reviewed_at: datetime | None
     review_note: str | None
     idempotent: bool
+
+
+class EvidencePreviewEvent(BaseModel):
+    uid: str | None
+    summary: str | None
+    dtstart: str | None
+    dtend: str | None
+    location: str | None
+    description: str | None
+
+
+class EvidencePreviewResponse(BaseModel):
+    side: Literal["before", "after"]
+    content_type: str
+    truncated: bool
+    filename: str
+    event_count: int
+    events: list[EvidencePreviewEvent]
+    preview_text: str | None = None
 
 
 class ManualCorrectionTargetRequest(BaseModel):

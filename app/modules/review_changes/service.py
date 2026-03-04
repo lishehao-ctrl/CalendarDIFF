@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, select
+from sqlalchemy.orm import Session, joinedload
 
 from app.contracts.events import new_event
+from app.core.config import get_settings
+from app.core.logging import sanitize_log_message
 from app.db.models import (
     Change,
     ChangeType,
@@ -14,6 +19,9 @@ from app.db.models import (
     Input,
     InputType,
     IntegrationOutbox,
+    Notification,
+    NotificationChannel,
+    NotificationStatus,
     OutboxStatus,
     ReviewStatus,
     User,
@@ -24,12 +32,29 @@ class ReviewChangeNotFoundError(RuntimeError):
     pass
 
 
+class EvidencePathError(RuntimeError):
+    pass
+
+
+class ReviewChangeEvidenceNotFoundError(RuntimeError):
+    pass
+
+
+class ReviewChangeEvidenceReadError(RuntimeError):
+    pass
+
+
 class ManualCorrectionNotFoundError(RuntimeError):
     pass
 
 
 class ManualCorrectionValidationError(RuntimeError):
     pass
+
+
+SUMMARY_TIME_FIELDS = ("start_at_utc", "internal_date", "due_at", "end_at_utc")
+PREVIEW_MAX_BYTES = 64 * 1024
+logger = logging.getLogger(__name__)
 
 
 def list_review_changes(
@@ -42,12 +67,17 @@ def list_review_changes(
     offset: int,
 ) -> list[dict]:
     stmt = (
-        select(Change)
+        select(Change, Input, Notification)
+        .options(joinedload(Change.before_snapshot), joinedload(Change.after_snapshot))
         .join(Input, Input.id == Change.input_id)
+        .outerjoin(
+            Notification,
+            and_(
+                Notification.change_id == Change.id,
+                Notification.channel == NotificationChannel.EMAIL,
+            ),
+        )
         .where(Input.user_id == user_id)
-        .order_by(Change.detected_at.desc(), Change.id.desc())
-        .offset(0)
-        .limit(limit + offset + 512)
     )
 
     if review_status == "pending":
@@ -57,14 +87,23 @@ def list_review_changes(
     elif review_status == "rejected":
         stmt = stmt.where(Change.review_status == ReviewStatus.REJECTED)
 
-    rows = db.scalars(stmt).all()
+    db_offset = 0 if source_id is not None else offset
+    db_limit = (limit + offset + 512) if source_id is not None else limit
+    stmt = stmt.order_by(Change.detected_at.desc(), Change.id.desc()).offset(db_offset).limit(db_limit)
+    rows = db.execute(stmt).all()
 
+    now = datetime.now(timezone.utc)
     output: list[dict] = []
-    for row in rows:
+    for row, input_row, notification_row in rows:
         sources = _parse_sources(row.proposal_sources_json)
-        primary_source_id = sources[0]["source_id"] if sources else None
-        if source_id is not None and source_id not in {item["source_id"] for item in sources if isinstance(item.get("source_id"), int)}:
+        proposal_source_ids = _extract_proposal_source_ids(row)
+        resolved_source_id = proposal_source_ids[0] if proposal_source_ids else row.input_id
+        resolved_source_kind = _extract_primary_source_kind(row) or _to_source_kind_value(input_row.type)
+        if source_id is not None and source_id not in {resolved_source_id, *proposal_source_ids}:
             continue
+        priority_rank = 0 if resolved_source_kind == "email" else 1
+        priority_label = "high" if priority_rank == 0 else "normal"
+        notification_state, deliver_after = _read_notification_state(notification_row, now=now)
         output.append(
             {
                 "id": row.id,
@@ -76,15 +115,23 @@ def list_review_changes(
                 "after_json": row.after_json,
                 "proposal_merge_key": row.proposal_merge_key,
                 "proposal_sources": sources,
-                "source_id": primary_source_id,
+                "source_id": resolved_source_id,
                 "viewed_at": row.viewed_at,
                 "viewed_note": row.viewed_note,
                 "reviewed_at": row.reviewed_at,
                 "review_note": row.review_note,
+                "source_kind": resolved_source_kind,
+                "priority_rank": priority_rank,
+                "priority_label": priority_label,
+                "notification_state": notification_state,
+                "deliver_after": deliver_after,
+                "change_summary": _build_change_summary(change=row, input_row=input_row),
             }
         )
 
-    return output[offset : offset + limit]
+    if source_id is not None:
+        return output[offset : offset + limit]
+    return output
 
 
 def mark_review_change_viewed(
@@ -174,6 +221,35 @@ def decide_review_change(
     db.commit()
     db.refresh(row)
     return row, False
+
+
+def preview_review_change_evidence(
+    db: Session,
+    *,
+    user_id: int,
+    change_id: int,
+    side: Literal["before", "after"],
+) -> dict:
+    row, resolved = _resolve_change_evidence_file(db, user_id=user_id, change_id=change_id, side=side)
+    try:
+        content_bytes = resolved.read_bytes()
+    except FileNotFoundError as exc:
+        raise ReviewChangeEvidenceNotFoundError("Evidence file not found") from exc
+    except Exception as exc:  # pragma: no cover - defensive guard
+        logger.error("failed to read evidence preview error=%s", sanitize_log_message(str(exc)))
+        raise ReviewChangeEvidenceReadError("Failed to prepare evidence preview") from exc
+
+    truncated = len(content_bytes) > PREVIEW_MAX_BYTES
+    preview_text = _build_evidence_preview_text(content_bytes)
+    return {
+        "side": side,
+        "content_type": "text/calendar",
+        "truncated": truncated,
+        "filename": f"change-{row.id}-{side}.ics",
+        "event_count": 0,
+        "events": [],
+        "preview_text": preview_text,
+    }
 
 
 def preview_manual_correction(
@@ -459,6 +535,186 @@ def _parse_sources(raw_sources: object) -> list[dict]:
             }
         )
     return out
+
+
+def _to_source_kind_value(input_type: InputType) -> str:
+    if input_type == InputType.ICS:
+        return "calendar"
+    return "email"
+
+
+def _extract_proposal_source_ids(change: Change) -> list[int]:
+    sources = change.proposal_sources_json if isinstance(change.proposal_sources_json, list) else []
+    out: list[int] = []
+    for row in sources:
+        if not isinstance(row, dict):
+            continue
+        source_id = row.get("source_id")
+        if isinstance(source_id, int):
+            out.append(source_id)
+    return out
+
+
+def _extract_primary_source_kind(change: Change) -> str | None:
+    sources = change.proposal_sources_json if isinstance(change.proposal_sources_json, list) else []
+    for row in sources:
+        if not isinstance(row, dict):
+            continue
+        source_kind = row.get("source_kind")
+        if isinstance(source_kind, str):
+            normalized = source_kind.strip().lower()
+            if normalized in {"calendar", "email"}:
+                return normalized
+    return None
+
+
+def _read_notification_state(
+    row: Notification | None,
+    *,
+    now: datetime,
+) -> tuple[str | None, datetime | None]:
+    if row is None:
+        return None, None
+
+    deliver_after = row.deliver_after
+    if row.status == NotificationStatus.PENDING:
+        if deliver_after > now and row.enqueue_reason == "email_priority_delay":
+            return "queued_delayed_by_email_priority", deliver_after
+        if deliver_after > now:
+            return "queued_delayed", deliver_after
+        return "queued", deliver_after
+    if row.status == NotificationStatus.SENT:
+        return "sent", deliver_after
+    if row.status == NotificationStatus.FAILED:
+        return "failed", deliver_after
+    return None, deliver_after
+
+
+def _build_change_summary(*, change: Change, input_row: Input) -> dict:
+    source_label = input_row.display_label if isinstance(input_row.display_label, str) else None
+    source_kind = _to_source_kind_value(input_row.type) if isinstance(input_row.type, InputType) else None
+
+    before_payload = change.before_json if isinstance(change.before_json, dict) else None
+    after_payload = change.after_json if isinstance(change.after_json, dict) else None
+
+    return {
+        "old": {
+            "value_time": _extract_value_time(before_payload),
+            "source_label": source_label,
+            "source_kind": source_kind,
+            "source_observed_at": change.before_snapshot.retrieved_at if change.before_snapshot is not None else None,
+        },
+        "new": {
+            "value_time": _extract_value_time(after_payload),
+            "source_label": source_label,
+            "source_kind": source_kind,
+            "source_observed_at": change.after_snapshot.retrieved_at if change.after_snapshot is not None else None,
+        },
+    }
+
+
+def _extract_snapshot_evidence_key(raw_evidence_key: object) -> dict[str, Any] | None:
+    if not isinstance(raw_evidence_key, dict):
+        return None
+    return raw_evidence_key
+
+
+def _extract_snapshot_evidence_path(raw_evidence_key: object) -> str | None:
+    key = _extract_snapshot_evidence_key(raw_evidence_key)
+    if key is None:
+        return None
+    path_value = key.get("path")
+    if isinstance(path_value, str) and path_value:
+        return path_value
+    return None
+
+
+def _resolve_change_evidence_file(
+    db: Session,
+    *,
+    user_id: int,
+    change_id: int,
+    side: Literal["before", "after"],
+) -> tuple[Change, Path]:
+    row = db.scalar(
+        select(Change)
+        .join(Input, Input.id == Change.input_id)
+        .options(joinedload(Change.before_snapshot), joinedload(Change.after_snapshot))
+        .where(Change.id == change_id, Input.user_id == user_id)
+    )
+    if row is None:
+        raise ReviewChangeNotFoundError("Review change not found")
+
+    snapshot = row.before_snapshot if side == "before" else row.after_snapshot
+    evidence_path = _extract_snapshot_evidence_path(snapshot.raw_evidence_key if snapshot is not None else None)
+    if evidence_path is None:
+        raise ReviewChangeEvidenceNotFoundError("Evidence file not found")
+
+    try:
+        resolved = _resolve_evidence_file_path(evidence_path)
+    except EvidencePathError as exc:
+        raise ReviewChangeEvidenceNotFoundError("Evidence file not found") from exc
+    except Exception as exc:  # pragma: no cover - defensive guard
+        logger.error("failed to resolve evidence path error=%s", sanitize_log_message(str(exc)))
+        raise ReviewChangeEvidenceReadError("Failed to prepare evidence file") from exc
+
+    if not resolved.exists() or not resolved.is_file():
+        raise ReviewChangeEvidenceNotFoundError("Evidence file not found")
+    return row, resolved
+
+
+def _build_evidence_preview_text(content_bytes: bytes) -> str:
+    preview_bytes = content_bytes[:PREVIEW_MAX_BYTES]
+    return preview_bytes.decode("utf-8", errors="replace")
+
+
+def _resolve_evidence_file_path(raw_path: str) -> Path:
+    normalized = raw_path.strip() if isinstance(raw_path, str) else ""
+    if not normalized:
+        raise EvidencePathError("evidence path is empty")
+
+    settings = get_settings()
+    configured_base = Path(settings.evidence_dir).expanduser()
+    if configured_base.is_absolute():
+        base_dir = configured_base.resolve()
+    else:
+        base_dir = (Path.cwd() / configured_base).resolve()
+
+    path_obj = Path(normalized).expanduser()
+    if path_obj.is_absolute():
+        resolved = path_obj.resolve()
+    else:
+        resolved = (base_dir / path_obj).resolve()
+
+    if not _is_relative_to(resolved, base_dir):
+        raise EvidencePathError("evidence path escaped base directory")
+    return resolved
+
+
+def _extract_value_time(payload: dict[str, Any] | None) -> datetime | None:
+    if payload is None:
+        return None
+    for key in SUMMARY_TIME_FIELDS:
+        parsed = _coerce_datetime(payload.get(key))
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _coerce_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return _as_utc(value)
+    if not isinstance(value, str):
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+    normalized = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    return _as_utc(parsed)
 
 
 def resolve_target_event_uid(
@@ -781,3 +1037,11 @@ def _as_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
