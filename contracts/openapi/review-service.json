@@ -1,356 +1,6 @@
 {
   "components": {
     "schemas": {
-      "ChangeFeedResponse": {
-        "properties": {
-          "after_evidence_kind": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "After Evidence Kind"
-          },
-          "after_json": {
-            "anyOf": [
-              {
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "After Json"
-          },
-          "after_snapshot_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "After Snapshot Id"
-          },
-          "before_evidence_kind": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Before Evidence Kind"
-          },
-          "before_json": {
-            "anyOf": [
-              {
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Before Json"
-          },
-          "before_snapshot_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Before Snapshot Id"
-          },
-          "change_summary": {
-            "$ref": "#/components/schemas/ChangeSummary"
-          },
-          "change_type": {
-            "title": "Change Type",
-            "type": "string"
-          },
-          "deliver_after": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Deliver After"
-          },
-          "delta_seconds": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Delta Seconds"
-          },
-          "detected_at": {
-            "format": "date-time",
-            "title": "Detected At",
-            "type": "string"
-          },
-          "event_uid": {
-            "title": "Event Uid",
-            "type": "string"
-          },
-          "has_after_evidence": {
-            "title": "Has After Evidence",
-            "type": "boolean"
-          },
-          "has_before_evidence": {
-            "title": "Has Before Evidence",
-            "type": "boolean"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "notification_state": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notification State"
-          },
-          "priority_label": {
-            "title": "Priority Label",
-            "type": "string"
-          },
-          "priority_rank": {
-            "title": "Priority Rank",
-            "type": "integer"
-          },
-          "source_id": {
-            "title": "Source Id",
-            "type": "integer"
-          },
-          "source_kind": {
-            "title": "Source Kind",
-            "type": "string"
-          },
-          "viewed_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Viewed At"
-          },
-          "viewed_note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Viewed Note"
-          }
-        },
-        "required": [
-          "id",
-          "source_id",
-          "event_uid",
-          "change_type",
-          "detected_at",
-          "before_json",
-          "after_json",
-          "delta_seconds",
-          "before_snapshot_id",
-          "after_snapshot_id",
-          "has_before_evidence",
-          "has_after_evidence",
-          "before_evidence_kind",
-          "after_evidence_kind",
-          "viewed_at",
-          "viewed_note",
-          "source_kind",
-          "priority_rank",
-          "priority_label",
-          "notification_state",
-          "deliver_after",
-          "change_summary"
-        ],
-        "title": "ChangeFeedResponse",
-        "type": "object"
-      },
-      "ChangeResponse": {
-        "properties": {
-          "after_evidence_kind": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "After Evidence Kind"
-          },
-          "after_json": {
-            "anyOf": [
-              {
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "After Json"
-          },
-          "after_snapshot_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "After Snapshot Id"
-          },
-          "before_evidence_kind": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Before Evidence Kind"
-          },
-          "before_json": {
-            "anyOf": [
-              {
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Before Json"
-          },
-          "before_snapshot_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Before Snapshot Id"
-          },
-          "change_type": {
-            "title": "Change Type",
-            "type": "string"
-          },
-          "delta_seconds": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Delta Seconds"
-          },
-          "detected_at": {
-            "format": "date-time",
-            "title": "Detected At",
-            "type": "string"
-          },
-          "event_uid": {
-            "title": "Event Uid",
-            "type": "string"
-          },
-          "has_after_evidence": {
-            "title": "Has After Evidence",
-            "type": "boolean"
-          },
-          "has_before_evidence": {
-            "title": "Has Before Evidence",
-            "type": "boolean"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "source_id": {
-            "title": "Source Id",
-            "type": "integer"
-          },
-          "viewed_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Viewed At"
-          },
-          "viewed_note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Viewed Note"
-          }
-        },
-        "required": [
-          "id",
-          "source_id",
-          "event_uid",
-          "change_type",
-          "detected_at",
-          "before_json",
-          "after_json",
-          "delta_seconds",
-          "before_snapshot_id",
-          "after_snapshot_id",
-          "has_before_evidence",
-          "has_after_evidence",
-          "before_evidence_kind",
-          "after_evidence_kind",
-          "viewed_at",
-          "viewed_note"
-        ],
-        "title": "ChangeResponse",
-        "type": "object"
-      },
       "ChangeSummary": {
         "properties": {
           "new": {
@@ -420,37 +70,7 @@
             "title": "Value Time"
           }
         },
-        "required": [
-          "value_time",
-          "source_label",
-          "source_kind",
-          "source_observed_at"
-        ],
         "title": "ChangeSummarySide",
-        "type": "object"
-      },
-      "ChangeViewedUpdateRequest": {
-        "properties": {
-          "note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
-          },
-          "viewed": {
-            "title": "Viewed",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "viewed"
-        ],
-        "title": "ChangeViewedUpdateRequest",
         "type": "object"
       },
       "EmailMatchedSnippet": {
@@ -1193,6 +813,7 @@
           "evidence_snapshot": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -1285,6 +906,7 @@
             "title": "Score"
           },
           "score_breakdown": {
+            "additionalProperties": true,
             "title": "Score Breakdown",
             "type": "object"
           },
@@ -1323,6 +945,197 @@
           "updated_at"
         ],
         "title": "LinkCandidateItemResponse",
+        "type": "object"
+      },
+      "LinkDeleteResponse": {
+        "properties": {
+          "block_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Id"
+          },
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deleted",
+          "id"
+        ],
+        "title": "LinkDeleteResponse",
+        "type": "object"
+      },
+      "LinkItemResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "entity_uid": {
+            "title": "Entity Uid",
+            "type": "string"
+          },
+          "external_event_id": {
+            "title": "External Event Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "link_origin": {
+            "title": "Link Origin",
+            "type": "string"
+          },
+          "link_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Score"
+          },
+          "linked_entity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LinkCandidateEntityPreview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "signals": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signals"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "integer"
+          },
+          "source_kind": {
+            "title": "Source Kind",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_id",
+          "source_kind",
+          "external_event_id",
+          "entity_uid",
+          "link_origin",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LinkItemResponse",
+        "type": "object"
+      },
+      "LinkRelinkRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "clear_block": {
+            "default": true,
+            "title": "Clear Block",
+            "type": "boolean"
+          },
+          "entity_uid": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Entity Uid",
+            "type": "string"
+          },
+          "external_event_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "External Event Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "source_id": {
+            "minimum": 1.0,
+            "title": "Source Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_id",
+          "external_event_id",
+          "entity_uid"
+        ],
+        "title": "LinkRelinkRequest",
+        "type": "object"
+      },
+      "LinkRelinkResponse": {
+        "properties": {
+          "cleared_blocks": {
+            "title": "Cleared Blocks",
+            "type": "integer"
+          },
+          "entity_uid": {
+            "title": "Entity Uid",
+            "type": "string"
+          },
+          "external_event_id": {
+            "title": "External Event Id",
+            "type": "string"
+          },
+          "link_id": {
+            "title": "Link Id",
+            "type": "integer"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "link_id",
+          "entity_uid",
+          "source_id",
+          "external_event_id",
+          "cleared_blocks"
+        ],
+        "title": "LinkRelinkResponse",
         "type": "object"
       },
       "ManualCorrectionApplyResponse": {
@@ -1577,6 +1390,7 @@
           "after_json": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -1588,6 +1402,7 @@
           "before_json": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -1596,9 +1411,31 @@
             ],
             "title": "Before Json"
           },
+          "change_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChangeSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "change_type": {
             "title": "Change Type",
             "type": "string"
+          },
+          "deliver_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deliver After"
           },
           "detected_at": {
             "format": "date-time",
@@ -1612,6 +1449,39 @@
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "notification_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notification State"
+          },
+          "priority_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority Label"
+          },
+          "priority_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority Rank"
           },
           "proposal_merge_key": {
             "anyOf": [
@@ -1673,6 +1543,17 @@
               }
             ],
             "title": "Source Id"
+          },
+          "source_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Kind"
           },
           "viewed_at": {
             "anyOf": [
@@ -1946,6 +1827,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -1993,6 +1881,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Health Health Get",
                   "type": "object"
                 }
@@ -2214,6 +2103,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Get Review Metrics Internal V2 Metrics Get",
                   "type": "object"
                 }
@@ -2235,284 +2125,6 @@
         "summary": "Get Review Metrics",
         "tags": [
           "internal-review-metrics"
-        ]
-      }
-    },
-    "/v2/change-events": {
-      "get": {
-        "operationId": "list_feed_v2_change_events_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "source_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Source Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "view",
-            "required": false,
-            "schema": {
-              "default": "all",
-              "title": "View",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "review_status",
-            "required": false,
-            "schema": {
-              "default": "approved",
-              "enum": [
-                "approved",
-                "pending",
-                "rejected",
-                "all"
-              ],
-              "title": "Review Status",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "source_kinds",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Source Kinds"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "minimum": 1,
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Limit"
-            }
-          },
-          {
-            "in": "query",
-            "name": "offset",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "minimum": 0,
-              "title": "Offset",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ChangeFeedResponse"
-                  },
-                  "title": "Response List Feed V2 Change Events Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Feed",
-        "tags": [
-          "change-events"
-        ]
-      }
-    },
-    "/v2/change-events/{change_id}": {
-      "patch": {
-        "operationId": "mark_change_viewed_v2_change_events__change_id__patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "change_id",
-            "required": true,
-            "schema": {
-              "title": "Change Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChangeViewedUpdateRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChangeResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Mark Change Viewed",
-        "tags": [
-          "change-events"
-        ]
-      }
-    },
-    "/v2/change-events/{change_id}/evidence/{side}/preview": {
-      "get": {
-        "operationId": "preview_change_evidence_v2_change_events__change_id__evidence__side__preview_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "change_id",
-            "required": true,
-            "schema": {
-              "title": "Change Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "path",
-            "name": "side",
-            "required": true,
-            "schema": {
-              "enum": [
-                "before",
-                "after"
-              ],
-              "title": "Side",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EvidencePreviewResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Preview Change Evidence",
-        "tags": [
-          "change-events"
         ]
       }
     },
@@ -2800,6 +2412,77 @@
           }
         },
         "summary": "Post Review Decision",
+        "tags": [
+          "review-items"
+        ]
+      }
+    },
+    "/v2/review-items/changes/{change_id}/evidence/{side}/preview": {
+      "get": {
+        "operationId": "get_review_change_evidence_preview_v2_review_items_changes__change_id__evidence__side__preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "title": "Change Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "side",
+            "required": true,
+            "schema": {
+              "enum": [
+                "before",
+                "after"
+              ],
+              "title": "Side",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidencePreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Review Change Evidence Preview",
         "tags": [
           "review-items"
         ]
@@ -3414,6 +3097,243 @@
           }
         },
         "summary": "Post Link Candidate Decision",
+        "tags": [
+          "review-items"
+        ]
+      }
+    },
+    "/v2/review-items/links": {
+      "get": {
+        "operationId": "get_links_v2_review_items_links_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "source_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LinkItemResponse"
+                  },
+                  "title": "Response Get Links V2 Review Items Links Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Links",
+        "tags": [
+          "review-items"
+        ]
+      }
+    },
+    "/v2/review-items/links/relink": {
+      "post": {
+        "operationId": "post_relink_observation_v2_review_items_links_relink_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkRelinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkRelinkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Relink Observation",
+        "tags": [
+          "review-items"
+        ]
+      }
+    },
+    "/v2/review-items/links/{link_id}": {
+      "delete": {
+        "operationId": "delete_link_route_v2_review_items_links__link_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "title": "Link Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "block",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Block",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "note",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkDeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Link Route",
         "tags": [
           "review-items"
         ]

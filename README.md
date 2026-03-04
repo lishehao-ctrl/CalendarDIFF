@@ -8,15 +8,16 @@ Core flow:
 2. ICS uses RFC-based delta detection first; only changed VEVENT components go to LLM
 3. removed/cancelled ICS components are handled as deterministic removals
 4. ICS canonical fields (`title/start/end/status/location`) stay deterministic from parser/source
-5. LLM outputs enrichment only (`course_parse`, tags/type/confidence), not canonical identity fields
+5. LLM outputs enrichment only (`course_parse`, `event_parts`, `link_signals`), not canonical identity fields
 6. `course_parse` is LLM-only (no local regex/raw text fallback in review/apply)
 7. strong/weak naming uses 5 parsed parts (`dept/number/suffix/quarter/year2`) with monotonic best-name updates
-8. cross-source linker v2 persists normalized links/candidates/blocks and keeps candidate review out of pending-notification chain
-9. link-candidate APIs: `GET /v2/review-items/link-candidates`, `POST /v2/review-items/link-candidates/{id}/decisions`, `GET/DELETE /v2/review-items/link-candidates/blocks*`
-10. build pending review proposals from source canonical observations
-11. approve proposals into canonical events
-12. enqueue and send digest notifications
-13. allow manual due correction when parsed result is wrong
+8. cross-source linker v2 uses inventory-state rules (`dept+number`, suffix/index constraints) and persists normalized links/candidates/blocks
+9. candidate review stays out of pending-notification chain; notify remains canonical-change-only
+10. link-candidate APIs: `GET /v2/review-items/link-candidates`, `POST /v2/review-items/link-candidates/{id}/decisions`, `GET/DELETE /v2/review-items/link-candidates/blocks*`
+11. build pending review proposals from source canonical observations
+12. approve proposals into canonical events
+13. enqueue and send digest notifications
+14. allow manual due correction when parsed result is wrong
 
 ## Runtime Topology (5 Services + PostgreSQL + Redis)
 

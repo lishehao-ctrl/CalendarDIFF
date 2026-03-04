@@ -81,19 +81,17 @@ Runtime responsibilities:
 5. `GET /v2/review-items/changes`
 6. `PATCH /v2/review-items/changes/{change_id}/views`
 7. `POST /v2/review-items/changes/{change_id}/decisions`
-8. `POST /v2/review-items/changes/corrections/preview`
-9. `POST /v2/review-items/changes/corrections`
-10. `GET /v2/review-items/link-candidates`
-11. `POST /v2/review-items/link-candidates/{id}/decisions`
-12. `GET /v2/review-items/link-candidates/blocks`
-13. `DELETE /v2/review-items/link-candidates/blocks/{block_id}`
-14. `GET /v2/timeline-events`
-15. `GET /v2/change-events`
-16. `PATCH /v2/change-events/{change_id}`
-17. `GET /v2/change-events/{change_id}/evidence/{side}/preview`
-18. `POST /internal/v2/ingest-results/applications`
-19. `GET /internal/v2/ingest-results/{request_id}`
-20. `GET /internal/v2/metrics`
+8. `GET /v2/review-items/changes/{change_id}/evidence/{side}/preview`
+9. `POST /v2/review-items/changes/corrections/preview`
+10. `POST /v2/review-items/changes/corrections`
+11. `GET /v2/review-items/link-candidates`
+12. `POST /v2/review-items/link-candidates/{id}/decisions`
+13. `GET /v2/review-items/link-candidates/blocks`
+14. `DELETE /v2/review-items/link-candidates/blocks/{block_id}`
+15. `GET /v2/timeline-events`
+16. `POST /internal/v2/ingest-results/applications`
+17. `GET /internal/v2/ingest-results/{request_id}`
+18. `GET /internal/v2/metrics`
 
 Notes:
 
@@ -138,7 +136,10 @@ All `/internal/v2/*` endpoints require:
 3. protocol: OpenAI-compatible `chat/completions`
 4. ICS parser contract: connector emits `calendar_delta_v1` payload, llm-service only parses changed VEVENT components
 5. canonical/enrichment split: payloads include `source_canonical` (deterministic) and `enrichment` (LLM/rule metadata)
-6. ICS canonical fields come from parser/source; LLM is limited to `course_parse` enrichment
+6. parser payload contract is hard-cut to `obs_v3`:
+   - calendar payload: `source_canonical` + `enrichment(course_parse,event_parts,link_signals,payload_schema_version)`
+   - gmail payload: `message_id` + `source_canonical` + `enrichment(course_parse,event_parts,link_signals,payload_schema_version)`
+7. ICS canonical fields come from parser/source; LLM output remains enrichment-only (no canonical fallback fields)
 7. env:
    - `INGESTION_LLM_MODEL`
    - `INGESTION_LLM_BASE_URL`

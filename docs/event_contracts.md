@@ -92,9 +92,10 @@ Consumers: optional observability/audit services
 
 The `ingest_results.records[*].payload` envelope used between llm/review runtime keeps record types stable and adds layered fields:
 
-1. `source_canonical`: deterministic source fields used for canonical diff and pending generation.
-2. `enrichment`: LLM-derived metadata (`course_parse`, linker metadata, aliases). No local regex/raw-text fallback is used for `course_parse`.
-3. additive linker signals:
+1. hard-cut parser schema version: `enrichment.payload_schema_version = "obs_v3"` (required).
+2. `source_canonical`: deterministic source fields used for canonical diff and pending generation.
+3. `enrichment`: LLM-derived metadata (`course_parse`, `event_parts`, `link_signals`). No local regex/raw-text fallback is used for these fields.
+4. additive linker signals:
    - Gmail canonical signals: `from_header`, `thread_id`, `internal_date`
    - ICS canonical signals: `organizer`
    - enrichment signals: `enrichment.link_signals` (`keywords`, `exam_sequence`, `location_text`, `instructor_hint`)
@@ -102,18 +103,14 @@ The `ingest_results.records[*].payload` envelope used between llm/review runtime
 Parser note:
 
 1. `course_parse` must be schema-valid from LLM output; invalid/missing objects are treated as parser failures (retry/dead-letter path), not downgraded by local inference.
-2. link-candidate review flow is storage/API-only (`event_link_candidates` + `/v2/review-items/link-candidates*`) and does not emit outbox notification events.
+2. `event_parts` and `link_signals` are also required and schema-validated; missing/invalid objects fail the parser output.
+3. link-candidate review flow is storage/API-only (`event_link_candidates` + `/v2/review-items/link-candidates*`) and does not emit outbox notification events.
 
 Example (`calendar.event.extracted`):
 
 ```json
 {
   "payload": {
-    "uid": "ent_...",
-    "title": "CSE 151A exam 1",
-    "start_at": "2026-03-10T20:00:00+00:00",
-    "end_at": "2026-03-10T21:00:00+00:00",
-    "course_label": "CSE 151A WI26",
     "source_canonical": {
       "external_event_id": "uid#rid",
       "source_title": "CSE 151A exam 1",
@@ -129,7 +126,21 @@ Example (`calendar.event.extracted`):
         "year2": 26,
         "confidence": 0.95,
         "evidence": "CSE 151A WI26"
-      }
+      },
+      "event_parts": {
+        "type": "exam",
+        "index": 1,
+        "qualifier": null,
+        "confidence": 0.94,
+        "evidence": "exam 1"
+      },
+      "link_signals": {
+        "keywords": ["exam"],
+        "exam_sequence": 1,
+        "location_text": "Center Hall 101",
+        "instructor_hint": "Prof Alice"
+      },
+      "payload_schema_version": "obs_v3"
     }
   }
 }

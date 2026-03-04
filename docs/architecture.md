@@ -65,7 +65,7 @@ Primary write ownership:
 2. builds `source_event_observations` and pending `changes`
 3. approve/reject decision APIs
 4. canonical event projection (`events`)
-5. read APIs: timeline/change/review
+5. read APIs: timeline/review-items
 
 Primary write ownership:
 
@@ -123,16 +123,22 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 4. gateway protocol remains OpenAI-compatible `chat/completions`
 5. ICS path is delta-first (`UID + RECURRENCE-ID` component key); cancelled components map to removal records
 6. ICS canonical fields are deterministic from parser/source and persisted as `source_canonical`
-7. LLM output is enrichment-only (`course_parse` + metadata), persisted under `enrichment`
+7. LLM output is enrichment-only (`course_parse`, `event_parts`, `link_signals`), persisted under `enrichment`
 8. `course_parse` is LLM-only with strict schema validation; parser failures enter existing retry/dead-letter flow
 9. pending/review diff only evaluates canonical source fields, not enrichment drift
 10. review-service maintains `event_entities` for strong/weak course naming (`course_best` + aliases) based on 5 parsed parts only (`dept/number/suffix/quarter/year2`)
-11. Gmail-to-ICS linker v2 is conservative (same-day ±30min time-first + course/signal scoring) and persists normalized link state in:
+11. Parser payload contract is hard-cut to `obs_v3` envelope:
+   - calendar record payload: `source_canonical` + `enrichment(course_parse,event_parts,link_signals,payload_schema_version=obs_v3)`
+   - gmail record payload: `message_id` + `source_canonical` + `enrichment(course_parse,event_parts,link_signals,payload_schema_version=obs_v3)`
+12. Gmail-to-ICS linker v2 is inventory-rule driven (no same-day window or score-band thresholds) and persists normalized link state in:
    - `event_entity_links` (auto/manual accepted links)
-   - `event_link_candidates` (review queue for score band / low anchor confidence)
+   - `event_link_candidates` (review queue for deterministic rule misses / low anchor confidence)
    - `event_link_blocks` (permanent rejected pairs)
-12. `0.65 <= score < 0.85` enters link-candidate review APIs (`/v2/review-items/link-candidates*`) and does not trigger `review.pending.created`
-13. blocked source/entity pairs are never auto-linked and never re-enter pending candidate flow until unblocked
+13. Auto-link rules are deterministic:
+   - require `dept+number` and `event_parts.type`
+   - enforce suffix exact-match when inventory for that `dept+number` has any suffix
+   - enforce `event_parts.index` exact-match when inventory for same course+type has multiple indexes
+14. blocked source/entity pairs are never auto-linked and never re-enter pending candidate flow until unblocked
 
 ## 7) Operational Notes
 
