@@ -149,26 +149,6 @@ def run_llm_worker_tick(
     return len(messages)
 
 
-def run_llm_worker_loop(*, stop_event, worker_id: str, session_factory: sessionmaker[Session]) -> None:
-    redis_client = get_redis_client()
-    logger.info("starting llm worker loop worker_id=%s", worker_id)
-    while not stop_event.is_set():
-        started = time.monotonic()
-        processed = 0
-        try:
-            processed = run_llm_worker_tick(
-                redis_client=redis_client,
-                session_factory=session_factory,
-                worker_id=worker_id,
-            )
-        except Exception as exc:  # pragma: no cover - defensive worker guard
-            logger.error("llm worker tick failed worker_id=%s error=%s", worker_id, str(exc))
-        elapsed_ms = int((time.monotonic() - started) * 1000)
-        if processed > 0:
-            logger.info("llm worker tick worker_id=%s processed=%s latency_ms=%s", worker_id, processed, elapsed_ms)
-        stop_event.wait(0.05)
-
-
 def _process_stream_message(
     *,
     message: LlmQueueMessage,
