@@ -6,26 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db.models import (
-    ConnectorResultStatus,
-    EventLinkAlertResolution,
-    IngestApplyLog,
-    IngestResult,
-    InputSource,
-    SourceKind,
-    SyncRequest,
-    SyncRequestStatus,
-)
-from app.modules.core_ingest.pending_rebuild import (
-    rebuild_pending_change_proposals,
-    upsert_auto_link_alerts_without_pending,
-)
-from app.modules.core_ingest.records_apply import (
-    apply_calendar_observations,
-    apply_gmail_observations,
-    ensure_canonical_input_for_user,
-)
-from app.modules.review_links.alerts_service import resolve_pending_link_alerts_for_entities
+from app.db.models.ingestion import IngestResult
+from app.db.models.review import IngestApplyLog
+from app.db.models.input import InputSource, SyncRequest, SyncRequestStatus
+from app.modules.core_ingest.apply_orchestrator import apply_records
 
 
 def get_ingest_apply_status(db: Session, *, request_id: str) -> dict:
@@ -94,67 +78,4 @@ def apply_ingest_result_idempotent(db: Session, *, request_id: str) -> dict:
         raise
 
 
-def apply_records(
-    *,
-    db: Session,
-    result: IngestResult,
-    source: InputSource,
-    applied_at: datetime,
-    request_id: str,
-) -> int:
-    records = result.records if isinstance(result.records, list) else []
-    auto_link_contexts: list[dict] = []
-
-    if result.status == ConnectorResultStatus.NO_CHANGE and not records:
-        return 0
-
-    canonical_input = ensure_canonical_input_for_user(db=db, user_id=source.user_id)
-
-    if source.source_kind == SourceKind.CALENDAR:
-        affected_merge_keys = apply_calendar_observations(
-            db=db,
-            source=source,
-            records=records,
-            applied_at=applied_at,
-            request_id=request_id,
-        )
-    elif source.source_kind == SourceKind.EMAIL:
-        affected_merge_keys = apply_gmail_observations(
-            db=db,
-            source=source,
-            records=records,
-            applied_at=applied_at,
-            request_id=request_id,
-            auto_link_contexts=auto_link_contexts,
-        )
-    else:
-        return 0
-
-    if not affected_merge_keys:
-        return 0
-
-    db.flush()
-    changes_created, pending_event_uids = rebuild_pending_change_proposals(
-        db=db,
-        source=source,
-        canonical_input=canonical_input,
-        affected_merge_keys=affected_merge_keys,
-        applied_at=applied_at,
-    )
-    resolve_pending_link_alerts_for_entities(
-        db=db,
-        user_id=source.user_id,
-        entity_uids=pending_event_uids,
-        resolution_code=EventLinkAlertResolution.CANONICAL_PENDING_CREATED,
-        note="canonical_pending_created",
-    )
-    if source.source_kind == SourceKind.EMAIL and auto_link_contexts:
-        upsert_auto_link_alerts_without_pending(
-            db=db,
-            auto_link_contexts=auto_link_contexts,
-            pending_event_uids=pending_event_uids,
-        )
-    return changes_created
-
-
-__all__ = ["apply_ingest_result_idempotent", "apply_records", "get_ingest_apply_status"]
+__all__ = ["apply_ingest_result_idempotent", "get_ingest_apply_status"]
