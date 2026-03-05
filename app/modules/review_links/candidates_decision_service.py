@@ -14,7 +14,11 @@ from app.db.models import (
     InputSource,
     SourceKind,
 )
-from app.modules.review_links.common import dedupe_ids_preserve_order
+from app.modules.review_links.common import (
+    build_batch_result_error,
+    build_batch_result_success,
+    dedupe_ids_preserve_order,
+)
 
 
 class LinkCandidateNotFoundError(RuntimeError):
@@ -50,43 +54,36 @@ def batch_decide_link_candidates(
                 note=note,
             )
             results.append(
-                {
-                    "id": candidate_id,
-                    "ok": True,
-                    "status": row.status.value,
-                    "idempotent": idempotent,
-                    "link_id": int(link_row.id) if link_row is not None else None,
-                    "block_id": int(block_row.id) if block_row is not None else None,
-                    "error_code": None,
-                    "error_detail": None,
-                }
+                build_batch_result_success(
+                    item_id=candidate_id,
+                    status=row.status.value,
+                    idempotent=idempotent,
+                    extras={
+                        "link_id": int(link_row.id) if link_row is not None else None,
+                        "block_id": int(block_row.id) if block_row is not None else None,
+                        "error_code": None,
+                        "error_detail": None,
+                    },
+                )
             )
             succeeded += 1
         except LinkCandidateNotFoundError as exc:
             results.append(
-                {
-                    "id": candidate_id,
-                    "ok": False,
-                    "status": None,
-                    "idempotent": False,
-                    "link_id": None,
-                    "block_id": None,
-                    "error_code": "not_found",
-                    "error_detail": str(exc),
-                }
+                build_batch_result_error(
+                    item_id=candidate_id,
+                    error_code="not_found",
+                    error_detail=str(exc),
+                    extras={"link_id": None, "block_id": None},
+                )
             )
         except LinkCandidateDecisionError as exc:
             results.append(
-                {
-                    "id": candidate_id,
-                    "ok": False,
-                    "status": None,
-                    "idempotent": False,
-                    "link_id": None,
-                    "block_id": None,
-                    "error_code": "invalid_state",
-                    "error_detail": str(exc),
-                }
+                build_batch_result_error(
+                    item_id=candidate_id,
+                    error_code="invalid_state",
+                    error_detail=str(exc),
+                    extras={"link_id": None, "block_id": None},
+                )
             )
     failed = len(results) - succeeded
     return {

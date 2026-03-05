@@ -12,7 +12,13 @@ from app.db.models import (
     EventLinkAlertRiskLevel,
     EventLinkAlertStatus,
 )
-from app.modules.review_links.common import dedupe_ids_preserve_order, load_entity_preview, normalize_review_note
+from app.modules.review_links.common import (
+    build_batch_result_error,
+    build_batch_result_success,
+    dedupe_ids_preserve_order,
+    load_entity_preview,
+    normalize_review_note,
+)
 
 
 class LinkAlertNotFoundError(RuntimeError):
@@ -275,30 +281,27 @@ def batch_decide_link_alerts(
                     note=note,
                 )
             results.append(
-                {
-                    "id": alert_id,
-                    "ok": True,
-                    "status": row.status.value,
-                    "idempotent": idempotent,
-                    "reviewed_at": row.reviewed_at,
-                    "review_note": row.review_note,
-                    "error_code": None,
-                    "error_detail": None,
-                }
+                build_batch_result_success(
+                    item_id=alert_id,
+                    status=row.status.value,
+                    idempotent=idempotent,
+                    extras={
+                        "reviewed_at": row.reviewed_at,
+                        "review_note": row.review_note,
+                        "error_code": None,
+                        "error_detail": None,
+                    },
+                )
             )
             succeeded += 1
         except LinkAlertNotFoundError as exc:
             results.append(
-                {
-                    "id": alert_id,
-                    "ok": False,
-                    "status": None,
-                    "idempotent": False,
-                    "reviewed_at": None,
-                    "review_note": None,
-                    "error_code": "not_found",
-                    "error_detail": str(exc),
-                }
+                build_batch_result_error(
+                    item_id=alert_id,
+                    error_code="not_found",
+                    error_detail=str(exc),
+                    extras={"reviewed_at": None, "review_note": None},
+                )
             )
     failed = len(results) - succeeded
     return {

@@ -75,3 +75,41 @@ def load_observation_snapshot(
         "source_dtend_utc": source_canonical.get("source_dtend_utc"),
         "is_active": row.is_active,
     }
+
+
+def build_batch_result_success(
+    *,
+    item_id: int,
+    status: str,
+    idempotent: bool,
+    extras: dict | None = None,
+) -> dict:
+    payload = {
+        "id": item_id,
+        "ok": True,
+        "status": status,
+        "idempotent": idempotent,
+    }
+    if isinstance(extras, dict):
+        payload.update(extras)
+    return payload
+
+
+def build_batch_result_error(
+    *,
+    item_id: int,
+    error_code: str,
+    error_detail: str,
+    extras: dict | None = None,
+) -> dict:
+    payload = {
+        "id": item_id,
+        "ok": False,
+        "status": None,
+        "idempotent": False,
+        "error_code": error_code,
+        "error_detail": error_detail,
+    }
+    if isinstance(extras, dict):
+        payload.update(extras)
+    return payload
