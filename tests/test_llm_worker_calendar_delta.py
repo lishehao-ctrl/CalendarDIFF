@@ -6,11 +6,11 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db.models import ConnectorResultStatus
 from app.modules.ingestion.llm_parsers.contracts import ParserOutput
-from app.modules.llm_runtime import worker as llm_worker
+from app.modules.llm_runtime import parse_pipeline
 
 
 def test_calendar_delta_removed_only_skips_llm(db_session_factory: sessionmaker) -> None:
-    records, status = llm_worker._parse_calendar_delta_with_llm(
+    records, status = parse_pipeline.parse_calendar_delta_with_llm(
         redis_client=object(),  # type: ignore[arg-type]
         stream_key="llm:parse:stream:v1",
         parse_payload={
@@ -52,8 +52,8 @@ def test_calendar_delta_changed_component_overrides_uid(monkeypatch, db_session_
     expected_external_event_id = "evt-rid#20260301T100000Z"
 
     monkeypatch.setattr(
-        llm_worker,
-        "_invoke_parser_with_limit",
+        parse_pipeline,
+        "invoke_parser_with_limit",
         lambda **kwargs: kwargs["parse_call"](),
     )
 
@@ -78,9 +78,9 @@ def test_calendar_delta_changed_component_overrides_uid(monkeypatch, db_session_
             model_hint="test-model",
         )
 
-    monkeypatch.setattr(llm_worker, "parse_calendar_content", _fake_parse_calendar_content)
+    monkeypatch.setattr(parse_pipeline, "parse_calendar_content", _fake_parse_calendar_content)
 
-    records, status = llm_worker._parse_calendar_delta_with_llm(
+    records, status = parse_pipeline.parse_calendar_delta_with_llm(
         redis_client=object(),  # type: ignore[arg-type]
         stream_key="llm:parse:stream:v1",
         parse_payload={

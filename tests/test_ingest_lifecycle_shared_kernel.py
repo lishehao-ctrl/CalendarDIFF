@@ -21,10 +21,14 @@ def test_connector_runtime_uses_shared_job_lifecycle_kernel() -> None:
 
 def test_llm_worker_uses_shared_job_lifecycle_kernel() -> None:
     worker_path = REPO_ROOT / "app" / "modules" / "llm_runtime" / "worker.py"
-    content = worker_path.read_text(encoding="utf-8")
-    assert "from app.modules.ingestion.job_lifecycle import" in content
-    assert "apply_retry_transition" in content
-    assert "apply_dead_letter_transition" in content
-    assert "upsert_ingest_result_and_outbox_once" in content
-    assert "def _retry_or_dead_letter" not in content
-    assert "def _compute_retry_delay_seconds" not in content
+    tick_path = REPO_ROOT / "app" / "modules" / "llm_runtime" / "worker_tick.py"
+    transitions_path = REPO_ROOT / "app" / "modules" / "llm_runtime" / "transitions.py"
+    worker_content = worker_path.read_text(encoding="utf-8")
+    tick_content = tick_path.read_text(encoding="utf-8")
+    transitions_content = transitions_path.read_text(encoding="utf-8")
+    assert "from app.modules.ingestion.job_lifecycle import" in tick_content or "from app.modules.ingestion.job_lifecycle import" in transitions_content
+    assert "apply_retry_transition" in transitions_content
+    assert "apply_dead_letter_transition" in tick_content or "apply_dead_letter_transition" in transitions_content
+    assert "upsert_ingest_result_and_outbox_once" in transitions_content
+    assert "def _retry_or_dead_letter" not in worker_content
+    assert "def _compute_retry_delay_seconds" not in worker_content

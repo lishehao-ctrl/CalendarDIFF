@@ -15,7 +15,7 @@ from app.db.models import (
     SyncRequestStatus,
     User,
 )
-from app.modules.llm_runtime import worker as llm_worker
+from app.modules.llm_runtime import transitions as llm_transitions
 
 
 def _seed_claimed_context(db: Session, *, request_id: str) -> tuple[IngestJob, SyncRequest]:
@@ -72,10 +72,10 @@ def test_retry_policy_schedules_retry(db_session: Session, monkeypatch) -> None:
         def _capture_retry(*_args, **kwargs):  # noqa: ANN002, ANN003 - test hook
             captured.update(kwargs)
 
-        monkeypatch.setattr(llm_worker, "schedule_retry_task", _capture_retry)
-        monkeypatch.setattr(llm_worker, "increment_metric_counter", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(llm_transitions, "schedule_retry_task", _capture_retry)
+        monkeypatch.setattr(llm_transitions, "increment_metric_counter", lambda *_args, **_kwargs: None)
 
-        llm_worker._apply_llm_failure_transition(
+        llm_transitions.apply_llm_failure_transition(
             db_session,
             redis_client=object(),  # type: ignore[arg-type]
             stream_key="llm:parse:stream:v1",
@@ -105,7 +105,7 @@ def test_retry_policy_dead_letters_after_max_attempts(db_session: Session, monke
     get_settings.cache_clear()
     try:
         job, sync = _seed_claimed_context(db_session, request_id="retry-dlq")
-        llm_worker._apply_llm_failure_transition(
+        llm_transitions.apply_llm_failure_transition(
             db_session,
             redis_client=object(),  # type: ignore[arg-type]
             stream_key="llm:parse:stream:v1",
