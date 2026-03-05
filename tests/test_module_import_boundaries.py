@@ -16,6 +16,7 @@ def test_core_ingest_apply_modules_do_not_import_apply_service() -> None:
     for path in paths:
         content = _read(path)
         assert "app.modules.core_ingest.apply_service" not in content
+        assert "app.modules.core_ingest.pending_rebuild" not in content
 
 
 def test_review_change_services_do_not_import_router_or_legacy_service() -> None:

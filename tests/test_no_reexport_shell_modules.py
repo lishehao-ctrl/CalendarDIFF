@@ -33,6 +33,8 @@ def test_critical_modules_are_not_shell_reexports() -> None:
         "app/modules/llm_runtime/parse_pipeline.py",
         "app/modules/llm_runtime/transitions.py",
         "app/modules/ingestion/connector_runtime.py",
+        "app/modules/core_ingest/pending_proposal_rebuild.py",
+        "app/modules/core_ingest/pending_change_store.py",
         "app/modules/review_changes/manual_correction_service.py",
     ]
     for path in must_have_logic:
