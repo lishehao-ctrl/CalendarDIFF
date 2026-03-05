@@ -16,7 +16,7 @@ from app.core.config import get_settings
 from app.db.models import User
 from app.db.session import reset_engine
 from app.modules.input_control_plane.schemas import InputSourceCreateRequest
-from app.modules.input_control_plane.service import create_input_source
+from app.modules.input_control_plane.sources_service import create_input_source
 from datetime import datetime, timezone
 
 

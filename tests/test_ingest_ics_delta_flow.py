@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from app.db.models import ConnectorResultStatus
-from app.modules.ingestion import connector_runtime
+from app.modules.ingestion import calendar_fetcher
 from app.modules.sync.types import FetchResult
 
 
@@ -30,7 +30,7 @@ def _ics_content(summary: str) -> bytes:
 
 
 def test_calendar_fetch_not_modified_returns_no_change(monkeypatch) -> None:
-    monkeypatch.setattr(connector_runtime, "decode_source_secrets", lambda _source: {"url": "https://example.com/test.ics"})
+    monkeypatch.setattr(calendar_fetcher, "decode_source_secrets", lambda _source: {"url": "https://example.com/test.ics"})
 
     class _FakeICSClient:
         def fetch(self, url, input_id, if_none_match=None, if_modified_since=None):  # noqa: ANN001, D401
@@ -44,21 +44,19 @@ def test_calendar_fetch_not_modified_returns_no_change(monkeypatch) -> None:
                 fetched_at_utc=datetime.now(timezone.utc),
             )
 
-    monkeypatch.setattr(connector_runtime, "ICSClient", _FakeICSClient)
-    status, cursor_patch, parse_payload, error_code, error_message = connector_runtime._run_calendar_connector_fetch_only(
-        source=_source(cursor_json={}),
-    )
+    monkeypatch.setattr(calendar_fetcher, "ICSClient", _FakeICSClient)
+    outcome = calendar_fetcher.fetch_calendar_delta(source=_source(cursor_json={}))
 
-    assert status == ConnectorResultStatus.NO_CHANGE
-    assert parse_payload is None
-    assert error_code is None
-    assert error_message is None
-    assert cursor_patch["etag"] == "etag-v2"
-    assert cursor_patch["ics_delta_components_total"] == 0
+    assert outcome.status == ConnectorResultStatus.NO_CHANGE
+    assert outcome.parse_payload is None
+    assert outcome.error_code is None
+    assert outcome.error_message is None
+    assert outcome.cursor_patch["etag"] == "etag-v2"
+    assert outcome.cursor_patch["ics_delta_components_total"] == 0
 
 
 def test_calendar_fetch_changed_returns_calendar_delta_payload(monkeypatch) -> None:
-    monkeypatch.setattr(connector_runtime, "decode_source_secrets", lambda _source: {"url": "https://example.com/test.ics"})
+    monkeypatch.setattr(calendar_fetcher, "decode_source_secrets", lambda _source: {"url": "https://example.com/test.ics"})
 
     class _FakeICSClient:
         def fetch(self, url, input_id, if_none_match=None, if_modified_since=None):  # noqa: ANN001, D401
@@ -72,25 +70,23 @@ def test_calendar_fetch_changed_returns_calendar_delta_payload(monkeypatch) -> N
                 fetched_at_utc=datetime.now(timezone.utc),
             )
 
-    monkeypatch.setattr(connector_runtime, "ICSClient", _FakeICSClient)
-    status, cursor_patch, parse_payload, error_code, error_message = connector_runtime._run_calendar_connector_fetch_only(
-        source=_source(cursor_json={}),
-    )
+    monkeypatch.setattr(calendar_fetcher, "ICSClient", _FakeICSClient)
+    outcome = calendar_fetcher.fetch_calendar_delta(source=_source(cursor_json={}))
 
-    assert status == ConnectorResultStatus.CHANGED
-    assert error_code is None
-    assert error_message is None
-    assert parse_payload is not None
-    assert parse_payload["kind"] == "calendar_delta_v1"
-    assert isinstance(parse_payload["changed_components"], list)
-    assert parse_payload["changed_components"]
-    assert parse_payload["removed_component_keys"] == []
-    assert "ics_component_fingerprints_v1" in cursor_patch
-    assert cursor_patch["ics_delta_changed_components"] >= 1
+    assert outcome.status == ConnectorResultStatus.CHANGED
+    assert outcome.error_code is None
+    assert outcome.error_message is None
+    assert outcome.parse_payload is not None
+    assert outcome.parse_payload["kind"] == "calendar_delta_v1"
+    assert isinstance(outcome.parse_payload["changed_components"], list)
+    assert outcome.parse_payload["changed_components"]
+    assert outcome.parse_payload["removed_component_keys"] == []
+    assert "ics_component_fingerprints_v1" in outcome.cursor_patch
+    assert outcome.cursor_patch["ics_delta_changed_components"] >= 1
 
 
 def test_calendar_fetch_malformed_content_fails_closed(monkeypatch) -> None:
-    monkeypatch.setattr(connector_runtime, "decode_source_secrets", lambda _source: {"url": "https://example.com/test.ics"})
+    monkeypatch.setattr(calendar_fetcher, "decode_source_secrets", lambda _source: {"url": "https://example.com/test.ics"})
 
     class _FakeICSClient:
         def fetch(self, url, input_id, if_none_match=None, if_modified_since=None):  # noqa: ANN001, D401
@@ -104,12 +100,10 @@ def test_calendar_fetch_malformed_content_fails_closed(monkeypatch) -> None:
                 fetched_at_utc=datetime.now(timezone.utc),
             )
 
-    monkeypatch.setattr(connector_runtime, "ICSClient", _FakeICSClient)
-    status, _cursor_patch, parse_payload, error_code, error_message = connector_runtime._run_calendar_connector_fetch_only(
-        source=_source(cursor_json={}),
-    )
+    monkeypatch.setattr(calendar_fetcher, "ICSClient", _FakeICSClient)
+    outcome = calendar_fetcher.fetch_calendar_delta(source=_source(cursor_json={}))
 
-    assert status == ConnectorResultStatus.PARSE_FAILED
-    assert parse_payload is None
-    assert error_code == "calendar_delta_parse_failed"
-    assert isinstance(error_message, str) and error_message
+    assert outcome.status == ConnectorResultStatus.PARSE_FAILED
+    assert outcome.parse_payload is None
+    assert outcome.error_code == "calendar_delta_parse_failed"
+    assert isinstance(outcome.error_message, str) and outcome.error_message

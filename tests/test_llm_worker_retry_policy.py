@@ -75,7 +75,7 @@ def test_retry_policy_schedules_retry(db_session: Session, monkeypatch) -> None:
         monkeypatch.setattr(llm_worker, "schedule_retry_task", _capture_retry)
         monkeypatch.setattr(llm_worker, "increment_metric_counter", lambda *_args, **_kwargs: None)
 
-        llm_worker._retry_or_dead_letter(
+        llm_worker._apply_llm_failure_transition(
             db_session,
             redis_client=object(),  # type: ignore[arg-type]
             stream_key="llm:parse:stream:v1",
@@ -105,7 +105,7 @@ def test_retry_policy_dead_letters_after_max_attempts(db_session: Session, monke
     get_settings.cache_clear()
     try:
         job, sync = _seed_claimed_context(db_session, request_id="retry-dlq")
-        llm_worker._retry_or_dead_letter(
+        llm_worker._apply_llm_failure_transition(
             db_session,
             redis_client=object(),  # type: ignore[arg-type]
             stream_key="llm:parse:stream:v1",

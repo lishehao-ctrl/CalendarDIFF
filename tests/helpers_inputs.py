@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import User
 from app.modules.input_control_plane.schemas import InputSourceCreateRequest
-from app.modules.input_control_plane.service import create_input_source
+from app.modules.input_control_plane.sources_service import create_input_source
 
 
 def create_ics_input_for_user(db_session: Session, *, user_id: int, url: str) -> int:

@@ -15,7 +15,7 @@ from app.db.models import (
     SyncRequestStatus,
     User,
 )
-from app.modules.ingestion.connector_runtime import _requeue_stale_claimed_jobs
+from app.modules.ingestion.job_claiming import requeue_stale_claimed_jobs
 
 
 def _seed_claimed_job(
@@ -72,7 +72,7 @@ def test_requeue_stale_claimed_job(db_session: Session, monkeypatch) -> None:
     get_settings.cache_clear()
     try:
         job, sync_request = _seed_claimed_job(db_session, request_id="claim-requeue", attempt=0)
-        recovered = _requeue_stale_claimed_jobs(db_session)
+        recovered = requeue_stale_claimed_jobs(db_session)
         assert recovered == 1
 
         db_session.refresh(job)
@@ -92,7 +92,7 @@ def test_dead_letter_when_claim_timeout_exceeds_retries(db_session: Session, mon
     get_settings.cache_clear()
     try:
         job, sync_request = _seed_claimed_job(db_session, request_id="claim-dead-letter", attempt=1)
-        recovered = _requeue_stale_claimed_jobs(db_session)
+        recovered = requeue_stale_claimed_jobs(db_session)
         assert recovered == 1
 
         db_session.refresh(job)

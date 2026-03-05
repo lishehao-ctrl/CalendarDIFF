@@ -5,8 +5,13 @@ from sqlalchemy.orm import Session
 
 from app.core.security import require_internal_service_token
 from app.db.session import get_db
+from app.modules.ingestion.replay_service import (
+    IngestJobInvalidStateError,
+    IngestJobNotFoundError,
+    replay_dead_letter_jobs,
+    replay_ingest_job,
+)
 from app.modules.input_control_plane.schemas import DeadLetterReplayResponse, IngestJobReplayResponse
-from app.modules.input_control_plane.service import replay_dead_letter_jobs, replay_ingest_job
 
 router = APIRouter(
     prefix="/internal/ingest",
@@ -22,11 +27,10 @@ def replay_single_ingest_job(
 ) -> IngestJobReplayResponse:
     try:
         job = replay_ingest_job(db, job_id=job_id)
-    except RuntimeError as exc:
-        message = str(exc)
-        if message == "ingest job not found":
-            raise HTTPException(status_code=404, detail=message) from exc
-        raise HTTPException(status_code=409, detail=message) from exc
+    except IngestJobNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except IngestJobInvalidStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return IngestJobReplayResponse(
         job_id=job.id,
         request_id=job.request_id,

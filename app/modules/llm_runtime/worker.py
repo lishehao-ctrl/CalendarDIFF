@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import logging
-import random
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -13,18 +12,25 @@ import redis
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.contracts.events import new_event
 from app.core.config import get_settings
 from app.db.models import (
     ConnectorResultStatus,
     IngestJob,
     IngestJobStatus,
-    IngestResult,
     InputSource,
-    IntegrationOutbox,
-    OutboxStatus,
     SyncRequest,
     SyncRequestStatus,
+)
+from app.modules.ingestion.job_lifecycle import (
+    JobContext,
+    apply_dead_letter_transition,
+    apply_retry_transition,
+    apply_success_transition,
+    compute_retry_delay_seconds,
+    copy_job_payload,
+    load_job_context,
+    upsert_ingest_result_and_outbox_once,
+    utcnow,
 )
 from app.modules.ingestion.ics_delta import external_event_id_from_component_key
 from app.modules.ingestion.llm_parsers import (
@@ -158,7 +164,7 @@ def _process_stream_message(
     stream_key: str,
 ) -> _TaskOutcome:
     with session_factory() as db:
-        now = datetime.now(timezone.utc)
+        now = utcnow()
         job = db.scalar(
             select(IngestJob).where(IngestJob.request_id == message.request_id).with_for_update(skip_locked=True)
         )
@@ -168,15 +174,17 @@ def _process_stream_message(
         sync_request = db.scalar(select(SyncRequest).where(SyncRequest.request_id == message.request_id))
         source = db.get(InputSource, job.source_id)
         if sync_request is None or source is None:
-            _dead_letter(
-                db,
-                job=job,
-                sync_request=sync_request,
-                source=source,
+            apply_dead_letter_transition(
+                context=JobContext(job=job, sync_request=sync_request, source=source),
                 error_code="llm_context_missing",
                 error_message="missing sync_request/source for llm task",
                 attempt=max(job.attempt, message.attempt) + 1,
+                dead_lettered_at=now,
+                workflow_stage="LLM_DEAD_LETTER",
+                clear_claim=False,
+                attempt_mode="max",
             )
+            db.commit()
             return _TaskOutcome(message_id=message.message_id, ack=True)
 
         if job.status == IngestJobStatus.SUCCEEDED:
@@ -186,19 +194,21 @@ def _process_stream_message(
         if job.status != IngestJobStatus.CLAIMED:
             return _TaskOutcome(message_id=message.message_id, ack=True)
 
-        payload = _job_payload(job)
+        payload = copy_job_payload(job)
         parse_payload = payload.get("llm_parse_payload")
         cursor_patch = payload.get("llm_cursor_patch")
         if not isinstance(parse_payload, dict):
-            _dead_letter(
-                db,
-                job=job,
-                sync_request=sync_request,
-                source=source,
+            apply_dead_letter_transition(
+                context=JobContext(job=job, sync_request=sync_request, source=source),
                 error_code="llm_parse_payload_missing",
                 error_message="llm_parse_payload is missing or invalid",
                 attempt=max(job.attempt, message.attempt) + 1,
+                dead_lettered_at=now,
+                workflow_stage="LLM_DEAD_LETTER",
+                clear_claim=False,
+                attempt_mode="max",
             )
+            db.commit()
             return _TaskOutcome(message_id=message.message_id, ack=True)
 
         if not isinstance(cursor_patch, dict):
@@ -225,7 +235,7 @@ def _process_stream_message(
         )
     except _RateLimitRejected as exc:
         with session_factory() as db:
-            _retry_or_dead_letter(
+            _apply_llm_failure_transition(
                 db,
                 redis_client=redis_client,
                 stream_key=stream_key,
@@ -242,7 +252,7 @@ def _process_stream_message(
         if _is_rate_limited_llm_error(exc):
             increment_metric_counter(redis_client, metric_name="llm_calls_rate_limited")
         with session_factory() as db:
-            _retry_or_dead_letter(
+            _apply_llm_failure_transition(
                 db,
                 redis_client=redis_client,
                 stream_key=stream_key,
@@ -256,7 +266,7 @@ def _process_stream_message(
         return _TaskOutcome(message_id=message.message_id, ack=True)
     except Exception as exc:  # pragma: no cover - defensive worker guard
         with session_factory() as db:
-            _retry_or_dead_letter(
+            _apply_llm_failure_transition(
                 db,
                 redis_client=redis_client,
                 stream_key=stream_key,
@@ -557,13 +567,7 @@ def _is_rate_limited_llm_error(exc: LlmParseError) -> bool:
     return "rate_limit" in code or "rate_limited" in code or "429" in message
 
 
-def _job_payload(job: IngestJob) -> dict:
-    if isinstance(job.payload_json, dict):
-        return dict(job.payload_json)
-    return {}
-
-
-def _retry_or_dead_letter(
+def _apply_llm_failure_transition(
     db: Session,
     *,
     redis_client: redis.Redis,
@@ -575,124 +579,88 @@ def _retry_or_dead_letter(
     reason: str,
     retryable: bool = True,
 ) -> None:
-    now = datetime.now(timezone.utc)
+    now = utcnow()
     settings = get_settings()
-
-    job = db.scalar(select(IngestJob).where(IngestJob.request_id == request_id).with_for_update())
-    sync_request = db.scalar(select(SyncRequest).where(SyncRequest.request_id == request_id))
-    source = db.get(InputSource, job.source_id) if job is not None else None
-    if job is None or sync_request is None or source is None:
-        if job is not None:
-            _dead_letter(
-                db,
-                job=job,
-                sync_request=sync_request,
-                source=source,
-                error_code="llm_retry_context_missing",
-                error_message="missing context during retry scheduling",
-                attempt=next_attempt,
-            )
+    context = load_job_context(db, request_id=request_id, lock_job=True)
+    if context is None:
+        return
+    if context.sync_request is None or context.source is None:
+        apply_dead_letter_transition(
+            context=context,
+            error_code="llm_retry_context_missing",
+            error_message="missing context during retry scheduling",
+            attempt=next_attempt,
+            dead_lettered_at=now,
+            workflow_stage="LLM_DEAD_LETTER",
+            clear_claim=False,
+            attempt_mode="max",
+        )
+        db.commit()
         return
 
     max_attempts = max(1, int(settings.llm_max_retry_attempts))
     if retryable and next_attempt < max_attempts:
-        delay_seconds = _compute_retry_delay_seconds(next_attempt)
+        delay_seconds = compute_retry_delay_seconds(
+            attempt=next_attempt,
+            base_seconds=int(settings.llm_retry_base_seconds),
+            max_seconds=int(settings.llm_retry_max_seconds),
+            jitter_seconds=int(settings.llm_retry_jitter_seconds),
+        )
         due_at = now + timedelta(seconds=delay_seconds)
         try:
             schedule_retry_task(
                 redis_client,
                 stream_key=stream_key,
                 request_id=request_id,
-                source_id=job.source_id,
+                source_id=context.job.source_id,
                 attempt=next_attempt,
                 reason=reason,
                 due_at=due_at,
             )
         except Exception as exc:
-            _dead_letter(
-                db,
-                job=job,
-                sync_request=sync_request,
-                source=source,
+            apply_dead_letter_transition(
+                context=context,
                 error_code="llm_retry_schedule_failed",
                 error_message=str(exc),
                 attempt=next_attempt,
+                dead_lettered_at=now,
+                workflow_stage="LLM_DEAD_LETTER",
+                clear_claim=False,
+                attempt_mode="max",
             )
+            db.commit()
             return
 
         increment_metric_counter(redis_client, metric_name="llm_retry_scheduled")
-        payload = _job_payload(job)
-        payload["workflow_stage"] = "LLM_RETRY_WAITING"
-        payload["last_error_code"] = error_code
-        payload["last_error_message"] = _truncate(error_message)
-        payload["last_retry_scheduled_at"] = now.isoformat()
-        payload["llm_next_due_at"] = due_at.isoformat()
-
-        job.status = IngestJobStatus.CLAIMED
-        job.attempt = next_attempt
-        job.next_retry_at = due_at
-        job.payload_json = payload
-        sync_request.status = SyncRequestStatus.RUNNING
-        sync_request.error_code = error_code
-        sync_request.error_message = _truncate(error_message)
-        source.last_error_code = error_code
-        source.last_error_message = _truncate(error_message)
+        apply_retry_transition(
+            context=context,
+            error_code=error_code,
+            error_message=error_message,
+            next_attempt=next_attempt,
+            due_at=due_at,
+            workflow_stage="LLM_RETRY_WAITING",
+            payload_extra={
+                "last_retry_scheduled_at": now.isoformat(),
+                "llm_next_due_at": due_at.isoformat(),
+            },
+            sync_status=SyncRequestStatus.RUNNING,
+            job_status=IngestJobStatus.CLAIMED,
+            clear_claim=False,
+        )
         db.commit()
         return
 
-    _dead_letter(
-        db,
-        job=job,
-        sync_request=sync_request,
-        source=source,
+    apply_dead_letter_transition(
+        context=context,
         error_code=error_code,
         error_message=error_message,
         attempt=next_attempt,
+        dead_lettered_at=now,
+        workflow_stage="LLM_DEAD_LETTER",
+        clear_claim=False,
+        attempt_mode="max",
     )
-
-
-def _dead_letter(
-    db: Session,
-    *,
-    job: IngestJob,
-    sync_request: SyncRequest | None,
-    source: InputSource | None,
-    error_code: str,
-    error_message: str,
-    attempt: int,
-) -> None:
-    now = datetime.now(timezone.utc)
-    payload = _job_payload(job)
-    payload["workflow_stage"] = "LLM_DEAD_LETTER"
-    payload["last_error_code"] = error_code
-    payload["last_error_message"] = _truncate(error_message)
-    payload["dead_lettered_at"] = now.isoformat()
-
-    job.status = IngestJobStatus.DEAD_LETTER
-    job.dead_lettered_at = now
-    job.next_retry_at = None
-    job.attempt = max(attempt, job.attempt + 1)
-    job.payload_json = payload
-    if sync_request is not None:
-        sync_request.status = SyncRequestStatus.FAILED
-        sync_request.error_code = error_code
-        sync_request.error_message = _truncate(error_message)
-    if source is not None:
-        source.last_error_code = error_code
-        source.last_error_message = _truncate(error_message)
     db.commit()
-
-
-def _compute_retry_delay_seconds(next_attempt: int) -> int:
-    settings = get_settings()
-    exponent = max(next_attempt - 1, 0)
-    base = max(1, int(settings.llm_retry_base_seconds))
-    max_seconds = max(base, int(settings.llm_retry_max_seconds))
-    jitter_max = max(0, int(settings.llm_retry_jitter_seconds))
-    delay = min(base * (2**exponent), max_seconds)
-    if jitter_max > 0:
-        delay += random.randint(0, jitter_max)
-    return max(1, int(delay))
 
 
 def _mark_success(
@@ -703,90 +671,43 @@ def _mark_success(
     result_status: ConnectorResultStatus,
     cursor_patch: dict,
 ) -> None:
-    now = datetime.now(timezone.utc)
-    job = db.scalar(select(IngestJob).where(IngestJob.request_id == request_id).with_for_update())
-    sync_request = db.scalar(select(SyncRequest).where(SyncRequest.request_id == request_id))
-    if job is None or sync_request is None:
+    now = utcnow()
+    context = load_job_context(db, request_id=request_id, lock_job=True)
+    if context is None or context.sync_request is None:
         return
-    source = db.get(InputSource, job.source_id)
-    if source is None:
-        _dead_letter(
-            db,
-            job=job,
-            sync_request=sync_request,
-            source=source,
+    if context.source is None:
+        apply_dead_letter_transition(
+            context=context,
             error_code="llm_source_missing_on_success",
             error_message="source row disappeared before success commit",
-            attempt=job.attempt + 1,
+            attempt=context.job.attempt + 1,
+            dead_lettered_at=now,
+            workflow_stage="LLM_DEAD_LETTER",
+            clear_claim=False,
+            attempt_mode="max",
         )
+        db.commit()
         return
 
-    existing_result = db.scalar(select(IngestResult).where(IngestResult.request_id == request_id))
-    if existing_result is None:
-        db.add(
-            IngestResult(
-                request_id=request_id,
-                source_id=source.id,
-                provider=source.provider,
-                status=result_status,
-                cursor_patch=cursor_patch,
-                records=records,
-                fetched_at=now,
-                error_code=None,
-                error_message=None,
-            )
-        )
-        event = new_event(
-            event_type="ingest.result.ready",
-            aggregate_type="ingest_result",
-            aggregate_id=request_id,
-            payload={
-                "request_id": request_id,
-                "source_id": source.id,
-                "provider": source.provider,
-                "status": result_status.value,
-            },
-        )
-        db.add(
-            IntegrationOutbox(
-                event_id=event.event_id,
-                event_type=event.event_type,
-                aggregate_type=event.aggregate_type,
-                aggregate_id=event.aggregate_id,
-                payload_json=event.payload,
-                status=OutboxStatus.PENDING,
-                available_at=event.available_at,
-            )
-        )
-
-    if source.cursor is not None and cursor_patch:
-        merged = dict(source.cursor.cursor_json or {})
-        merged.update(cursor_patch)
-        source.cursor.cursor_json = merged
-        source.cursor.version += 1
-    source.last_polled_at = now
-    source.next_poll_at = now + timedelta(seconds=max(source.poll_interval_seconds, 30))
-    source.last_error_code = None
-    source.last_error_message = None
-
-    payload = _job_payload(job)
-    payload["workflow_stage"] = "LLM_SUCCEEDED"
-    payload["llm_finished_at"] = now.isoformat()
-    payload.pop("llm_parse_payload", None)
-    job.payload_json = payload
-    job.status = IngestJobStatus.SUCCEEDED
-    job.next_retry_at = None
-    sync_request.status = SyncRequestStatus.SUCCEEDED
-    sync_request.error_code = None
-    sync_request.error_message = None
+    upsert_ingest_result_and_outbox_once(
+        db,
+        request_id=request_id,
+        source_id=context.source.id,
+        provider=context.source.provider,
+        result_status=result_status,
+        cursor_patch=cursor_patch,
+        records=records,
+        fetched_at=now,
+    )
+    apply_success_transition(
+        context=context,
+        completed_at=now,
+        cursor_patch=cursor_patch,
+        payload_workflow_stage="LLM_SUCCEEDED",
+        payload_updates={"llm_finished_at": now.isoformat()},
+        payload_remove_keys=["llm_parse_payload"],
+    )
     db.commit()
-
-
-def _truncate(message: str, max_len: int = 512) -> str:
-    text = (message or "").strip()
-    if len(text) <= max_len:
-        return text
-    return text[:max_len]
 
 
 def enqueue_llm_task(

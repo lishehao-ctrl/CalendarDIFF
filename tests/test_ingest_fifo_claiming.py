@@ -15,7 +15,7 @@ from app.db.models import (
     SyncRequestStatus,
     User,
 )
-from app.modules.ingestion.connector_runtime import _claim_jobs
+from app.modules.ingestion.job_claiming import claim_jobs
 
 
 def _seed_source(db: Session, *, user_id: int, source_key: str) -> InputSource:
@@ -92,7 +92,7 @@ def test_claim_jobs_enforces_same_source_fifo(db_session: Session) -> None:
     )
     db_session.commit()
 
-    claimed = _claim_jobs(db_session, worker_id="test-worker")
+    claimed = claim_jobs(db_session, worker_id="test-worker")
     claimed_request_ids = {row.request_id for row in claimed}
 
     assert claimed_request_ids == {"req-a-1", "req-b-1"}
@@ -137,6 +137,6 @@ def test_claim_jobs_respects_existing_claimed_head(db_session: Session) -> None:
     )
     db_session.commit()
 
-    claimed = _claim_jobs(db_session, worker_id="test-worker")
+    claimed = claim_jobs(db_session, worker_id="test-worker")
     claimed_request_ids = {row.request_id for row in claimed}
     assert claimed_request_ids == {"req-b-tail"}

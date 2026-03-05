@@ -23,18 +23,22 @@ from app.modules.input_control_plane.schemas import (
     SyncRequestStatusResponse,
     WebhookEnqueueResponse,
 )
-from app.modules.input_control_plane.service import (
+from app.modules.input_control_plane.oauth_service import (
     build_gmail_oauth_start_for_source,
-    build_sync_request_status_payload,
-    create_input_source,
-    enqueue_sync_request_idempotent,
-    get_input_source,
-    get_sync_request_status,
     handle_gmail_oauth_callback,
+)
+from app.modules.input_control_plane.source_serializers import serialize_source
+from app.modules.input_control_plane.sources_service import (
+    create_input_source,
+    get_input_source,
     list_input_sources,
-    serialize_source,
     soft_delete_input_source,
     update_input_source,
+)
+from app.modules.input_control_plane.status_projection import build_sync_request_status_payload
+from app.modules.input_control_plane.sync_requests_service import (
+    enqueue_sync_request_idempotent,
+    get_sync_request_status,
 )
 from app.modules.users.service import get_registered_user
 
