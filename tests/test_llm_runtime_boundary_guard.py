@@ -36,8 +36,8 @@ def _iter_scan_targets() -> list[Path]:
 def test_llm_parser_call_sites_are_restricted() -> None:
     allowed_call_sites = {
         (REPO_ROOT / "app" / "modules" / "llm_runtime" / "parse_pipeline.py").resolve(),
-        (REPO_ROOT / "app" / "modules" / "ingestion" / "llm_parsers" / "calendar_v2.py").resolve(),
-        (REPO_ROOT / "app" / "modules" / "ingestion" / "llm_parsers" / "gmail_v2.py").resolve(),
+        (REPO_ROOT / "app" / "modules" / "ingestion" / "llm_parsers" / "calendar_parser.py").resolve(),
+        (REPO_ROOT / "app" / "modules" / "ingestion" / "llm_parsers" / "gmail_parser.py").resolve(),
     }
     pattern = re.compile(r"\b(parse_gmail_payload|parse_calendar_content)\s*\(")
     violations: list[str] = []

@@ -11,7 +11,7 @@ class LlmParseError(RuntimeError):
         message: str,
         retryable: bool,
         provider: str,
-        parser_version: str = "v2",
+        parser_version: str = "mainline",
     ) -> None:
         self.code = code
         self.retryable = retryable
@@ -32,5 +32,5 @@ class ParserContext:
 class ParserOutput:
     records: list[dict] = field(default_factory=list)
     parser_name: str = "unknown_parser"
-    parser_version: str = "v2"
+    parser_version: str = "mainline"
     model_hint: str = "unknown_model"

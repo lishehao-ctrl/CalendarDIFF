@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 
 import pytest
 
-import app.modules.ingestion.llm_parsers.calendar_v2 as calendar_parser
-import app.modules.ingestion.llm_parsers.gmail_v2 as gmail_parser
+import app.modules.ingestion.llm_parsers.calendar_parser as calendar_parser
+import app.modules.ingestion.llm_parsers.gmail_parser as gmail_parser
 from app.modules.ingestion.llm_parsers.contracts import LlmParseError, ParserContext
 from app.modules.llm_gateway.retry_policy import LLM_FORMAT_MAX_ATTEMPTS
 
@@ -101,7 +101,7 @@ def test_gmail_parser_retries_validation_error_then_succeeds(monkeypatch: pytest
     parsed = gmail_parser.parse_gmail_payload(db=None, payload=payload, context=context)  # type: ignore[arg-type]
 
     assert calls["count"] == 2
-    assert parsed.parser_name == "gmail_v2_llm"
+    assert parsed.parser_name == "gmail_llm"
     assert len(parsed.records) == 1
     assert parsed.records[0]["record_type"] == "gmail.message.extracted"
     parsed_payload = parsed.records[0]["payload"]
@@ -185,7 +185,7 @@ def test_calendar_parser_retries_validation_error_then_succeeds(monkeypatch: pyt
     parsed = calendar_parser.parse_calendar_content(db=None, content=content, context=context)  # type: ignore[arg-type]
 
     assert calls["count"] == 2
-    assert parsed.parser_name == "calendar_v2_deterministic"
+    assert parsed.parser_name == "calendar_deterministic"
     assert len(parsed.records) == 1
     assert parsed.records[0]["record_type"] == "calendar.event.extracted"
     payload = parsed.records[0]["payload"]

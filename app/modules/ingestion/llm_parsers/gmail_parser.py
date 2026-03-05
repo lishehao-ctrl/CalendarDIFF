@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -> ParserOutput:
-    parser_name = "gmail_v2_llm"
+    parser_name = "gmail_llm"
     serialized_payload = json.dumps(payload, ensure_ascii=True)
     if not serialized_payload:
         raise LlmParseError(
@@ -30,7 +30,7 @@ def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -
             message="gmail payload is empty",
             retryable=False,
             provider=context.provider,
-            parser_version="v2",
+            parser_version="mainline",
         )
 
     invoke_request = LlmInvokeRequest(
@@ -79,7 +79,7 @@ def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -
         except ValidationError as exc:
             if attempt < LLM_FORMAT_MAX_ATTEMPTS:
                 logger.warning(
-                    "gmail_v2.format_retry request_id=%s source_id=%s task_name=gmail_message_extract "
+                    "gmail_parser.format_retry request_id=%s source_id=%s task_name=gmail_message_extract "
                     "error_code=%s attempt=%s/%s",
                     context.request_id or "-",
                     context.source_id,
@@ -89,7 +89,7 @@ def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -
                 )
                 continue
             logger.warning(
-                "gmail_v2.format_retry_exhausted request_id=%s source_id=%s task_name=gmail_message_extract "
+                "gmail_parser.format_retry_exhausted request_id=%s source_id=%s task_name=gmail_message_extract "
                 "error_code=%s attempt=%s/%s",
                 context.request_id or "-",
                 context.source_id,
@@ -102,7 +102,7 @@ def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -
                 message=f"gmail llm schema invalid: {exc.errors()}",
                 retryable=False,
                 provider=context.provider,
-                parser_version="v2",
+                parser_version="mainline",
             ) from exc
 
     if parsed is None or invoke_result is None:
@@ -111,7 +111,7 @@ def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -
             message="gmail llm parser returned no valid payload after retries",
             retryable=False,
             provider=context.provider,
-            parser_version="v2",
+            parser_version="mainline",
         )
 
     source_message_id = payload.get("message_id") if isinstance(payload.get("message_id"), str) else None
@@ -160,7 +160,7 @@ def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -
     return ParserOutput(
         records=records,
         parser_name=parser_name,
-        parser_version="v2",
+        parser_version="mainline",
         model_hint=invoke_result.model,
     )
 
@@ -172,7 +172,7 @@ def _map_llm_error(exc: LlmGatewayError, *, provider: str) -> LlmParseError:
             message=str(exc),
             retryable=True,
             provider=provider,
-            parser_version="v2",
+            parser_version="mainline",
         )
     if exc.code == "parse_llm_empty_output":
         return LlmParseError(
@@ -180,7 +180,7 @@ def _map_llm_error(exc: LlmGatewayError, *, provider: str) -> LlmParseError:
             message=str(exc),
             retryable=False,
             provider=provider,
-            parser_version="v2",
+            parser_version="mainline",
         )
     if exc.code == "parse_llm_schema_invalid":
         return LlmParseError(
@@ -188,7 +188,7 @@ def _map_llm_error(exc: LlmGatewayError, *, provider: str) -> LlmParseError:
             message=str(exc),
             retryable=False,
             provider=provider,
-            parser_version="v2",
+            parser_version="mainline",
         )
     if exc.code == "parse_llm_upstream_error":
         return LlmParseError(
@@ -196,14 +196,14 @@ def _map_llm_error(exc: LlmGatewayError, *, provider: str) -> LlmParseError:
             message=str(exc),
             retryable=exc.retryable,
             provider=provider,
-            parser_version="v2",
+            parser_version="mainline",
         )
     return LlmParseError(
         code=exc.code,
         message=str(exc),
         retryable=exc.retryable,
         provider=provider,
-        parser_version="v2",
+        parser_version="mainline",
     )
 
 

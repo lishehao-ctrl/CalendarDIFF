@@ -23,14 +23,14 @@ logger = logging.getLogger(__name__)
 
 
 def parse_calendar_content(*, db: Session, content: bytes, context: ParserContext) -> ParserOutput:
-    parser_name = "calendar_v2_deterministic"
+    parser_name = "calendar_deterministic"
     if not content:
         raise LlmParseError(
             code="parse_llm_empty_output",
             message="calendar source content is empty",
             retryable=False,
             provider=context.provider,
-            parser_version="v2",
+            parser_version="mainline",
         )
 
     try:
@@ -41,7 +41,7 @@ def parse_calendar_content(*, db: Session, content: bytes, context: ParserContex
             message=f"calendar parse failed: {exc}",
             retryable=False,
             provider=context.provider,
-            parser_version="v2",
+            parser_version="mainline",
         ) from exc
 
     records: list[dict] = []
@@ -79,7 +79,7 @@ def parse_calendar_content(*, db: Session, content: bytes, context: ParserContex
     return ParserOutput(
         records=records,
         parser_name=parser_name,
-        parser_version="v2",
+        parser_version="mainline",
         model_hint=model_hint,
     )
 
@@ -101,7 +101,7 @@ def parse_course_parse_text(
             message="calendar event source text is empty for enrichment parse",
             retryable=False,
             provider=context.provider,
-            parser_version="v2",
+            parser_version="mainline",
         )
 
     invoke_request = LlmInvokeRequest(
@@ -151,7 +151,7 @@ def parse_course_parse_text(
         except ValidationError as exc:
             if attempt < LLM_FORMAT_MAX_ATTEMPTS:
                 logger.warning(
-                    "calendar_v2.format_retry request_id=%s source_id=%s task_name=%s error_code=%s attempt=%s/%s",
+                    "calendar_parser.format_retry request_id=%s source_id=%s task_name=%s error_code=%s attempt=%s/%s",
                     context.request_id or "-",
                     context.source_id,
                     task_name,
@@ -161,7 +161,7 @@ def parse_course_parse_text(
                 )
                 continue
             logger.warning(
-                "calendar_v2.format_retry_exhausted request_id=%s source_id=%s task_name=%s error_code=%s attempt=%s/%s",
+                "calendar_parser.format_retry_exhausted request_id=%s source_id=%s task_name=%s error_code=%s attempt=%s/%s",
                 context.request_id or "-",
                 context.source_id,
                 task_name,
@@ -174,7 +174,7 @@ def parse_course_parse_text(
                 message=f"calendar llm schema invalid: {exc.errors()}",
                 retryable=False,
                 provider=context.provider,
-                parser_version="v2",
+                parser_version="mainline",
             ) from exc
 
     raise LlmParseError(
@@ -182,7 +182,7 @@ def parse_course_parse_text(
         message="calendar llm parser returned no valid payload after retries",
         retryable=False,
         provider=context.provider,
-        parser_version="v2",
+        parser_version="mainline",
     )
 
 
@@ -197,7 +197,7 @@ def _map_llm_error(exc: LlmGatewayError, *, provider: str) -> LlmParseError:
             message=str(exc),
             retryable=True,
             provider=provider,
-            parser_version="v2",
+            parser_version="mainline",
         )
     if exc.code == "parse_llm_empty_output":
         return LlmParseError(
@@ -205,7 +205,7 @@ def _map_llm_error(exc: LlmGatewayError, *, provider: str) -> LlmParseError:
             message=str(exc),
             retryable=False,
             provider=provider,
-            parser_version="v2",
+            parser_version="mainline",
         )
     if exc.code == "parse_llm_schema_invalid":
         return LlmParseError(
@@ -213,7 +213,7 @@ def _map_llm_error(exc: LlmGatewayError, *, provider: str) -> LlmParseError:
             message=str(exc),
             retryable=False,
             provider=provider,
-            parser_version="v2",
+            parser_version="mainline",
         )
     if exc.code == "parse_llm_upstream_error":
         return LlmParseError(
@@ -221,14 +221,14 @@ def _map_llm_error(exc: LlmGatewayError, *, provider: str) -> LlmParseError:
             message=str(exc),
             retryable=exc.retryable,
             provider=provider,
-            parser_version="v2",
+            parser_version="mainline",
         )
     return LlmParseError(
         code=exc.code,
         message=str(exc),
         retryable=exc.retryable,
         provider=provider,
-        parser_version="v2",
+        parser_version="mainline",
     )
 
 
@@ -250,7 +250,7 @@ def _extract_source_canonical(*, component, source_id: int, index: int) -> dict:
             message=f"calendar event {external_event_id} missing DTSTART/DUE",
             retryable=False,
             provider="calendar",
-            parser_version="v2",
+            parser_version="mainline",
         )
     effective_start = start_at or due_at
     assert effective_start is not None
