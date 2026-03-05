@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import app.modules.input_control_plane.router as input_router
+import app.modules.input_control_plane.oauth_router as oauth_router
 
 
 def test_oauth_callback_success_returns_json(input_client, monkeypatch) -> None:
@@ -13,7 +13,7 @@ def test_oauth_callback_success_returns_json(input_client, monkeypatch) -> None:
         sync_request = SimpleNamespace(request_id="sync-req-1", status=SimpleNamespace(value="QUEUED"))
         return source, sync_request
 
-    monkeypatch.setattr(input_router, "handle_gmail_oauth_callback", _fake_handle)
+    monkeypatch.setattr(oauth_router, "handle_gmail_oauth_callback", _fake_handle)
 
     response = input_client.get(
         "/oauth/callbacks/gmail",
