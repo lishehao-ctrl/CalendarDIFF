@@ -87,9 +87,10 @@ Use these files as implementation anchors when building detailed dataflow tables
 - `app/modules/input_control_plane/oauth_service.py`
 - `app/modules/ingestion/orchestrator.py`
 - `app/modules/ingestion/connector_runtime.py`
-- `app/modules/llm_runtime/worker_tick.py`
+- `app/modules/llm_runtime/tick_runner.py`
 - `app/modules/core_ingest/worker.py`
 - `app/modules/core_ingest/apply_service.py`
+- `app/modules/review_links/alerts_event_consumer.py`
 - `app/modules/notify/consumer.py`
 - `app/modules/notify/digest_service.py`
 

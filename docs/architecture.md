@@ -202,9 +202,9 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 ### llm_runtime
 
 1. `__init__.py`: module entry exports only
-2. `worker_tick.py`: worker tick orchestration + message lifecycle
-3. `queue_consumer.py`: Redis stream/retry consume/ack composition
-4. `queue_producer.py`: enqueue producer API used by ingestion
+2. `tick_runner.py`: worker tick orchestration + concurrent message fan-out + ack aggregation
+3. `message_preflight.py`: DB lock/context validation + `LLM_RUNNING` stage transition
+4. `message_processor.py`: single-message lifecycle (`preflight -> parse -> transition`)
 5. `parse_pipeline.py`: parse dispatch (`gmail`/`calendar`/`calendar_delta_v1`) + limiter wrapper
 6. `transitions.py`: failure/success state transitions and persistence template
 
@@ -221,7 +221,7 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 
 1. `app/modules/runtime_kernel/*` is the shared lifecycle/queue kernel consumed by both `ingestion` and `llm_runtime`
 2. kernel hosts `JobContext` loading, retry delay/error truncation helpers, transition templates (`retry/dead-letter/success`), and idempotent `ingest_result + outbox` upsert
-3. kernel also hosts Redis stream primitives (`consume/claim/ack/retry zset/metrics`), while `llm_runtime/queue.py` stays as a thin config wrapper (`stream_key/group/redis client`)
+3. kernel also hosts parse-task queue port and Redis stream primitives (`consume/claim/ack/retry zset/metrics`) via `parse_task_queue.py` and `stream_queue.py`
 4. dependency rule: kernel must not import `app.modules.ingestion.*` or `app.modules.llm_runtime.*`
 
 ### db models bounded contexts
