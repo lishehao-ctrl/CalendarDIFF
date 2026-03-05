@@ -11,7 +11,8 @@ from app.db.models.review import EventLinkAlertResolution, Input, InputType
 from app.modules.core_ingest.calendar_apply import apply_calendar_observations
 from app.modules.core_ingest.gmail_apply import apply_gmail_observations
 from app.modules.core_ingest.link_alert_outbox import emit_link_alert_resolve_entities_requested
-from app.modules.core_ingest.pending_rebuild import rebuild_pending_change_proposals, upsert_auto_link_alerts_without_pending
+from app.modules.core_ingest.pending_auto_link_alerts import upsert_auto_link_alerts_without_pending
+from app.modules.core_ingest.pending_proposal_rebuild import rebuild_pending_change_proposals
 
 
 def ensure_canonical_input_for_user(*, db: Session, user_id: int) -> Input:
