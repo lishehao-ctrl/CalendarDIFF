@@ -6,15 +6,22 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import app.db.models as db_models
 from app.core.logging import sanitize_log_message
-from app.db.models import EmailActionItem, EmailMessage, EmailRoute, EmailRuleAnalysis, EmailRuleLabel, User
 from app.db.session import get_session_factory
 from tools.labeling.label_emails_async import read_mbox_input_emails
 from tools.labeling.route_labeled import derive_primary_route
 from tools.labeling.rules_extract import analyze_email_rules
+
+User = db_models.User
+EmailActionItem: Any = getattr(db_models, "EmailActionItem", None)
+EmailMessage: Any = getattr(db_models, "EmailMessage", None)
+EmailRoute: Any = getattr(db_models, "EmailRoute", None)
+EmailRuleAnalysis: Any = getattr(db_models, "EmailRuleAnalysis", None)
+EmailRuleLabel: Any = getattr(db_models, "EmailRuleLabel", None)
 
 
 @dataclass(frozen=True)
@@ -51,23 +58,58 @@ def _coerce_text(value: Any) -> str | None:
     return str(value).strip() or None
 
 
+def _coerce_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    return []
+
+
+def _coerce_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _coerce_float(value: Any, *, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _require_rules_label_models() -> None:
+    missing: list[str] = []
+    if EmailActionItem is None:
+        missing.append("EmailActionItem")
+    if EmailMessage is None:
+        missing.append("EmailMessage")
+    if EmailRoute is None:
+        missing.append("EmailRoute")
+    if EmailRuleAnalysis is None:
+        missing.append("EmailRuleAnalysis")
+    if EmailRuleLabel is None:
+        missing.append("EmailRuleLabel")
+    if missing:
+        joined = ", ".join(sorted(missing))
+        raise RuntimeError(
+            f"Required rules-labeling models are unavailable ({joined}). "
+            "This schema was removed; run with --dry-run or restore compatible models."
+        )
+
+
 def _coerce_label_row(payload: dict[str, Any], *, email_id: str) -> dict[str, Any]:
     label = _coerce_text(payload.get("label")) or "DROP"
     if label not in {"KEEP", "DROP"}:
         label = "DROP"
 
-    confidence_raw = payload.get("confidence")
-    try:
-        confidence = float(confidence_raw)
-    except (TypeError, ValueError):
-        confidence = 0.0
+    confidence = _coerce_float(payload.get("confidence"), default=0.0)
     confidence = max(0.0, min(1.0, confidence))
 
-    reasons = payload.get("reasons") if isinstance(payload.get("reasons"), list) else []
-    course_hints = payload.get("course_hints") if isinstance(payload.get("course_hints"), list) else []
+    reasons = _coerce_list(payload.get("reasons"))
+    course_hints = _coerce_list(payload.get("course_hints"))
     event_type = _coerce_text(payload.get("event_type"))
-    action_items = payload.get("action_items") if isinstance(payload.get("action_items"), list) else []
-    raw_extract = payload.get("raw_extract") if isinstance(payload.get("raw_extract"), dict) else {}
+    action_items = _coerce_list(payload.get("action_items"))
+    raw_extract = _coerce_dict(payload.get("raw_extract"))
 
     normalized_items = []
     for row in action_items:
@@ -289,25 +331,28 @@ def run_import(
 
     session_factory = get_session_factory()
     db_session = session_factory()
-    stats = {
+    route_counts: dict[str, int] = {"drop": 0, "archive": 0, "review": 0}
+    stats: dict[str, Any] = {
         "mode": mode,
         "dry_run": dry_run,
         "processed": 0,
         "inserted": 0,
         "updated": 0,
         "errors": len(ingest_errors),
-        "route_counts": {"drop": 0, "archive": 0, "review": 0},
+        "route_counts": route_counts,
         "ingest_errors": ingest_errors[:20],
     }
     try:
         _ensure_user_exists(db_session, user_id=user_id)
         now = datetime.now(timezone.utc)
+        if not dry_run:
+            _require_rules_label_models()
 
         for record in records:
             stats["processed"] += 1
             normalized_route = "archive" if record.route == "notify" else record.route
-            if normalized_route in stats["route_counts"]:
-                stats["route_counts"][normalized_route] += 1
+            if normalized_route in route_counts:
+                route_counts[normalized_route] += 1
             if dry_run:
                 continue
 
@@ -337,17 +382,15 @@ def run_import(
                 label_row = EmailRuleLabel(email_id=record.email_id)
                 db_session.add(label_row)
             label_row.label = str(label_payload.get("label") or "DROP")
-            label_row.confidence = float(label_payload.get("confidence") or 0.0)
-            label_row.reasons = label_payload.get("reasons") if isinstance(label_payload.get("reasons"), list) else []
-            label_row.course_hints = (
-                label_payload.get("course_hints") if isinstance(label_payload.get("course_hints"), list) else []
-            )
+            label_row.confidence = _coerce_float(label_payload.get("confidence"), default=0.0)
+            label_row.reasons = _coerce_list(label_payload.get("reasons"))
+            label_row.course_hints = _coerce_list(label_payload.get("course_hints"))
             label_row.event_type = _coerce_text(label_payload.get("event_type"))
-            label_row.raw_extract = label_payload.get("raw_extract") if isinstance(label_payload.get("raw_extract"), dict) else {}
+            label_row.raw_extract = _coerce_dict(label_payload.get("raw_extract"))
             label_row.notes = _coerce_text(label_payload.get("notes"))
 
             db_session.query(EmailActionItem).filter(EmailActionItem.email_id == record.email_id).delete(synchronize_session=False)
-            for item in label_payload.get("action_items", []):
+            for item in _coerce_list(label_payload.get("action_items")):
                 if not isinstance(item, dict):
                     continue
                 db_session.add(

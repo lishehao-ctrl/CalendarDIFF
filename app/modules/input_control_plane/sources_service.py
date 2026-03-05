@@ -14,11 +14,13 @@ from app.modules.input_control_plane.schemas import InputSourceCreateRequest, In
 
 
 def list_input_sources(db: Session, *, user_id: int) -> list[InputSource]:
-    return db.scalars(
-        select(InputSource)
-        .where(InputSource.user_id == user_id)
-        .order_by(InputSource.created_at.desc(), InputSource.id.desc())
-    ).all()
+    return list(
+        db.scalars(
+            select(InputSource)
+            .where(InputSource.user_id == user_id)
+            .order_by(InputSource.created_at.desc(), InputSource.id.desc())
+        ).all()
+    )
 
 
 def get_input_source(db: Session, *, user_id: int, source_id: int) -> InputSource | None:

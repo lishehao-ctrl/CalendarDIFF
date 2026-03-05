@@ -33,12 +33,14 @@ def replay_ingest_job(db: Session, *, job_id: int) -> IngestJob:
 def replay_dead_letter_jobs(db: Session, *, limit: int = 100) -> list[IngestJob]:
     now = datetime.now(timezone.utc)
     capped_limit = max(1, min(limit, 500))
-    jobs = db.scalars(
-        select(IngestJob)
-        .where(IngestJob.status == IngestJobStatus.DEAD_LETTER)
-        .order_by(IngestJob.dead_lettered_at.asc().nullslast(), IngestJob.id.asc())
-        .limit(capped_limit)
-    ).all()
+    jobs = list(
+        db.scalars(
+            select(IngestJob)
+            .where(IngestJob.status == IngestJobStatus.DEAD_LETTER)
+            .order_by(IngestJob.dead_lettered_at.asc().nullslast(), IngestJob.id.asc())
+            .limit(capped_limit)
+        ).all()
+    )
     if not jobs:
         return []
     for job in jobs:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import re
 from dataclasses import dataclass
@@ -15,7 +16,7 @@ from jsonschema import Draft202012Validator
 try:
     from tools.labeling.label_emails_async import read_mbox_input_emails
 except ModuleNotFoundError:  # pragma: no cover - direct script execution
-    from label_emails_async import read_mbox_input_emails  # type: ignore[no-redef]
+    read_mbox_input_emails = importlib.import_module("tools.labeling.label_emails_async").read_mbox_input_emails
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_SCHEMA_PATH = ROOT_DIR / "tools" / "labeling" / "schema" / "email_label.json"
@@ -249,13 +250,15 @@ def read_email_rows(config: RuleExtractConfig) -> tuple[list[EmailInputRow], lis
                 body_text=row.body_text,
             )
         )
-    for idx, row in enumerate(parse_errors, start=1):
+    for idx, parse_error in enumerate(parse_errors, start=1):
         errors.append(
             {
                 "line_number": idx,
-                "email_id": _coerce_text(row.get("email_id")) or "unknown",
-                "error_type": _coerce_text(row.get("error_type")) or "mbox_parse",
-                "message_sanitized": sanitize_log_text(_coerce_text(row.get("message_sanitized")) or "mbox parse error"),
+                "email_id": _coerce_text(parse_error.get("email_id")) or "unknown",
+                "error_type": _coerce_text(parse_error.get("error_type")) or "mbox_parse",
+                "message_sanitized": sanitize_log_text(
+                    _coerce_text(parse_error.get("message_sanitized")) or "mbox parse error"
+                ),
             }
         )
     return rows, errors

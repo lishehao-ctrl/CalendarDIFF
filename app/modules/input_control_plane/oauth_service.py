@@ -5,12 +5,11 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
+from app.core.oauth_config import build_oauth_runtime_config
 from app.core.security import decrypt_secret, encrypt_secret
 from app.db.models.input import IngestTriggerType, InputSource, InputSourceCursor, InputSourceSecret, SyncRequest
 from app.modules.input_control_plane.sync_requests_service import enqueue_sync_request_idempotent
 from app.modules.sync.gmail_client import GmailClient
-
-GMAIL_OAUTH_STATE_TTL_MINUTES = 10
 
 
 def build_gmail_oauth_start_for_source(
@@ -22,7 +21,8 @@ def build_gmail_oauth_start_for_source(
 ) -> tuple[str, datetime]:
     del db
     current = now or datetime.now(timezone.utc)
-    expires_at = current + timedelta(minutes=GMAIL_OAUTH_STATE_TTL_MINUTES)
+    runtime = build_oauth_runtime_config()
+    expires_at = current + timedelta(minutes=runtime.state_ttl_minutes)
     state_payload = {
         "source_id": source.id,
         "provider": source.provider,

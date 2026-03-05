@@ -111,7 +111,6 @@ ICS_TAIL_VARIANTS: dict[str, list[str]] = {
 }
 
 
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Randomize synthetic mail/ics course aliases and title expressions.")
     parser.add_argument(
@@ -122,17 +121,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-
 def _seed(parts: tuple[str, ...]) -> int:
     joined = "||".join(parts)
     digest = hashlib.sha256(joined.encode("utf-8")).digest()
     return int.from_bytes(digest[:8], "big")
 
 
-
 def _rng(*parts: str) -> random.Random:
     return random.Random(_seed(parts))
-
 
 
 def _random_case(text: str, *, rng: random.Random) -> str:
@@ -143,7 +139,6 @@ def _random_case(text: str, *, rng: random.Random) -> str:
         else:
             out.append(ch)
     return "".join(out)
-
 
 
 def _variant_course_label(label: str, *, salt: str) -> str:
@@ -164,7 +159,6 @@ def _variant_course_label(label: str, *, salt: str) -> str:
     return f"{prefix_v}{sep1}{number}{sep2}{suffix_v}"
 
 
-
 def _build_course_aliases(label: str, *, seed_key: str, count: int = 4) -> list[str]:
     aliases: list[str] = []
     for idx in range(count * 3):
@@ -178,7 +172,6 @@ def _build_course_aliases(label: str, *, seed_key: str, count: int = 4) -> list[
     while len(aliases) < count:
         aliases.append(aliases[-1])
     return aliases
-
 
 
 def _course_match_pattern(label: str) -> re.Pattern[str]:
@@ -198,7 +191,6 @@ def _course_match_pattern(label: str) -> re.Pattern[str]:
     return re.compile(pattern, flags=re.IGNORECASE)
 
 
-
 def _replace_course_cycle(text: str, *, canonical_label: str, aliases: list[str], count: int | None = None) -> str:
     if not aliases:
         return text
@@ -216,7 +208,6 @@ def _replace_course_cycle(text: str, *, canonical_label: str, aliases: list[str]
     return pattern.sub(repl, text, count=count)
 
 
-
 def _mail_subject_tail_variant(tail: str, *, seed_key: str) -> str:
     options = MAIL_SUBJECT_VARIANTS.get(tail)
     if not options:
@@ -226,14 +217,12 @@ def _mail_subject_tail_variant(tail: str, *, seed_key: str) -> str:
     return rng.choice(options)
 
 
-
 def _ics_tail_variant(tail: str, *, seed_key: str) -> str:
     options = ICS_TAIL_VARIANTS.get(tail)
     if not options:
         options = [tail, f"{tail} update"]
     rng = _rng("ics-tail", seed_key, tail)
     return rng.choice(options)
-
 
 
 def rewrite_mail(raw_mail_path: Path) -> int:
@@ -281,7 +270,6 @@ def rewrite_mail(raw_mail_path: Path) -> int:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     return rewritten
-
 
 
 def _rewrite_event_block(block_lines: list[str], *, file_key: str) -> list[str]:
@@ -333,7 +321,6 @@ def _rewrite_event_block(block_lines: list[str], *, file_key: str) -> list[str]:
     return block_lines
 
 
-
 def rewrite_ics_pairs(ics_pairs_dir: Path) -> int:
     rewritten_files = 0
     for path in sorted(ics_pairs_dir.glob("*.ics")):
@@ -364,7 +351,6 @@ def rewrite_ics_pairs(ics_pairs_dir: Path) -> int:
         rewritten_files += 1
 
     return rewritten_files
-
 
 
 def main() -> int:

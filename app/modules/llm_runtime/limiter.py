@@ -102,10 +102,10 @@ def acquire_global_permit(client: redis.Redis) -> RateLimitDecision:
     now_seconds = now_ms // 1000
     keys = _limiter_keys(now_seconds=now_seconds)
     args = [
-        now_ms,
-        int(settings.llm_rate_limit_target_rps),
-        int(settings.llm_rate_limit_hard_rps),
-        int(settings.llm_rate_limit_burst),
+        str(now_ms),
+        str(int(settings.llm_rate_limit_target_rps)),
+        str(int(settings.llm_rate_limit_hard_rps)),
+        str(int(settings.llm_rate_limit_burst)),
     ]
     raw = client.eval(_LUA_LIMITER, len(keys), *keys, *args)
     if not isinstance(raw, list) or len(raw) < 4:

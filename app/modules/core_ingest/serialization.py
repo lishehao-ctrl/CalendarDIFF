@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from app.db.models.review import Event, SourceEventObservation
 from app.modules.core_ingest.canonical_coercion import parse_iso_datetime
 from app.modules.core_ingest.entity_profile import course_display_name
@@ -7,7 +9,7 @@ from app.modules.core_ingest.payload_extractors import extract_enrichment_course
 from app.modules.core_ingest.time_utils import as_utc
 
 
-def serialize_proposal_sources(observations: list[SourceEventObservation]) -> list[dict]:
+def serialize_proposal_sources(observations: Sequence[SourceEventObservation]) -> list[dict]:
     rows: list[dict] = []
     for row in observations:
         payload = row.event_payload if isinstance(row.event_payload, dict) else {}
@@ -33,7 +35,8 @@ def serialize_proposal_sources(observations: list[SourceEventObservation]) -> li
 
 
 def candidate_after_json(*, merge_key: str, payload: dict) -> dict | None:
-    source_canonical = payload.get("source_canonical") if isinstance(payload.get("source_canonical"), dict) else {}
+    source_canonical_raw = payload.get("source_canonical")
+    source_canonical = source_canonical_raw if isinstance(source_canonical_raw, dict) else {}
     start_raw = source_canonical.get("source_dtstart_utc")
     end_raw = source_canonical.get("source_dtend_utc")
     if not isinstance(start_raw, str) or not isinstance(end_raw, str):
@@ -43,7 +46,8 @@ def candidate_after_json(*, merge_key: str, payload: dict) -> dict | None:
     if end_at <= start_at:
         return None
 
-    title = source_canonical.get("source_title") if isinstance(source_canonical.get("source_title"), str) else None
+    title_raw = source_canonical.get("source_title")
+    title = title_raw if isinstance(title_raw, str) else None
     course_label = payload.get("course_label") if isinstance(payload.get("course_label"), str) else None
     if not course_label:
         course_label = course_display_name(course_parse=extract_enrichment_course_parse(payload=payload)) or "Unknown"
@@ -82,6 +86,7 @@ def safe_delta_seconds(*, before_json: dict, after_json: dict) -> int | None:
     before = parse_iso_datetime(before_raw, field="start_at_utc", uid="before")
     after = parse_iso_datetime(after_raw, field="start_at_utc", uid="after")
     return int((after - before).total_seconds())
+
 
 __all__ = [
     "candidate_after_json",

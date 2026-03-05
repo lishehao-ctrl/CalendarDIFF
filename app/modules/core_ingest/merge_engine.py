@@ -140,7 +140,8 @@ def choose_primary_observation(observations: list[dict]) -> dict | None:
         return None
 
     def _sort_key(obs: dict) -> tuple[float, float, float]:
-        payload = obs.get("event_payload") if isinstance(obs.get("event_payload"), dict) else {}
+        event_payload = obs.get("event_payload")
+        payload = event_payload if isinstance(event_payload, dict) else {}
         confidence = payload.get("confidence")
         if not isinstance(confidence, (int, float)):
             confidence = payload.get("raw_confidence")

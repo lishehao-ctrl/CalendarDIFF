@@ -19,6 +19,8 @@ _runtime_defaults = {
     "max_retries": DEFAULT_MAX_RETRIES,
     "max_input_chars": DEFAULT_MAX_INPUT_CHARS,
 }
+
+
 def validate_ingestion_llm_config() -> ResolvedLlmProfile:
     # db/source_id are intentionally not used in env-only profile resolution.
     return resolve_llm_profile(None, source_id=None)
@@ -65,7 +67,7 @@ def llm_runtime_overrides(
 
 
 def resolve_llm_profile(
-    db: Session,
+    db: Session | None,
     *,
     source_id: int | None,
     explicit_provider_id: str | None = None,

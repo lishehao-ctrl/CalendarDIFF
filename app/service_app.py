@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 WorkerTask = Callable[[], Awaitable[None]]
+StartupHook = Callable[[FastAPI], None]
 
 
 def _assert_postgres_runtime() -> None:
@@ -32,8 +33,9 @@ def _assert_postgres_runtime() -> None:
     )
 
 
-def _schema_not_ready_exception_handler(_: Request, exc: SchemaNotReadyError) -> JSONResponse:
-    return JSONResponse(status_code=503, content={"detail": str(exc)})
+def _schema_not_ready_exception_handler(_: Request, exc: Exception) -> JSONResponse:
+    detail = str(exc) if isinstance(exc, SchemaNotReadyError) else "Database schema is not ready"
+    return JSONResponse(status_code=503, content={"detail": detail})
 
 
 def _database_exception_handler(_: Request, exc: Exception) -> JSONResponse:
@@ -67,12 +69,14 @@ def create_service_app(
     routers: Iterable[APIRouter],
     public_api: bool = False,
     worker_tasks: Iterable[WorkerTask] | None = None,
+    startup_hooks: Iterable[StartupHook] | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         configure_logging()
         settings = get_settings()
         _assert_postgres_runtime()
+        startup_hook_list = list(startup_hooks or [])
 
         schema_ready = True
         app.state.schema_guard_error = None
@@ -90,6 +94,9 @@ def create_service_app(
 
         if not schema_ready:
             logger.warning("service startup warnings because database schema is not ready")
+
+        for startup_hook in startup_hook_list:
+            startup_hook(app)
 
         task_list = list(worker_tasks or [])
 

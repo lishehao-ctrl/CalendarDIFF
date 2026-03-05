@@ -169,6 +169,18 @@ def validate_label_row(payload: dict[str, Any], validator: Draft202012Validator)
     return sorted({err.message for err in validator.iter_errors(payload)})
 
 
+def _coerce_action_items(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    return []
+
+
+def _coerce_extract_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
 def load_valid_rows(
     *,
     input_path: Path,
@@ -253,8 +265,8 @@ def is_review_row(payload: dict[str, Any], review_threshold: float) -> bool:
 
     confidence = float(payload.get("confidence", 0.0))
     event_type = payload.get("event_type")
-    action_items = payload.get("action_items") if isinstance(payload.get("action_items"), list) else []
-    raw_extract = payload.get("raw_extract") if isinstance(payload.get("raw_extract"), dict) else {}
+    action_items = _coerce_action_items(payload.get("action_items"))
+    raw_extract = _coerce_extract_dict(payload.get("raw_extract"))
     notes = payload.get("notes")
 
     if confidence < review_threshold:
@@ -305,8 +317,8 @@ def is_review_row(payload: dict[str, Any], review_threshold: float) -> bool:
 
 def evaluate_notify_route(payload: dict[str, Any]) -> tuple[bool, bool]:
     event_type = payload.get("event_type")
-    action_items = payload.get("action_items") if isinstance(payload.get("action_items"), list) else []
-    raw_extract = payload.get("raw_extract") if isinstance(payload.get("raw_extract"), dict) else {}
+    action_items = _coerce_action_items(payload.get("action_items"))
+    raw_extract = _coerce_extract_dict(payload.get("raw_extract"))
 
     should_notify = False
     downgraded_from_notify_intent = False
@@ -395,8 +407,7 @@ def run_router(config: RouteConfig) -> dict[str, Any]:
         payload = row.payload
         label = payload.get("label")
         event_type = payload.get("event_type")
-        action_items = payload.get("action_items") if isinstance(payload.get("action_items"), list) else []
-        raw_extract = payload.get("raw_extract") if isinstance(payload.get("raw_extract"), dict) else {}
+        action_items = _coerce_action_items(payload.get("action_items"))
 
         if len(action_items) > config.max_action_items:
             rows_exceeding_max_action_items += 1
@@ -412,7 +423,10 @@ def run_router(config: RouteConfig) -> dict[str, Any]:
         if event_type is None:
             keep_with_null_event_type += 1
 
-        for hint in payload.get("course_hints", []):
+        course_hints = payload.get("course_hints")
+        if not isinstance(course_hints, list):
+            course_hints = []
+        for hint in course_hints:
             if isinstance(hint, str) and hint.strip():
                 course_hint_counter[hint.strip()] += 1
 

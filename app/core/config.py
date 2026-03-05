@@ -30,8 +30,19 @@ class Settings(BaseSettings):
     http_read_timeout_seconds: float = 20.0
     http_max_retries: int = 2
 
+    oauth_public_base_url: str | None = None
+    oauth_route_prefix: str = ""
+    oauth_session_route_template: str = "/sources/{source_id}/oauth-sessions"
+    oauth_callback_route_template: str = "/oauth/callbacks/{provider}"
+    oauth_callback_require_api_key: bool = False
+    oauth_state_ttl_minutes: int = 10
+    oauth_token_encryption_key: str | None = None
+
     gmail_oauth_client_secrets_file: str | None = None
     gmail_oauth_scope: str = "https://www.googleapis.com/auth/gmail.readonly"
+    gmail_oauth_access_type: str = "offline"
+    gmail_oauth_prompt: str = "consent"
+    gmail_oauth_include_granted_scopes: bool = True
     gmail_api_base_url: str = "https://gmail.googleapis.com/gmail/v1/users/me"
     gmail_oauth_token_url: str = "https://oauth2.googleapis.com/token"
     gmail_oauth_authorize_url: str = "https://accounts.google.com/o/oauth2/v2/auth"

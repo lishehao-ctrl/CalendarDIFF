@@ -60,3 +60,30 @@ def test_service_app_without_worker_tasks_starts_normally(db_engine) -> None:
         response = client.get("/ping")
     assert response.status_code == 200
     assert response.json() == {"ok": True}
+
+
+def test_service_app_runs_startup_hooks(db_engine) -> None:
+    del db_engine
+    router = APIRouter()
+    state = {"hook_called": 0}
+
+    @router.get("/ping")
+    def _ping() -> dict[str, bool]:
+        return {"ok": True}
+
+    def _startup_hook(_app) -> None:
+        state["hook_called"] += 1
+
+    app = create_service_app(
+        title="Startup Hook Test",
+        version="0.1.0",
+        routers=[router],
+        startup_hooks=[_startup_hook],
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/ping")
+        assert response.status_code == 200
+        assert response.json() == {"ok": True}
+
+    assert state["hook_called"] == 1

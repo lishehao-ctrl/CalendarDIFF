@@ -4,6 +4,7 @@ import json
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import cast
 
 import redis
 from redis.exceptions import ResponseError
@@ -16,6 +17,37 @@ class StreamQueueMessage:
     source_id: int
     attempt: int
     reason: str
+
+
+def _redis_to_text(value: object) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _coerce_int(value: object, *, default: int = 0) -> int:
+    text = _redis_to_text(value).strip()
+    if not text:
+        return default
+    try:
+        return int(text)
+    except Exception:
+        return default
+
+
+def _coerce_payload(raw_payload: object) -> dict[str, object]:
+    if not isinstance(raw_payload, dict):
+        return {}
+    payload: dict[str, object] = {}
+    for raw_key, raw_value in raw_payload.items():
+        key = _redis_to_text(raw_key).strip()
+        if key:
+            payload[key] = raw_value
+    return payload
 
 
 def retry_zset_key(stream_key: str) -> str:
@@ -102,25 +134,36 @@ def move_due_retry_tasks(
     retry_meta_key = retry_meta_hash_key(stream_key)
     capped_limit = max(1, int(limit))
     now_ts = now.astimezone(timezone.utc).timestamp()
-    request_ids = client.zrangebyscore(retry_key, min="-inf", max=now_ts, start=0, num=capped_limit)
-    if not request_ids:
+    request_ids_raw = cast(list[object], client.zrangebyscore(retry_key, min="-inf", max=now_ts, start=0, num=capped_limit))
+    if not request_ids_raw:
         return 0
 
     moved = 0
     pipe = client.pipeline(transaction=True)
-    for request_id in request_ids:
+    for request_id_raw in request_ids_raw:
+        request_id = _redis_to_text(request_id_raw).strip()
+        if not request_id:
+            continue
         raw_meta = client.hget(retry_meta_key, request_id)
         if not raw_meta:
             pipe.zrem(retry_key, request_id)
             continue
         try:
-            parsed = json.loads(raw_meta)
+            parsed = json.loads(_redis_to_text(raw_meta))
         except Exception:
             pipe.hdel(retry_meta_key, request_id)
             pipe.zrem(retry_key, request_id)
             continue
-        source_id = int(parsed.get("source_id"))
-        attempt = int(parsed.get("attempt", 0))
+        if not isinstance(parsed, dict):
+            pipe.hdel(retry_meta_key, request_id)
+            pipe.zrem(retry_key, request_id)
+            continue
+        source_id = _coerce_int(parsed.get("source_id"), default=-1)
+        attempt = _coerce_int(parsed.get("attempt", 0), default=0)
+        if source_id < 0:
+            pipe.hdel(retry_meta_key, request_id)
+            pipe.zrem(retry_key, request_id)
+            continue
         reason = str(parsed.get("reason") or "retry")
         pipe.xadd(
             stream_key,
@@ -147,38 +190,38 @@ def consume_stream_tasks(
     count: int,
     block_ms: int,
 ) -> list[StreamQueueMessage]:
-    entries = client.xreadgroup(
-        groupname=group_name,
-        consumername=consumer_name,
-        streams={stream_key: ">"},
-        count=max(1, int(count)),
-        block=max(1, int(block_ms)),
+    entries = cast(
+        list[tuple[object, list[tuple[object, object]]]],
+        client.xreadgroup(
+            groupname=group_name,
+            consumername=consumer_name,
+            streams={stream_key: ">"},
+            count=max(1, int(count)),
+            block=max(1, int(block_ms)),
+        ),
     )
     if not entries:
         return []
     messages: list[StreamQueueMessage] = []
     for _, rows in entries:
-        for message_id, payload in rows:
-            request_id = str(payload.get("request_id") or "")
+        for message_id_raw, raw_payload in rows:
+            payload = _coerce_payload(raw_payload)
+            request_id = _redis_to_text(payload.get("request_id")).strip()
             source_id_raw = payload.get("source_id")
             attempt_raw = payload.get("attempt")
-            reason = str(payload.get("reason") or "initial")
+            reason = _redis_to_text(payload.get("reason")).strip() or "initial"
             if not request_id:
                 continue
-            try:
-                source_id = int(source_id_raw)
-            except Exception:
+            source_id = _coerce_int(source_id_raw, default=-1)
+            if source_id < 0:
                 continue
-            try:
-                attempt = int(attempt_raw) if attempt_raw is not None else 0
-            except Exception:
-                attempt = 0
+            attempt = max(_coerce_int(attempt_raw, default=0), 0)
             messages.append(
                 StreamQueueMessage(
-                    message_id=str(message_id),
+                    message_id=_redis_to_text(message_id_raw),
                     request_id=request_id,
                     source_id=source_id,
-                    attempt=max(attempt, 0),
+                    attempt=attempt,
                     reason=reason,
                 )
             )
@@ -195,13 +238,16 @@ def claim_idle_stream_tasks(
     count: int,
 ) -> list[StreamQueueMessage]:
     try:
-        next_id, rows = client.xautoclaim(
-            stream_key,
-            group_name,
-            consumer_name,
-            min_idle_time=max(1000, int(min_idle_ms)),
-            start_id="0-0",
-            count=max(1, int(count)),
+        next_id, rows = cast(
+            tuple[object, list[tuple[object, object]]],
+            client.xautoclaim(
+                stream_key,
+                group_name,
+                consumer_name,
+                min_idle_time=max(1000, int(min_idle_ms)),
+                start_id="0-0",
+                count=max(1, int(count)),
+            ),
         )
     except ResponseError as exc:
         message = str(exc).lower()
@@ -211,27 +257,24 @@ def claim_idle_stream_tasks(
 
     del next_id
     messages: list[StreamQueueMessage] = []
-    for message_id, payload in rows:
-        request_id = str(payload.get("request_id") or "")
+    for message_id_raw, raw_payload in rows:
+        payload = _coerce_payload(raw_payload)
+        request_id = _redis_to_text(payload.get("request_id")).strip()
         source_id_raw = payload.get("source_id")
         attempt_raw = payload.get("attempt")
-        reason = str(payload.get("reason") or "reclaimed")
+        reason = _redis_to_text(payload.get("reason")).strip() or "reclaimed"
         if not request_id:
             continue
-        try:
-            source_id = int(source_id_raw)
-        except Exception:
+        source_id = _coerce_int(source_id_raw, default=-1)
+        if source_id < 0:
             continue
-        try:
-            attempt = int(attempt_raw) if attempt_raw is not None else 0
-        except Exception:
-            attempt = 0
+        attempt = max(_coerce_int(attempt_raw, default=0), 0)
         messages.append(
             StreamQueueMessage(
-                message_id=str(message_id),
+                message_id=_redis_to_text(message_id_raw),
                 request_id=request_id,
                 source_id=source_id,
-                attempt=max(attempt, 0),
+                attempt=attempt,
                 reason=reason,
             )
         )
@@ -247,15 +290,15 @@ def ack_stream_tasks(
 ) -> int:
     if not message_ids:
         return 0
-    return int(client.xack(stream_key, group_name, *message_ids))
+    return _coerce_int(client.xack(stream_key, group_name, *message_ids), default=0)
 
 
 def queue_depth_stream(client: redis.Redis, *, stream_key: str) -> int:
-    return int(client.xlen(stream_key))
+    return _coerce_int(client.xlen(stream_key), default=0)
 
 
 def queue_depth_retry(client: redis.Redis, *, stream_key: str) -> int:
-    return int(client.zcard(retry_zset_key(stream_key)))
+    return _coerce_int(client.zcard(retry_zset_key(stream_key)), default=0)
 
 
 def increment_metric_counter(client: redis.Redis, *, metric_name: str, amount: int = 1) -> None:
@@ -276,15 +319,10 @@ def read_metric_counter_1m(client: redis.Redis, *, metric_name: str) -> int:
         metric_counter_key(metric_name, minute_epoch=current),
         metric_counter_key(metric_name, minute_epoch=previous),
     ]
-    values = client.mget(keys)
+    values = cast(list[object | None], client.mget(keys))
     total = 0
     for value in values:
-        if value is None:
-            continue
-        try:
-            total += int(value)
-        except Exception:
-            continue
+        total += max(_coerce_int(value, default=0), 0)
     return total
 
 
@@ -301,14 +339,15 @@ def record_latency_ms(client: redis.Redis, *, stream_key: str, latency_ms: int, 
 
 def latency_p95_5m(client: redis.Redis, *, stream_key: str) -> float:
     key = latency_list_key(stream_key)
-    rows = client.lrange(key, 0, 6000)
+    rows = cast(list[object], client.lrange(key, 0, 6000))
     if not rows:
         return 0.0
     threshold_ms = int(time.time() * 1000) - 5 * 60 * 1000
     values: list[int] = []
     for row in rows:
+        row_text = _redis_to_text(row)
         try:
-            ts_raw, latency_raw = row.split(":", 1)
+            ts_raw, latency_raw = row_text.split(":", 1)
             ts = int(ts_raw)
             latency = int(latency_raw)
         except Exception:

@@ -117,18 +117,21 @@ def apply_title_degradation_guard(*, old_payload: object, new_payload: dict) -> 
         return new_payload
 
     adjusted = dict(new_payload)
-    source_canonical = adjusted.get("source_canonical") if isinstance(adjusted.get("source_canonical"), dict) else {}
+    source_canonical_raw = adjusted.get("source_canonical")
+    source_canonical = source_canonical_raw if isinstance(source_canonical_raw, dict) else {}
     source_canonical["source_title"] = old_title
     source_canonical["source_summary"] = old_title
     adjusted["source_canonical"] = source_canonical
-    enrichment = adjusted.get("enrichment") if isinstance(adjusted.get("enrichment"), dict) else {}
+    enrichment_raw = adjusted.get("enrichment")
+    enrichment = enrichment_raw if isinstance(enrichment_raw, dict) else {}
     enrichment["title_aliases"] = append_alias(enrichment.get("title_aliases"), new_title, limit=24)
     adjusted["enrichment"] = enrichment
     return adjusted
 
 
 def extract_observation_title_and_times(payload: dict) -> tuple[str, str, str] | None:
-    source_canonical = payload.get("source_canonical") if isinstance(payload.get("source_canonical"), dict) else {}
+    source_canonical_raw = payload.get("source_canonical")
+    source_canonical = source_canonical_raw if isinstance(source_canonical_raw, dict) else {}
     title = source_canonical.get("source_title")
     start = source_canonical.get("source_dtstart_utc")
     end = source_canonical.get("source_dtend_utc")

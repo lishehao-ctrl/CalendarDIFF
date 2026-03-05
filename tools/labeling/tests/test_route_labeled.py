@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -58,7 +59,7 @@ def make_row(
     }
 
 
-def write_jsonl(path: Path, rows: list[dict[str, Any] | str]) -> None:
+def write_jsonl(path: Path, rows: Sequence[dict[str, Any] | str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
@@ -80,7 +81,7 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def run_with_rows(
     tmp_path: Path,
-    rows: list[dict[str, Any] | str],
+    rows: Sequence[dict[str, Any] | str],
     *,
     review_threshold: float = 0.75,
     max_action_items: int = 5,

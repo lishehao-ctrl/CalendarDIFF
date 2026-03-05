@@ -10,7 +10,8 @@ def coerce_calendar_payload(*, payload: dict) -> CanonicalEventInput:
     from app.modules.core_ingest.entity_profile import course_display_name
     from app.modules.core_ingest.payload_extractors import extract_enrichment_course_parse
 
-    source_canonical = payload.get("source_canonical") if isinstance(payload.get("source_canonical"), dict) else {}
+    source_canonical_raw = payload.get("source_canonical")
+    source_canonical = source_canonical_raw if isinstance(source_canonical_raw, dict) else {}
     uid_raw = source_canonical.get("external_event_id")
     uid = uid_raw.strip() if isinstance(uid_raw, str) and uid_raw.strip() else ""
     if not uid:
@@ -68,6 +69,7 @@ def coerce_text(value: object) -> str | None:
         return None
     cleaned = value.strip()
     return cleaned or None
+
 
 __all__ = [
     "coerce_calendar_payload",

@@ -200,8 +200,11 @@ def test_title_degradation_does_not_create_pending(db_session: Session) -> None:
     )
     assert observation is not None
     payload = observation.event_payload if isinstance(observation.event_payload, dict) else {}
-    source_canonical = payload.get("source_canonical") if isinstance(payload.get("source_canonical"), dict) else {}
+    source_canonical_raw = payload.get("source_canonical")
+    source_canonical = source_canonical_raw if isinstance(source_canonical_raw, dict) else {}
     assert source_canonical.get("source_title") == "CSE 151A exam 1"
-    enrichment = payload.get("enrichment") if isinstance(payload.get("enrichment"), dict) else {}
-    aliases = enrichment.get("title_aliases") if isinstance(enrichment.get("title_aliases"), list) else []
+    enrichment_raw = payload.get("enrichment")
+    enrichment = enrichment_raw if isinstance(enrichment_raw, dict) else {}
+    aliases_raw = enrichment.get("title_aliases")
+    aliases = aliases_raw if isinstance(aliases_raw, list) else []
     assert "CSE 151 Exam" in aliases

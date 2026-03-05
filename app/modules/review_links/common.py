@@ -66,7 +66,8 @@ def load_observation_snapshot(
         return None
 
     payload = row.event_payload if isinstance(row.event_payload, dict) else {}
-    source_canonical = payload.get("source_canonical") if isinstance(payload.get("source_canonical"), dict) else {}
+    source_canonical_raw = payload.get("source_canonical")
+    source_canonical = source_canonical_raw if isinstance(source_canonical_raw, dict) else {}
     return {
         "merge_key": row.merge_key,
         "source_kind": row.source_kind.value,

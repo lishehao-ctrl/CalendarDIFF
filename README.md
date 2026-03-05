@@ -119,6 +119,31 @@ INGESTION_LLM_BASE_URL=
 INGESTION_LLM_API_KEY=
 ```
 
+OAuth runtime config (single source of truth for route/base/redirect/key source):
+
+```env
+# Priority for OAuth public base URL:
+# OAUTH_PUBLIC_BASE_URL > APP_BASE_URL > INPUT_API_BASE_URL > http://localhost:8001
+OAUTH_PUBLIC_BASE_URL=http://localhost:8001
+OAUTH_ROUTE_PREFIX=
+OAUTH_SESSION_ROUTE_TEMPLATE=/sources/{source_id}/oauth-sessions
+OAUTH_CALLBACK_ROUTE_TEMPLATE=/oauth/callbacks/{provider}
+OAUTH_CALLBACK_REQUIRE_API_KEY=false
+OAUTH_STATE_TTL_MINUTES=10
+# Optional override; falls back to APP_SECRET_KEY.
+OAUTH_TOKEN_ENCRYPTION_KEY=
+GMAIL_OAUTH_SCOPE=https://www.googleapis.com/auth/gmail.readonly
+GMAIL_OAUTH_ACCESS_TYPE=offline
+GMAIL_OAUTH_PROMPT=consent
+GMAIL_OAUTH_INCLUDE_GRANTED_SCOPES=true
+```
+
+Input-service startup now logs effective OAuth runtime values:
+
+1. final Gmail redirect URI
+2. registered callback routes
+3. OAuth key-source (`OAUTH_TOKEN_ENCRYPTION_KEY` or `APP_SECRET_KEY`)
+
 Optional Gmail endpoint overrides (for local fake-provider smoke only):
 
 ```env
@@ -213,6 +238,22 @@ OpenAPI snapshots:
 ```bash
 python scripts/update_openapi_snapshots.py
 ```
+
+## Local Quality Checks
+
+Run in this order:
+
+```bash
+mypy .
+flake8 .
+python -m build
+```
+
+Notes:
+
+1. `mypy` uses `explicit_package_bases` so `services/*/main.py` no longer collides as duplicate top-level `main`.
+2. `flake8` excludes local environment/vendor/history-heavy paths (for example `.venv`, `tools`, `app/db/migrations`) to keep output focused on active runtime code.
+3. `python -m build` requires the `build` package, included in `requirements.txt` and `project.optional-dependencies.dev`.
 
 ## API Surface
 

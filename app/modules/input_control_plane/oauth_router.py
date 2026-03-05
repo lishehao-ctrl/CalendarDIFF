@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.logging import sanitize_log_message
+from app.core.oauth_config import build_oauth_runtime_config
 from app.db.session import get_db
 from app.modules.input_control_plane.oauth_service import (
     build_gmail_oauth_start_for_source,
@@ -16,11 +17,17 @@ from app.modules.input_control_plane.schemas import (
     OAuthSessionCreateResponse,
 )
 
+_OAUTH_RUNTIME = build_oauth_runtime_config()
+
 router = APIRouter()
 public_router = APIRouter(tags=["input-control-plane-public"])
 
 
-@router.post("/sources/{source_id}/oauth-sessions", response_model=OAuthSessionCreateResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    _OAUTH_RUNTIME.oauth_session_route_path,
+    response_model=OAuthSessionCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_oauth_session(
     source_id: int,
     payload: OAuthSessionCreateRequest,
@@ -43,7 +50,7 @@ def create_oauth_session(
     )
 
 
-@public_router.get("/oauth/callbacks/{provider}", include_in_schema=False)
+@public_router.get(_OAUTH_RUNTIME.callback_route_path, include_in_schema=False)
 def oauth_callback(
     provider: str,
     code: str | None = Query(default=None),

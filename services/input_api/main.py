@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.core.oauth_config import log_input_oauth_startup
 from app.modules.health.router import router as health_router
 from app.modules.input_control_plane.router import public_router as input_public_router
 from app.modules.input_control_plane.metrics_router import router as input_metrics_router
@@ -20,4 +21,5 @@ app = create_service_app(
         input_control_plane_router,
         input_metrics_router,
     ],
+    startup_hooks=[log_input_oauth_startup],
 )

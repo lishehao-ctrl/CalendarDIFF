@@ -207,7 +207,6 @@ def test_ops_retention_minimal_dry_run_and_apply(db_session: Session) -> None:
     assert int(remaining_pending or 0) == 1
 
 
-
 def test_ops_retention_minimal_guardrail_blocks_large_apply(db_session: Session) -> None:
     now = datetime.now(UTC)
     user = User(

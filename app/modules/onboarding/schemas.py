@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.modules.users.email_utils import is_valid_email_address
 
+
 class OnboardingRegisterRequest(BaseModel):
     notify_email: str = Field(min_length=3, max_length=255)
 

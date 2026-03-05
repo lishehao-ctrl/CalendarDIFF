@@ -2,11 +2,18 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, Enum as SAEnum, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, DateTime, Enum as SAEnum, Index, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.db.models.input import InputSource
+    from app.db.models.notify import DigestSendLog
+    from app.db.models.review import Input
+    from app.db.models.review import EventEntity, EventEntityLink, EventLinkAlert, EventLinkBlock, EventLinkCandidate
 
 
 class OutboxStatus(str, Enum):

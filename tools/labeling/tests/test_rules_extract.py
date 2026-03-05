@@ -69,6 +69,7 @@ def _build_mbox(path: Path, *, count: int) -> None:
 
 def test_rules_extract_jsonl_enforces_contract_and_is_deterministic(tmp_path: Path) -> None:
     config = _build_jsonl_config(tmp_path)
+    assert config.input_jsonl is not None
     _write_jsonl(
         config.input_jsonl,
         [
@@ -154,6 +155,7 @@ def test_schema_invalid_candidate_is_diverted_to_error_sidecar(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     config = _build_jsonl_config(tmp_path)
+    assert config.input_jsonl is not None
     _write_jsonl(
         config.input_jsonl,
         [

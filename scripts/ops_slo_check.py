@@ -74,6 +74,13 @@ def _to_float(value: Any, *, key: str) -> float:
     raise RuntimeError(f"missing/invalid metric '{key}'")
 
 
+def _metric_values(payload: dict[str, Any]) -> dict[str, Any]:
+    metrics = payload.get("metrics")
+    if isinstance(metrics, dict):
+        return metrics
+    return {}
+
+
 def _render_text(summary: dict[str, Any]) -> None:
     print("ops_slo_check summary")
     print(f"  passed: {summary['passed']}")
@@ -118,10 +125,10 @@ def main() -> int:
             "llm": llm_metrics,
         }
 
-        ingest_values = ingest_metrics.get("metrics") if isinstance(ingest_metrics.get("metrics"), dict) else {}
-        review_values = review_metrics.get("metrics") if isinstance(review_metrics.get("metrics"), dict) else {}
-        notify_values = notify_metrics.get("metrics") if isinstance(notify_metrics.get("metrics"), dict) else {}
-        llm_values = llm_metrics.get("metrics") if isinstance(llm_metrics.get("metrics"), dict) else {}
+        ingest_values = _metric_values(ingest_metrics)
+        review_values = _metric_values(review_metrics)
+        notify_values = _metric_values(notify_metrics)
+        llm_values = _metric_values(llm_metrics)
 
         # Validate llm-service metric contract is present.
         _to_float(llm_values.get("queue_depth_stream"), key="queue_depth_stream")

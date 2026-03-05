@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
@@ -22,6 +23,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.db.models.input import SourceKind
+
+if TYPE_CHECKING:
+    from app.db.models.input import InputSource, SyncRequest
+    from app.db.models.notify import Notification
+    from app.db.models.shared import User
 
 
 class InputType(str, Enum):

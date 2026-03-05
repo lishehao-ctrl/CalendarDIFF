@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import importlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -12,8 +13,11 @@ try:
     from tools.labeling.label_emails_async import read_mbox_input_emails
     from tools.labeling.rules_extract import EVENT_PRECEDENCE, analyze_email_rules
 except ModuleNotFoundError:  # pragma: no cover - direct script execution
-    from label_emails_async import read_mbox_input_emails  # type: ignore[no-redef]
-    from rules_extract import EVENT_PRECEDENCE, analyze_email_rules  # type: ignore[no-redef]
+    label_module = importlib.import_module("tools.labeling.label_emails_async")
+    rules_module = importlib.import_module("tools.labeling.rules_extract")
+    read_mbox_input_emails = label_module.read_mbox_input_emails
+    EVENT_PRECEDENCE = rules_module.EVENT_PRECEDENCE
+    analyze_email_rules = rules_module.analyze_email_rules
 
 
 @dataclass(frozen=True)

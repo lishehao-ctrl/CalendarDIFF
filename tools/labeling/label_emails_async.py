@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import html
+import importlib
 import json
 import logging
 import mailbox
@@ -23,9 +24,12 @@ import httpx
 from jsonschema import Draft202012Validator
 
 try:
-    from openai import AsyncOpenAI
+    openai_module = importlib.import_module("openai")
 except ImportError:  # pragma: no cover - runtime guard only
-    AsyncOpenAI = None  # type: ignore[assignment]
+    OpenAIAsyncClient: Any = None
+else:
+    OpenAIAsyncClient = getattr(openai_module, "AsyncOpenAI", None)
+AsyncOpenAI = OpenAIAsyncClient
 
 try:
     from tools.labeling.json_enforcer import (
@@ -33,10 +37,9 @@ try:
         collect_validation_errors,
     )
 except ModuleNotFoundError:  # pragma: no cover - direct script execution
-    from json_enforcer import (  # type: ignore[no-redef]
-        build_repair_prompt,
-        collect_validation_errors,
-    )
+    json_enforcer_module = importlib.import_module("tools.labeling.json_enforcer")
+    build_repair_prompt = json_enforcer_module.build_repair_prompt
+    collect_validation_errors = json_enforcer_module.collect_validation_errors
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_SCHEMA_PATH = ROOT_DIR / "tools" / "labeling" / "schema" / "email_label.json"
@@ -294,8 +297,10 @@ def strip_html_tags(value: str) -> str:
 
 
 def decode_message_part(part: Message) -> str:
-    payload_bytes = part.get_payload(decode=True)
-    if payload_bytes is None:
+    payload = part.get_payload(decode=True)
+    if isinstance(payload, (bytes, bytearray)):
+        payload_bytes = bytes(payload)
+    else:
         payload_text = part.get_payload()
         if isinstance(payload_text, str):
             return payload_text
@@ -716,7 +721,7 @@ async def label_single_email(
 
 
 async def run_labeling_pipeline(config: LabelingConfig) -> dict[str, Any]:
-    if AsyncOpenAI is None:
+    if OpenAIAsyncClient is None:
         raise RuntimeError("openai package is not installed. Install dependencies before running this script.")
 
     schema = load_json_schema(config.schema_path)
@@ -749,7 +754,7 @@ async def run_labeling_pipeline(config: LabelingConfig) -> dict[str, Any]:
     for item in preflight_errors:
         append_jsonl(config.error_jsonl, item)
 
-    client = AsyncOpenAI(api_key=config.openai_api_key, base_url=config.openai_base_url)
+    client = OpenAIAsyncClient(api_key=config.openai_api_key, base_url=config.openai_base_url)
     semaphore = asyncio.Semaphore(config.workers)
     write_lock = asyncio.Lock()
     start_time = time.monotonic()

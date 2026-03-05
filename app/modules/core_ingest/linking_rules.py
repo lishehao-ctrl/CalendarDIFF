@@ -82,7 +82,14 @@ def decide_inventory_link(
             evidence={"course_key": f"{incoming_dept}{incoming_number}", "candidate_count": 0},
         )
 
-    course_suffixes = sorted({_coerce_text(_course_parse_from_payload(row.event_payload).get("suffix")) for row in by_course if _coerce_text(_course_parse_from_payload(row.event_payload).get("suffix")) is not None})
+    course_suffixes = sorted(
+        {
+            suffix
+            for row in by_course
+            for suffix in [_coerce_text(_course_parse_from_payload(row.event_payload).get("suffix"))]
+            if suffix is not None
+        }
+    )
     requires_suffix = bool(course_suffixes)
     suffix_filtered = list(by_course)
     if requires_suffix:
@@ -261,7 +268,8 @@ def _course_key(course_parse: dict) -> tuple[str, int] | None:
 def _course_parse_from_payload(payload: object) -> dict:
     if not isinstance(payload, dict):
         return {}
-    enrichment = payload.get("enrichment") if isinstance(payload.get("enrichment"), dict) else {}
+    enrichment_raw = payload.get("enrichment")
+    enrichment = enrichment_raw if isinstance(enrichment_raw, dict) else {}
     course_parse = enrichment.get("course_parse")
     if isinstance(course_parse, dict):
         return course_parse
@@ -271,7 +279,8 @@ def _course_parse_from_payload(payload: object) -> dict:
 def _event_parts_from_payload(payload: object) -> dict:
     if not isinstance(payload, dict):
         return {}
-    enrichment = payload.get("enrichment") if isinstance(payload.get("enrichment"), dict) else {}
+    enrichment_raw = payload.get("enrichment")
+    enrichment = enrichment_raw if isinstance(enrichment_raw, dict) else {}
     event_parts = enrichment.get("event_parts")
     if isinstance(event_parts, dict):
         return event_parts

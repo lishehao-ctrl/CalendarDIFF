@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import importlib
 from pathlib import Path
 from typing import Any
 
 try:
     from tools.labeling.eval_rules import EVENT_CLASSES
 except ModuleNotFoundError:  # pragma: no cover - direct script execution
-    from eval_rules import EVENT_CLASSES  # type: ignore[no-redef]
+    EVENT_CLASSES = importlib.import_module("tools.labeling.eval_rules").EVENT_CLASSES
 
 
 def parse_args() -> argparse.Namespace:
@@ -101,7 +102,11 @@ def _event_metrics(confusion: dict[str, dict[str, int]], total: int) -> dict[str
 
 def run_eval_gold(*, gold_path: Path, outdir: Path) -> dict[str, Any]:
     rows = _read_jsonl(gold_path)
-    reviewed = [row for row in rows if isinstance(row.get("gold_label"), str) and row.get("gold_label").strip()]
+    reviewed: list[dict[str, Any]] = []
+    for row in rows:
+        gold_label = row.get("gold_label")
+        if isinstance(gold_label, str) and gold_label.strip():
+            reviewed.append(row)
 
     tp = fp = fn = tn = 0
     confusion_event: dict[str, dict[str, int]] = {}

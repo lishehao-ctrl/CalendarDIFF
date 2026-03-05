@@ -120,7 +120,9 @@ def test_valid_json_and_request_shape(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert "text" not in call
     assert "response_format" not in call
     assert call.get("input")
-    first_input = call["input"][0]
+    call_input = call.get("input")
+    assert isinstance(call_input, list) and call_input
+    first_input = call_input[0]
     assert first_input["role"] == "user"
     assert isinstance(first_input["content"], list)
     assert first_input["content"][0]["type"] == "input_text"
@@ -204,7 +206,13 @@ def test_invalid_json_repaired_round_one_with_schema_feedback(
     assert summary["invalid_dropped_count"] == 0
     assert len(calls) == 2
 
-    repair_prompt = calls[1]["input"][0]["content"][0]["text"]
+    second_input = calls[1].get("input")
+    assert isinstance(second_input, list) and second_input
+    second_content = second_input[0].get("content") if isinstance(second_input[0], dict) else None
+    assert isinstance(second_content, list) and second_content
+    first_text_node = second_content[0]
+    assert isinstance(first_text_node, dict)
+    repair_prompt = first_text_node["text"]
     assert "Schema (JSON):" in repair_prompt
     assert "Validation errors:" in repair_prompt
     assert "Invalid output:" in repair_prompt

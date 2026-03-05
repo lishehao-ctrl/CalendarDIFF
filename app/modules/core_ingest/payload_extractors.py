@@ -235,6 +235,7 @@ def empty_course_parse() -> dict:
         "evidence": "",
     }
 
+
 __all__ = [
     "coerce_exam_sequence",
     "empty_course_parse",

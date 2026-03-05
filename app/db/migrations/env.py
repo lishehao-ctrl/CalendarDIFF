@@ -45,6 +45,8 @@ def _assert_postgres_connection(connection: Connection) -> None:
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
+    if not isinstance(url, str) or not url:
+        raise RuntimeError("sqlalchemy.url is not configured")
     _assert_postgres_url(url)
     context.configure(
         url=url,

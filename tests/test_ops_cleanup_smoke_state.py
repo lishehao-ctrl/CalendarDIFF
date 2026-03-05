@@ -162,7 +162,9 @@ def test_ops_cleanup_smoke_state_dry_run_apply_and_idempotent(db_session: Sessio
         ).all()
     }
     assert updated_rows[change_both_id].review_status == ReviewStatus.REJECTED
-    assert updated_rows[change_both_id].review_note.startswith("ops_smoke_cleanup:")
+    review_note = updated_rows[change_both_id].review_note
+    assert isinstance(review_note, str)
+    assert review_note.startswith("ops_smoke_cleanup:")
     assert updated_rows[change_b_id].review_status == ReviewStatus.PENDING
 
     idempotent_run = _run_cleanup_script(

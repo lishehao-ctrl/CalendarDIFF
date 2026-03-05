@@ -82,4 +82,4 @@ def list_link_blocks(
     )
     if source_id is not None:
         stmt = stmt.where(EventLinkBlock.source_id == source_id)
-    return db.scalars(stmt).all()
+    return list(db.scalars(stmt).all())

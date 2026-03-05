@@ -606,7 +606,8 @@ def main() -> int:
                 )
 
             provider_state = _request_json(fake_client, "GET", "/__admin/state")
-            counters = provider_state.get("counters") if isinstance(provider_state.get("counters"), dict) else {}
+            counters_raw = provider_state.get("counters")
+            counters = counters_raw if isinstance(counters_raw, dict) else {}
             for key in report["provider_counters"].keys():
                 value = counters.get(key)
                 report["provider_counters"][key] = int(value) if isinstance(value, int) else 0

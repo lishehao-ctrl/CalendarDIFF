@@ -8,7 +8,7 @@ class SecretRedactionFilter(logging.Filter):
         if isinstance(record.msg, str):
             record.msg = sanitize_log_message(record.msg)
         if record.args:
-            sanitized_args = []
+            sanitized_args: list[object] = []
             for arg in record.args if isinstance(record.args, tuple) else (record.args,):
                 if isinstance(arg, str):
                     sanitized_args.append(sanitize_log_message(arg))

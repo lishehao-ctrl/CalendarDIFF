@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Literal
 
@@ -47,13 +48,15 @@ def rebuild_pending_change_proposals(
     created_changes: list[Change] = []
 
     for merge_key in sorted(affected_merge_keys):
-        observations = db.scalars(
-            select(SourceEventObservation).where(
-                SourceEventObservation.user_id == source.user_id,
-                SourceEventObservation.merge_key == merge_key,
-                SourceEventObservation.is_active.is_(True),
-            )
-        ).all()
+        observations = list(
+            db.scalars(
+                select(SourceEventObservation).where(
+                    SourceEventObservation.user_id == source.user_id,
+                    SourceEventObservation.merge_key == merge_key,
+                    SourceEventObservation.is_active.is_(True),
+                )
+            ).all()
+        )
         existing_event = db.scalar(
             select(Event).where(
                 Event.input_id == canonical_input.id,
@@ -99,7 +102,7 @@ def rebuild_pending_change_proposals(
 def compute_pending_proposal_decision(
     *,
     merge_key: str,
-    observations: list[SourceEventObservation],
+    observations: Sequence[SourceEventObservation],
     existing_event: Event | None,
 ) -> PendingProposalDecision:
     primary = choose_primary_observation(
@@ -132,7 +135,8 @@ def compute_pending_proposal_decision(
             proposal_sources_json=[],
         )
 
-    primary_payload = primary.get("event_payload") if isinstance(primary.get("event_payload"), dict) else {}
+    primary_payload_raw = primary.get("event_payload")
+    primary_payload = primary_payload_raw if isinstance(primary_payload_raw, dict) else {}
     candidate_after = candidate_after_json(merge_key=merge_key, payload=primary_payload)
     if candidate_after is None:
         return PendingProposalDecision(mode="skip", event_uid=merge_key)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 from app.db.models.ingestion import ConnectorResultStatus
 from app.db.models.input import InputSource
 from app.modules.ingestion.connector_types import ConnectorFetchOutcome
@@ -9,8 +11,8 @@ from app.modules.input_control_plane.source_secrets import decode_source_secrets
 from app.modules.sync.ics_client import ICSClient
 
 
-def fetch_calendar_delta(*, source: InputSource) -> ConnectorFetchOutcome:
-    secrets = decode_source_secrets(source)
+def fetch_calendar_delta(*, source: Any) -> ConnectorFetchOutcome:
+    secrets = decode_source_secrets(cast(InputSource, source))
     url = secrets.get("url")
     if not isinstance(url, str) or not url:
         return ConnectorFetchOutcome(
@@ -21,12 +23,15 @@ def fetch_calendar_delta(*, source: InputSource) -> ConnectorFetchOutcome:
             error_message="missing calendar url in source secrets",
         )
 
-    cursor = source.cursor.cursor_json if source.cursor is not None and isinstance(source.cursor.cursor_json, dict) else {}
+    source_cursor = getattr(source, "cursor", None)
+    cursor_json = getattr(source_cursor, "cursor_json", None)
+    cursor = cursor_json if isinstance(cursor_json, dict) else {}
     if_none_match = cursor.get("etag") if isinstance(cursor.get("etag"), str) else None
     if_modified_since = cursor.get("last_modified") if isinstance(cursor.get("last_modified"), str) else None
 
     client = ICSClient()
-    fetched = client.fetch(url, source.id, if_none_match=if_none_match, if_modified_since=if_modified_since)
+    source_id = int(getattr(source, "id", 0))
+    fetched = client.fetch(url, source_id, if_none_match=if_none_match, if_modified_since=if_modified_since)
     if fetched.not_modified:
         return ConnectorFetchOutcome(
             status=ConnectorResultStatus.NO_CHANGE,

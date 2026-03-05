@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import importlib
 import random
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,7 +12,7 @@ from typing import Any
 try:
     from tools.labeling.label_emails_async import read_mbox_input_emails
 except ModuleNotFoundError:  # pragma: no cover - direct script execution
-    from label_emails_async import read_mbox_input_emails  # type: ignore[no-redef]
+    read_mbox_input_emails = importlib.import_module("tools.labeling.label_emails_async").read_mbox_input_emails
 
 
 @dataclass(frozen=True)

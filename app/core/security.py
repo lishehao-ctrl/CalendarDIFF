@@ -7,6 +7,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from fastapi import Header, HTTPException, status
 
 from app.core.config import get_settings
+from app.core.oauth_config import resolve_oauth_token_encryption_key
 
 InternalServiceName = str
 ALL_INTERNAL_SERVICES: frozenset[InternalServiceName] = frozenset(
@@ -64,10 +65,11 @@ def _get_internal_service_tokens() -> dict[InternalServiceName, str]:
 @lru_cache(maxsize=1)
 def get_fernet() -> Fernet:
     settings = get_settings()
+    key, source = resolve_oauth_token_encryption_key(settings=settings)
     try:
-        return Fernet(settings.app_secret_key.encode("utf-8"))
+        return Fernet(key.encode("utf-8"))
     except Exception as exc:  # pragma: no cover - configuration guard
-        raise RuntimeError("APP_SECRET_KEY must be a valid Fernet key") from exc
+        raise RuntimeError(f"{source} must be a valid Fernet key") from exc
 
 
 def encrypt_secret(value: str) -> str:

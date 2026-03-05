@@ -90,7 +90,8 @@ def _apply_link_alert_event(db: Session, *, event_type: str, payload: dict) -> N
         link_id = payload.get("link_id")
         if link_id is not None and not isinstance(link_id, int):
             raise ValueError("link_id must be int or null")
-        evidence_snapshot = payload.get("evidence_snapshot") if isinstance(payload.get("evidence_snapshot"), dict) else {}
+        evidence_snapshot_raw = payload.get("evidence_snapshot")
+        evidence_snapshot = evidence_snapshot_raw if isinstance(evidence_snapshot_raw, dict) else {}
         upsert_pending_link_alert(
             db=db,
             user_id=user_id,

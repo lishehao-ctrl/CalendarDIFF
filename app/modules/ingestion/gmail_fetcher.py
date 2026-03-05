@@ -1,18 +1,20 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 from app.db.models.ingestion import ConnectorResultStatus
 from app.db.models.input import InputSource
 from app.modules.ingestion.connector_types import ConnectorFetchOutcome
 from app.modules.input_control_plane.source_secrets import decode_source_secrets
-from app.modules.sync.gmail_client import GmailAPIError, GmailClient, GmailHistoryExpiredError, GmailMessageMetadata
+from app.modules.sync.gmail_client import GmailAPIError, GmailClient, GmailHistoryExpiredError
 
 
 def fetch_gmail_changes(
     *,
-    source: InputSource,
+    source: Any,
     request_id: str,
 ) -> ConnectorFetchOutcome:
-    secrets = decode_source_secrets(source)
+    secrets = decode_source_secrets(cast(InputSource, source))
     access_token = secrets.get("access_token")
     if not isinstance(access_token, str) or not access_token:
         return ConnectorFetchOutcome(
@@ -32,7 +34,9 @@ def fetch_gmail_changes(
             return _failed("gmail_rate_limited", str(exc), status=ConnectorResultStatus.RATE_LIMITED)
         return _failed("gmail_fetch_failed", str(exc), status=ConnectorResultStatus.FETCH_FAILED)
 
-    cursor = source.cursor.cursor_json if source.cursor is not None and isinstance(source.cursor.cursor_json, dict) else {}
+    source_cursor = getattr(source, "cursor", None)
+    cursor_json = getattr(source_cursor, "cursor_json", None)
+    cursor = cursor_json if isinstance(cursor_json, dict) else {}
     cursor_history_id = cursor.get("history_id") if isinstance(cursor.get("history_id"), str) else None
 
     if cursor_history_id is None:
@@ -60,7 +64,9 @@ def fetch_gmail_changes(
     if not history_result.message_ids:
         return _no_change(cursor_patch={"history_id": latest_history_id})
 
-    config = source.config.config_json if source.config is not None and isinstance(source.config.config_json, dict) else {}
+    source_config = getattr(source, "config", None)
+    config_json = getattr(source_config, "config_json", None)
+    config = config_json if isinstance(config_json, dict) else {}
     message_payloads: list[dict] = []
     for message_id in history_result.message_ids:
         try:
@@ -104,28 +110,33 @@ def fetch_gmail_changes(
     )
 
 
-def matches_gmail_source_filters(*, metadata: GmailMessageMetadata, config: dict) -> bool:
+def matches_gmail_source_filters(*, metadata: Any, config: dict) -> bool:
+    metadata_label_ids_raw = getattr(metadata, "label_ids", [])
+    metadata_label_ids = [value for value in metadata_label_ids_raw if isinstance(value, str)]
+    metadata_from_header = str(getattr(metadata, "from_header", "") or "")
+    metadata_subject = str(getattr(metadata, "subject", "") or "")
+
     label_id = config.get("label_id")
     if isinstance(label_id, str) and label_id.strip():
-        if label_id not in metadata.label_ids:
+        if label_id not in metadata_label_ids:
             return False
 
-    label_ids = config.get("label_ids")
-    if isinstance(label_ids, list):
-        normalized_label_ids = [value for value in label_ids if isinstance(value, str) and value.strip()]
-        if normalized_label_ids and not any(label in metadata.label_ids for label in normalized_label_ids):
+    required_label_ids = config.get("label_ids")
+    if isinstance(required_label_ids, list):
+        normalized_label_ids = [value for value in required_label_ids if isinstance(value, str) and value.strip()]
+        if normalized_label_ids and not any(label in metadata_label_ids for label in normalized_label_ids):
             return False
 
     from_contains = config.get("from_contains")
     if isinstance(from_contains, str) and from_contains.strip():
-        if from_contains.strip().lower() not in metadata.from_header.lower():
+        if from_contains.strip().lower() not in metadata_from_header.lower():
             return False
 
     subject_keywords = config.get("subject_keywords")
     if isinstance(subject_keywords, list):
         normalized_keywords = [value.strip().lower() for value in subject_keywords if isinstance(value, str) and value.strip()]
         if normalized_keywords:
-            subject_text = metadata.subject.lower()
+            subject_text = metadata_subject.lower()
             if not any(keyword in subject_text for keyword in normalized_keywords):
                 return False
 

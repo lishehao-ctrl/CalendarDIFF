@@ -14,6 +14,7 @@ from app.modules.review_changes.schemas import (
     ManualCorrectionPreviewResponse,
     ManualCorrectionRequest,
     ReviewChangeItemResponse,
+    ReviewSourceRef,
     ReviewChangeViewRequest,
     ReviewDecisionRequest,
     ReviewDecisionResponse,
@@ -88,12 +89,29 @@ def patch_review_change_view(
     except ReviewChangeNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    sources = row.proposal_sources_json if isinstance(row.proposal_sources_json, list) else []
+    sources_raw = row.proposal_sources_json if isinstance(row.proposal_sources_json, list) else []
+    sources: list[ReviewSourceRef] = []
+    for item in sources_raw:
+        if not isinstance(item, dict):
+            continue
+        source_id_value = item.get("source_id")
+        if not isinstance(source_id_value, int):
+            continue
+        confidence_value = item.get("confidence")
+        confidence = float(confidence_value) if isinstance(confidence_value, (int, float)) else None
+        sources.append(
+            ReviewSourceRef(
+                source_id=source_id_value,
+                source_kind=item.get("source_kind") if isinstance(item.get("source_kind"), str) else None,
+                provider=item.get("provider") if isinstance(item.get("provider"), str) else None,
+                external_event_id=item.get("external_event_id") if isinstance(item.get("external_event_id"), str) else None,
+                confidence=confidence,
+            )
+        )
     source_id = None
-    for item in sources:
-        if isinstance(item, dict) and isinstance(item.get("source_id"), int):
-            source_id = item["source_id"]
-            break
+    for source_ref in sources:
+        source_id = source_ref.source_id
+        break
 
     return ReviewChangeItemResponse(
         id=row.id,

@@ -137,6 +137,7 @@ def _coerce_text(value: object) -> str | None:
     cleaned = value.strip()
     return cleaned or None
 
+
 __all__ = [
     "append_alias",
     "compute_course_strength",

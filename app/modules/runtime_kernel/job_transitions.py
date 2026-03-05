@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Literal
 
 from app.db.models.ingestion import IngestJob, IngestJobStatus
-from app.db.models.input import InputSource, SyncRequestStatus
+from app.db.models.input import SyncRequestStatus
 from app.modules.runtime_kernel.job_context import JobContext
 from app.modules.runtime_kernel.retry_policy import truncate_error
 

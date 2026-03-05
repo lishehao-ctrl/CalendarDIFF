@@ -6,11 +6,13 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Mapping, Sequence
 from urllib.parse import urlencode
 
 import httpx
 
 from app.core.config import get_settings
+from app.core.oauth_config import build_oauth_runtime_config
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -26,7 +28,7 @@ class GmailOAuthTokens:
 class GmailOAuthClientSecrets:
     client_id: str
     client_secret: str
-    redirect_uri: str
+    redirect_uris: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -73,6 +75,7 @@ class GmailClient:
     def __init__(self) -> None:
         settings = get_settings()
         self._settings = settings
+        self._oauth_runtime = build_oauth_runtime_config(settings=settings)
         self._oauth_authorize_url = _normalize_endpoint(settings.gmail_oauth_authorize_url)
         self._oauth_token_url = _normalize_endpoint(settings.gmail_oauth_token_url)
         self._gmail_api_base = _normalize_endpoint(settings.gmail_api_base_url)
@@ -85,25 +88,27 @@ class GmailClient:
 
     def build_authorization_url(self, *, state: str) -> str:
         oauth_client = self._load_oauth_client_secrets()
+        redirect_uri = self._resolve_redirect_uri(oauth_client=oauth_client)
         params = {
             "client_id": oauth_client.client_id,
-            "redirect_uri": oauth_client.redirect_uri,
+            "redirect_uri": redirect_uri,
             "response_type": "code",
-            "scope": self._settings.gmail_oauth_scope,
-            "access_type": "offline",
-            "include_granted_scopes": "true",
-            "prompt": "consent",
+            "scope": self._oauth_runtime.gmail_scope,
+            "access_type": self._oauth_runtime.gmail_access_type,
+            "include_granted_scopes": "true" if self._oauth_runtime.gmail_include_granted_scopes else "false",
+            "prompt": self._oauth_runtime.gmail_prompt,
             "state": state,
         }
         return f"{self._oauth_authorize_url}?{urlencode(params)}"
 
     def exchange_code(self, *, code: str) -> GmailOAuthTokens:
         oauth_client = self._load_oauth_client_secrets()
+        redirect_uri = self._resolve_redirect_uri(oauth_client=oauth_client)
         payload = {
             "code": code,
             "client_id": oauth_client.client_id,
             "client_secret": oauth_client.client_secret,
-            "redirect_uri": oauth_client.redirect_uri,
+            "redirect_uri": redirect_uri,
             "grant_type": "authorization_code",
         }
         response_json = self._post_token(payload)
@@ -146,7 +151,7 @@ class GmailClient:
         latest_history_id: str | None = None
 
         while True:
-            params: dict[str, str] = {
+            params: dict[str, str | int | float | bool | None] = {
                 "startHistoryId": start_history_id,
                 "historyTypes": "messageAdded",
                 "maxResults": "500",
@@ -228,7 +233,17 @@ class GmailClient:
         self._raise_for_api_error(response)
         return response.json()
 
-    def _get_json(self, path: str, *, access_token: str, params: dict[str, object] | None = None) -> dict:
+    def _get_json(
+        self,
+        path: str,
+        *,
+        access_token: str,
+        params: Mapping[
+            str,
+            str | int | float | bool | None | Sequence[str | int | float | bool | None],
+        ]
+        | None = None,
+    ) -> dict:
         with httpx.Client(timeout=self._timeout, follow_redirects=True) as client:
             response = client.get(
                 f"{self._gmail_api_base}{path}",
@@ -248,6 +263,15 @@ class GmailClient:
 
     def _load_oauth_client_secrets(self) -> GmailOAuthClientSecrets:
         return _load_oauth_client_secrets(self._settings.gmail_oauth_client_secrets_file)
+
+    def _resolve_redirect_uri(self, *, oauth_client: GmailOAuthClientSecrets) -> str:
+        redirect_uri = self._oauth_runtime.gmail_redirect_uri
+        if redirect_uri not in oauth_client.redirect_uris:
+            raise RuntimeError(
+                "OAuth redirect URI is not registered in Gmail OAuth client secrets; "
+                "check OAUTH_PUBLIC_BASE_URL/OAUTH_ROUTE_PREFIX/OAUTH_CALLBACK_ROUTE_TEMPLATE and Google OAuth settings"
+            )
+        return redirect_uri
 
 
 def _load_oauth_client_secrets(file_path: str | None) -> GmailOAuthClientSecrets:
@@ -326,21 +350,20 @@ def _extract_oauth_client_secrets(payload: dict[str, object]) -> GmailOAuthClien
     client_id = str(web_payload.get("client_id") or "").strip()
     client_secret = str(web_payload.get("client_secret") or "").strip()
 
-    redirect_uri = ""
-    redirect_uris = web_payload.get("redirect_uris")
-    if isinstance(redirect_uris, list):
-        for value in redirect_uris:
+    redirect_uris: list[str] = []
+    redirect_uris_raw = web_payload.get("redirect_uris")
+    if isinstance(redirect_uris_raw, list):
+        for value in redirect_uris_raw:
             if isinstance(value, str) and value.strip():
-                redirect_uri = value.strip()
-                break
+                redirect_uris.append(value.strip())
 
-    if not client_id or not client_secret or not redirect_uri:
+    if not client_id or not client_secret or not redirect_uris:
         raise RuntimeError("Gmail OAuth client secrets file missing required fields")
 
     return GmailOAuthClientSecrets(
         client_id=client_id,
         client_secret=client_secret,
-        redirect_uri=redirect_uri,
+        redirect_uris=tuple(redirect_uris),
     )
 
 

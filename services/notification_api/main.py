@@ -24,6 +24,17 @@ from app.service_app import create_service_app
 logger = logging.getLogger(__name__)
 
 
+def _coerce_int_metric(value: object) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except Exception:
+            return 0
+    return 0
+
+
 def _count_digest_results(db) -> tuple[int, int]:
     sent = 0
     failed = 0
@@ -47,7 +58,7 @@ async def _run_notification_worker() -> None:
     session_factory = get_session_factory()
     settings = get_settings()
 
-    def _tick() -> dict[str, int]:
+    def _tick() -> dict[str, object]:
         enqueued_notifications = 0
         processed_slots = 0
         sent_count = 0
@@ -81,10 +92,10 @@ async def _run_notification_worker() -> None:
 
     def _log_success(result: dict[str, object] | int | None, latency_ms: int) -> str:
         payload = result if isinstance(result, dict) else {}
-        enqueued_notifications = int(payload.get("enqueued_notifications") or 0)
-        processed_slots = int(payload.get("processed_slots") or 0)
-        sent_count = int(payload.get("sent_count") or 0)
-        failed_count = int(payload.get("failed_count") or 0)
+        enqueued_notifications = _coerce_int_metric(payload.get("enqueued_notifications"))
+        processed_slots = _coerce_int_metric(payload.get("processed_slots"))
+        sent_count = _coerce_int_metric(payload.get("sent_count"))
+        failed_count = _coerce_int_metric(payload.get("failed_count"))
         return (
             "notification tick worker_id=%s enqueued_notifications=%s processed_slots=%s "
             "sent_count=%s failed_count=%s tick_latency_ms=%s"

@@ -300,7 +300,7 @@ def create_handler(state: FakeSourceState):
             if path == "/gmail/v1/users/me/profile":
                 state.increment("gmail_profile_count")
                 round_id = int(state.snapshot()["round"])
-                payload = {
+                payload: dict[str, Any] = {
                     "emailAddress": "fake.student@example.edu",
                     "historyId": _history_id_for_round(round_id),
                 }
@@ -326,11 +326,11 @@ def create_handler(state: FakeSourceState):
                             ],
                         }
                     )
-                payload = {
+                history_payload: dict[str, Any] = {
                     "historyId": _history_id_for_round(round_id),
                     "history": history_rows,
                 }
-                self._json_response(HTTPStatus.OK, payload)
+                self._json_response(HTTPStatus.OK, history_payload)
                 return
 
             if path.startswith("/gmail/v1/users/me/messages/"):
@@ -344,7 +344,7 @@ def create_handler(state: FakeSourceState):
                 subject = _with_run_tag(scenario.subject, run_tag)
                 body_text = _with_run_tag(scenario.body_text, run_tag)
                 body_data = _to_base64url(body_text)
-                payload = {
+                message_payload: dict[str, Any] = {
                     "id": message_id,
                     "threadId": f"thread-{message_id}",
                     "labelIds": ["INBOX", "CATEGORY_PERSONAL"],
@@ -363,7 +363,7 @@ def create_handler(state: FakeSourceState):
                         },
                     },
                 }
-                self._json_response(HTTPStatus.OK, payload)
+                self._json_response(HTTPStatus.OK, message_payload)
                 return
 
             if path == "/oauth2/auth":

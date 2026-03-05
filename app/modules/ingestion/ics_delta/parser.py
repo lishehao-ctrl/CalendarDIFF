@@ -111,16 +111,18 @@ def _normalize_sequence(value: object) -> int | None:
     candidate = value
     if hasattr(candidate, "dt"):
         candidate = candidate.dt
-    try:
-        return int(candidate)
-    except Exception:
-        text = str(candidate).strip()
-        if not text:
-            return None
+    if isinstance(candidate, (int, float, str, bytes, bytearray)):
         try:
-            return int(text)
+            return int(candidate)
         except Exception:
-            return None
+            pass
+    text = str(candidate).strip()
+    if not text:
+        return None
+    try:
+        return int(text)
+    except Exception:
+        return None
 
 
 def _normalize_ical_value(value: object) -> str | None:

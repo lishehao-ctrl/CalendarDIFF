@@ -108,22 +108,27 @@ def parse_with_llm(
             parser_version="mainline",
         )
 
-    with session_factory() as db:
-        context = ParserContext(
-            source_id=source_id,
-            provider=provider,
-            source_kind="email",
-            request_id=request_id,
-        )
-        for item in messages:
-            if not isinstance(item, dict):
-                continue
-            parser_output = invoke_parser_with_limit(
-                redis_client=redis_client,
-                stream_key=stream_key,
-                parse_call=lambda item=item: parse_gmail_payload(db=db, payload=item, context=context),
+        with session_factory() as db:
+            context = ParserContext(
+                source_id=source_id,
+                provider=provider,
+                source_kind="email",
+                request_id=request_id,
             )
-            records.extend(attach_parser_metadata(records=parser_output.records, parser_output=parser_output))
+            for item in messages:
+                if not isinstance(item, dict):
+                    continue
+                payload_item = item
+
+                def _parse_gmail_item() -> object:
+                    return parse_gmail_payload(db=db, payload=payload_item, context=context)
+
+                parser_output = invoke_parser_with_limit(
+                    redis_client=redis_client,
+                    stream_key=stream_key,
+                    parse_call=_parse_gmail_item,
+                )
+                records.extend(attach_parser_metadata(records=parser_output.records, parser_output=parser_output))
     status = ConnectorResultStatus.CHANGED if records else ConnectorResultStatus.NO_CHANGE
     return records, status
 
@@ -222,14 +227,18 @@ def parse_calendar_delta_with_llm(
                 ) from exc
 
             calendar_text = build_minimal_calendar_text(component_text)
-            parser_output = invoke_parser_with_limit(
-                redis_client=redis_client,
-                stream_key=stream_key,
-                parse_call=lambda calendar_text=calendar_text: parse_calendar_content(
+
+            def _parse_calendar_item() -> object:
+                return parse_calendar_content(
                     db=db,
                     content=calendar_text.encode("utf-8"),
                     context=context,
-                ),
+                )
+
+            parser_output = invoke_parser_with_limit(
+                redis_client=redis_client,
+                stream_key=stream_key,
+                parse_call=_parse_calendar_item,
             )
             parsed_records = attach_parser_metadata(records=parser_output.records, parser_output=parser_output)
             for record in parsed_records:
@@ -239,7 +248,8 @@ def parse_calendar_delta_with_llm(
                 if not isinstance(payload, dict):
                     continue
                 payload["uid"] = external_event_id
-                source_canonical = payload.get("source_canonical") if isinstance(payload.get("source_canonical"), dict) else {}
+                source_canonical_raw = payload.get("source_canonical")
+                source_canonical = source_canonical_raw if isinstance(source_canonical_raw, dict) else {}
                 source_canonical["external_event_id"] = external_event_id
                 source_canonical["component_key"] = component_key
                 payload["source_canonical"] = source_canonical

@@ -79,7 +79,7 @@ def run_notification_enqueue_tick(db: Session) -> int:
             processed += 1
             continue
 
-        changes = db.scalars(select(Change).where(Change.id.in_(change_ids))).all()
+        changes = list(db.scalars(select(Change).where(Change.id.in_(change_ids))).all())
 
         deliver_after = now
         if isinstance(deliver_after_raw, str):

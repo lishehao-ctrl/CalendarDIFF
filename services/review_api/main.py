@@ -22,6 +22,17 @@ from app.service_app import create_service_app
 logger = logging.getLogger(__name__)
 
 
+def _coerce_int_metric(value: object) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except Exception:
+            return 0
+    return 0
+
+
 async def _run_review_apply_worker() -> None:
     worker_id = build_worker_id(service_name="review-service", env_var="REVIEW_APPLY_WORKER_ID")
     tick_seconds = read_tick_seconds(
@@ -32,7 +43,7 @@ async def _run_review_apply_worker() -> None:
     enabled = read_worker_enabled(env_var="REVIEW_SERVICE_ENABLE_APPLY_WORKER", default=True)
     session_factory = get_session_factory()
 
-    def _tick() -> dict[str, int]:
+    def _tick() -> dict[str, object]:
         apply_processed = 0
         alert_events_processed = 0
         try:
@@ -57,8 +68,8 @@ async def _run_review_apply_worker() -> None:
 
     def _log_success(result: dict[str, object] | int | None, latency_ms: int) -> str:
         payload = result if isinstance(result, dict) else {}
-        apply_processed = int(payload.get("apply_processed") or 0)
-        alert_events_processed = int(payload.get("alert_events_processed") or 0)
+        apply_processed = _coerce_int_metric(payload.get("apply_processed"))
+        alert_events_processed = _coerce_int_metric(payload.get("alert_events_processed"))
         return "review apply tick worker_id=%s apply_processed=%s alert_events_processed=%s latency_ms=%s" % (
             worker_id,
             apply_processed,

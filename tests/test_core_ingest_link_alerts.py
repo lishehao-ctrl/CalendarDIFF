@@ -124,11 +124,13 @@ def _drain_link_alert_events(db_session: Session) -> int:
 
 
 def _approve_all_pending_changes(db_session: Session, *, user_id: int, canonical_input_id: int) -> list[Change]:
-    pending_rows = db_session.scalars(
-        select(Change)
-        .where(Change.input_id == canonical_input_id, Change.review_status == ReviewStatus.PENDING)
-        .order_by(Change.id.asc())
-    ).all()
+    pending_rows = list(
+        db_session.scalars(
+            select(Change)
+            .where(Change.input_id == canonical_input_id, Change.review_status == ReviewStatus.PENDING)
+            .order_by(Change.id.asc())
+        ).all()
+    )
     assert pending_rows
     for row in pending_rows:
         decide_review_change(

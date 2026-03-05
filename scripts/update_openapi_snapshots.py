@@ -2,12 +2,7 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from services.ingest_api.main import app as ingest_app
 from services.input_api.main import app as input_app
@@ -15,6 +10,7 @@ from services.llm_api.main import app as llm_app
 from services.notification_api.main import app as notification_app
 from services.review_api.main import app as review_app
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT_DIR = PROJECT_ROOT / "contracts" / "openapi"
 
 APPS = {

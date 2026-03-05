@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
@@ -20,6 +21,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.db.models.ingestion import IngestJob, IngestResult
+    from app.db.models.review import EventEntityLink, EventLinkAlert, EventLinkBlock, EventLinkCandidate, SourceEventObservation
+    from app.db.models.review import IngestApplyLog
+    from app.db.models.shared import User
 
 
 class SourceKind(str, Enum):

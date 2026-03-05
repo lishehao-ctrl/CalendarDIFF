@@ -2,15 +2,20 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import tempfile
 from pathlib import Path
 from typing import Any
 
+NormalizeConfig: Any
+run_normalization_pipeline: Any
 try:
     from tools.labeling.normalize_labeled import NormalizeConfig, run_normalization_pipeline
 except ModuleNotFoundError:  # pragma: no cover - direct script execution
-    from normalize_labeled import NormalizeConfig, run_normalization_pipeline  # type: ignore[no-redef]
+    normalize_module = importlib.import_module("tools.labeling.normalize_labeled")
+    NormalizeConfig = normalize_module.NormalizeConfig
+    run_normalization_pipeline = normalize_module.run_normalization_pipeline
 
 EVENT_CLASSES = [
     "deadline",

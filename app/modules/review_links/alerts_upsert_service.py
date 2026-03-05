@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -100,7 +101,7 @@ def resolve_pending_link_alerts_for_entities(
 
 def _resolve_rows(
     *,
-    rows: list[EventLinkAlert],
+    rows: Sequence[EventLinkAlert],
     resolution_code: EventLinkAlertResolution,
     note: str | None,
 ) -> int:
