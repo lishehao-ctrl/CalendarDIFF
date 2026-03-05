@@ -49,7 +49,7 @@ Primary write ownership:
 
 1. consumes Redis LLM parse queue
 2. enforces global LLM limiter (target/hard RPS)
-3. executes parser calls (`calendar_v2` / `gmail_v2`) for changed payloads
+3. executes parser calls (`calendar_parser` / `gmail_parser`) for changed payloads
 4. writes deterministic removed records for ICS delta removals
 5. writes `ingest_results` + emits `ingest.result.ready`
 
@@ -129,7 +129,7 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 11. Parser payload contract is hard-cut to `obs_v3` envelope:
    - calendar record payload: `source_canonical` + `enrichment(course_parse,event_parts,link_signals,payload_schema_version=obs_v3)`
    - gmail record payload: `message_id` + `source_canonical` + `enrichment(course_parse,event_parts,link_signals,payload_schema_version=obs_v3)`
-12. Gmail-to-ICS linker v2 is inventory-rule driven (no same-day window or score-band thresholds) and persists normalized link state in:
+12. Gmail-to-ICS linker is inventory-rule driven (no same-day window or score-band thresholds) and persists normalized link state in:
    - `event_entity_links` (auto/manual accepted links)
    - `event_link_candidates` (review queue for deterministic rule misses / low anchor confidence)
    - `event_link_blocks` (permanent rejected pairs)
@@ -164,16 +164,18 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 
 ### core_ingest
 
-1. `apply_service.py`: orchestration only (`get_ingest_apply_status`, `apply_ingest_result_idempotent`, `apply_records`)
-2. `records_apply.py`: source record application (`calendar` / `gmail`)
-3. `payload_extractors.py`: `source_canonical` / `enrichment` normalization
-4. `canonical_coercion.py`: strict canonical datetime/text coercion
-5. `entity_profile.py`: `event_entities` profile evolution
-6. `linking_engine.py`: link candidate/link/block resolution primitives
-7. `observation_store.py`: observation upsert/deactivate/hash/title-guard
-8. `pending_rebuild.py`: pending change rebuild + `review.pending.created` emission + link-alert upsert hook
-9. `serialization.py`: canonical diff serialization helpers
-10. `time_utils.py`: UTC normalization
+1. `apply_service.py`: orchestration only (`get_ingest_apply_status`, `apply_ingest_result_idempotent`)
+2. `apply_orchestrator.py`: `apply_records` + canonical input bootstrap + post-apply pending rebuild wiring
+3. `calendar_apply.py`: calendar observation apply + component/external id resolution
+4. `gmail_apply.py`: gmail observation apply + link/candidate/auto-link decision flow
+5. `payload_extractors.py`: `source_canonical` / `enrichment` normalization
+6. `canonical_coercion.py`: strict canonical datetime/text coercion
+7. `entity_profile.py`: `event_entities` profile evolution
+8. `linking_engine.py`: link candidate/link/block resolution primitives
+9. `observation_store.py`: observation upsert/deactivate/hash/title-guard
+10. `pending_rebuild.py`: pending change rebuild + `review.pending.created` emission + link-alert upsert hook
+11. `serialization.py`: canonical diff serialization helpers
+12. `time_utils.py`: UTC normalization
 
 ### review_changes
 
@@ -199,7 +201,7 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 
 ### llm_runtime
 
-1. `worker.py`: thin compatibility entry exports only
+1. `__init__.py`: module entry exports only
 2. `worker_tick.py`: worker tick orchestration + message lifecycle
 3. `queue_consumer.py`: Redis stream/retry consume/ack composition
 4. `queue_producer.py`: enqueue producer API used by ingestion
@@ -214,6 +216,24 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 4. `oauth_router.py`: oauth session create + callback public router
 5. `webhooks_router.py`: webhook ingest endpoint
 6. `router_common.py`: shared user/source ownership checks and common error mapping
+
+### runtime_kernel
+
+1. `app/modules/runtime_kernel/*` is the shared lifecycle/queue kernel consumed by both `ingestion` and `llm_runtime`
+2. kernel hosts `JobContext` loading, retry delay/error truncation helpers, transition templates (`retry/dead-letter/success`), and idempotent `ingest_result + outbox` upsert
+3. kernel also hosts Redis stream primitives (`consume/claim/ack/retry zset/metrics`), while `llm_runtime/queue.py` stays as a thin config wrapper (`stream_key/group/redis client`)
+4. dependency rule: kernel must not import `app.modules.ingestion.*` or `app.modules.llm_runtime.*`
+
+### db models bounded contexts
+
+1. model package is split by bounded context under `app/db/models/`:
+   - `shared.py` (`User`, `IntegrationOutbox`, `IntegrationInbox`, `OutboxStatus`)
+   - `input.py` (`InputSource*`, `SyncRequest`, input-domain enums)
+   - `ingestion.py` (`IngestJob*`, `IngestResult`, ingestion enums)
+   - `review.py` (`Input/Event/Change/Link*`, `SourceEventObservation`, `IngestApplyLog`, review enums)
+   - `notify.py` (`Notification*`, `DigestSendLog`)
+2. `app/db/model_registry.py` is the only metadata bootstrap point for Alembic and table-ownership checks (`load_all_models()`)
+3. hard-cut rule: `app.db.models` monolith module is removed; callers import from bounded context modules directly
 
 ### Intentional Legacy Strings
 

@@ -7,9 +7,15 @@ def _read(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
-def test_core_ingest_records_apply_does_not_import_apply_service() -> None:
-    content = _read("app/modules/core_ingest/records_apply.py")
-    assert "app.modules.core_ingest.apply_service" not in content
+def test_core_ingest_apply_modules_do_not_import_apply_service() -> None:
+    paths = [
+        "app/modules/core_ingest/calendar_apply.py",
+        "app/modules/core_ingest/gmail_apply.py",
+        "app/modules/core_ingest/apply_orchestrator.py",
+    ]
+    for path in paths:
+        content = _read(path)
+        assert "app.modules.core_ingest.apply_service" not in content
 
 
 def test_review_change_services_do_not_import_router_or_legacy_service() -> None:
