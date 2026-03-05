@@ -1,5 +1,12 @@
 from __future__ import annotations
 
-from app.modules.core_ingest.apply_service import _as_utc
+from datetime import datetime, timezone
 
-__all__ = ["_as_utc"]
+
+def as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+__all__ = ["as_utc"]
