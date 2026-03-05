@@ -1,6 +1,6 @@
-"""add linker v2 normalized tables
+"""add linker normalized tables
 
-Revision ID: 20260303_0009_linker_v2
+Revision ID: 20260303_0009_linker
 Revises: 20260303_0008_event_entities
 Create Date: 2026-03-03 12:10:00.000000
 """
@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "20260303_0009_linker_v2"
+revision = "20260303_0009_linker"
 down_revision = "20260303_0008_event_entities"
 branch_labels = None
 depends_on = None

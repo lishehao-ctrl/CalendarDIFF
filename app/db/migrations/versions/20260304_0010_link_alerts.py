@@ -1,7 +1,7 @@
 """add link alert queue for auto-link follow-up
 
 Revision ID: 20260304_0010_link_alerts
-Revises: 20260303_0009_linker_v2
+Revises: 20260303_0009_linker
 Create Date: 2026-03-04 18:20:00.000000
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 revision = "20260304_0010_link_alerts"
-down_revision = "20260303_0009_linker_v2"
+down_revision = "20260303_0009_linker"
 branch_labels = None
 depends_on = None
 
