@@ -5,13 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.modules.common.deps import get_onboarded_user_or_409
-from app.modules.review_links.alerts_service import (
-    LinkAlertNotFoundError,
-    batch_decide_link_alerts,
-    dismiss_link_alert,
-    list_link_alerts,
-    mark_safe_link_alert,
-)
+from app.modules.review_links.alerts_decision_service import batch_decide_link_alerts, dismiss_link_alert, mark_safe_link_alert
+from app.modules.review_links.alerts_errors import LinkAlertNotFoundError
+from app.modules.review_links.alerts_query_service import list_link_alerts
 from app.modules.review_links.router_common import normalize_status_filter, raise_not_found
 from app.modules.review_links.schemas import (
     LinkAlertBatchDecisionRequest,

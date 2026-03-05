@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource
 from app.db.models.review import EventEntityLink, EventLinkAlertResolution, EventLinkBlock, EventLinkCandidate, EventLinkCandidateStatus, EventLinkOrigin
-from app.modules.review_links.alerts_service import resolve_pending_link_alerts_for_pair
+from app.modules.review_links.alerts_upsert_service import resolve_pending_link_alerts_for_pair
 from app.modules.review_links.candidates_decision_service import LinkCandidateDecisionError
 from app.modules.review_links.common import load_entity_preview
 

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.logging import sanitize_log_message
 from app.db.models.review import EventLinkAlertResolution
 from app.db.models.shared import IntegrationInbox, IntegrationOutbox, OutboxStatus
-from app.modules.review_links.alerts_service import (
+from app.modules.review_links.alerts_upsert_service import (
     resolve_pending_link_alerts_for_entities,
     resolve_pending_link_alerts_for_pair,
     upsert_pending_link_alert,
