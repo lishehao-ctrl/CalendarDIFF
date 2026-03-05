@@ -173,9 +173,12 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 7. `entity_profile.py`: `event_entities` profile evolution
 8. `linking_engine.py`: link candidate/link/block resolution primitives
 9. `observation_store.py`: observation upsert/deactivate/hash/title-guard
-10. `pending_rebuild.py`: pending change rebuild + `review.pending.created` emission + link-alert upsert hook
-11. `serialization.py`: canonical diff serialization helpers
-12. `time_utils.py`: UTC normalization
+10. `pending_proposal_rebuild.py`: pending proposal decision planner + rebuild orchestration
+11. `pending_change_store.py`: pending change upsert/reject templates
+12. `pending_review_outbox.py`: `review.pending.created` outbox emission
+13. `pending_auto_link_alerts.py`: auto-link alert emit for non-pending entities
+14. `serialization.py`: canonical diff serialization helpers
+15. `time_utils.py`: UTC normalization
 
 ### review_changes
 
