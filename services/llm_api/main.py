@@ -6,7 +6,7 @@ from app.db.session import get_session_factory
 from app.modules.health.router import router as health_router
 from app.modules.llm_runtime.metrics_router import router as llm_metrics_router
 from app.modules.llm_runtime.queue import get_redis_client
-from app.modules.llm_runtime.worker import run_llm_worker_tick
+from app.modules.llm_runtime.worker_tick import run_llm_worker_tick
 from app.runtime.worker_loop import build_worker_id, read_worker_enabled, run_periodic_sync_worker
 from app.service_app import create_service_app
 

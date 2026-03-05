@@ -9,7 +9,7 @@ SOURCE_PRIORITY = {
     "email": 1,
 }
 
-MERGE_KEY_VERSION = "v2"
+MERGE_KEY_SCHEMA_TAG = "mainline"
 ENTITY_UID_VERSION = "v1"
 THREAD_PREFIX_PATTERN = re.compile(r"^(?:\s*(?:re|fw|fwd)\s*:\s*|\s*\[(?:update|reminder)\]\s*|\s*update\s*:\s*)+", re.I)
 COURSE_TOKEN_PATTERN = re.compile(r"\b([A-Za-z]{3,5})[\s_\-]*([0-9]{1,3}[A-Za-z]?)\b")
@@ -77,7 +77,7 @@ def normalize_time_bucket(start_at: datetime | None, end_at: datetime | None) ->
     if baseline is None:
         return "no-time"
     utc_value = _as_utc(baseline)
-    # Kept for diagnostics only. Merge key v2 does not include date bucket.
+    # Kept for diagnostics only. Merge key schema does not include date bucket.
     return utc_value.strftime("%Y-%m-%d")
 
 
@@ -128,7 +128,7 @@ def _build_content_merge_key(
             normalized_course,
             normalized_topic_signature,
             normalized_event_type,
-            MERGE_KEY_VERSION,
+            MERGE_KEY_SCHEMA_TAG,
         ]
     )
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:32]
