@@ -159,3 +159,40 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 8. SLO runbook: `docs/ops_microservice_slo.md`
 9. worker lifecycle is unified under FastAPI lifespan + AnyIO task groups via shared runtime helper (`app/runtime/worker_loop.py`)
 10. worker tick failures are non-fatal by policy: log and continue next round
+
+## 8) Module Boundaries (Service Decomposition)
+
+### core_ingest
+
+1. `apply_service.py`: orchestration only (`get_ingest_apply_status`, `apply_ingest_result_idempotent`, `apply_records`)
+2. `records_apply.py`: source record application (`calendar` / `gmail`)
+3. `payload_extractors.py`: `source_canonical` / `enrichment` normalization
+4. `canonical_coercion.py`: strict canonical datetime/text coercion
+5. `entity_profile.py`: `event_entities` profile evolution
+6. `linking_engine.py`: link candidate/link/block resolution primitives
+7. `observation_store.py`: observation upsert/deactivate/hash/title-guard
+8. `pending_rebuild.py`: pending change rebuild + `review.pending.created` emission + link-alert upsert hook
+9. `serialization.py`: canonical diff serialization helpers
+10. `time_utils.py`: UTC normalization
+
+### review_changes
+
+1. `change_listing_service.py`: list/query/summary shape assembly
+2. `change_decision_service.py`: viewed/approve/reject state machine + canonical apply
+3. `evidence_preview_service.py`: evidence path resolution and preview
+4. `manual_correction_service.py`: preview/apply manual correction and conflict rejection
+5. `change_common.py`: cross-cutting lightweight helpers only
+
+### review_links
+
+1. `summary_service.py`: pending queue counters
+2. `candidates_query_service.py`: candidates/blocks read side
+3. `candidates_decision_service.py`: approve/reject and block deletion
+4. `links_service.py`: links list/delete/relink
+5. `alerts_service.py`: medium-risk alert list/decision/batch + auto-resolution helpers
+6. `common.py`: shared note normalization, id dedupe, entity/observation preview, batch result builders
+
+### Intentional Legacy Strings
+
+1. legacy API strings remain only in negative-path tests to assert hard-cut 404 behavior
+2. `oauth2/v2` in Google OAuth URLs is third-party endpoint versioning, not CalendarDIFF API versioning

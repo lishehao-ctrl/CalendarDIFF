@@ -21,7 +21,7 @@ from app.db.models import (
     SyncRequestStatus,
     User,
 )
-from app.modules.core_ingest.service import apply_ingest_result_idempotent
+from app.modules.core_ingest.apply_service import apply_ingest_result_idempotent
 from tests.support.payload_builders import (
     build_calendar_payload,
     build_course_parse,

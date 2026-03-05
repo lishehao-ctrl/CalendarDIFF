@@ -25,8 +25,8 @@ from app.db.models import (
     SyncRequestStatus,
     User,
 )
-from app.modules.core_ingest.service import apply_ingest_result_idempotent
-from app.modules.review_changes.service import decide_review_change
+from app.modules.core_ingest.apply_service import apply_ingest_result_idempotent
+from app.modules.review_changes.change_decision_service import decide_review_change
 from tests.support.payload_builders import (
     build_course_parse,
     build_event_parts,
