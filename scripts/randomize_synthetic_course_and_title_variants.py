@@ -116,7 +116,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Randomize synthetic mail/ics course aliases and title expressions.")
     parser.add_argument(
         "--dataset-root",
-        default="data/synthetic/v2_ddlchange_160",
+        default="data/synthetic/ddlchange_160",
         help="Dataset root path.",
     )
     return parser.parse_args()

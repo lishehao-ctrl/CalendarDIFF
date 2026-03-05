@@ -43,7 +43,7 @@ DEFAULT_SCHEMA_PATH = ROOT_DIR / "tools" / "labeling" / "schema" / "email_label.
 DEFAULT_PROMPT_PATH = ROOT_DIR / "tools" / "labeling" / "prompts" / "system.txt"
 DEFAULT_TOOL_ENV_PATH = ROOT_DIR / "tools" / "labeling" / ".env"
 DEFAULT_TZ = "America/Los_Angeles"
-TOOL_VERSION = "v2.0.0"
+TOOL_VERSION = "2.0.0"
 
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 URL_RE = re.compile(r"https?://[^\s)>\"']+")

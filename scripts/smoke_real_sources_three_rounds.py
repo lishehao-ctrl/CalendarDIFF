@@ -59,7 +59,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--api-key", default=os.getenv("APP_API_KEY", ""), help="API key. Defaults to APP_API_KEY.")
     parser.add_argument(
         "--report",
-        default="data/synthetic/v2_ddlchange_160/qa/real_source_smoke_report.json",
+        default="data/synthetic/ddlchange_160/qa/real_source_smoke_report.json",
         help="Report output path.",
     )
     parser.add_argument("--fake-provider-host", default="127.0.0.1", help="Fake source provider host.")

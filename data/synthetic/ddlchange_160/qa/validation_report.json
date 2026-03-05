@@ -1,0 +1,115 @@
+{
+  "dataset_id": "ddlchange_160",
+  "dataset_root": "/Users/lishehao/Desktop/Project/CalendarDIFF/data/synthetic/ddlchange_160",
+  "generated_at": "2026-03-02T03:03:52.356857+00:00",
+  "passed": true,
+  "summary": {
+    "sample_total": 160,
+    "mail_total": 120,
+    "ics_pair_total": 40,
+    "ambiguous_total": 56,
+    "mixed_language_total": 24
+  },
+  "metrics": {
+    "mail": {
+      "keep_count": 86,
+      "drop_count": 34,
+      "event_type_keep": {
+        "deadline": 30,
+        "exam": 12,
+        "schedule_change": 18,
+        "assignment": 12,
+        "action_required": 8,
+        "announcement": 4,
+        "grade": 2
+      },
+      "drop_bucket_counts": {
+        "digest/newsletter/noise": 12,
+        "grade-only non-actionable": 8,
+        "generic announcement": 8,
+        "admin/social noise": 6
+      },
+      "ambiguous_count": 42,
+      "mixed_mail_count": 18
+    },
+    "ics": {
+      "class_counts": {
+        "DUE_CHANGED": 18,
+        "CREATED": 10,
+        "NO_CHANGE": 6,
+        "REMOVED_CANDIDATE": 6
+      },
+      "ambiguous_by_class": {
+        "DUE_CHANGED": 7,
+        "CREATED": 2,
+        "NO_CHANGE": 0,
+        "REMOVED_CANDIDATE": 5
+      },
+      "ambiguous_count": 14,
+      "mixed_ics_count": 6
+    },
+    "mail_body_length_stats": {
+      "count": 120,
+      "min": 1201,
+      "p50": 1249,
+      "p90": 1487,
+      "max": 1588,
+      "avg": 1305.92
+    },
+    "ics_description_length_stats": {
+      "count": 164,
+      "min": 579,
+      "p50": 701,
+      "p90": 714,
+      "max": 813,
+      "avg": 702.84
+    },
+    "intra_subject_similarity_max": {
+      "mail": 0.9888,
+      "ics": 0.7356
+    },
+    "intra_subject_similarity_by_cluster": {
+      "mail": {
+        "deadline": 0.9689,
+        "exam": 0.5032,
+        "schedule_change": 0.9362,
+        "assignment": 0.4934,
+        "action_required": 0.5265,
+        "announcement": 0.3158,
+        "grade": 0.3368,
+        "DROP": 0.9888
+      },
+      "ics": {
+        "DUE_CHANGED": 0.7102,
+        "CREATED": 0.7356,
+        "NO_CHANGE": 0.5656,
+        "REMOVED_CANDIDATE": 0.5112
+      }
+    },
+    "semantic_guardrail_pass_rate": {
+      "mail": 1.0,
+      "ics": 1.0,
+      "overall": 1.0
+    },
+    "ambiguity_tag_coverage": {
+      "relative_time_no_tz": 5,
+      "missing_timezone": 6,
+      "timezone_abbrev_conflict": 12,
+      "dual_due_dates_old_new_unclear": 6,
+      "tentative_language": 5,
+      "forwarded_thread_conflict": 5,
+      "multi_course_collision": 3,
+      "datetime_typo_or_impossible": 3,
+      "grace_period_soft_deadline": 4,
+      "holiday_shift_unspecified": 4,
+      "removed_vs_cancelled_unclear": 9,
+      "course_alias_mismatch": 5
+    },
+    "review_logs": {
+      "review_mail_rows": 120,
+      "review_ics_rows": 40
+    }
+  },
+  "errors": [],
+  "warnings": []
+}

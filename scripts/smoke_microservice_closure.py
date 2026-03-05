@@ -25,7 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ops-token", default=os.getenv("INTERNAL_SERVICE_TOKEN_OPS", ""))
     parser.add_argument(
         "--report",
-        default="data/synthetic/v2_ddlchange_160/qa/real_source_smoke_report.json",
+        default="data/synthetic/ddlchange_160/qa/real_source_smoke_report.json",
     )
     parser.add_argument("--timeout-seconds", type=float, default=5.0)
     parser.add_argument("--json", action="store_true")

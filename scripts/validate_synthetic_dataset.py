@@ -97,10 +97,10 @@ class ValidationState:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Validate synthetic v2_ddlchange_160 dataset.")
+    parser = argparse.ArgumentParser(description="Validate synthetic ddlchange_160 dataset.")
     parser.add_argument(
         "--dataset-root",
-        default="data/synthetic/v2_ddlchange_160",
+        default="data/synthetic/ddlchange_160",
         help="Dataset root directory.",
     )
     parser.add_argument(
@@ -110,7 +110,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--report",
-        default="data/synthetic/v2_ddlchange_160/qa/validation_report.json",
+        default="data/synthetic/ddlchange_160/qa/validation_report.json",
         help="Validation report output path.",
     )
     return parser.parse_args()
@@ -717,8 +717,8 @@ def validate_manifest(files: dict[str, Path], state: ValidationState) -> dict[st
             f"manifest counts.ambiguous_total expected {EXPECTED_AMBIGUOUS_TOTAL}, got {counts.get('ambiguous_total')}"
         )
 
-    if manifest.get("revision") != "longform_v2":
-        state.error(f"manifest revision expected 'longform_v2', got {manifest.get('revision')!r}")
+    if manifest.get("revision") != "longform_mainline":
+        state.error(f"manifest revision expected 'longform_mainline', got {manifest.get('revision')!r}")
 
     longform = manifest.get("longform_profile")
     if not isinstance(longform, dict):
@@ -821,7 +821,7 @@ def main() -> int:
         state.error(f"semantic guard pass rate expected 1.0, got {overall_sem_rate}")
 
     report = {
-        "dataset_id": manifest.get("dataset_id", "v2_ddlchange_160"),
+        "dataset_id": manifest.get("dataset_id", "ddlchange_160"),
         "dataset_root": str(dataset_root),
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
         "passed": len(state.errors) == 0,
