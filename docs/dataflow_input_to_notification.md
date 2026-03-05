@@ -82,12 +82,14 @@ flowchart LR
 
 Use these files as implementation anchors when building detailed dataflow tables:
 
-- `app/modules/input_control_plane/service.py`
+- `app/modules/input_control_plane/sources_service.py`
+- `app/modules/input_control_plane/sync_requests_service.py`
+- `app/modules/input_control_plane/oauth_service.py`
 - `app/modules/ingestion/orchestrator.py`
 - `app/modules/ingestion/connector_runtime.py`
-- `app/modules/llm_runtime/worker.py`
+- `app/modules/llm_runtime/worker_tick.py`
 - `app/modules/core_ingest/worker.py`
-- `app/modules/core_ingest/service.py`
+- `app/modules/core_ingest/apply_service.py`
 - `app/modules/notify/consumer.py`
 - `app/modules/notify/digest_service.py`
 

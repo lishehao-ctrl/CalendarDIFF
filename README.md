@@ -11,9 +11,9 @@ Core flow:
 5. LLM outputs enrichment only (`course_parse`, `event_parts`, `link_signals`), not canonical identity fields
 6. `course_parse` is LLM-only (no local regex/raw text fallback in review/apply)
 7. strong/weak naming uses 5 parsed parts (`dept/number/suffix/quarter/year2`) with monotonic best-name updates
-8. cross-source linker v2 uses inventory-state rules (`dept+number`, suffix/index constraints) and persists normalized links/candidates/blocks
+8. cross-source linker uses inventory-state rules (`dept+number`, suffix/index constraints) and persists normalized links/candidates/blocks
 9. candidate review stays out of pending-notification chain; notify remains canonical-change-only
-10. link-candidate APIs: `GET /v2/review-items/link-candidates`, `POST /v2/review-items/link-candidates/{id}/decisions`, `GET/DELETE /v2/review-items/link-candidates/blocks*`
+10. link-candidate APIs: `GET /review/link-candidates`, `POST /review/link-candidates/{id}/decisions`, `GET/DELETE /review/link-candidates/blocks*`
 11. build pending review proposals from source canonical observations
 12. approve proposals into canonical events
 13. enqueue and send digest notifications
@@ -51,32 +51,14 @@ alembic upgrade head
 ### Migration Revision Rename Note
 
 This cleanup rewrites migration revision identifiers in `app/db/migrations/versions`.
-If an environment still tracks older revision IDs, use one of the following:
-
-1. reset and re-init (preferred for local/dev):
+Rebuild and re-init the database:
 
 ```bash
 scripts/reset_postgres_db.sh
 alembic upgrade head
 ```
 
-2. controlled revision remap (existing DB state is kept):
-
-```sql
--- run on the target database
-UPDATE alembic_version
-SET version_num = '20260302_0004_src_bridge_map'
-WHERE version_num LIKE '20260302_0004_src_%_map'
-  AND version_num <> '20260302_0004_src_bridge_map';
-```
-
-Then run:
-
-```bash
-alembic upgrade head
-```
-
-3. Run service APIs:
+Then run service APIs:
 
 ```bash
 SERVICE_NAME=input RUN_MIGRATIONS=false PORT=8001 ./scripts/start_service.sh
@@ -165,7 +147,7 @@ NOTIFY_API_BASE_URL=http://localhost:8004
 
 ## Internal Ops Auth
 
-`/internal/v2/*` endpoints no longer accept `X-API-Key`.
+`/internal/*` endpoints no longer accept `X-API-Key`.
 
 Use service token headers:
 
@@ -199,7 +181,7 @@ curl -s http://localhost:8004/health
 python scripts/smoke_real_sources_three_rounds.py \
   --input-api-base http://127.0.0.1:8001 \
   --review-api-base http://127.0.0.1:8000 \
-  --report data/synthetic/v2_ddlchange_160/qa/real_source_smoke_report.json
+  --report data/synthetic/ddlchange_160/qa/real_source_smoke_report.json
 ```
 
 Full closure check:
@@ -243,8 +225,8 @@ Detailed snapshot:
 
 When the parser extracts an incorrect due time, review-service supports direct canonical correction APIs:
 
-1. `POST /v2/review-items/changes/corrections/preview`
-2. `POST /v2/review-items/changes/corrections`
+1. `POST /review/corrections/preview`
+2. `POST /review/corrections`
 
 Behavior:
 

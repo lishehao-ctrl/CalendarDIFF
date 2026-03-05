@@ -168,7 +168,7 @@ Because services are direct-exposed, client should configure per-domain base URL
 python scripts/smoke_real_sources_three_rounds.py \
   --input-api-base http://127.0.0.1:8001 \
   --review-api-base http://127.0.0.1:8000 \
-  --report data/synthetic/v2_ddlchange_160/qa/real_source_smoke_report.json
+  --report data/synthetic/ddlchange_160/qa/real_source_smoke_report.json
 ```
 
 Closure pipeline:

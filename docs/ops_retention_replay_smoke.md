@@ -2,7 +2,7 @@
 
 ## Scope
 
-This runbook covers only three operational loops for the v2 mainline runtime:
+This runbook covers only three operational loops for the mainline runtime:
 
 1. Data retention for `source_event_observations` and `changes`
 2. Dead-letter triage and replay SOP for ingestion jobs
@@ -114,10 +114,10 @@ curl -s "http://127.0.0.1:8000/review/changes?review_status=pending&limit=200" \
 
 ### Source IDs from Smoke Report
 
-When smoke report is at `data/synthetic/v2_ddlchange_160/qa/real_source_smoke_report.json`:
+When smoke report is at `data/synthetic/ddlchange_160/qa/real_source_smoke_report.json`:
 
 ```bash
-jq '.source' data/synthetic/v2_ddlchange_160/qa/real_source_smoke_report.json
+jq '.source' data/synthetic/ddlchange_160/qa/real_source_smoke_report.json
 ```
 
 ## Commands
