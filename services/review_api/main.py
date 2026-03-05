@@ -9,6 +9,7 @@ from app.modules.health.router import router as health_router
 from app.modules.core_ingest.worker import run_core_apply_tick
 from app.modules.review_changes.metrics_router import router as review_metrics_router
 from app.modules.review_changes.router import router as review_changes_router
+from app.modules.review_links.alerts_event_consumer import run_review_link_alert_events_tick
 from app.modules.review_links.router import router as review_links_router
 from app.runtime.worker_loop import (
     build_worker_id,
@@ -33,10 +34,12 @@ async def _run_review_apply_worker() -> None:
 
     def _tick() -> dict[str, int]:
         apply_processed = 0
+        alert_events_processed = 0
         try:
             with session_factory() as db:
                 try:
                     apply_processed = run_core_apply_tick(db)
+                    alert_events_processed = run_review_link_alert_events_tick(db)
                 except Exception as exc:  # pragma: no cover - defensive worker loop
                     db.rollback()
                     logger.error(
@@ -50,14 +53,16 @@ async def _run_review_apply_worker() -> None:
                 worker_id,
                 sanitize_log_message(str(exc)),
             )
-        return {"apply_processed": apply_processed}
+        return {"apply_processed": apply_processed, "alert_events_processed": alert_events_processed}
 
     def _log_success(result: dict[str, object] | int | None, latency_ms: int) -> str:
         payload = result if isinstance(result, dict) else {}
         apply_processed = int(payload.get("apply_processed") or 0)
-        return "review apply tick worker_id=%s apply_processed=%s latency_ms=%s" % (
+        alert_events_processed = int(payload.get("alert_events_processed") or 0)
+        return "review apply tick worker_id=%s apply_processed=%s alert_events_processed=%s latency_ms=%s" % (
             worker_id,
             apply_processed,
+            alert_events_processed,
             latency_ms,
         )
 
