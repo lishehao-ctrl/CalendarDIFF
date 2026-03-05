@@ -36,6 +36,11 @@ def test_critical_modules_are_not_shell_reexports() -> None:
         "app/modules/core_ingest/pending_proposal_rebuild.py",
         "app/modules/core_ingest/pending_change_store.py",
         "app/modules/review_changes/manual_correction_service.py",
+        "app/modules/review_changes/manual_correction_preview_flow.py",
+        "app/modules/review_changes/manual_correction_apply_txn.py",
+        "app/modules/review_links/alerts_upsert_service.py",
+        "app/modules/review_links/alerts_query_service.py",
+        "app/modules/review_links/alerts_decision_service.py",
     ]
     for path in must_have_logic:
         assert not _is_shell_reexport_module(path), f"{path} should contain real logic, not re-export shell"

@@ -26,6 +26,8 @@ def test_manual_modules_do_not_import_change_decision_service() -> None:
         "app/modules/review_changes/manual_correction_snapshot.py",
         "app/modules/review_changes/manual_correction_builder.py",
         "app/modules/review_changes/manual_correction_audit.py",
+        "app/modules/review_changes/manual_correction_preview_flow.py",
+        "app/modules/review_changes/manual_correction_apply_txn.py",
     ]
     for module_path in module_paths:
         content = _read(module_path)
