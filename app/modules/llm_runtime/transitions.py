@@ -6,8 +6,9 @@ import redis
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import ConnectorResultStatus, IngestJobStatus, SyncRequestStatus
-from app.modules.ingestion.job_lifecycle import (
+from app.db.models.ingestion import ConnectorResultStatus, IngestJobStatus
+from app.db.models.input import SyncRequestStatus
+from app.modules.runtime_kernel import (
     apply_dead_letter_transition,
     apply_retry_transition,
     apply_success_transition,

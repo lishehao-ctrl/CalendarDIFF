@@ -6,9 +6,10 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import IngestJob, IngestJobStatus, InputSource, SyncRequest, SyncRequestStatus
+from app.db.models.ingestion import IngestJob, IngestJobStatus
+from app.db.models.input import InputSource, SyncRequest, SyncRequestStatus
 from app.modules.ingestion.job_claiming import CONNECTOR_BATCH_SIZE
-from app.modules.ingestion.job_lifecycle import (
+from app.modules.runtime_kernel import (
     JobContext,
     apply_dead_letter_transition,
     apply_retry_transition,

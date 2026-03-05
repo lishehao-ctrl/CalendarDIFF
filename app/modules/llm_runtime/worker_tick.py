@@ -10,8 +10,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
-from app.db.models import IngestJob, IngestJobStatus, InputSource, SyncRequest, SyncRequestStatus
-from app.modules.ingestion.job_lifecycle import JobContext, apply_dead_letter_transition, copy_job_payload, utcnow
+from app.db.models.ingestion import IngestJob, IngestJobStatus
+from app.db.models.input import InputSource, SyncRequest, SyncRequestStatus
+from app.modules.runtime_kernel import JobContext, apply_dead_letter_transition, copy_job_payload, utcnow
 from app.modules.ingestion.llm_parsers import LlmParseError
 from app.modules.llm_runtime.parse_pipeline import (
     RateLimitRejected,

@@ -4,9 +4,10 @@ from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
-from app.db.models import ConnectorResultStatus, IngestJobStatus, SyncRequestStatus
+from app.db.models.ingestion import ConnectorResultStatus, IngestJobStatus
+from app.db.models.input import SyncRequestStatus
 from app.modules.ingestion.connector_types import ConnectorFailureDecision
-from app.modules.ingestion.job_lifecycle import (
+from app.modules.runtime_kernel import (
     JobContext,
     apply_dead_letter_transition,
     apply_retry_transition,

@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import ConnectorResultStatus, IngestJob, IngestJobStatus
+from app.db.models.ingestion import ConnectorResultStatus, IngestJob, IngestJobStatus
 from app.modules.ingestion.calendar_fetcher import fetch_calendar_delta
 from app.modules.ingestion.connector_apply import apply_failure, apply_success_without_llm, mark_llm_enqueue_pending
 from app.modules.ingestion.connector_dispatch import dispatch_pending_llm_enqueues
@@ -14,7 +14,7 @@ from app.modules.ingestion.connector_types import ConnectorFetchOutcome
 from app.modules.ingestion.failure_policy import decide_failure
 from app.modules.ingestion.gmail_fetcher import fetch_gmail_changes
 from app.modules.ingestion.job_claiming import claim_jobs, requeue_stale_claimed_jobs
-from app.modules.ingestion.job_lifecycle import JobContext, apply_dead_letter_transition, utcnow
+from app.modules.runtime_kernel import JobContext, apply_dead_letter_transition, utcnow
 
 logger = logging.getLogger(__name__)
 

@@ -1,79 +1,18 @@
 from __future__ import annotations
 
-import random
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Literal
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
-from app.contracts.events import new_event
-from app.db.models import (
-    ConnectorResultStatus,
-    IngestJob,
-    IngestJobStatus,
-    IngestResult,
-    InputSource,
-    IntegrationOutbox,
-    OutboxStatus,
-    SyncRequest,
-    SyncRequestStatus,
-)
-
-
-@dataclass(frozen=True)
-class JobContext:
-    job: IngestJob
-    sync_request: SyncRequest | None
-    source: InputSource | None
-
-
-def load_job_context(
-    db: Session,
-    *,
-    request_id: str,
-    lock_job: bool = True,
-) -> JobContext | None:
-    stmt = select(IngestJob).where(IngestJob.request_id == request_id)
-    if lock_job:
-        stmt = stmt.with_for_update()
-    job = db.scalar(stmt)
-    if job is None:
-        return None
-    sync_request = db.scalar(select(SyncRequest).where(SyncRequest.request_id == request_id))
-    source = db.get(InputSource, job.source_id)
-    return JobContext(job=job, sync_request=sync_request, source=source)
+from app.db.models.ingestion import IngestJob, IngestJobStatus
+from app.db.models.input import InputSource, SyncRequestStatus
+from app.modules.runtime_kernel.job_context import JobContext
+from app.modules.runtime_kernel.retry_policy import truncate_error
 
 
 def copy_job_payload(job: IngestJob) -> dict:
     if isinstance(job.payload_json, dict):
         return dict(job.payload_json)
     return {}
-
-
-def truncate_error(message: str, *, max_len: int = 512) -> str:
-    value = (message or "").strip()
-    if len(value) <= max_len:
-        return value
-    return value[:max_len]
-
-
-def compute_retry_delay_seconds(
-    *,
-    attempt: int,
-    base_seconds: int,
-    max_seconds: int,
-    jitter_seconds: int,
-) -> int:
-    exponent = max(attempt - 1, 0)
-    base = max(1, int(base_seconds))
-    ceiling = max(base, int(max_seconds))
-    jitter = max(0, int(jitter_seconds))
-    delay = min(base * (2**exponent), ceiling)
-    if jitter > 0:
-        delay += random.randint(0, jitter)
-    return max(1, int(delay))
 
 
 def apply_retry_transition(
@@ -155,59 +94,6 @@ def apply_dead_letter_transition(
         context.source.last_error_message = truncate_error(error_message)
 
 
-def upsert_ingest_result_and_outbox_once(
-    db: Session,
-    *,
-    request_id: str,
-    source_id: int,
-    provider: str,
-    result_status: ConnectorResultStatus,
-    cursor_patch: dict,
-    records: list[dict],
-    fetched_at: datetime,
-) -> bool:
-    existing_result = db.scalar(select(IngestResult).where(IngestResult.request_id == request_id))
-    if existing_result is not None:
-        return False
-
-    db.add(
-        IngestResult(
-            request_id=request_id,
-            source_id=source_id,
-            provider=provider,
-            status=result_status,
-            cursor_patch=cursor_patch,
-            records=records,
-            fetched_at=fetched_at,
-            error_code=None,
-            error_message=None,
-        )
-    )
-    event = new_event(
-        event_type="ingest.result.ready",
-        aggregate_type="ingest_result",
-        aggregate_id=request_id,
-        payload={
-            "request_id": request_id,
-            "source_id": source_id,
-            "provider": provider,
-            "status": result_status.value,
-        },
-    )
-    db.add(
-        IntegrationOutbox(
-            event_id=event.event_id,
-            event_type=event.event_type,
-            aggregate_type=event.aggregate_type,
-            aggregate_id=event.aggregate_id,
-            payload_json=event.payload,
-            status=OutboxStatus.PENDING,
-            available_at=event.available_at,
-        )
-    )
-    return True
-
-
 def apply_success_transition(
     *,
     context: JobContext,
@@ -250,19 +136,9 @@ def apply_success_transition(
         context.sync_request.error_message = None
 
 
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
-
 __all__ = [
-    "JobContext",
     "apply_dead_letter_transition",
     "apply_retry_transition",
     "apply_success_transition",
-    "compute_retry_delay_seconds",
     "copy_job_payload",
-    "load_job_context",
-    "truncate_error",
-    "upsert_ingest_result_and_outbox_once",
-    "utcnow",
 ]

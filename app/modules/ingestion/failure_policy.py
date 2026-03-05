@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from app.db.models import ConnectorResultStatus
+from app.db.models.ingestion import ConnectorResultStatus
 from app.modules.ingestion.connector_types import ConnectorFailureDecision
-from app.modules.ingestion.job_lifecycle import truncate_error
+from app.modules.runtime_kernel import truncate_error
 
 
 def decide_failure(
