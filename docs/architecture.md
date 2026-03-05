@@ -180,8 +180,13 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 1. `change_listing_service.py`: list/query/summary shape assembly
 2. `change_decision_service.py`: viewed/approve/reject state machine + canonical apply
 3. `evidence_preview_service.py`: evidence path resolution and preview
-4. `manual_correction_service.py`: preview/apply manual correction and conflict rejection
-5. `change_common.py`: cross-cutting lightweight helpers only
+4. `change_event_codec.py`: shared event payload parse/serialize/equivalence helpers
+5. `manual_correction_service.py`: orchestration only (`preview_manual_correction`, `apply_manual_correction`)
+6. `manual_correction_target.py`: target event resolution + user/canonical input loading
+7. `manual_correction_snapshot.py`: base snapshot and pending change reads
+8. `manual_correction_builder.py`: patch build + timezone/datetime normalization
+9. `manual_correction_audit.py`: conflicting pending rejection + audit outbox write
+10. `change_common.py`: cross-cutting lightweight helpers only
 
 ### review_links
 
@@ -191,6 +196,24 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 4. `links_service.py`: links list/delete/relink
 5. `alerts_service.py`: medium-risk alert list/decision/batch + auto-resolution helpers
 6. `common.py`: shared note normalization, id dedupe, entity/observation preview, batch result builders
+
+### llm_runtime
+
+1. `worker.py`: thin compatibility entry exports only
+2. `worker_tick.py`: worker tick orchestration + message lifecycle
+3. `queue_consumer.py`: Redis stream/retry consume/ack composition
+4. `queue_producer.py`: enqueue producer API used by ingestion
+5. `parse_pipeline.py`: parse dispatch (`gmail`/`calendar`/`calendar_delta_v1`) + limiter wrapper
+6. `transitions.py`: failure/success state transitions and persistence template
+
+### input_control_plane routers
+
+1. `router.py`: top-level router composition only
+2. `sources_router.py`: source CRUD endpoints
+3. `sync_requests_router.py`: sync create/status endpoints
+4. `oauth_router.py`: oauth session create + callback public router
+5. `webhooks_router.py`: webhook ingest endpoint
+6. `router_common.py`: shared user/source ownership checks and common error mapping
 
 ### Intentional Legacy Strings
 
