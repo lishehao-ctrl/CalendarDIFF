@@ -18,7 +18,7 @@ from app.modules.ingestion.job_lifecycle import (
     utcnow,
 )
 from app.modules.llm_runtime.queue import ensure_stream_group, get_redis_client, queue_group, queue_stream_key
-from app.modules.llm_runtime.worker import enqueue_llm_task
+from app.modules.llm_runtime.queue_producer import enqueue_llm_task
 
 
 def dispatch_pending_llm_enqueues(db: Session) -> int:
