@@ -9,6 +9,7 @@ from app.contracts.events import new_event
 from app.db.models.input import InputSource
 from app.db.models.review import Change, ChangeType, Event, EventLinkAlertResolution, Input, ReviewStatus, SourceEventObservation
 from app.db.models.shared import IntegrationOutbox, OutboxStatus
+from app.modules.core_ingest.link_alert_outbox import emit_link_alert_upsert_requested
 from app.modules.core_ingest.merge_engine import choose_primary_observation
 from app.modules.core_ingest.serialization import (
     candidate_after_json,
@@ -16,9 +17,6 @@ from app.modules.core_ingest.serialization import (
     event_row_to_json,
     safe_delta_seconds,
     serialize_proposal_sources,
-)
-from app.modules.review_links.alerts_service import (
-    upsert_pending_link_alert,
 )
 
 __all__ = [
@@ -181,7 +179,7 @@ def upsert_auto_link_alerts_without_pending(
             continue
         link_row = context.get("link_row")
         link_id = int(link_row.id) if isinstance(getattr(link_row, "id", None), int) else None
-        upsert_pending_link_alert(
+        emit_link_alert_upsert_requested(
             db=db,
             user_id=int(context["user_id"]),
             source_id=int(context["source_id"]),

@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource
 from app.db.models.review import EventEntityLink, EventLinkAlertResolution, EventLinkBlock, EventLinkCandidate, EventLinkCandidateReason, EventLinkCandidateStatus, EventLinkOrigin
+from app.modules.core_ingest.link_alert_outbox import emit_link_alert_resolve_pair_requested
 from app.modules.core_ingest.linking_rules import LinkDecision, decide_inventory_link
-from app.modules.review_links.alerts_service import resolve_pending_link_alerts_for_pair
 
 __all__ = [
     "blocked_entity_uid_set",
@@ -155,7 +155,7 @@ def upsert_link_candidate(
     score_breakdown: dict,
     reason_code: str,
 ) -> EventLinkCandidate:
-    resolve_pending_link_alerts_for_pair(
+    emit_link_alert_resolve_pair_requested(
         db=db,
         user_id=user_id,
         source_id=source_id,

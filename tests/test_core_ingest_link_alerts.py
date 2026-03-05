@@ -13,6 +13,7 @@ from app.db.models.review import Change, EventEntityLink, EventLinkAlert, EventL
 from app.db.models.shared import User
 from app.modules.core_ingest.apply_service import apply_ingest_result_idempotent
 from app.modules.review_changes.change_decision_service import decide_review_change
+from app.modules.review_links.alerts_event_consumer import run_review_link_alert_events_tick
 from tests.support.payload_builders import (
     build_calendar_payload,
     build_course_parse,
@@ -116,6 +117,10 @@ def _canonical_input_id(db_session: Session, *, user_id: int) -> int:
     )
     assert row is not None
     return row.id
+
+
+def _drain_link_alert_events(db_session: Session) -> int:
+    return run_review_link_alert_events_tick(db_session, batch_limit=200)
 
 
 def _approve_all_pending_changes(db_session: Session, *, user_id: int, canonical_input_id: int) -> list[Change]:
@@ -264,6 +269,7 @@ def _seed_auto_link_without_pending(
     )
     second_apply = apply_ingest_result_idempotent(db_session, request_id="alert-gmail-seed")
     assert second_apply["changes_created"] == 0
+    _drain_link_alert_events(db_session)
     return calendar_source, gmail_source, canonical_input_id, event_uid
 
 
@@ -322,6 +328,7 @@ def test_link_alert_resolved_when_candidate_opened_for_same_pair(db_session: Ses
     )
     candidate_apply = apply_ingest_result_idempotent(db_session, request_id="alert-gmail-candidate")
     assert candidate_apply["changes_created"] == 0
+    _drain_link_alert_events(db_session)
 
     candidate_row = db_session.scalar(
         select(EventLinkCandidate).where(
@@ -366,6 +373,7 @@ def test_link_alert_resolved_when_canonical_pending_created(db_session: Session)
     )
     update_apply = apply_ingest_result_idempotent(db_session, request_id="alert-cal-shift")
     assert update_apply["changes_created"] == 1
+    _drain_link_alert_events(db_session)
 
     pending_changes = db_session.scalars(
         select(Change).where(
