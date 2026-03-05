@@ -9,17 +9,9 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import (
-    Change,
-    ChangeType,
-    Input,
-    InputSource,
-    InputType,
-    ReviewStatus,
-    SourceEventObservation,
-    SourceKind,
-    User,
-)
+from app.db.models.input import InputSource, SourceKind
+from app.db.models.review import Change, ChangeType, Input, InputType, ReviewStatus, SourceEventObservation
+from app.db.models.shared import User
 
 
 def _run_retention_script(*args: str) -> subprocess.CompletedProcess[str]:

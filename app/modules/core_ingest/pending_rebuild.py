@@ -6,18 +6,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.contracts.events import new_event
-from app.db.models import (
-    Change,
-    ChangeType,
-    Event,
-    EventLinkAlertResolution,
-    Input,
-    InputSource,
-    IntegrationOutbox,
-    OutboxStatus,
-    ReviewStatus,
-    SourceEventObservation,
-)
+from app.db.models.input import InputSource
+from app.db.models.review import Change, ChangeType, Event, EventLinkAlertResolution, Input, ReviewStatus, SourceEventObservation
+from app.db.models.shared import IntegrationOutbox, OutboxStatus
 from app.modules.core_ingest.merge_engine import choose_primary_observation
 from app.modules.core_ingest.serialization import (
     candidate_after_json,

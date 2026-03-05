@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import EventEntity
+from app.db.models.review import EventEntity
 
 
 def get_or_create_event_entity(*, db: Session, user_id: int, entity_uid: str) -> EventEntity:

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.db.models import InputSource, SourceKind, User
+from app.db.models.input import InputSource, SourceKind
+from app.db.models.shared import User
 
 
 def test_health_returns_scheduler_summary(client) -> None:

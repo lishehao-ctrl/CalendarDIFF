@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import get_settings
 from app.core.logging import sanitize_log_message
-from app.db.models import Change, Input
+from app.db.models.review import Change, Input
 from app.modules.review_changes.change_decision_service import ReviewChangeNotFoundError
 
 PREVIEW_MAX_BYTES = 64 * 1024

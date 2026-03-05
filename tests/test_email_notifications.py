@@ -7,7 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import Change, ChangeType, Input, InputType, Notification, NotificationStatus, Snapshot, User
+from app.db.models.notify import Notification, NotificationStatus
+from app.db.models.review import Change, ChangeType, Input, InputType, Snapshot
+from app.db.models.shared import User
 from app.modules.notify.email import SMTPEmailNotifier
 from app.modules.notify.interface import ChangeDigestItem, SendResult
 from app.modules.notify.service import enqueue_notifications_for_changes

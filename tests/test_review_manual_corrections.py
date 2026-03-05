@@ -4,18 +4,9 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 
-from app.db.models import (
-    Change,
-    ChangeType,
-    Event,
-    Input,
-    InputSource,
-    InputType,
-    IntegrationOutbox,
-    ReviewStatus,
-    SourceKind,
-    User,
-)
+from app.db.models.input import InputSource, SourceKind
+from app.db.models.review import Change, ChangeType, Event, Input, InputType, ReviewStatus
+from app.db.models.shared import IntegrationOutbox, User
 
 
 def _headers() -> dict[str, str]:

@@ -6,7 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.contracts.events import new_event
-from app.db.models import Change, IntegrationOutbox, OutboxStatus, ReviewStatus
+from app.db.models.review import Change, ReviewStatus
+from app.db.models.shared import IntegrationOutbox, OutboxStatus
 
 
 def reject_conflicting_pending_changes(

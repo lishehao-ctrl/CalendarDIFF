@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.db.models import User
+from app.db.models.shared import User
 from app.modules.input_control_plane.schemas import InputSourceCreateRequest
 from app.modules.input_control_plane.sources_service import create_input_source
 

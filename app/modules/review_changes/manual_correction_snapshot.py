@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Change, Event, ReviewStatus
+from app.db.models.review import Change, Event, ReviewStatus
 from app.modules.review_changes.change_event_codec import event_row_to_json, parse_after_json
 from app.modules.review_changes.manual_correction_errors import ManualCorrectionNotFoundError
 

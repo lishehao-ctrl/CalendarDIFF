@@ -4,7 +4,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from zoneinfo import ZoneInfo
 
-from app.db.models import Input, InputSource, InputType, User
+from app.db.models.input import InputSource
+from app.db.models.review import Input, InputType
+from app.db.models.shared import User
 from app.modules.users.email_utils import is_valid_email_address
 
 USER_NOT_INITIALIZED_MESSAGE = "Initialize user via POST /onboarding/registrations"

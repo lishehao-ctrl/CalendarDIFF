@@ -8,14 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.security import encrypt_secret
-from app.db.models import (
-    InputSource,
-    InputSourceConfig,
-    InputSourceCursor,
-    InputSourceSecret,
-    SourceKind,
-    User,
-)
+from app.db.models.input import InputSource, InputSourceConfig, InputSourceCursor, InputSourceSecret, SourceKind
+from app.db.models.shared import User
 from app.modules.input_control_plane.schemas import InputSourceCreateRequest, InputSourcePatchRequest
 
 

@@ -6,7 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db.models import IntegrationInbox, IntegrationOutbox, OutboxStatus, SyncRequest, SyncRequestStatus
+from app.db.models.input import SyncRequest, SyncRequestStatus
+from app.db.models.shared import IntegrationInbox, IntegrationOutbox, OutboxStatus
 from app.modules.core_ingest.apply_service import apply_ingest_result_idempotent
 
 CORE_APPLY_CONSUMER = "core.ingest.apply.v1"

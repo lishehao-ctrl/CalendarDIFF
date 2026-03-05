@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.db.models import InputSource
+from app.db.models.input import InputSource
 
 
 def serialize_source(source: InputSource) -> dict:

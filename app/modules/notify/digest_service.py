@@ -9,15 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.logging import sanitize_log_message
-from app.db.models import (
-    Change,
-    DigestSendLog,
-    Input,
-    Notification,
-    NotificationChannel,
-    NotificationStatus,
-    User,
-)
+from app.db.models.notify import DigestSendLog, Notification, NotificationChannel, NotificationStatus
+from app.db.models.review import Change, Input
+from app.db.models.shared import User
 from app.modules.notify.email import SMTPEmailNotifier
 from app.modules.notify.service import _to_digest_item
 

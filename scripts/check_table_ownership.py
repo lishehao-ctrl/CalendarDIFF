@@ -10,7 +10,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.db.base import Base
-import app.db.models  # noqa: F401
+from app.db.model_registry import load_all_models
+
+load_all_models()
 
 VALID_OWNERS = {
     "input-service",

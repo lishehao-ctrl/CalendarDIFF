@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Change, ChangeType, Event, ReviewStatus
+from app.db.models.review import Change, ChangeType, Event, ReviewStatus
 from app.modules.review_changes.change_event_codec import (
     event_json_equivalent,
     parse_after_json,

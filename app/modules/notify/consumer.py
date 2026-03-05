@@ -6,7 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db.models import Change, Input, IntegrationInbox, IntegrationOutbox, OutboxStatus
+from app.db.models.review import Change, Input
+from app.db.models.shared import IntegrationInbox, IntegrationOutbox, OutboxStatus
 from app.modules.notify.service import enqueue_notifications_for_changes
 
 NOTIFICATION_PENDING_CONSUMER = "notification.review_pending_created.v1"

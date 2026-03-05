@@ -5,16 +5,8 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import (
-    EventEntityLink,
-    EventLinkAlertResolution,
-    EventLinkBlock,
-    EventLinkCandidate,
-    EventLinkCandidateReason,
-    EventLinkCandidateStatus,
-    EventLinkOrigin,
-    InputSource,
-)
+from app.db.models.input import InputSource
+from app.db.models.review import EventEntityLink, EventLinkAlertResolution, EventLinkBlock, EventLinkCandidate, EventLinkCandidateReason, EventLinkCandidateStatus, EventLinkOrigin
 from app.modules.core_ingest.linking_rules import LinkDecision, decide_inventory_link
 from app.modules.review_links.alerts_service import resolve_pending_link_alerts_for_pair
 

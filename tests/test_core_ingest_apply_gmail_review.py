@@ -6,25 +6,10 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 
 from app.core.security import encrypt_secret
-from app.db.models import (
-    Change,
-    ConnectorResultStatus,
-    EventLinkCandidate,
-    EventLinkCandidateStatus,
-    IngestResult,
-    IngestTriggerType,
-    Input,
-    InputSource,
-    InputSourceConfig,
-    InputSourceCursor,
-    InputSourceSecret,
-    InputType,
-    ReviewStatus,
-    SourceKind,
-    SyncRequest,
-    SyncRequestStatus,
-    User,
-)
+from app.db.models.ingestion import ConnectorResultStatus, IngestResult
+from app.db.models.input import IngestTriggerType, InputSource, InputSourceConfig, InputSourceCursor, InputSourceSecret, SourceKind, SyncRequest, SyncRequestStatus
+from app.db.models.review import Change, EventLinkCandidate, EventLinkCandidateStatus, Input, InputType, ReviewStatus
+from app.db.models.shared import User
 from app.modules.core_ingest.apply_service import apply_ingest_result_idempotent
 from app.modules.review_changes.change_decision_service import decide_review_change
 from tests.support.payload_builders import (

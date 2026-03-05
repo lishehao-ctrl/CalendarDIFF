@@ -8,7 +8,8 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import InputSource, SourceEventObservation
+from app.db.models.input import InputSource
+from app.db.models.review import SourceEventObservation
 from app.modules.core_ingest.entity_profile import append_alias
 
 __all__ = [

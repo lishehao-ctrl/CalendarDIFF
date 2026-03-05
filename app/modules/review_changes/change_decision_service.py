@@ -6,7 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.contracts.events import new_event
-from app.db.models import Change, ChangeType, Event, Input, IntegrationOutbox, OutboxStatus, ReviewStatus
+from app.db.models.review import Change, ChangeType, Event, Input, ReviewStatus
+from app.db.models.shared import IntegrationOutbox, OutboxStatus
 from app.modules.review_changes.change_event_codec import (
     event_json_equivalent,
     event_row_to_json,

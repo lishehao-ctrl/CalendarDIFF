@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.db.models import Event, SourceEventObservation
+from app.db.models.review import Event, SourceEventObservation
 from app.modules.core_ingest.canonical_coercion import parse_iso_datetime
 from app.modules.core_ingest.entity_profile import course_display_name
 from app.modules.core_ingest.payload_extractors import extract_enrichment_course_parse

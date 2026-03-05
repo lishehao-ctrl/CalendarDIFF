@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from app.db.models import ConnectorResultStatus, InputSource
+from app.db.models.ingestion import ConnectorResultStatus
+from app.db.models.input import InputSource
 from app.modules.ingestion.connector_types import ConnectorFetchOutcome
 from app.modules.ingestion.ics_delta import ICS_COMPONENT_FINGERPRINT_HASH_VERSION, IcsDeltaParseError, build_ics_delta
 from app.modules.ingestion.job_claiming import extract_ics_component_fingerprints

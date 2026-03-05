@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 
 from app.core.config import get_settings
 from app.core.logging import sanitize_log_message
-from app.db.models import DigestSendLog
+from app.db.models.notify import DigestSendLog
 from app.db.session import get_session_factory
 from app.modules.health.router import router as health_router
 from app.modules.notify.consumer import run_notification_enqueue_tick

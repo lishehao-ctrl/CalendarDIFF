@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-from app.db.models import ConnectorResultStatus
+from app.db.models.ingestion import ConnectorResultStatus
 from app.modules.ingestion import calendar_fetcher
 from app.modules.sync.types import FetchResult
 
@@ -37,7 +37,7 @@ def test_calendar_fetch_not_modified_returns_no_change(monkeypatch) -> None:
             del url, input_id, if_none_match, if_modified_since
             return FetchResult(
                 content=None,
-                etag="etag-v2",
+                etag="etag-mainline",
                 last_modified="Tue, 03 Mar 2026 12:00:00 GMT",
                 status_code=304,
                 not_modified=True,
@@ -51,7 +51,7 @@ def test_calendar_fetch_not_modified_returns_no_change(monkeypatch) -> None:
     assert outcome.parse_payload is None
     assert outcome.error_code is None
     assert outcome.error_message is None
-    assert outcome.cursor_patch["etag"] == "etag-v2"
+    assert outcome.cursor_patch["etag"] == "etag-mainline"
     assert outcome.cursor_patch["ics_delta_components_total"] == 0
 
 

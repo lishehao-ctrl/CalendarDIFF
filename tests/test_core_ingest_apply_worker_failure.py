@@ -4,16 +4,8 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from app.db.models import (
-    IngestTriggerType,
-    InputSource,
-    IntegrationOutbox,
-    OutboxStatus,
-    SourceKind,
-    SyncRequest,
-    SyncRequestStatus,
-    User,
-)
+from app.db.models.input import IngestTriggerType, InputSource, SourceKind, SyncRequest, SyncRequestStatus
+from app.db.models.shared import IntegrationOutbox, OutboxStatus, User
 from app.modules.core_ingest.worker import run_core_apply_tick
 
 

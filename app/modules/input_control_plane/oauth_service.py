@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
 from app.core.security import decrypt_secret, encrypt_secret
-from app.db.models import IngestTriggerType, InputSource, InputSourceCursor, InputSourceSecret, SyncRequest
+from app.db.models.input import IngestTriggerType, InputSource, InputSourceCursor, InputSourceSecret, SyncRequest
 from app.modules.input_control_plane.sync_requests_service import enqueue_sync_request_idempotent
 from app.modules.sync.gmail_client import GmailClient
 

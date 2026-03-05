@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.db.models import User
+from app.db.models.shared import User
 from app.db.session import get_db
 from app.modules.users.service import (
     UserNotInitializedError,

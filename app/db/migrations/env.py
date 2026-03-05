@@ -9,7 +9,7 @@ from sqlalchemy.engine.url import make_url
 
 from app.core.config import get_settings
 from app.db.base import Base
-from app.db import models  # noqa: F401
+from app.db.model_registry import load_all_models
 
 config = context.config
 
@@ -18,6 +18,8 @@ if config.config_file_name is not None:
 
 settings = get_settings()
 config.set_main_option("sqlalchemy.url", settings.database_url)
+
+load_all_models()
 
 target_metadata = Base.metadata
 

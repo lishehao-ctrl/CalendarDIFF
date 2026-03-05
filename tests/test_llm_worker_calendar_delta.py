@@ -4,7 +4,7 @@ import base64
 
 from sqlalchemy.orm import sessionmaker
 
-from app.db.models import ConnectorResultStatus
+from app.db.models.ingestion import ConnectorResultStatus
 from app.modules.ingestion.llm_parsers.contracts import ParserOutput
 from app.modules.llm_runtime import parse_pipeline
 
@@ -73,8 +73,8 @@ def test_calendar_delta_changed_component_overrides_uid(monkeypatch, db_session_
                     },
                 }
             ],
-            parser_name="calendar_v2_llm",
-            parser_version="v2",
+            parser_name="calendar_llm",
+            parser_version="mainline",
             model_hint="test-model",
         )
 

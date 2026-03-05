@@ -8,10 +8,13 @@ from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
+from app.db.model_registry import load_all_models
 from app.db.schema_guard import ensure_schema_ready, reset_schema_guard_cache
 
 _ENGINE: Engine | None = None
 _SESSION_FACTORY: sessionmaker[Session] | None = None
+
+load_all_models()
 
 
 def _assert_postgres_database_url(database_url: str) -> None:

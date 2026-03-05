@@ -7,7 +7,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core.logging import sanitize_log_message
-from app.db.models import InputSource
+from app.db.models.input import InputSource
 from app.db.session import get_db
 
 router = APIRouter(tags=["health"])

@@ -5,18 +5,9 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import (
-    Change,
-    ChangeType,
-    DigestSendLog,
-    Input,
-    InputType,
-    Notification,
-    NotificationChannel,
-    NotificationStatus,
-    Snapshot,
-    User,
-)
+from app.db.models.notify import DigestSendLog, Notification, NotificationChannel, NotificationStatus
+from app.db.models.review import Change, ChangeType, Input, InputType, Snapshot
+from app.db.models.shared import User
 from app.modules.notify.digest_service import send_digest_for_slot
 
 

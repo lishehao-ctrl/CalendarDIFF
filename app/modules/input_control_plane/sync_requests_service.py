@@ -7,14 +7,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.contracts.events import new_event
-from app.db.models import (
-    IngestTriggerType,
-    InputSource,
-    IntegrationOutbox,
-    OutboxStatus,
-    SyncRequest,
-    SyncRequestStatus,
-)
+from app.db.models.input import IngestTriggerType, InputSource, SyncRequest, SyncRequestStatus
+from app.db.models.shared import IntegrationOutbox, OutboxStatus
 
 
 def enqueue_sync_request(

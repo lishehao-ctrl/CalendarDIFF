@@ -7,7 +7,7 @@ from collections.abc import Callable
 import redis
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.models import ConnectorResultStatus
+from app.db.models.ingestion import ConnectorResultStatus
 from app.modules.ingestion.ics_delta import external_event_id_from_component_key
 from app.modules.ingestion.llm_parsers import (
     LlmParseError,
@@ -42,7 +42,7 @@ def parse_with_llm(
             message=f"unsupported llm parse kind: {parse_kind or '-'}",
             retryable=False,
             provider=provider_hint or "-",
-            parser_version="v2",
+            parser_version="mainline",
         )
 
     from app.db.session import get_session_factory
@@ -59,7 +59,7 @@ def parse_with_llm(
                 message="calendar parse payload missing content_b64",
                 retryable=False,
                 provider=provider,
-                parser_version="v2",
+                parser_version="mainline",
             )
         try:
             content = base64.b64decode(content_b64.encode("utf-8"), validate=True)
@@ -69,7 +69,7 @@ def parse_with_llm(
                 message=f"invalid calendar content_b64: {exc}",
                 retryable=False,
                 provider=provider,
-                parser_version="v2",
+                parser_version="mainline",
             ) from exc
 
         with session_factory() as db:
@@ -105,7 +105,7 @@ def parse_with_llm(
             message="gmail parse payload missing messages list",
             retryable=False,
             provider=provider,
-            parser_version="v2",
+            parser_version="mainline",
         )
 
     with session_factory() as db:
@@ -146,7 +146,7 @@ def parse_calendar_delta_with_llm(
             message="calendar delta payload missing changed_components list",
             retryable=False,
             provider=provider,
-            parser_version="v2",
+            parser_version="mainline",
         )
     if not isinstance(removed_component_keys, list):
         raise LlmParseError(
@@ -154,7 +154,7 @@ def parse_calendar_delta_with_llm(
             message="calendar delta payload missing removed_component_keys list",
             retryable=False,
             provider=provider,
-            parser_version="v2",
+            parser_version="mainline",
         )
 
     records: list[dict] = []
@@ -207,7 +207,7 @@ def parse_calendar_delta_with_llm(
                     message=f"invalid calendar delta component_ical_b64: {exc}",
                     retryable=False,
                     provider=provider,
-                    parser_version="v2",
+                    parser_version="mainline",
                 ) from exc
 
             try:
@@ -218,7 +218,7 @@ def parse_calendar_delta_with_llm(
                     message=f"calendar delta component is not utf-8: {exc}",
                     retryable=False,
                     provider=provider,
-                    parser_version="v2",
+                    parser_version="mainline",
                 ) from exc
 
             calendar_text = build_minimal_calendar_text(component_text)
@@ -258,7 +258,7 @@ def build_minimal_calendar_text(component_ical_text: str) -> str:
             message="calendar delta component missing VEVENT wrapper",
             retryable=False,
             provider="calendar",
-            parser_version="v2",
+            parser_version="mainline",
         )
     return "\n".join(
         [

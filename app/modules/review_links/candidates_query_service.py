@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import EventLinkBlock, EventLinkCandidate, EventLinkCandidateStatus
+from app.db.models.review import EventLinkBlock, EventLinkCandidate, EventLinkCandidateStatus
 from app.modules.review_links.common import load_entity_preview, load_observation_snapshot
 
 

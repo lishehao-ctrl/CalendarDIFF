@@ -6,15 +6,8 @@ from typing import Any
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.db.models import (
-    Change,
-    Input,
-    InputType,
-    Notification,
-    NotificationChannel,
-    NotificationStatus,
-    ReviewStatus,
-)
+from app.db.models.notify import Notification, NotificationChannel, NotificationStatus
+from app.db.models.review import Change, Input, InputType, ReviewStatus
 
 SUMMARY_TIME_FIELDS = ("start_at_utc", "internal_date", "due_at", "end_at_utc")
 

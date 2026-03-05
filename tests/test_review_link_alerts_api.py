@@ -4,19 +4,9 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from app.db.models import (
-    EventEntity,
-    EventEntityLink,
-    EventLinkAlert,
-    EventLinkAlertReason,
-    EventLinkAlertResolution,
-    EventLinkAlertRiskLevel,
-    EventLinkAlertStatus,
-    EventLinkOrigin,
-    InputSource,
-    SourceKind,
-    User,
-)
+from app.db.models.input import InputSource, SourceKind
+from app.db.models.review import EventEntity, EventEntityLink, EventLinkAlert, EventLinkAlertReason, EventLinkAlertResolution, EventLinkAlertRiskLevel, EventLinkAlertStatus, EventLinkOrigin
+from app.db.models.shared import User
 
 
 def _create_user_and_email_source(db_session) -> tuple[User, InputSource]:

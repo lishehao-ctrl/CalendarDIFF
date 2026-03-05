@@ -7,7 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.db.models import Change, Input, Notification, NotificationChannel, NotificationStatus
+from app.db.models.notify import Notification, NotificationChannel, NotificationStatus
+from app.db.models.review import Change, Input
 from app.modules.notify.interface import ChangeDigestItem
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import EventEntity, SourceEventObservation
+from app.db.models.review import EventEntity, SourceEventObservation
 
 
 def normalize_review_note(note: str | None, *, max_len: int = 512) -> str | None:

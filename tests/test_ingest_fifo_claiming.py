@@ -5,16 +5,9 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import (
-    IngestJob,
-    IngestJobStatus,
-    IngestTriggerType,
-    InputSource,
-    SourceKind,
-    SyncRequest,
-    SyncRequestStatus,
-    User,
-)
+from app.db.models.ingestion import IngestJob, IngestJobStatus
+from app.db.models.input import IngestTriggerType, InputSource, SourceKind, SyncRequest, SyncRequestStatus
+from app.db.models.shared import User
 from app.modules.ingestion.job_claiming import claim_jobs
 
 

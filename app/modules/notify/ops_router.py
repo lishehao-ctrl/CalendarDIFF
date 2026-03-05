@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends
 
 from app.core.security import require_internal_service_token
-from app.db.models import DigestSendLog, Notification, NotificationStatus
+from app.db.models.notify import DigestSendLog, Notification, NotificationStatus
 from app.db.session import get_db
 
 router = APIRouter(

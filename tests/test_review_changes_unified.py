@@ -4,19 +4,9 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from app.core.security import encrypt_secret
-from app.db.models import (
-    ConnectorResultStatus,
-    IngestResult,
-    IngestTriggerType,
-    InputSource,
-    InputSourceConfig,
-    InputSourceCursor,
-    InputSourceSecret,
-    SourceKind,
-    SyncRequest,
-    SyncRequestStatus,
-    User,
-)
+from app.db.models.ingestion import ConnectorResultStatus, IngestResult
+from app.db.models.input import IngestTriggerType, InputSource, InputSourceConfig, InputSourceCursor, InputSourceSecret, SourceKind, SyncRequest, SyncRequestStatus
+from app.db.models.shared import User
 from app.modules.core_ingest.apply_service import apply_ingest_result_idempotent
 from tests.support.payload_builders import (
     build_calendar_payload,
@@ -211,23 +201,23 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
     assert rejected_view.status_code == 200
     assert rejected_view.json() == []
 
-    removed_email_queue = client.get("/v2/review-items/emails", headers=headers)
+    removed_email_queue = client.get("/review-items/emails", headers=headers)
     assert removed_email_queue.status_code == 404
 
     removed_email_patch = client.patch(
-        "/v2/review-items/emails/removed-id",
+        "/review-items/emails/removed-id",
         headers=headers,
         json={"route": "archive"},
     )
     assert removed_email_patch.status_code == 404
 
     removed_email_view = client.post(
-        "/v2/review-items/emails/removed-id/views",
+        "/review-items/emails/removed-id/views",
         headers=headers,
     )
     assert removed_email_view.status_code == 404
 
-    removed_timeline = client.get("/v2/timeline-events", headers=headers)
+    removed_timeline = client.get("/timeline-events", headers=headers)
     assert removed_timeline.status_code == 404
 
 

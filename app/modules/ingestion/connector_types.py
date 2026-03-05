@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.db.models import ConnectorResultStatus
+from app.db.models.ingestion import ConnectorResultStatus
 
 
 @dataclass(frozen=True)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.db.models import ConnectorResultStatus
+from app.db.models.ingestion import ConnectorResultStatus
 from app.modules.ingestion.calendar_fetcher import fetch_calendar_delta
 from app.modules.ingestion.gmail_fetcher import fetch_gmail_changes, matches_gmail_source_filters
 

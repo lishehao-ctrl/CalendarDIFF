@@ -6,7 +6,7 @@ import json
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.db.models import IngestTriggerType
+from app.db.models.input import IngestTriggerType
 from app.db.session import get_db
 from app.modules.input_control_plane.router_common import require_owned_source_or_404, require_registered_user_or_409
 from app.modules.input_control_plane.schemas import WebhookEnqueueResponse

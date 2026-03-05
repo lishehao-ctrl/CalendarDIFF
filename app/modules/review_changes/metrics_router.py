@@ -7,22 +7,9 @@ from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
 from app.core.security import require_internal_service_token
-from app.db.models import (
-    Change,
-    EventEntityLink,
-    EventLinkAlert,
-    EventLinkAlertResolution,
-    EventLinkAlertStatus,
-    EventLinkBlock,
-    EventLinkCandidate,
-    EventLinkCandidateStatus,
-    EventLinkOrigin,
-    IntegrationOutbox,
-    OutboxStatus,
-    ReviewStatus,
-    SourceEventObservation,
-    SourceKind,
-)
+from app.db.models.input import SourceKind
+from app.db.models.review import Change, EventEntityLink, EventLinkAlert, EventLinkAlertResolution, EventLinkAlertStatus, EventLinkBlock, EventLinkCandidate, EventLinkCandidateStatus, EventLinkOrigin, ReviewStatus, SourceEventObservation
+from app.db.models.shared import IntegrationOutbox, OutboxStatus
 from app.db.session import get_db
 
 router = APIRouter(

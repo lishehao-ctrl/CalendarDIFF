@@ -3,7 +3,8 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Change, Input, InputType, User
+from app.db.models.review import Change, Input, InputType
+from app.db.models.shared import User
 from app.modules.review_changes.manual_correction_errors import (
     ManualCorrectionNotFoundError,
     ManualCorrectionValidationError,

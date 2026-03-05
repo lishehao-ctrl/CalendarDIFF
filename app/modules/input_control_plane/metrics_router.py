@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.security import require_internal_service_token
-from app.db.models import InputSource, SyncRequest, SyncRequestStatus
+from app.db.models.input import InputSource, SyncRequest, SyncRequestStatus
 from app.db.session import get_db
 
 router = APIRouter(

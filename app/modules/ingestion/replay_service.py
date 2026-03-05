@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import IngestJob, IngestJobStatus, SyncRequest, SyncRequestStatus
+from app.db.models.ingestion import IngestJob, IngestJobStatus
+from app.db.models.input import SyncRequest, SyncRequestStatus
 
 
 class IngestJobNotFoundError(RuntimeError):

@@ -2,24 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.db.models import (
-    Change,
-    ChangeType,
-    EventLinkAlert,
-    EventLinkAlertReason,
-    EventLinkAlertResolution,
-    EventLinkAlertRiskLevel,
-    EventLinkAlertStatus,
-    EventLinkCandidate,
-    EventLinkCandidateReason,
-    EventLinkCandidateStatus,
-    Input,
-    InputSource,
-    InputType,
-    ReviewStatus,
-    SourceKind,
-    User,
-)
+from app.db.models.input import InputSource, SourceKind
+from app.db.models.review import Change, ChangeType, EventLinkAlert, EventLinkAlertReason, EventLinkAlertResolution, EventLinkAlertRiskLevel, EventLinkAlertStatus, EventLinkCandidate, EventLinkCandidateReason, EventLinkCandidateStatus, Input, InputType, ReviewStatus
+from app.db.models.shared import User
 
 
 def _create_onboarded_user_with_source(db_session, *, email: str, source_key: str) -> tuple[User, InputSource]:

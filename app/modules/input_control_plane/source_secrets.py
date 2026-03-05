@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from app.core.security import decrypt_secret
-from app.db.models import InputSource
+from app.db.models.input import InputSource
 
 
 def decode_source_secrets(source: InputSource) -> dict:

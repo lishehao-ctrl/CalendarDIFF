@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from app.db.models import ConnectorResultStatus, InputSource
+from app.db.models.ingestion import ConnectorResultStatus
+from app.db.models.input import InputSource
 from app.modules.ingestion.connector_types import ConnectorFetchOutcome
 from app.modules.input_control_plane.source_secrets import decode_source_secrets
 from app.modules.sync.gmail_client import GmailAPIError, GmailClient, GmailHistoryExpiredError, GmailMessageMetadata

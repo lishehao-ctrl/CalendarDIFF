@@ -7,25 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.security import encrypt_secret
-from app.db.models import (
-    Change,
-    ConnectorResultStatus,
-    Event,
-    IngestResult,
-    IngestTriggerType,
-    Input,
-    InputSource,
-    InputSourceConfig,
-    InputSourceCursor,
-    InputSourceSecret,
-    InputType,
-    ReviewStatus,
-    SourceEventObservation,
-    SourceKind,
-    SyncRequest,
-    SyncRequestStatus,
-    User,
-)
+from app.db.models.ingestion import ConnectorResultStatus, IngestResult
+from app.db.models.input import IngestTriggerType, InputSource, InputSourceConfig, InputSourceCursor, InputSourceSecret, SourceKind, SyncRequest, SyncRequestStatus
+from app.db.models.review import Change, Event, Input, InputType, ReviewStatus, SourceEventObservation
+from app.db.models.shared import User
 from app.modules.core_ingest.apply_service import apply_ingest_result_idempotent
 from app.modules.review_changes.change_decision_service import decide_review_change
 from tests.support.payload_builders import (

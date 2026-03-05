@@ -8,15 +8,9 @@ from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
 
 from app.core.security import require_internal_service_token
-from app.db.models import (
-    IngestJob,
-    IngestJobStatus,
-    IngestResult,
-    IntegrationOutbox,
-    OutboxStatus,
-    SyncRequest,
-    SyncRequestStatus,
-)
+from app.db.models.ingestion import IngestJob, IngestJobStatus, IngestResult
+from app.db.models.input import SyncRequest, SyncRequestStatus
+from app.db.models.shared import IntegrationOutbox, OutboxStatus
 from app.db.session import get_db
 
 router = APIRouter(

@@ -3,7 +3,9 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import IngestApplyLog, IngestResult, SyncRequest
+from app.db.models.ingestion import IngestResult
+from app.db.models.input import SyncRequest
+from app.db.models.review import IngestApplyLog
 
 
 def build_sync_request_status_payload(db: Session, *, sync_request: SyncRequest) -> dict:

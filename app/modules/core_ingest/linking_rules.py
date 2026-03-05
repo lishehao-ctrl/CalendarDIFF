@@ -6,7 +6,8 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import InputSource, SourceEventObservation, SourceKind
+from app.db.models.input import InputSource, SourceKind
+from app.db.models.review import SourceEventObservation
 
 
 @dataclass(frozen=True)
@@ -181,7 +182,7 @@ def decide_inventory_link(
             candidate_entity_uid=None,
             reason_code="blocked",
             score_breakdown={
-                "rule_engine": "inventory_v2",
+                "rule_engine": "inventory",
                 "rule_reason": "blocked",
                 "blocked_candidates": blocked_count,
                 "source_id": source.id,
@@ -207,7 +208,7 @@ def decide_inventory_link(
         candidate_entity_uid=linked_row.merge_key,
         reason_code="auto_link_inventory_rule",
         score_breakdown={
-            "rule_engine": "inventory_v2",
+            "rule_engine": "inventory",
             "rule_reason": "linked",
             "course_key": f"{incoming_dept}{incoming_number}",
             "course_requires_suffix": requires_suffix,
@@ -221,7 +222,7 @@ def decide_inventory_link(
 
 def _candidate(*, rule_reason: str, candidate_entity_uid: str | None, evidence: dict, reason_code: str = "score_band") -> LinkDecision:
     payload = {
-        "rule_engine": "inventory_v2",
+        "rule_engine": "inventory",
         "rule_reason": rule_reason,
     }
     payload.update(evidence)

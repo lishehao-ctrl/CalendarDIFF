@@ -9,7 +9,9 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Change, ChangeType, Input, InputSource, InputType, ReviewStatus, SourceKind, User
+from app.db.models.input import InputSource, SourceKind
+from app.db.models.review import Change, ChangeType, Input, InputType, ReviewStatus
+from app.db.models.shared import User
 
 
 def _run_cleanup_script(*args: str) -> subprocess.CompletedProcess[str]:

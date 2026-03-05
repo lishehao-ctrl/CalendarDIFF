@@ -13,7 +13,7 @@ from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
-from app.db.models import User
+from app.db.models.shared import User
 from app.db.session import reset_engine
 from app.modules.input_control_plane.schemas import InputSourceCreateRequest
 from app.modules.input_control_plane.sources_service import create_input_source

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from app.db.models import User
+from app.db.models.shared import User
 
 
 def test_get_user_returns_timezone_name(input_client, db_session) -> None:

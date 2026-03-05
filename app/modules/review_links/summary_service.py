@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Change, EventLinkAlert, EventLinkAlertStatus, EventLinkCandidate, EventLinkCandidateStatus, Input, ReviewStatus
+from app.db.models.review import Change, EventLinkAlert, EventLinkAlertStatus, EventLinkCandidate, EventLinkCandidateStatus, Input, ReviewStatus
 
 
 def get_review_items_summary(

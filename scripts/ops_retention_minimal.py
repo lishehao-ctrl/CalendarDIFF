@@ -16,7 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.core.config import get_settings
-from app.db.models import Change, ReviewStatus, SourceEventObservation
+from app.db.models.review import Change, ReviewStatus, SourceEventObservation
 from app.db.schema_guard import ensure_schema_ready
 from app.db.session import get_engine, get_session_factory
 

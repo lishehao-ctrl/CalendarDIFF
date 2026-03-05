@@ -8,17 +8,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.contracts.events import new_event
-from app.db.models import (
-    IngestJob,
-    IngestJobStatus,
-    IngestTriggerType,
-    InputSource,
-    IntegrationInbox,
-    IntegrationOutbox,
-    OutboxStatus,
-    SyncRequest,
-    SyncRequestStatus,
-)
+from app.db.models.ingestion import IngestJob, IngestJobStatus
+from app.db.models.input import IngestTriggerType, InputSource, SyncRequest, SyncRequestStatus
+from app.db.models.shared import IntegrationInbox, IntegrationOutbox, OutboxStatus
 
 ORCHESTRATOR_SYNC_REQUEST_CONSUMER = "orchestrator.sync_requested.v1"
 OUTBOX_BATCH_SIZE = 200

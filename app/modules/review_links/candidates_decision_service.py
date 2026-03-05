@@ -5,15 +5,8 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import (
-    EventEntityLink,
-    EventLinkBlock,
-    EventLinkCandidate,
-    EventLinkCandidateStatus,
-    EventLinkOrigin,
-    InputSource,
-    SourceKind,
-)
+from app.db.models.input import InputSource, SourceKind
+from app.db.models.review import EventEntityLink, EventLinkBlock, EventLinkCandidate, EventLinkCandidateStatus, EventLinkOrigin
 from app.modules.review_links.common import (
     build_batch_result_error,
     build_batch_result_success,

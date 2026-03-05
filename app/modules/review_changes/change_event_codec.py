@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.db.models import Event
+from app.db.models.review import Event
 
 
 def parse_after_json(event_uid: str, payload: dict) -> dict | None:
