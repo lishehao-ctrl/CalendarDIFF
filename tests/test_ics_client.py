@@ -11,7 +11,7 @@ def test_fetch_sends_conditional_headers_and_handles_304(monkeypatch) -> None:
     captured_headers: list[dict[str, str]] = []
     response = httpx.Response(
         status_code=304,
-        headers={"etag": "etag-v2", "last-modified": "Wed, 19 Feb 2026 20:31:10 GMT"},
+        headers={"etag": "etag-mainline", "last-modified": "Wed, 19 Feb 2026 20:31:10 GMT"},
         request=httpx.Request("GET", "https://example.com/calendar.ics"),
     )
 
@@ -49,7 +49,7 @@ def test_fetch_sends_conditional_headers_and_handles_304(monkeypatch) -> None:
     assert result.not_modified is True
     assert result.status_code == 304
     assert result.content is None
-    assert result.etag == "etag-v2"
+    assert result.etag == "etag-mainline"
     assert result.last_modified == "Wed, 19 Feb 2026 20:31:10 GMT"
     assert isinstance(result.fetched_at_utc, datetime)
     assert result.fetched_at_utc.tzinfo == timezone.utc

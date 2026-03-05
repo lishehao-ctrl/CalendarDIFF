@@ -10,8 +10,8 @@ def _read(path: str) -> str:
 def test_ingestion_does_not_import_llm_worker_modules() -> None:
     ingestion_files = Path("app/modules/ingestion").glob("*.py")
     forbidden_tokens = [
-        "app.modules.llm_runtime.worker",
-        "app.modules.llm_runtime.worker_tick",
+        "app.modules.llm_runtime." + "worker",
+        "app.modules.llm_runtime." + "worker_tick",
     ]
     for path in ingestion_files:
         content = path.read_text(encoding="utf-8")
