@@ -36,11 +36,11 @@ def test_internal_llm_metrics_requires_service_token(db_engine, monkeypatch) -> 
     import app.modules.llm_runtime.metrics_router as llm_metrics_module
     from services.llm_api.main import app as llm_app
 
-    monkeypatch.setattr(llm_metrics_module, "get_redis_client", lambda: object())
-    monkeypatch.setattr(llm_metrics_module, "queue_depth_stream", lambda *_args, **_kwargs: 0)
-    monkeypatch.setattr(llm_metrics_module, "queue_depth_retry", lambda *_args, **_kwargs: 0)
-    monkeypatch.setattr(llm_metrics_module, "read_metric_counter_1m", lambda *_args, **_kwargs: 0)
-    monkeypatch.setattr(llm_metrics_module, "latency_p95_5m", lambda *_args, **_kwargs: 0.0)
+    monkeypatch.setattr(llm_metrics_module, "get_parse_queue_redis_client", lambda: object())
+    monkeypatch.setattr(llm_metrics_module, "parse_queue_depth", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(llm_metrics_module, "parse_retry_depth", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(llm_metrics_module, "read_parse_metric_counter_1m", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(llm_metrics_module, "parse_latency_p95_5m", lambda *_args, **_kwargs: 0.0)
 
     endpoint = "/internal/metrics"
     with TestClient(llm_app) as client:

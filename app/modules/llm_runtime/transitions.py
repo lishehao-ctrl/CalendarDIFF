@@ -17,7 +17,7 @@ from app.modules.runtime_kernel import (
     upsert_ingest_result_and_outbox_once,
     utcnow,
 )
-from app.modules.llm_runtime.queue import increment_metric_counter, schedule_retry_task
+from app.modules.runtime_kernel.parse_task_queue import increment_parse_metric_counter, schedule_parse_retry
 
 
 def apply_llm_failure_transition(
@@ -61,14 +61,13 @@ def apply_llm_failure_transition(
         )
         due_at = now + timedelta(seconds=delay_seconds)
         try:
-            schedule_retry_task(
+            schedule_parse_retry(
                 redis_client,
-                stream_key=stream_key,
                 request_id=request_id,
                 source_id=context.job.source_id,
                 attempt=next_attempt,
                 reason=reason,
-                due_at=due_at,
+                available_at=due_at,
             )
         except Exception as exc:
             apply_dead_letter_transition(
@@ -84,7 +83,7 @@ def apply_llm_failure_transition(
             db.commit()
             return
 
-        increment_metric_counter(redis_client, metric_name="llm_retry_scheduled")
+        increment_parse_metric_counter(redis_client, metric_name="llm_retry_scheduled")
         apply_retry_transition(
             context=context,
             error_code=error_code,

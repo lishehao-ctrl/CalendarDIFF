@@ -35,11 +35,11 @@ def test_internal_metrics_endpoints(db_engine, monkeypatch) -> None:
     from services.notification_api.main import app as notify_app
     from services.review_api.main import app as review_app
 
-    monkeypatch.setattr(llm_metrics_module, "get_redis_client", lambda: object())
-    monkeypatch.setattr(llm_metrics_module, "queue_depth_stream", lambda *_args, **_kwargs: 0)
-    monkeypatch.setattr(llm_metrics_module, "queue_depth_retry", lambda *_args, **_kwargs: 0)
-    monkeypatch.setattr(llm_metrics_module, "read_metric_counter_1m", lambda *_args, **_kwargs: 0)
-    monkeypatch.setattr(llm_metrics_module, "latency_p95_5m", lambda *_args, **_kwargs: 0.0)
+    monkeypatch.setattr(llm_metrics_module, "get_parse_queue_redis_client", lambda: object())
+    monkeypatch.setattr(llm_metrics_module, "parse_queue_depth", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(llm_metrics_module, "parse_retry_depth", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(llm_metrics_module, "read_parse_metric_counter_1m", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(llm_metrics_module, "parse_latency_p95_5m", lambda *_args, **_kwargs: 0.0)
 
     input_payload = _call_metrics(input_app)
     _assert_metrics_payload(

@@ -5,13 +5,12 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
 
 from app.core.security import require_internal_service_token
-from app.modules.llm_runtime.queue import (
-    get_redis_client,
-    latency_p95_5m,
-    queue_depth_retry,
-    queue_depth_stream,
-    queue_stream_key,
-    read_metric_counter_1m,
+from app.modules.runtime_kernel.parse_task_queue import (
+    get_parse_queue_redis_client,
+    parse_latency_p95_5m,
+    parse_queue_depth,
+    parse_retry_depth,
+    read_parse_metric_counter_1m,
 )
 
 router = APIRouter(
@@ -24,15 +23,14 @@ router = APIRouter(
 @router.get("/metrics")
 def get_llm_metrics() -> dict[str, object]:
     now = datetime.now(timezone.utc)
-    client = get_redis_client()
-    stream_key = queue_stream_key()
+    client = get_parse_queue_redis_client()
 
-    depth_stream = queue_depth_stream(client, stream_key=stream_key)
-    depth_retry = queue_depth_retry(client, stream_key=stream_key)
-    llm_calls_total_1m = read_metric_counter_1m(client, metric_name="llm_calls_total")
-    llm_calls_rate_limited_1m = read_metric_counter_1m(client, metric_name="llm_calls_rate_limited")
-    limiter_rejects_1m = read_metric_counter_1m(client, metric_name="limiter_rejects")
-    llm_latency_p95_5m = latency_p95_5m(client, stream_key=stream_key)
+    depth_stream = parse_queue_depth(client)
+    depth_retry = parse_retry_depth(client)
+    llm_calls_total_1m = read_parse_metric_counter_1m(client, metric_name="llm_calls_total")
+    llm_calls_rate_limited_1m = read_parse_metric_counter_1m(client, metric_name="llm_calls_rate_limited")
+    limiter_rejects_1m = read_parse_metric_counter_1m(client, metric_name="limiter_rejects")
+    llm_latency_p95_5m = parse_latency_p95_5m(client)
 
     denominator = llm_calls_total_1m + limiter_rejects_1m
     limiter_reject_rate_1m = round(limiter_rejects_1m / denominator, 6) if denominator > 0 else 0.0

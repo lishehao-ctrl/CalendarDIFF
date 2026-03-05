@@ -18,8 +18,11 @@ from app.modules.runtime_kernel import (
     truncate_error,
     utcnow,
 )
-from app.modules.llm_runtime.queue import ensure_stream_group, get_redis_client, queue_group, queue_stream_key
-from app.modules.llm_runtime.queue_producer import enqueue_llm_task
+from app.modules.runtime_kernel.parse_task_queue import (
+    enqueue_parse_task,
+    ensure_parse_queue_group,
+    get_parse_queue_redis_client,
+)
 
 
 def dispatch_pending_llm_enqueues(db: Session) -> int:
@@ -38,9 +41,8 @@ def dispatch_pending_llm_enqueues(db: Session) -> int:
     if not rows:
         return 0
 
-    redis_client = get_redis_client()
-    stream_key = queue_stream_key()
-    ensure_stream_group(redis_client, stream_key=stream_key, group_name=queue_group())
+    redis_client = get_parse_queue_redis_client()
+    ensure_parse_queue_group(redis_client)
     dispatched = 0
     dispatch_threshold = 3
 
@@ -68,7 +70,7 @@ def dispatch_pending_llm_enqueues(db: Session) -> int:
             continue
 
         try:
-            enqueue_llm_task(
+            enqueue_parse_task(
                 redis_client=redis_client,
                 request_id=sync_request.request_id,
                 source_id=source.id,

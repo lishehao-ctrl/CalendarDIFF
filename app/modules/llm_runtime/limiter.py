@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import redis
 
 from app.core.config import get_settings
-from app.modules.llm_runtime.queue import queue_stream_key
+from app.modules.runtime_kernel.parse_task_channel import parse_queue_stream_key
 
 
 @dataclass(frozen=True)
@@ -83,7 +83,7 @@ return {1, "ok", tokens, hard_count}
 
 
 def _limiter_prefix() -> str:
-    stream_key = queue_stream_key()
+    stream_key = parse_queue_stream_key()
     return f"{stream_key}:limiter:v1"
 
 

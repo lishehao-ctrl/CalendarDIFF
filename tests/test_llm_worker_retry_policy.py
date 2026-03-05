@@ -65,8 +65,8 @@ def test_retry_policy_schedules_retry(db_session: Session, monkeypatch) -> None:
         def _capture_retry(*_args, **kwargs):  # noqa: ANN002, ANN003 - test hook
             captured.update(kwargs)
 
-        monkeypatch.setattr(llm_transitions, "schedule_retry_task", _capture_retry)
-        monkeypatch.setattr(llm_transitions, "increment_metric_counter", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(llm_transitions, "schedule_parse_retry", _capture_retry)
+        monkeypatch.setattr(llm_transitions, "increment_parse_metric_counter", lambda *_args, **_kwargs: None)
 
         llm_transitions.apply_llm_failure_transition(
             db_session,

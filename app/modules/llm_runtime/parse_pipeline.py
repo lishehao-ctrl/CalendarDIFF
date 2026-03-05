@@ -17,7 +17,7 @@ from app.modules.ingestion.llm_parsers import (
 )
 from app.modules.ingestion.parser_records import attach_parser_metadata
 from app.modules.llm_runtime.limiter import acquire_global_permit
-from app.modules.llm_runtime.queue import increment_metric_counter, record_latency_ms
+from app.modules.runtime_kernel.parse_task_queue import increment_parse_metric_counter, record_parse_latency_ms
 
 
 class RateLimitRejected(RuntimeError):
@@ -273,28 +273,29 @@ def build_minimal_calendar_text(component_ical_text: str) -> str:
 
 
 def invoke_parser_with_limit(*, redis_client: redis.Redis, stream_key: str, parse_call: Callable[[], object]):
+    del stream_key
     decision = acquire_global_permit(redis_client)
     if not decision.allowed:
-        increment_metric_counter(redis_client, metric_name="limiter_rejects")
-        increment_metric_counter(redis_client, metric_name="llm_calls_rate_limited")
+        increment_parse_metric_counter(redis_client, metric_name="limiter_rejects")
+        increment_parse_metric_counter(redis_client, metric_name="llm_calls_rate_limited")
         raise RateLimitRejected(reason=decision.reason)
 
-    increment_metric_counter(redis_client, metric_name="llm_calls_total")
+    increment_parse_metric_counter(redis_client, metric_name="llm_calls_total")
     started = time.perf_counter()
     try:
         result = parse_call()
         latency_ms = max(int((time.perf_counter() - started) * 1000), 0)
-        record_latency_ms(redis_client, stream_key=stream_key, latency_ms=latency_ms)
+        record_parse_latency_ms(redis_client, latency_ms=latency_ms)
         return result
     except LlmParseError as exc:
         latency_ms = max(int((time.perf_counter() - started) * 1000), 0)
-        record_latency_ms(redis_client, stream_key=stream_key, latency_ms=latency_ms)
+        record_parse_latency_ms(redis_client, latency_ms=latency_ms)
         if is_rate_limited_llm_error(exc):
-            increment_metric_counter(redis_client, metric_name="llm_calls_rate_limited")
+            increment_parse_metric_counter(redis_client, metric_name="llm_calls_rate_limited")
         raise
     except Exception:
         latency_ms = max(int((time.perf_counter() - started) * 1000), 0)
-        record_latency_ms(redis_client, stream_key=stream_key, latency_ms=latency_ms)
+        record_parse_latency_ms(redis_client, latency_ms=latency_ms)
         raise
 
 
