@@ -21,9 +21,11 @@ def test_connector_runtime_uses_shared_job_lifecycle_kernel() -> None:
 
 def test_llm_worker_uses_shared_job_lifecycle_kernel() -> None:
     worker_path = REPO_ROOT / "app" / "modules" / "llm_runtime" / "worker.py"
-    tick_path = REPO_ROOT / "app" / "modules" / "llm_runtime" / "worker_tick.py"
+    legacy_tick_path = REPO_ROOT / "app" / "modules" / "llm_runtime" / "worker_tick.py"
+    tick_path = REPO_ROOT / "app" / "modules" / "llm_runtime" / "tick_runner.py"
     transitions_path = REPO_ROOT / "app" / "modules" / "llm_runtime" / "transitions.py"
     assert not worker_path.exists()
+    assert not legacy_tick_path.exists()
     tick_content = tick_path.read_text(encoding="utf-8")
     transitions_content = transitions_path.read_text(encoding="utf-8")
     assert "from app.modules.runtime_kernel import" in tick_content or "from app.modules.runtime_kernel import" in transitions_content

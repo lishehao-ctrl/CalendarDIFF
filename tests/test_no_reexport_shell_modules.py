@@ -27,7 +27,9 @@ def _is_shell_reexport_module(path: str) -> bool:
 
 def test_critical_modules_are_not_shell_reexports() -> None:
     must_have_logic = [
-        "app/modules/llm_runtime/worker_tick.py",
+        "app/modules/llm_runtime/tick_runner.py",
+        "app/modules/llm_runtime/message_preflight.py",
+        "app/modules/llm_runtime/message_processor.py",
         "app/modules/llm_runtime/parse_pipeline.py",
         "app/modules/llm_runtime/transitions.py",
         "app/modules/ingestion/connector_runtime.py",

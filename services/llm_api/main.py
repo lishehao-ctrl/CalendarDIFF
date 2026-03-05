@@ -5,8 +5,8 @@ import logging
 from app.db.session import get_session_factory
 from app.modules.health.router import router as health_router
 from app.modules.llm_runtime.metrics_router import router as llm_metrics_router
-from app.modules.llm_runtime.queue import get_redis_client
-from app.modules.llm_runtime.worker_tick import run_llm_worker_tick
+from app.modules.llm_runtime.tick_runner import run_llm_worker_tick
+from app.modules.runtime_kernel.parse_task_queue import get_parse_queue_redis_client
 from app.runtime.worker_loop import build_worker_id, read_worker_enabled, run_periodic_sync_worker
 from app.service_app import create_service_app
 
@@ -17,7 +17,7 @@ async def _run_llm_worker() -> None:
     worker_id = build_worker_id(service_name="llm-service", env_var="LLM_WORKER_ID")
     enabled = read_worker_enabled(env_var="LLM_SERVICE_ENABLE_WORKER", default=True)
     session_factory = get_session_factory()
-    redis_client = get_redis_client()
+    redis_client = get_parse_queue_redis_client()
 
     def _tick() -> int:
         return run_llm_worker_tick(
