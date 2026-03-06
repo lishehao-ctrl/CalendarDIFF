@@ -187,20 +187,31 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 3. `evidence_preview_service.py`: evidence path resolution and preview
 4. `change_event_codec.py`: shared event payload parse/serialize/equivalence helpers
 5. `manual_correction_service.py`: orchestration only (`preview_manual_correction`, `apply_manual_correction`)
-6. `manual_correction_target.py`: target event resolution + user/canonical input loading
-7. `manual_correction_snapshot.py`: base snapshot and pending change reads
-8. `manual_correction_builder.py`: patch build + timezone/datetime normalization
-9. `manual_correction_audit.py`: conflicting pending rejection + audit outbox write
-10. `change_common.py`: cross-cutting lightweight helpers only
+6. `manual_correction_preview_flow.py`: preview response assembly and idempotent preview checks
+7. `manual_correction_apply_txn.py`: manual correction apply transaction body (lock/update/change/audit)
+8. `manual_correction_target.py`: target event resolution + user/canonical input loading
+9. `manual_correction_snapshot.py`: base snapshot and pending change reads
+10. `manual_correction_builder.py`: patch build + timezone/datetime normalization
+11. `manual_correction_audit.py`: conflicting pending rejection + audit outbox write
+12. `change_common.py`: cross-cutting lightweight helpers only
 
 ### review_links
 
-1. `summary_service.py`: pending queue counters
-2. `candidates_query_service.py`: candidates/blocks read side
-3. `candidates_decision_service.py`: approve/reject and block deletion
-4. `links_service.py`: links list/delete/relink
-5. `alerts_service.py`: medium-risk alert list/decision/batch + auto-resolution helpers
-6. `common.py`: shared note normalization, id dedupe, entity/observation preview, batch result builders
+1. `router.py`: top-level router composition only
+2. `summary_router.py`: `/review/summary` endpoint
+3. `candidates_router.py`: `/review/link-candidates/*` endpoints
+4. `links_router.py`: `/review/links/*` endpoints
+5. `alerts_router.py`: `/review/link-alerts/*` endpoints
+6. `router_common.py`: shared query normalization and error mapping helpers
+7. `summary_service.py`: pending queue counters
+8. `candidates_query_service.py`: candidates/blocks read side
+9. `candidates_decision_service.py`: approve/reject and block deletion
+10. `links_service.py`: links list/delete/relink
+11. `alerts_upsert_service.py`: alert upsert and auto-resolution helpers
+12. `alerts_query_service.py`: alerts read model assembly
+13. `alerts_decision_service.py`: dismiss/mark-safe and batch decisions
+14. `alerts_errors.py`: alert domain exceptions
+15. `common.py`: shared note normalization, id dedupe, entity/observation preview, batch result builders
 
 ### llm_runtime
 
