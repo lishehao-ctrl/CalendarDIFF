@@ -39,13 +39,33 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 cp .env.example .env
+cd frontend && npm install && cd ..
 ```
 
-2. Start PostgreSQL and apply schema:
+2. Start the full local development stack:
 
 ```bash
-docker compose up -d postgres
-alembic upgrade head
+scripts/dev_stack.sh up
+```
+
+This local launcher will:
+
+1. start `postgres` and `redis` via `docker compose`
+2. apply schema with `python -m alembic upgrade head`
+3. start `frontend`, `input-service`, `ingest-service`, `llm-service`, `review-service`, and `notification-service`
+4. write pid/log files under `output/dev-stack/`
+5. keep PostgreSQL and Redis running unless you explicitly stop them with `scripts/dev_stack.sh down --infra`
+
+`down --infra` only stops the `postgres` and `redis` services defined in this repo's `docker compose` files. It does not stop unrelated local instances already bound to the same ports.
+
+Helpful follow-up commands:
+
+```bash
+scripts/dev_stack.sh status
+scripts/dev_stack.sh logs frontend
+scripts/dev_stack.sh logs all
+scripts/dev_stack.sh down
+scripts/dev_stack.sh down --infra
 ```
 
 ### Migration Revision Rename Note
@@ -55,17 +75,22 @@ Rebuild and re-init the database:
 
 ```bash
 scripts/reset_postgres_db.sh
-alembic upgrade head
+python -m alembic upgrade head
 ```
 
-Then run service APIs:
+### Manual Service Startup
+
+If you want to run services one by one instead of using the local launcher:
 
 ```bash
+docker compose up -d postgres redis
+python -m alembic upgrade head
 SERVICE_NAME=input RUN_MIGRATIONS=false PORT=8001 ./scripts/start_service.sh
 SERVICE_NAME=ingest RUN_MIGRATIONS=false PORT=8002 ./scripts/start_service.sh
 SERVICE_NAME=llm RUN_MIGRATIONS=false PORT=8005 ./scripts/start_service.sh
 SERVICE_NAME=review RUN_MIGRATIONS=false PORT=8000 ./scripts/start_service.sh
 SERVICE_NAME=notification RUN_MIGRATIONS=false PORT=8004 ./scripts/start_service.sh
+cd frontend && INPUT_BACKEND_BASE_URL=http://127.0.0.1:8001 REVIEW_BACKEND_BASE_URL=http://127.0.0.1:8000 BACKEND_API_KEY="$APP_API_KEY" npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
 ## Docker Compose

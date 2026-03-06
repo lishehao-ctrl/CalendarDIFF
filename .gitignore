@@ -25,3 +25,9 @@ tools/labeling/.env
 !/data/synthetic/v2_ddlchange_160/
 !/data/synthetic/v2_ddlchange_160/**
 !/data/synthetic/v2_ddlchange_160/ics/pairs/*.ics
+.playwright-cli/
+output/dev-stack/
+output/playwright/
+frontend/tsconfig.typecheck.tsbuildinfo
+output/.DS_Store
+output/frontend-logs/
