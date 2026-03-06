@@ -16,6 +16,7 @@ from app.modules.runtime_kernel.parse_task_queue import ParseTaskMessage
 @dataclass(frozen=True)
 class MessagePreflight:
     should_parse: bool
+    ack_on_skip: bool
     parse_payload: dict
     cursor_patch: dict
     provider_hint: str
@@ -29,11 +30,12 @@ def prepare_message_for_processing(
 ) -> MessagePreflight:
     now = utcnow()
     job = db.scalar(
-        select(IngestJob).where(IngestJob.request_id == message.request_id).with_for_update(skip_locked=True)
+        select(IngestJob).where(IngestJob.request_id == message.request_id).with_for_update()
     )
     if job is None:
         return MessagePreflight(
             should_parse=False,
+            ack_on_skip=False,
             parse_payload={},
             cursor_patch={},
             provider_hint="",
@@ -55,6 +57,7 @@ def prepare_message_for_processing(
         db.commit()
         return MessagePreflight(
             should_parse=False,
+            ack_on_skip=False,
             parse_payload={},
             cursor_patch={},
             provider_hint="",
@@ -63,6 +66,7 @@ def prepare_message_for_processing(
     if job.status == IngestJobStatus.SUCCEEDED:
         return MessagePreflight(
             should_parse=False,
+            ack_on_skip=False,
             parse_payload={},
             cursor_patch={},
             provider_hint="",
@@ -70,6 +74,7 @@ def prepare_message_for_processing(
     if job.status in {IngestJobStatus.FAILED, IngestJobStatus.DEAD_LETTER}:
         return MessagePreflight(
             should_parse=False,
+            ack_on_skip=False,
             parse_payload={},
             cursor_patch={},
             provider_hint="",
@@ -77,6 +82,7 @@ def prepare_message_for_processing(
     if job.status != IngestJobStatus.CLAIMED:
         return MessagePreflight(
             should_parse=False,
+            ack_on_skip=False,
             parse_payload={},
             cursor_patch={},
             provider_hint="",
@@ -99,6 +105,7 @@ def prepare_message_for_processing(
         db.commit()
         return MessagePreflight(
             should_parse=False,
+            ack_on_skip=False,
             parse_payload={},
             cursor_patch={},
             provider_hint="",
@@ -118,6 +125,7 @@ def prepare_message_for_processing(
 
     return MessagePreflight(
         should_parse=True,
+        ack_on_skip=True,
         parse_payload=parse_payload,
         cursor_patch=cursor_patch,
         provider_hint=str(payload.get("provider") or ""),

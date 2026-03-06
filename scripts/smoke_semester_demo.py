@@ -676,8 +676,11 @@ def _apply_mixed_review_policy(
             f"/review/changes/{change_id}/decisions",
             json_payload={"decision": decision, "note": f"semester demo mixed policy run={run_id}"},
         )
-        if str(payload.get("review_status") or "") != decision:
-            raise DemoFailure(f"review decision mismatch change_id={change_id} decision={decision}")
+        expected_status = "approved" if decision == "approve" else "rejected"
+        if str(payload.get("review_status") or "") != expected_status:
+            raise DemoFailure(
+                f"review decision mismatch change_id={change_id} decision={decision} expected_status={expected_status}"
+            )
         if decision == "approve":
             approved_ids.add(change_id)
         else:

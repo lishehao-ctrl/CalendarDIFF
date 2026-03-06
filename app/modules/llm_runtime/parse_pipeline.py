@@ -247,7 +247,6 @@ def parse_calendar_delta_with_llm(
                 payload = record.get("payload")
                 if not isinstance(payload, dict):
                     continue
-                payload["uid"] = external_event_id
                 source_canonical_raw = payload.get("source_canonical")
                 source_canonical = source_canonical_raw if isinstance(source_canonical_raw, dict) else {}
                 source_canonical["external_event_id"] = external_event_id

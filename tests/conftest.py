@@ -23,6 +23,10 @@ from datetime import datetime, timezone
 DEFAULT_TEST_DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/deadline_diff_test"
 
 
+def _live_smoke_mode() -> bool:
+    return (os.getenv("RUN_SEMESTER_DEMO_SMOKE", "").strip().lower() in {"1", "true", "yes"} or os.getenv("RUN_REAL_SOURCE_SMOKE", "").strip().lower() in {"1", "true", "yes"})
+
+
 def _recreate_postgres_database(database_url: str) -> None:
     parsed = make_url(database_url)
     if not parsed.drivername.startswith("postgresql"):
@@ -66,6 +70,14 @@ def test_database_url() -> str:
 
 @pytest.fixture(scope="session", autouse=True)
 def configure_test_environment(test_database_url: str) -> Generator[None, None, None]:
+    if _live_smoke_mode():
+        get_settings.cache_clear()
+        reset_engine()
+        yield
+        get_settings.cache_clear()
+        reset_engine()
+        return
+
     os.environ["APP_API_KEY"] = "test-api-key"
     os.environ["APP_SECRET_KEY"] = "7J2Btjj4GW8jIP5MErM81QOZeK4c7xYknVxKsgKMnmk="
     os.environ["INTERNAL_SERVICE_TOKEN_INPUT"] = "test-internal-token-input"
@@ -102,7 +114,11 @@ def db_engine(configure_test_environment: None, test_database_url: str) -> Gener
 
 
 @pytest.fixture(autouse=True)
-def clean_database(db_engine: Engine) -> Generator[None, None, None]:
+def clean_database(request) -> Generator[None, None, None]:
+    if _live_smoke_mode():
+        yield
+        return
+    db_engine = request.getfixturevalue("db_engine")
     _truncate_all_tables(db_engine)
     yield
 

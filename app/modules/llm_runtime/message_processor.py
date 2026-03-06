@@ -25,7 +25,7 @@ def process_parse_task_message(
             worker_id=worker_id,
         )
     if not preflight.should_parse:
-        return True
+        return bool(preflight.ack_on_skip)
 
     try:
         records, final_status = parse_with_llm(

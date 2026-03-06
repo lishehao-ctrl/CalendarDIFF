@@ -53,7 +53,7 @@ class CourseParseResponse(BaseModel):
 
 
 class LinkSignals(BaseModel):
-    keywords: list[Literal["exam", "midterm", "final"]] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
     exam_sequence: int | None = Field(default=None, ge=1, le=20)
     location_text: str | None = Field(default=None, max_length=256)
     instructor_hint: str | None = Field(default=None, max_length=255)

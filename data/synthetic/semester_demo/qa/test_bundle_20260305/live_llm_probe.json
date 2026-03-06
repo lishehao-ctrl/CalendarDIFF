@@ -1,0 +1,8 @@
+{
+  "status_code": 200,
+  "ok": true,
+  "endpoint": "https://dashscope-us.aliyuncs.com/compatible-mode/v1/chat/completions",
+  "model": "qwen-flash-us",
+  "has_choices": true,
+  "content_preview": "{\"ok\":true,\"source\":\"live\"}"
+}

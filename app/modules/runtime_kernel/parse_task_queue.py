@@ -80,7 +80,7 @@ def consume_parse_tasks(
         stream_key=stream_key,
         group_name=group_name,
         consumer_name=worker_id,
-        min_idle_ms=max(int(poll_ms) * 3, 10_000),
+        min_idle_ms=max(int(poll_ms) * 3, 1_000),
         count=batch_size,
     )
     remaining = max(1, batch_size - len(reclaimed))

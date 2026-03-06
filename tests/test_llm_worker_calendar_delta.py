@@ -64,7 +64,6 @@ def test_calendar_delta_changed_component_overrides_uid(monkeypatch, db_session_
                 {
                     "record_type": "calendar.event.extracted",
                     "payload": {
-                        "uid": "placeholder-uid",
                         "title": "Quiz",
                         "start_at": "2026-03-01T10:00:00+00:00",
                         "end_at": "2026-03-01T11:00:00+00:00",
@@ -103,5 +102,5 @@ def test_calendar_delta_changed_component_overrides_uid(monkeypatch, db_session_
     assert status == ConnectorResultStatus.CHANGED
     assert len(records) == 1
     payload = records[0]["payload"]
-    assert payload["uid"] == expected_external_event_id
+    assert payload["source_canonical"]["external_event_id"] == expected_external_event_id
     assert payload["component_key"] == "evt-rid#20260301T100000Z"
