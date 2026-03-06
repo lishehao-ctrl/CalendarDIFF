@@ -72,6 +72,8 @@ class Settings(BaseSettings):
     smtp_from_email: str = Field(
         default="no-reply@example.com", validation_alias=AliasChoices("SMTP_FROM_EMAIL", "SMTP_FROM")
     )
+    notify_sink_mode: str = "smtp"
+    notify_jsonl_path: str = "data/smoke/notify_sink.jsonl"
 
     default_notify_email: str | None = Field(
         default=None, validation_alias=AliasChoices("DEFAULT_NOTIFY_EMAIL", "SMTP_TO")

@@ -12,7 +12,7 @@ from app.core.logging import sanitize_log_message
 from app.db.models.notify import DigestSendLog, Notification, NotificationChannel, NotificationStatus
 from app.db.models.review import Change, Input
 from app.db.models.shared import User
-from app.modules.notify.email import SMTPEmailNotifier
+from app.modules.notify.notifier_factory import build_notifier
 from app.modules.notify.service import _to_digest_item
 
 
@@ -142,7 +142,7 @@ def send_digest_for_slot(
     changes = [row[1] for row in rows]
     digest_items = [_to_digest_item(change) for change in changes]
 
-    send_result = SMTPEmailNotifier().send_changes_digest(
+    send_result = build_notifier().send_changes_digest(
         to_email,
         f"User {user.id} Digest",
         user.id,

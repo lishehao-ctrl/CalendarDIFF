@@ -161,6 +161,14 @@ REVIEW_APPLY_TICK_SECONDS=2
 NOTIFICATION_TICK_SECONDS=30
 ```
 
+Notification sink mode:
+
+```env
+# smtp (default) or jsonl (for local demo without real email side effects)
+NOTIFY_SINK_MODE=smtp
+NOTIFY_JSONL_PATH=data/smoke/notify_sink.jsonl
+```
+
 Optional per-service base URLs (useful when services run on different ports):
 
 ```env
@@ -207,6 +215,23 @@ python scripts/smoke_real_sources_three_rounds.py \
   --input-api-base http://127.0.0.1:8001 \
   --review-api-base http://127.0.0.1:8000 \
   --report data/synthetic/ddlchange_160/qa/real_source_smoke_report.json
+```
+
+## Semester Demo Smoke (3 Semesters × 10 Batches × 10 Items/Source)
+
+Use online LLM + local JSONL notification sink:
+
+```bash
+NOTIFY_SINK_MODE=jsonl \
+NOTIFY_JSONL_PATH=data/smoke/notify_sink.jsonl \
+python scripts/smoke_semester_demo.py \
+  --input-api-base http://127.0.0.1:8001 \
+  --review-api-base http://127.0.0.1:8000 \
+  --ingest-api-base http://127.0.0.1:8002 \
+  --notify-api-base http://127.0.0.1:8004 \
+  --llm-api-base http://127.0.0.1:8005 \
+  --notification-jsonl data/smoke/notify_sink.jsonl \
+  --report data/synthetic/semester_demo/qa/semester_demo_report.json
 ```
 
 Full closure check:
