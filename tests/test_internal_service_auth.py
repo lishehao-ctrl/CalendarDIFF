@@ -70,3 +70,34 @@ def test_internal_llm_metrics_requires_service_token(db_engine, monkeypatch) -> 
             headers={"X-Service-Name": "llm", "X-Service-Token": "test-internal-token-llm"},
         )
         assert accepted_llm.status_code == 200
+
+
+def test_internal_notification_flush_requires_service_token(db_engine) -> None:
+    del db_engine
+    from services.notification_api.main import app as notification_app
+
+    endpoint = "/internal/notifications/flush"
+    with TestClient(notification_app) as client:
+        unauthorized = client.post(endpoint, json={})
+        assert unauthorized.status_code == 401
+
+        wrong_token = client.post(
+            endpoint,
+            headers={"X-Service-Name": "ops", "X-Service-Token": "wrong"},
+            json={},
+        )
+        assert wrong_token.status_code == 401
+
+        wrong_caller = client.post(
+            endpoint,
+            headers={"X-Service-Name": "review", "X-Service-Token": "test-internal-token-review"},
+            json={},
+        )
+        assert wrong_caller.status_code == 403
+
+        accepted = client.post(
+            endpoint,
+            headers={"X-Service-Name": "ops", "X-Service-Token": "test-internal-token-ops"},
+            json={},
+        )
+        assert accepted.status_code == 200

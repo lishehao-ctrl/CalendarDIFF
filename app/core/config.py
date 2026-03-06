@@ -46,9 +46,10 @@ class Settings(BaseSettings):
     gmail_api_base_url: str = "https://gmail.googleapis.com/gmail/v1/users/me"
     gmail_oauth_token_url: str = "https://oauth2.googleapis.com/token"
     gmail_oauth_authorize_url: str = "https://accounts.google.com/o/oauth2/v2/auth"
+    app_llm_openai_model: str | None = None
     ingestion_llm_base_url: str | None = None
     ingestion_llm_api_key: str | None = None
-    ingestion_llm_model: str = "gpt-5.3-codex"
+    ingestion_llm_model: str = ""
 
     redis_url: str | None = None
     llm_queue_stream_key: str = "llm:parse:stream:v1"

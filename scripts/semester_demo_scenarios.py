@@ -40,11 +40,17 @@ class IcsEventPlan:
 @dataclass(frozen=True)
 class GmailMessagePlan:
     message_id: str
+    thread_id: str
     subject: str
     body_text: str
+    from_header: str
+    label_ids: list[str]
+    internal_date: str
     due_iso: str
     event_type: EventType
     event_index: int
+    history_batch: int
+    history_global_batch: int
     course: CourseAnchor
     expected_link_outcome: ExpectedLinkOutcome = "none"
 
@@ -126,7 +132,7 @@ def build_scenario_manifest(
         plans.append(SemesterPlan(semester=semester_idx, courses=courses, batches=batches))
 
     return ScenarioManifest(
-        version="semester-demo-v1",
+        version="semester-demo-v2",
         seed=seed,
         semesters=semesters,
         batches_per_semester=batches_per_semester,
@@ -183,6 +189,7 @@ def _build_batch_rows(
                 _build_gmail_message(
                     semester=semester,
                     batch=batch,
+                    global_batch=global_batch,
                     item_index=0,
                     due_at=batch_start + timedelta(hours=3, minutes=10),
                     course=CourseAnchor(label="CSE151", dept="CSE", number=151, suffix=None),
@@ -193,6 +200,7 @@ def _build_batch_rows(
                 _build_gmail_message(
                     semester=semester,
                     batch=batch,
+                    global_batch=global_batch,
                     item_index=1,
                     due_at=batch_start + timedelta(hours=3, minutes=20),
                     course=CourseAnchor(label="CSE151C", dept="CSE", number=151, suffix="C"),
@@ -203,6 +211,7 @@ def _build_batch_rows(
                 _build_gmail_message(
                     semester=semester,
                     batch=batch,
+                    global_batch=global_batch,
                     item_index=2,
                     due_at=batch_start + timedelta(hours=3, minutes=30),
                     course=_parse_course_label("CSE151B"),
@@ -237,6 +246,7 @@ def _build_batch_rows(
                 _build_gmail_message(
                     semester=semester,
                     batch=batch,
+                    global_batch=global_batch,
                     item_index=item_index,
                     due_at=due_at + timedelta(minutes=rng.randint(0, 20)),
                     course=course,
@@ -276,6 +286,7 @@ def _build_gmail_message(
     *,
     semester: int,
     batch: int,
+    global_batch: int,
     item_index: int,
     due_at: datetime,
     course: CourseAnchor,
@@ -284,6 +295,7 @@ def _build_gmail_message(
     expected_link_outcome: ExpectedLinkOutcome,
 ) -> GmailMessagePlan:
     message_id = f"s{semester:02d}-b{batch:02d}-gmail-{item_index:03d}"
+    thread_id = f"thread-s{semester:02d}-b{batch:02d}-{course.label.lower()}-{event_type}-{event_index}"
     subject = f"[{course.label}] {event_type.title()} {event_index} deadline update"
     body_text = (
         f"Course: {course.label}\n"
@@ -294,11 +306,17 @@ def _build_gmail_message(
     )
     return GmailMessagePlan(
         message_id=message_id,
+        thread_id=thread_id,
         subject=subject,
         body_text=body_text,
+        from_header=f"{course.label} Staff <staff+{course.dept.lower()}{course.number}@example.edu>",
+        label_ids=["INBOX", "CATEGORY_PERSONAL"],
+        internal_date=due_at.isoformat(),
         due_iso=due_at.isoformat(),
         event_type=event_type,
         event_index=event_index,
+        history_batch=batch,
+        history_global_batch=global_batch,
         course=course,
         expected_link_outcome=expected_link_outcome,
     )
@@ -336,4 +354,3 @@ __all__ = [
     "build_scenario_manifest",
     "write_scenario_manifest",
 ]
-

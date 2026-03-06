@@ -1,0 +1,142 @@
+{
+  "run_id": "semester-demo-140ebd71477fa80c",
+  "started_at": "2026-03-06T02:54:20Z",
+  "finished_at": "2026-03-06T02:57:25Z",
+  "passed": false,
+  "fatal_errors": [
+    "sync request timed out request_id=3ec2b84f22804036b519e57a5f01c3aa"
+  ],
+  "assertions": [],
+  "failed_assertions": [],
+  "llm_mode": "online",
+  "llm_model": "qwen-flash-us",
+  "llm_base_url_hash": "e8364293a810a18f",
+  "input_api_base": "http://127.0.0.1:8001",
+  "review_api_base": "http://127.0.0.1:8000",
+  "notify_api_base": "http://127.0.0.1:8004",
+  "ingest_api_base": "http://127.0.0.1:8002",
+  "seed": 20260305,
+  "review_policy": "mixed",
+  "scenario_manifest_path": "data/synthetic/semester_demo/qa/semester-demo-140ebd71477fa80c_scenario_manifest.json",
+  "source": {
+    "calendar_source_id": 5,
+    "gmail_source_id": 6,
+    "gmail_baseline_request_id": "8b1208098dcb4f9bb7b76f4693b860a5"
+  },
+  "semesters": [
+    {
+      "semester": 1,
+      "courses": [
+        "CSE151A",
+        "CSE151B",
+        "CSE120"
+      ],
+      "ics_target_count": 100,
+      "gmail_target_count": 100,
+      "batches": [
+        {
+          "semester": 1,
+          "batch": 1,
+          "global_batch": 1,
+          "ics_request_id": "3ec2b84f22804036b519e57a5f01c3aa",
+          "gmail_request_id": null,
+          "ics_status": null,
+          "gmail_status": null,
+          "new_pending_count": 0,
+          "approved_count": 0,
+          "rejected_count": 0,
+          "kept_pending_count": 0,
+          "notification_flush": null,
+          "errors": []
+        }
+      ],
+      "review_totals": {
+        "approved": 0,
+        "rejected": 0,
+        "pending": 0
+      },
+      "notification_flush": {
+        "batches_flushed": 0,
+        "enqueued_notifications": 0,
+        "processed_slots": 0,
+        "sent_count": 0,
+        "failed_count": 0
+      }
+    },
+    {
+      "semester": 2,
+      "courses": [
+        "CSE120",
+        "MATH18"
+      ],
+      "ics_target_count": 100,
+      "gmail_target_count": 100,
+      "batches": [],
+      "review_totals": {
+        "approved": 0,
+        "rejected": 0,
+        "pending": 0
+      },
+      "notification_flush": {
+        "batches_flushed": 0,
+        "enqueued_notifications": 0,
+        "processed_slots": 0,
+        "sent_count": 0,
+        "failed_count": 0
+      }
+    },
+    {
+      "semester": 3,
+      "courses": [
+        "CSE151A",
+        "CSE120"
+      ],
+      "ics_target_count": 100,
+      "gmail_target_count": 100,
+      "batches": [],
+      "review_totals": {
+        "approved": 0,
+        "rejected": 0,
+        "pending": 0
+      },
+      "notification_flush": {
+        "batches_flushed": 0,
+        "enqueued_notifications": 0,
+        "processed_slots": 0,
+        "sent_count": 0,
+        "failed_count": 0
+      }
+    }
+  ],
+  "suffix_assertions": {
+    "s01-b01-gmail-000": {
+      "expected": "suffix_required_missing",
+      "passed": false,
+      "detail": "not evaluated"
+    },
+    "s01-b01-gmail-001": {
+      "expected": "suffix_mismatch",
+      "passed": false,
+      "detail": "not evaluated"
+    },
+    "s01-b01-gmail-002": {
+      "expected": "auto_link",
+      "passed": false,
+      "detail": "not evaluated"
+    }
+  },
+  "provider_state": {},
+  "notification_sink": {
+    "path": "data/smoke/notify_sink.jsonl",
+    "rows_before": 0,
+    "rows_after": 0,
+    "rows_delta": 0
+  },
+  "notification_flush": {
+    "batches_flushed": 0,
+    "enqueued_notifications": 0,
+    "processed_slots": 0,
+    "sent_count": 0,
+    "failed_count": 0
+  }
+}

@@ -108,27 +108,27 @@ def parse_with_llm(
             parser_version="mainline",
         )
 
-        with session_factory() as db:
-            context = ParserContext(
-                source_id=source_id,
-                provider=provider,
-                source_kind="email",
-                request_id=request_id,
+    with session_factory() as db:
+        context = ParserContext(
+            source_id=source_id,
+            provider=provider,
+            source_kind="email",
+            request_id=request_id,
+        )
+        for item in messages:
+            if not isinstance(item, dict):
+                continue
+            payload_item = item
+
+            def _parse_gmail_item() -> object:
+                return parse_gmail_payload(db=db, payload=payload_item, context=context)
+
+            parser_output = invoke_parser_with_limit(
+                redis_client=redis_client,
+                stream_key=stream_key,
+                parse_call=_parse_gmail_item,
             )
-            for item in messages:
-                if not isinstance(item, dict):
-                    continue
-                payload_item = item
-
-                def _parse_gmail_item() -> object:
-                    return parse_gmail_payload(db=db, payload=payload_item, context=context)
-
-                parser_output = invoke_parser_with_limit(
-                    redis_client=redis_client,
-                    stream_key=stream_key,
-                    parse_call=_parse_gmail_item,
-                )
-                records.extend(attach_parser_metadata(records=parser_output.records, parser_output=parser_output))
+            records.extend(attach_parser_metadata(records=parser_output.records, parser_output=parser_output))
     status = ConnectorResultStatus.CHANGED if records else ConnectorResultStatus.NO_CHANGE
     return records, status
 

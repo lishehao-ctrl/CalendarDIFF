@@ -8,6 +8,7 @@ from pathlib import Path
 from app.core.config import get_settings
 from app.modules.notify.interface import ChangeDigestItem
 from app.modules.notify.notifier_factory import build_notifier
+from app.modules.notify.runtime_context import notification_runtime_context
 
 
 def _sample_item(event_uid: str) -> ChangeDigestItem:
@@ -51,6 +52,29 @@ def test_jsonl_notifier_writes_expected_fields(monkeypatch, tmp_path: Path) -> N
     assert payload["run_id"] is None
     assert payload["semester"] is None
     assert payload["batch"] is None
+    get_settings.cache_clear()
+
+
+def test_jsonl_notifier_includes_runtime_context(monkeypatch, tmp_path: Path) -> None:
+    sink_path = tmp_path / "notify_sink_context.jsonl"
+    monkeypatch.setenv("NOTIFY_SINK_MODE", "jsonl")
+    monkeypatch.setenv("NOTIFY_JSONL_PATH", str(sink_path))
+    get_settings.cache_clear()
+
+    notifier = build_notifier()
+    with notification_runtime_context(run_id="semester-demo-run", semester=2, batch=7):
+        result = notifier.send_changes_digest(
+            to_email="student@example.edu",
+            input_label="Input 2",
+            input_id=2,
+            items=[_sample_item("uid-ctx")],
+        )
+
+    assert result.success is True
+    payload = json.loads(sink_path.read_text(encoding="utf-8").splitlines()[0])
+    assert payload["run_id"] == "semester-demo-run"
+    assert payload["semester"] == 2
+    assert payload["batch"] == 7
     get_settings.cache_clear()
 
 

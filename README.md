@@ -114,7 +114,8 @@ PUBLIC_WEB_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
 Ingestion LLM (chat/completions only):
 
 ```env
-INGESTION_LLM_MODEL=gpt-5.3-codex
+APP_LLM_OPENAI_MODEL=
+INGESTION_LLM_MODEL=
 INGESTION_LLM_BASE_URL=
 INGESTION_LLM_API_KEY=
 ```
@@ -219,7 +220,7 @@ python scripts/smoke_real_sources_three_rounds.py \
 
 ## Semester Demo Smoke (3 Semesters × 10 Batches × 10 Items/Source)
 
-Use online LLM + local JSONL notification sink:
+Use online LLM + local JSONL notification sink. This flow does not require Gmail OAuth; `provider=gmail` is backed by the semester fake inbox provider.
 
 ```bash
 NOTIFY_SINK_MODE=jsonl \
@@ -230,8 +231,25 @@ python scripts/smoke_semester_demo.py \
   --ingest-api-base http://127.0.0.1:8002 \
   --notify-api-base http://127.0.0.1:8004 \
   --llm-api-base http://127.0.0.1:8005 \
+  --ops-token "${INTERNAL_SERVICE_TOKEN_OPS}" \
   --notification-jsonl data/smoke/notify_sink.jsonl \
   --report data/synthetic/semester_demo/qa/semester_demo_report.json
+```
+
+Notification-service exposes a test-only internal flush used by the runner:
+
+```http
+POST /internal/notifications/flush
+X-Service-Name: ops
+X-Service-Token: <INTERNAL_SERVICE_TOKEN_OPS>
+```
+
+Online pytest wrapper:
+
+```bash
+RUN_SEMESTER_DEMO_SMOKE=true \
+SEMESTER_DEMO_NOTIFICATION_JSONL=data/smoke/notify_sink.jsonl \
+pytest -q tests/test_semester_demo_online.py
 ```
 
 Full closure check:

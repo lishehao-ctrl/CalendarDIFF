@@ -22,6 +22,10 @@ def test_semester_demo_report_schema(tmp_path: Path) -> None:
             "http://127.0.0.1:1",
             "--review-api-base",
             "http://127.0.0.1:1",
+            "--notify-api-base",
+            "http://127.0.0.1:1",
+            "--ops-token",
+            "test-internal-token-ops",
             "--api-key",
             "test-api-key",
             "--report",
@@ -52,6 +56,7 @@ def test_semester_demo_report_schema(tmp_path: Path) -> None:
         "suffix_assertions",
         "provider_state",
         "notification_sink",
+        "notification_flush",
     ):
         assert key in payload
 
@@ -60,3 +65,4 @@ def test_semester_demo_report_schema(tmp_path: Path) -> None:
     assert isinstance(payload["assertions"], list)
     assert isinstance(payload["semesters"], list)
     assert isinstance(payload["notification_sink"], dict)
+    assert isinstance(payload["notification_flush"], dict)

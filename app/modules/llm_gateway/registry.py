@@ -80,6 +80,8 @@ def resolve_llm_profile(
     base_url = (settings.ingestion_llm_base_url or "").strip()
     api_key = (settings.ingestion_llm_api_key or "").strip()
     model = (settings.ingestion_llm_model or "").strip()
+    if not model:
+        model = (settings.app_llm_openai_model or "").strip()
 
     if not base_url:
         raise LlmGatewayError(

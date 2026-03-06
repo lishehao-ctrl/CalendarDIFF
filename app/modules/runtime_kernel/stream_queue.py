@@ -238,22 +238,34 @@ def claim_idle_stream_tasks(
     count: int,
 ) -> list[StreamQueueMessage]:
     try:
-        next_id, rows = cast(
-            tuple[object, list[tuple[object, object]]],
-            client.xautoclaim(
-                stream_key,
-                group_name,
-                consumer_name,
-                min_idle_time=max(1000, int(min_idle_ms)),
-                start_id="0-0",
-                count=max(1, int(count)),
-            ),
+        raw_result = client.xautoclaim(
+            stream_key,
+            group_name,
+            consumer_name,
+            min_idle_time=max(1000, int(min_idle_ms)),
+            start_id="0-0",
+            count=max(1, int(count)),
         )
     except ResponseError as exc:
         message = str(exc).lower()
         if "unknown key" in message or "nogroup" in message:
             return []
         raise
+
+    if not isinstance(raw_result, tuple):
+        return []
+    if len(raw_result) == 3:
+        next_id, rows, _deleted_ids = cast(
+            tuple[object, list[tuple[object, object]], list[object]],
+            raw_result,
+        )
+    elif len(raw_result) == 2:
+        next_id, rows = cast(
+            tuple[object, list[tuple[object, object]]],
+            raw_result,
+        )
+    else:
+        return []
 
     del next_id
     messages: list[StreamQueueMessage] = []

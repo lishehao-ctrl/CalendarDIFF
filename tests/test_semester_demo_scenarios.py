@@ -10,7 +10,7 @@ def test_semester_demo_manifest_shape_and_volume() -> None:
         batch_size=10,
         seed=20260305,
     )
-    assert manifest.version == "semester-demo-v1"
+    assert manifest.version == "semester-demo-v2"
     assert manifest.semesters == 3
     assert manifest.batches_per_semester == 10
     assert manifest.batch_size == 10
@@ -40,3 +40,14 @@ def test_semester_demo_manifest_contains_suffix_assertion_cases() -> None:
     }
     observed = {row.expected_link_outcome for row in semester1_batch1.gmail_messages}
     assert expected.issubset(observed)
+
+
+def test_semester_demo_manifest_models_gmail_inbox_fields() -> None:
+    manifest = build_scenario_manifest(seed=20260305)
+    message = manifest.plans[0].batches[0].gmail_messages[0]
+    assert message.thread_id.startswith("thread-")
+    assert message.from_header.endswith("@example.edu>")
+    assert "INBOX" in message.label_ids
+    assert isinstance(message.history_batch, int)
+    assert isinstance(message.history_global_batch, int)
+    assert message.internal_date == message.due_iso

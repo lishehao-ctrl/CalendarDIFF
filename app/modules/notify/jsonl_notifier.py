@@ -7,6 +7,7 @@ from pathlib import Path
 
 from app.core.config import get_settings
 from app.modules.notify.interface import ChangeDigestItem, Notifier, SendResult
+from app.modules.notify.runtime_context import get_notification_runtime_context
 
 _WRITE_LOCK = threading.Lock()
 
@@ -21,6 +22,7 @@ class JsonlFileNotifier(Notifier):
     ) -> SendResult:
         settings = get_settings()
         output_path = Path(settings.notify_jsonl_path).expanduser()
+        context = get_notification_runtime_context()
         payload = {
             "sent_at": datetime.now(UTC).isoformat(),
             "to_email": to_email,
@@ -28,9 +30,9 @@ class JsonlFileNotifier(Notifier):
             "input_label": input_label,
             "item_count": len(items),
             "item_event_uids": [item.event_uid for item in items],
-            "run_id": None,
-            "semester": None,
-            "batch": None,
+            "run_id": context.get("run_id"),
+            "semester": context.get("semester"),
+            "batch": context.get("batch"),
         }
         try:
             output_path.parent.mkdir(parents=True, exist_ok=True)

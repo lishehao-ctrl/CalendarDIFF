@@ -118,3 +118,29 @@ def test_dispatch_pending_enqueue_failure_reaches_threshold_and_retries_connecto
     assert job.status == IngestJobStatus.PENDING
     assert sync_request.status == SyncRequestStatus.QUEUED
     assert sync_request.error_code == "llm_queue_unavailable"
+
+
+def test_dispatch_pending_enqueue_ignores_future_next_retry_for_llm_pending(db_session: Session, monkeypatch) -> None:
+    job, sync_request = _seed_pending_enqueue_job(db_session, request_id="dispatch-future-next-retry")
+    job.next_retry_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+    db_session.commit()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr("app.modules.ingestion.connector_dispatch.get_parse_queue_redis_client", lambda: object())
+    monkeypatch.setattr("app.modules.ingestion.connector_dispatch.ensure_parse_queue_group", lambda *_args, **_kwargs: None)
+
+    def _enqueue(**kwargs):  # noqa: ANN003
+        captured.update(kwargs)
+        return "msg-id-future"
+
+    monkeypatch.setattr("app.modules.ingestion.connector_dispatch.enqueue_parse_task", _enqueue)
+    dispatched = dispatch_pending_llm_enqueues(db_session)
+    assert dispatched == 1
+
+    db_session.refresh(job)
+    db_session.refresh(sync_request)
+    payload = job.payload_json if isinstance(job.payload_json, dict) else {}
+    assert payload.get("workflow_stage") == "LLM_QUEUED"
+    assert payload.get("llm_enqueued_at")
+    assert sync_request.status == SyncRequestStatus.RUNNING
+    assert captured["request_id"] == "dispatch-future-next-retry"

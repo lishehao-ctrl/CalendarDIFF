@@ -89,7 +89,7 @@ def _hash_base_url(base_url: str) -> str:
 
 
 def _require_llm_env() -> tuple[str, str]:
-    model = (os.getenv("INGESTION_LLM_MODEL") or "").strip()
+    model = (os.getenv("INGESTION_LLM_MODEL") or os.getenv("APP_LLM_OPENAI_MODEL") or "").strip()
     base_url = (os.getenv("INGESTION_LLM_BASE_URL") or "").strip()
     api_key = (os.getenv("INGESTION_LLM_API_KEY") or "").strip()
 

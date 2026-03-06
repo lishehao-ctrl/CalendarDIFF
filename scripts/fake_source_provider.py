@@ -452,10 +452,27 @@ class FakeSourceState:
             grouped.setdefault(global_batch, []).append(message_id)
         rows: list[dict[str, Any]] = []
         for global_batch in sorted(grouped):
+            batch_messages: list[dict[str, Any]] = []
+            for message_id in grouped[global_batch]:
+                _scenario, message = self.scenario_for_message_id(message_id)
+                if message is None:
+                    batch_messages.append({"message": {"id": message_id}})
+                    continue
+                label_ids = message.get("label_ids")
+                normalized_label_ids = [value for value in label_ids if isinstance(value, str)] if isinstance(label_ids, list) else []
+                batch_messages.append(
+                    {
+                        "message": {
+                            "id": message_id,
+                            "threadId": str(message.get("thread_id") or f"thread-{message_id}"),
+                            "labelIds": normalized_label_ids,
+                        }
+                    }
+                )
             rows.append(
                 {
                     "id": _history_id_for_global_batch(global_batch),
-                    "messagesAdded": [{"message": {"id": message_id}} for message_id in grouped[global_batch]],
+                    "messagesAdded": batch_messages,
                 }
             )
         return rows
@@ -595,6 +612,11 @@ def create_handler(state: FakeSourceState):
                     subject = _with_run_tag(str(message.get("subject") or "Untitled"), run_tag)
                     body_text = _with_run_tag(str(message.get("body_text") or ""), run_tag)
                     due_iso = str(message.get("due_iso") or datetime.now(UTC).isoformat())
+                    thread_id = str(message.get("thread_id") or f"thread-{message_id}")
+                    from_header = str(message.get("from_header") or "Course Staff <staff@example.edu>")
+                    label_ids = message.get("label_ids")
+                    normalized_label_ids = [value for value in label_ids if isinstance(value, str)] if isinstance(label_ids, list) else ["INBOX", "CATEGORY_PERSONAL"]
+                    internal_date = str(message.get("internal_date") or due_iso)
                 else:
                     round_scenario = _scenario_for_message_id(message_id)
                     if round_scenario is None:
@@ -603,20 +625,24 @@ def create_handler(state: FakeSourceState):
                     subject = _with_run_tag(round_scenario.subject, run_tag)
                     body_text = _with_run_tag(round_scenario.body_text, run_tag)
                     due_iso = round_scenario.due_iso
+                    thread_id = f"thread-{message_id}"
+                    from_header = "Course Staff <staff@example.edu>"
+                    normalized_label_ids = ["INBOX", "CATEGORY_PERSONAL"]
+                    internal_date = due_iso
 
                 body_data = _to_base64url(body_text)
                 message_payload: dict[str, Any] = {
                     "id": message_id,
-                    "threadId": f"thread-{message_id}",
-                    "labelIds": ["INBOX", "CATEGORY_PERSONAL"],
+                    "threadId": thread_id,
+                    "labelIds": normalized_label_ids,
                     "snippet": subject,
                     "historyId": state.history_id_for_current(),
-                    "internalDate": _to_epoch_ms(due_iso),
+                    "internalDate": _to_epoch_ms(internal_date),
                     "payload": {
                         "mimeType": "text/plain",
                         "headers": [
                             {"name": "Subject", "value": subject},
-                            {"name": "From", "value": "Course Staff <staff@example.edu>"},
+                            {"name": "From", "value": from_header},
                         ],
                         "body": {
                             "size": len(body_text),

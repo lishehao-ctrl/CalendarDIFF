@@ -9,7 +9,6 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,11 +17,7 @@ import httpx
 if __package__ in {None, ""}:
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from scripts.semester_demo_scenarios import (
-    ScenarioManifest,
-    build_scenario_manifest,
-    write_scenario_manifest,
-)
+from scripts.semester_demo_scenarios import ScenarioManifest, build_scenario_manifest, write_scenario_manifest
 
 
 @dataclass(frozen=True)
@@ -43,7 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input-api-base", required=True, help="Input-service API base URL.")
     parser.add_argument("--review-api-base", required=True, help="Review-service API base URL.")
     parser.add_argument("--ingest-api-base", default=None, help="Optional ingest-service API base URL.")
-    parser.add_argument("--notify-api-base", default=None, help="Optional notification-service API base URL.")
+    parser.add_argument("--notify-api-base", default=None, help="Notification-service API base URL.")
     parser.add_argument("--llm-api-base", default=None, help="Optional llm-service API base URL.")
     parser.add_argument("--api-key", default=os.getenv("APP_API_KEY", ""), help="Public API key.")
     parser.add_argument(
@@ -85,7 +80,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(UTC).isoformat()
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 def _hash_text(value: str) -> str:
@@ -93,7 +88,7 @@ def _hash_text(value: str) -> str:
 
 
 def _require_online_llm_env() -> tuple[str, str]:
-    model = (os.getenv("INGESTION_LLM_MODEL") or "").strip()
+    model = (os.getenv("INGESTION_LLM_MODEL") or os.getenv("APP_LLM_OPENAI_MODEL") or "").strip()
     base_url = (os.getenv("INGESTION_LLM_BASE_URL") or "").strip()
     api_key = (os.getenv("INGESTION_LLM_API_KEY") or "").strip()
     missing: list[str] = []
@@ -234,11 +229,7 @@ def _mixed_decision_for_change(*, seed: int, change_id: int) -> str:
 def _count_jsonl_rows(path: Path) -> int:
     if not path.is_file():
         return 0
-    count = 0
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            count += 1
-    return count
+    return sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
 
 
 def _assert(assertions: list[dict[str, Any]], *, name: str, passed: bool, detail: str) -> None:
@@ -284,6 +275,13 @@ def main() -> int:
             "rows_after": None,
             "rows_delta": None,
         },
+        "notification_flush": {
+            "batches_flushed": 0,
+            "enqueued_notifications": 0,
+            "processed_slots": 0,
+            "sent_count": 0,
+            "failed_count": 0,
+        },
     }
 
     fake_process: subprocess.Popen[str] | None = None
@@ -299,6 +297,10 @@ def main() -> int:
 
         if not args.api_key:
             raise DemoFailure("missing APP_API_KEY / --api-key")
+        if not args.ops_token:
+            raise DemoFailure("missing INTERNAL_SERVICE_TOKEN_OPS / --ops-token")
+        if not args.notify_api_base:
+            raise DemoFailure("notify_api_base is required for semester demo notification flush")
 
         manifest = build_scenario_manifest(
             semesters=args.semesters,
@@ -314,6 +316,24 @@ def main() -> int:
             key: {"expected": value, "passed": False, "detail": "not evaluated"}
             for key, value in suffix_expectations.items()
         }
+        report["semesters"] = [
+            {
+                "semester": semester_plan.semester,
+                "courses": list(semester_plan.courses),
+                "ics_target_count": args.batches_per_semester * args.batch_size,
+                "gmail_target_count": args.batches_per_semester * args.batch_size,
+                "batches": [],
+                "review_totals": {"approved": 0, "rejected": 0, "pending": 0},
+                "notification_flush": {
+                    "batches_flushed": 0,
+                    "enqueued_notifications": 0,
+                    "processed_slots": 0,
+                    "sent_count": 0,
+                    "failed_count": 0,
+                },
+            }
+            for semester_plan in manifest.plans
+        ]
 
         api_headers = {"X-API-Key": args.api_key}
         input_client = httpx.Client(base_url=args.input_api_base.rstrip("/"), headers=api_headers)
@@ -323,8 +343,7 @@ def main() -> int:
         _check_health(review_client, "/health")
         if args.ingest_api_base:
             _check_external_health(args.ingest_api_base)
-        if args.notify_api_base:
-            _check_external_health(args.notify_api_base)
+        _check_external_health(args.notify_api_base)
         if args.llm_api_base:
             _check_external_health(args.llm_api_base)
 
@@ -378,7 +397,7 @@ def main() -> int:
                 "source_kind": "email",
                 "provider": "gmail",
                 "source_key": f"{run_id}-gmail",
-                "display_name": "Semester Demo Gmail Source",
+                "display_name": "Semester Demo Inbox Source",
                 "poll_interval_seconds": 900,
                 "config": {"label_id": "INBOX"},
                 "secrets": {"access_token": "fake-access-token", "account_email": "fake.student@example.edu"},
@@ -409,14 +428,11 @@ def main() -> int:
 
         decided_change_ids: set[int] = set()
         pinned_pending_ids: set[int] = set()
-        semester_totals: dict[int, dict[str, int]] = {}
         source_filter = {calendar_source_id, gmail_source_id}
 
-        batch_pointers = _flatten_manifest_batches(manifest)
-        for pointer in batch_pointers:
+        for pointer in _flatten_manifest_batches(manifest):
             _set_fake_batch(fake_client, semester=pointer.semester, batch=pointer.batch)
-
-            semester_report = _ensure_semester_report(report=report, semester=pointer.semester)
+            semester_report = _semester_report(report=report, semester=pointer.semester)
             batch_report: dict[str, Any] = {
                 "semester": pointer.semester,
                 "batch": pointer.batch,
@@ -429,6 +445,7 @@ def main() -> int:
                 "approved_count": 0,
                 "rejected_count": 0,
                 "kept_pending_count": 0,
+                "notification_flush": None,
                 "errors": [],
             }
             semester_report["batches"].append(batch_report)
@@ -437,14 +454,7 @@ def main() -> int:
                 input_client,
                 "POST",
                 f"/sources/{calendar_source_id}/sync-requests",
-                json_payload={
-                    "metadata": {
-                        "kind": "semester-demo",
-                        "semester": pointer.semester,
-                        "batch": pointer.batch,
-                        "source": "ics",
-                    }
-                },
+                json_payload={"metadata": {"kind": "semester-demo", "semester": pointer.semester, "batch": pointer.batch, "source": "ics"}},
                 headers={"Idempotency-Key": f"{run_id}:s{pointer.semester}:b{pointer.batch}:ics"},
             )
             batch_report["ics_request_id"] = str(ics_req["request_id"])
@@ -460,14 +470,7 @@ def main() -> int:
                 input_client,
                 "POST",
                 f"/sources/{gmail_source_id}/sync-requests",
-                json_payload={
-                    "metadata": {
-                        "kind": "semester-demo",
-                        "semester": pointer.semester,
-                        "batch": pointer.batch,
-                        "source": "gmail",
-                    }
-                },
+                json_payload={"metadata": {"kind": "semester-demo", "semester": pointer.semester, "batch": pointer.batch, "source": "gmail"}},
                 headers={"Idempotency-Key": f"{run_id}:s{pointer.semester}:b{pointer.batch}:gmail"},
             )
             batch_report["gmail_request_id"] = str(gmail_req["request_id"])
@@ -479,10 +482,7 @@ def main() -> int:
             )
             batch_report["gmail_status"] = str((gmail_status_payload.get("connector_result") or {}).get("status") or "")
 
-            pending_rows = _request_paginated_list(
-                review_client,
-                path="/review/changes?review_status=pending",
-            )
+            pending_rows = _request_paginated_list(review_client, path="/review/changes?review_status=pending")
             target_pending_rows = []
             for row in pending_rows:
                 change_id = row.get("id")
@@ -510,10 +510,20 @@ def main() -> int:
             batch_report["approved_count"] = len(approved_ids)
             batch_report["rejected_count"] = len(rejected_ids)
             batch_report["kept_pending_count"] = len(kept_pending_ids)
-            totals = semester_totals.setdefault(pointer.semester, {"approved": 0, "rejected": 0, "pending": 0})
-            totals["approved"] += len(approved_ids)
-            totals["rejected"] += len(rejected_ids)
-            totals["pending"] += len(kept_pending_ids)
+            semester_report["review_totals"]["approved"] += len(approved_ids)
+            semester_report["review_totals"]["rejected"] += len(rejected_ids)
+            semester_report["review_totals"]["pending"] += len(kept_pending_ids)
+
+            flush_payload = _flush_notifications(
+                notify_api_base=args.notify_api_base,
+                ops_token=args.ops_token,
+                run_id=run_id,
+                semester=pointer.semester,
+                batch=pointer.batch,
+            )
+            batch_report["notification_flush"] = flush_payload
+            _accumulate_flush(target=semester_report["notification_flush"], payload=flush_payload)
+            _accumulate_flush(target=report["notification_flush"], payload=flush_payload)
 
             _assert(
                 report["assertions"],
@@ -527,6 +537,12 @@ def main() -> int:
                 passed=batch_report["gmail_status"] in {"CHANGED", "NO_CHANGE"},
                 detail=f"status={batch_report['gmail_status']}",
             )
+            _assert(
+                report["assertions"],
+                name=f"s{pointer.semester}_b{pointer.batch}_flush_progress",
+                passed=(flush_payload["processed_slots"] > 0 or flush_payload["sent_count"] > 0 or flush_payload["enqueued_notifications"] > 0),
+                detail=json.dumps(flush_payload, ensure_ascii=True),
+            )
 
             if pointer.semester == 1 and pointer.batch == 1:
                 _evaluate_suffix_assertions(
@@ -536,20 +552,10 @@ def main() -> int:
                     report=report,
                 )
 
-        for semester_payload in report["semesters"]:
-            semester = int(semester_payload["semester"])
-            totals = semester_totals.get(semester, {"approved": 0, "rejected": 0, "pending": 0})
-            semester_payload["review_totals"] = totals
-            semester_payload["ics_target_count"] = args.batches_per_semester * args.batch_size
-            semester_payload["gmail_target_count"] = args.batches_per_semester * args.batch_size
-
         provider_state = _request_json(fake_client, "GET", "/__admin/state")
         report["provider_state"] = provider_state
         _validate_provider_volume(report=report, provider_state=provider_state)
-
-        _await_notification_sink_growth(
-            notify_api_base=args.notify_api_base,
-            ops_token=args.ops_token,
+        _assert_notification_sink_growth(
             sink_path=notification_jsonl_path,
             baseline_rows=notification_rows_before,
             report=report,
@@ -591,7 +597,6 @@ def main() -> int:
         notification_rows_after = _count_jsonl_rows(notification_jsonl_path)
         report["notification_sink"]["rows_after"] = notification_rows_after
         report["notification_sink"]["rows_delta"] = max(notification_rows_after - notification_rows_before, 0)
-
         report["failed_assertions"] = [row for row in report["assertions"] if row.get("passed") is not True]
         report["passed"] = not report["fatal_errors"] and not report["failed_assertions"]
         report["finished_at"] = _utc_now_iso()
@@ -639,20 +644,11 @@ def _flatten_manifest_batches(manifest: ScenarioManifest) -> list[BatchPointer]:
     return pointers
 
 
-def _ensure_semester_report(*, report: dict[str, Any], semester: int) -> dict[str, Any]:
+def _semester_report(*, report: dict[str, Any], semester: int) -> dict[str, Any]:
     for row in report["semesters"]:
         if int(row.get("semester") or -1) == semester:
             return row
-    payload = {
-        "semester": semester,
-        "courses": [],
-        "ics_target_count": 0,
-        "gmail_target_count": 0,
-        "batches": [],
-        "review_totals": {"approved": 0, "rejected": 0, "pending": 0},
-    }
-    report["semesters"].append(payload)
-    return payload
+    raise DemoFailure(f"missing semester report slot for semester={semester}")
 
 
 def _apply_mixed_review_policy(
@@ -678,10 +674,7 @@ def _apply_mixed_review_policy(
             review_client,
             "POST",
             f"/review/changes/{change_id}/decisions",
-            json_payload={
-                "decision": decision,
-                "note": f"semester demo mixed policy run={run_id}",
-            },
+            json_payload={"decision": decision, "note": f"semester demo mixed policy run={run_id}"},
         )
         if str(payload.get("review_status") or "") != decision:
             raise DemoFailure(f"review decision mismatch change_id={change_id} decision={decision}")
@@ -695,6 +688,35 @@ def _apply_mixed_review_policy(
         "rejected_ids": rejected_ids,
         "kept_pending_ids": kept_pending_ids,
     }
+
+
+def _flush_notifications(
+    *,
+    notify_api_base: str,
+    ops_token: str,
+    run_id: str,
+    semester: int,
+    batch: int,
+) -> dict[str, Any]:
+    headers = {"X-Service-Name": "ops", "X-Service-Token": ops_token}
+    with httpx.Client(base_url=notify_api_base.rstrip("/"), headers=headers) as client:
+        return _request_json(
+            client,
+            "POST",
+            "/internal/notifications/flush",
+            json_payload={
+                "run_id": run_id,
+                "semester": semester,
+                "batch": batch,
+                "force_due": True,
+            },
+        )
+
+
+def _accumulate_flush(*, target: dict[str, Any], payload: dict[str, Any]) -> None:
+    target["batches_flushed"] = int(target.get("batches_flushed") or 0) + 1
+    for key in ("enqueued_notifications", "processed_slots", "sent_count", "failed_count"):
+        target[key] = int(target.get(key) or 0) + int(payload.get(key) or 0)
 
 
 def _build_suffix_expectations(*, manifest: ScenarioManifest) -> dict[str, str]:
@@ -799,16 +821,8 @@ def _validate_provider_volume(*, report: dict[str, Any], provider_state: dict[st
         )
 
 
-def _await_notification_sink_growth(
-    *,
-    notify_api_base: str | None,
-    ops_token: str,
-    sink_path: Path,
-    baseline_rows: int,
-    report: dict[str, Any],
-) -> None:
-    deadline = time.monotonic() + 90.0
-    last_status: dict[str, Any] | None = None
+def _assert_notification_sink_growth(*, sink_path: Path, baseline_rows: int, report: dict[str, Any]) -> None:
+    deadline = time.monotonic() + 5.0
     while time.monotonic() < deadline:
         now_rows = _count_jsonl_rows(sink_path)
         if now_rows > baseline_rows:
@@ -819,28 +833,13 @@ def _await_notification_sink_growth(
                 detail=f"rows_before={baseline_rows} rows_after={now_rows}",
             )
             return
-
-        if notify_api_base and ops_token:
-            try:
-                response = httpx.get(
-                    f"{notify_api_base.rstrip('/')}/internal/notifications/status",
-                    headers={"X-Service-Name": "ops", "X-Service-Token": ops_token},
-                    timeout=5.0,
-                )
-                if response.status_code == 200:
-                    payload = response.json()
-                    if isinstance(payload, dict):
-                        last_status = payload
-            except Exception:
-                pass
-        time.sleep(2.0)
-
-    detail = f"rows_before={baseline_rows} rows_after={_count_jsonl_rows(sink_path)} status={last_status}"
+        time.sleep(0.2)
+    now_rows = _count_jsonl_rows(sink_path)
     _assert(
         report["assertions"],
         name="notification_jsonl_rows_grew",
         passed=False,
-        detail=detail,
+        detail=f"rows_before={baseline_rows} rows_after={now_rows}",
     )
 
 

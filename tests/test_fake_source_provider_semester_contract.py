@@ -43,6 +43,7 @@ def test_fake_source_provider_semester_batch_contract(tmp_path: Path) -> None:
     manifest = build_scenario_manifest(seed=20260305)
     manifest_path = tmp_path / "scenario_manifest.json"
     write_scenario_manifest(manifest_path, manifest)
+    expected_message = manifest.plans[0].batches[0].gmail_messages[0]
 
     port = _find_free_port()
     process = subprocess.Popen(
@@ -93,6 +94,12 @@ def test_fake_source_provider_semester_batch_contract(tmp_path: Path) -> None:
 
             message = client.get(f"/gmail/v1/users/me/messages/{message_id}").json()
             assert message["id"] == message_id
+            assert message["threadId"] == expected_message.thread_id
+            assert message["labelIds"] == expected_message.label_ids
+            assert message["internalDate"].isdigit()
+            headers = {row["name"]: row["value"] for row in message["payload"]["headers"]}
+            assert headers["Subject"].startswith(expected_message.subject)
+            assert headers["From"] == expected_message.from_header
             body_data = message["payload"]["body"]["data"]
             decoded_body = _decode_base64url(body_data)
             assert "Due timestamp:" in decoded_body

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -32,7 +32,6 @@ def dispatch_pending_llm_enqueues(db: Session) -> int:
         select(IngestJob)
         .where(
             IngestJob.status == IngestJobStatus.CLAIMED,
-            or_(IngestJob.next_retry_at.is_(None), IngestJob.next_retry_at <= now),
         )
         .order_by(IngestJob.id.asc())
         .with_for_update(skip_locked=True)
