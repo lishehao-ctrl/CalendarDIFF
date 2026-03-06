@@ -31,6 +31,10 @@ Core flow:
 
 ## Quick Start
 
+Combined release / acceptance guide for the frontend console and local launcher:
+
+- `docs/frontend_console_release_acceptance.md`
+
 1. Create environment and install dependencies:
 
 ```bash
