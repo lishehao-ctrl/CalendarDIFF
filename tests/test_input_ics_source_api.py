@@ -169,7 +169,6 @@ def test_onboarding_status_reports_structured_source_health(input_client, db_ses
     assert attention_response.status_code == 200
     payload = attention_response.json()
     assert payload["stage"] == "ready"
-    assert payload["last_error"] == "ssl verify failed"
     assert payload["source_health"] == {
         "status": "attention",
         "message": "A connected source needs attention before syncs are reliable.",

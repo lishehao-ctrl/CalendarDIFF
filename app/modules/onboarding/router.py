@@ -29,7 +29,6 @@ def get_status(
         message=status_payload.message,
         registered_user_id=status_payload.registered_user_id,
         first_source_id=status_payload.first_source_id,
-        last_error=status_payload.last_error,
         source_health=SourceHealthSummaryResponse(
             status=status_payload.source_health.status,  # type: ignore[arg-type]
             message=status_payload.source_health.message,

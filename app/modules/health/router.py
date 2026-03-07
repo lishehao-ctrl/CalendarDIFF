@@ -98,5 +98,4 @@ def _default_scheduler_summary() -> dict[str, object]:
         "database_dialect": "postgresql",
         "schema_guard_blocked": False,
         "schema_guard_message": None,
-        "last_retention_cleanup_at": None,
     }

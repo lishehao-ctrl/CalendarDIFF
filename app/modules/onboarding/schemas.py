@@ -37,7 +37,6 @@ class OnboardingStatusResponse(BaseModel):
     message: str
     registered_user_id: int | None = None
     first_source_id: int | None = None
-    last_error: str | None = None
     source_health: SourceHealthSummaryResponse | None = None
 
 

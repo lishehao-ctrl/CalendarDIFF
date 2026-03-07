@@ -29,7 +29,6 @@ class OnboardingStatus:
     message: str
     registered_user_id: int | None
     first_source_id: int | None
-    last_error: str | None
     source_health: SourceHealthSummary
 
 
@@ -61,7 +60,6 @@ def get_onboarding_status_for_user(db: Session, *, user: User) -> OnboardingStat
             message="Connect at least one active input source.",
             registered_user_id=user.id,
             first_source_id=None,
-            last_error=None,
             source_health=source_health,
         )
 
@@ -70,7 +68,6 @@ def get_onboarding_status_for_user(db: Session, *, user: User) -> OnboardingStat
         message="Onboarding complete.",
         registered_user_id=user.id,
         first_source_id=first_source.id,
-        last_error=first_error_source.last_error_message if first_error_source is not None else None,
         source_health=source_health,
     )
 
