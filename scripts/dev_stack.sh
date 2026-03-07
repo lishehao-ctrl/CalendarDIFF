@@ -42,7 +42,7 @@ service_port() {
 
 service_url() {
   case "$1" in
-    frontend) echo "http://127.0.0.1:3000" ;;
+    frontend) echo "http://127.0.0.1:3000/login" ;;
     *) echo "http://127.0.0.1:$(service_port "$1")/health" ;;
   esac
 }
