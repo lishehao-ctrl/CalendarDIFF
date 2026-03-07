@@ -92,7 +92,7 @@ Consumers: optional observability/audit services
 
 The `ingest_results.records[*].payload` envelope used between llm/review runtime keeps record types stable and adds layered fields:
 
-1. hard-cut parser schema version: `enrichment.payload_schema_version = "obs_v3"` (required).
+1. fixed parser schema version: `enrichment.payload_schema_version = "obs_v3"` (required).
 2. `source_canonical`: deterministic source fields used for canonical diff and pending generation.
 3. `enrichment`: LLM-derived metadata (`course_parse`, `event_parts`, `link_signals`). No local regex/raw-text fallback is used for these fields.
 4. additive linker signals:

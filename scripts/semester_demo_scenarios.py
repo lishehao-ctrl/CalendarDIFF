@@ -132,7 +132,7 @@ def build_scenario_manifest(
         plans.append(SemesterPlan(semester=semester_idx, courses=courses, batches=batches))
 
     return ScenarioManifest(
-        version="semester-demo-v2",
+        version="semester-demo-current",
         seed=seed,
         semesters=semesters,
         batches_per_semester=batches_per_semester,

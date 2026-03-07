@@ -1,4 +1,4 @@
-# Service Table Ownership (Shared PostgreSQL Stage)
+# Service Table Ownership (Shared PostgreSQL Runtime)
 
 This matrix defines write ownership for the microservice split with shared PostgreSQL.
 
@@ -12,7 +12,7 @@ Rules:
 
 | Table | Owner Service | Non-owner Access | Notes |
 |---|---|---|---|
-| users | platform-shared | read | Shared identity profile table in transition stage |
+| users | platform-shared | read | Shared identity profile table in runtime |
 | input_sources | input-service | read | Source lifecycle |
 | input_source_configs | input-service | read | Source config |
 | input_source_secrets | input-service | read | Encrypted source secrets |

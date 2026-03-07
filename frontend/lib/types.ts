@@ -10,7 +10,6 @@ export type OnboardingStatus = {
   message: string;
   registered_user_id: number | null;
   first_source_id: number | null;
-  last_error: string | null;
   source_health: SourceHealth | null;
 };
 

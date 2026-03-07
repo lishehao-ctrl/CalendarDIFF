@@ -10,7 +10,7 @@ def test_semester_demo_manifest_shape_and_volume() -> None:
         batch_size=10,
         seed=20260305,
     )
-    assert manifest.version == "semester-demo-v2"
+    assert manifest.version == "semester-demo-current"
     assert manifest.semesters == 3
     assert manifest.batches_per_semester == 10
     assert manifest.batch_size == 10
