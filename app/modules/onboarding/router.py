@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.security import require_public_api_key
+from app.db.models.shared import User
 from app.db.session import get_db
+from app.modules.auth.deps import get_authenticated_user_or_401
 from app.modules.onboarding.schemas import (
     OnboardingRegisterRequest,
     OnboardingRegisterResponse,
@@ -16,8 +18,11 @@ router = APIRouter(prefix="/onboarding", tags=["onboarding"], dependencies=[Depe
 
 
 @router.get("/status", response_model=OnboardingStatusResponse)
-def get_status(db: Session = Depends(get_db)) -> OnboardingStatusResponse:
-    status_payload = get_onboarding_status(db)
+def get_status(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
+) -> OnboardingStatusResponse:
+    status_payload = get_onboarding_status(db, user=user)
     return OnboardingStatusResponse(
         stage=status_payload.stage,  # type: ignore[arg-type]
         message=status_payload.message,
@@ -28,10 +33,15 @@ def get_status(db: Session = Depends(get_db)) -> OnboardingStatusResponse:
 
 
 @router.post("/registrations", response_model=OnboardingRegisterResponse)
-def create_registration(payload: OnboardingRegisterRequest, db: Session = Depends(get_db)) -> OnboardingRegisterResponse:
+def create_registration(
+    payload: OnboardingRegisterRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
+) -> OnboardingRegisterResponse:
     try:
         result = register_onboarding(
             db,
+            user=user,
             notify_email=payload.notify_email,
         )
     except OnboardingRegisterError as exc:

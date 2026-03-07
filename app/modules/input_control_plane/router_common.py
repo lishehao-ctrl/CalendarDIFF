@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from fastapi import HTTPException
+from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.db.models.shared import User
+from app.modules.auth.deps import get_authenticated_user_or_401
 from app.modules.input_control_plane.sources_service import get_input_source
-from app.modules.users.service import get_registered_user
 
 
-def require_registered_user_or_409(db: Session):
-    user = get_registered_user(db)
-    if user is None:
-        raise HTTPException(status_code=409, detail={"code": "user_not_initialized", "message": "user not initialized"})
+def require_registered_user_or_409(user: User = Depends(get_authenticated_user_or_401)) -> User:
     return user
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.core.oauth_config import log_input_oauth_startup
+from app.modules.auth.router import router as auth_router
 from app.modules.health.router import router as health_router
 from app.modules.input_control_plane.router import public_router as input_public_router
 from app.modules.input_control_plane.metrics_router import router as input_metrics_router
@@ -15,6 +16,7 @@ app = create_service_app(
     public_api=True,
     routers=[
         health_router,
+        auth_router,
         users_router,
         onboarding_router,
         input_public_router,

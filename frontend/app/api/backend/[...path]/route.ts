@@ -44,19 +44,26 @@ async function proxy(request: NextRequest, params: { path?: string[] }) {
     method: request.method,
     headers: {
       "X-API-Key": apiKey,
-      "Content-Type": request.headers.get("content-type") || "application/json"
+      "Content-Type": request.headers.get("content-type") || "application/json",
+      Cookie: request.headers.get("cookie") || ""
     },
     body,
-    cache: "no-store"
+    cache: "no-store",
+    redirect: "manual"
   });
 
   const text = await response.text();
-  return new NextResponse(text, {
+  const outgoing = new NextResponse(text, {
     status: response.status,
     headers: {
       "Content-Type": response.headers.get("content-type") || "application/json"
     }
   });
+  const setCookie = response.headers.get("set-cookie");
+  if (setCookie) {
+    outgoing.headers.set("set-cookie", setCookie);
+  }
+  return outgoing;
 }
 
 export async function GET(request: NextRequest, context: { params: { path?: string[] } }) {

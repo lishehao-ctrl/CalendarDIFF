@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     internal_service_token_notification: str = "dev-internal-token-notification"
     internal_service_token_llm: str = "dev-internal-token-llm"
     internal_service_token_ops: str = "dev-internal-token-ops"
-    public_web_origins: str = "http://localhost:8000,http://127.0.0.1:8000"
+    public_web_origins: str = "http://localhost:8200,http://127.0.0.1:8200"
+    frontend_app_base_url: str | None = None
 
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/deadline_diff"
     test_database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/deadline_diff_test"

@@ -7,8 +7,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.db.models.input import IngestTriggerType
+from app.db.models.shared import User
 from app.db.session import get_db
-from app.modules.input_control_plane.router_common import require_owned_source_or_404, require_registered_user_or_409
+from app.modules.auth.deps import get_authenticated_user_or_401
+from app.modules.input_control_plane.router_common import require_owned_source_or_404
 from app.modules.input_control_plane.schemas import WebhookEnqueueResponse
 from app.modules.input_control_plane.sync_requests_service import enqueue_sync_request_idempotent
 
@@ -22,8 +24,8 @@ async def webhook_ingest(
     provider: str,
     db: Session = Depends(get_db),
     x_event_id: str | None = Header(default=None, alias="X-Event-Id"),
+    user: User = Depends(get_authenticated_user_or_401),
 ) -> WebhookEnqueueResponse:
-    user = require_registered_user_or_409(db)
     source = require_owned_source_or_404(db=db, user_id=user.id, source_id=source_id)
 
     normalized_provider = provider.strip().lower()

@@ -18,14 +18,13 @@ type Banner = {
 
 export function SettingsPanel() {
   const { data, loading, error, refresh } = useResource<UserProfile>("/users/me");
-  const [form, setForm] = useState({ notify_email: "", timezone_name: "UTC" });
+  const [form, setForm] = useState({ timezone_name: "UTC" });
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState<Banner>(null);
 
   useEffect(() => {
     if (data) {
       setForm({
-        notify_email: data.notify_email || "",
         timezone_name: data.timezone_name || "UTC"
       });
     }
@@ -50,7 +49,7 @@ export function SettingsPanel() {
 
   if (loading) return <LoadingState label="settings" />;
   if (error) return <ErrorState message={error} />;
-  if (!data) return <EmptyState title="User not initialized" description="Complete onboarding before editing settings." />;
+  if (!data) return <EmptyState title="User not initialized" description="Complete registration before editing settings." />;
 
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_0.85fr]">
@@ -58,7 +57,7 @@ export function SettingsPanel() {
         <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Editable settings</p>
         <h3 className="mt-3 text-2xl font-semibold">Workspace identity</h3>
         <p className="mt-2 text-sm leading-6 text-[#596270]">
-          Keep reviewer routing and digest timing predictable by maintaining the notification address and timezone used by the backend.
+          Login email is managed by auth. This page only edits stable runtime preferences like timezone and downstream notification timing.
         </p>
 
         {banner ? (
@@ -70,17 +69,17 @@ export function SettingsPanel() {
         <div className="mt-6 space-y-4">
           <div>
             <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="notify-email-settings">
-              Notify email
+              Login / notify email
             </label>
-            <Input id="notify-email-settings" value={form.notify_email} onChange={(event) => setForm((prev) => ({ ...prev, notify_email: event.target.value }))} placeholder="notify@example.com" />
+            <Input id="notify-email-settings" value={data.notify_email || ""} disabled />
           </div>
           <div>
             <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="timezone-name">
               Timezone name
             </label>
-            <Input id="timezone-name" value={form.timezone_name} onChange={(event) => setForm((prev) => ({ ...prev, timezone_name: event.target.value }))} placeholder="America/Los_Angeles" />
+            <Input id="timezone-name" value={form.timezone_name} onChange={(event) => setForm({ timezone_name: event.target.value })} placeholder="America/Los_Angeles" />
           </div>
-          <Button onClick={() => void save()} disabled={saving || !form.notify_email || !form.timezone_name}>
+          <Button onClick={() => void save()} disabled={saving || !form.timezone_name}>
             {saving ? "Saving settings..." : "Save settings"}
           </Button>
         </div>
@@ -103,7 +102,7 @@ export function SettingsPanel() {
               <p className="mt-2 font-medium">{data.email || "Not set"}</p>
             </div>
             <div className="rounded-[1.15rem] border border-line/80 bg-white/60 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Notify email</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Login / notify email</p>
               <p className="mt-2 font-medium">{data.notify_email || "Not set"}</p>
             </div>
             <div className="rounded-[1.15rem] border border-line/80 bg-white/60 p-4">
@@ -128,7 +127,7 @@ export function SettingsPanel() {
             <p className="mt-2">Calendar delay seconds: {data.calendar_delay_seconds}</p>
           </div>
           <div className="mt-4 rounded-[1.15rem] border border-line/80 bg-white/60 p-4 text-sm text-[#596270]">
-            Digest routing and review scheduling continue to rely on backend policy. This screen intentionally edits only the stable user-facing fields first.
+            Authentication is now session-based. The login email is intentionally read-only here so identity and profile preferences stay separate.
           </div>
         </Card>
 
@@ -143,7 +142,7 @@ export function SettingsPanel() {
             </div>
           </div>
           <p className="mt-4 text-sm leading-6 text-[#596270]">
-            Gmail OAuth, callback routing, and internal ops controls remain backend concerns for now. The frontend keeps the user profile clean and predictable without exposing secrets or internal service actions.
+            Password reset, email verification, and MFA are out of scope for this first auth release. This phase focuses on formal login, session cookies, and per-user dashboard isolation.
           </p>
         </Card>
       </div>

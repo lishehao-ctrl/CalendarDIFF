@@ -13,6 +13,7 @@ import {
   Sparkles,
   X
 } from "lucide-react";
+import { LogoutButton } from "@/components/logout-button";
 import { cn } from "@/lib/utils";
 
 const items = [
@@ -65,8 +66,11 @@ function NavContent({ pathname }: { pathname: string }) {
           );
         })}
       </nav>
-      <div className="mt-6 rounded-[1.25rem] border border-line/80 bg-white/55 p-4 text-sm text-[#596270]">
-        Gmail auth remains intentionally blocked in the UI MVP. ICS and review workflows stay fully operational.
+      <div className="mt-6 space-y-3">
+        <div className="rounded-[1.25rem] border border-line/80 bg-white/55 p-4 text-sm text-[#596270]">
+          Gmail OAuth is available from Sources. Connect a single Gmail account, keep ICS feeds alongside it, and review everything from one console.
+        </div>
+        <LogoutButton />
       </div>
     </>
   );
@@ -86,28 +90,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">CalendarDIFF</p>
             <p className="mt-1 text-lg font-semibold">Ops Console</p>
           </div>
-          <Dialog.Root>
-            <Dialog.Trigger asChild>
-              <button aria-label="Open navigation" className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ink text-paper">
-                <Menu className="h-5 w-5" />
-              </button>
-            </Dialog.Trigger>
-            <Dialog.Portal>
-              <Dialog.Overlay className="fixed inset-0 z-40 bg-[rgba(20,32,44,0.38)] backdrop-blur-sm" />
-              <Dialog.Content className="fixed inset-y-0 left-0 z-50 w-[88vw] max-w-sm border-r border-line bg-card p-5 shadow-[var(--shadow-panel)]">
-                <Dialog.Title className="sr-only">Navigation menu</Dialog.Title>
-                <Dialog.Description className="sr-only">Navigate between overview, sources, review, link review, and settings pages.</Dialog.Description>
-                <div className="mb-4 flex items-center justify-end">
-                  <Dialog.Close asChild>
-                    <button aria-label="Close navigation" className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(20,32,44,0.06)] text-ink">
-                      <X className="h-4 w-4" />
-                    </button>
-                  </Dialog.Close>
-                </div>
-                <NavContent pathname={pathname} />
-              </Dialog.Content>
-            </Dialog.Portal>
-          </Dialog.Root>
+          <div className="flex items-center gap-2">
+            <LogoutButton />
+            <Dialog.Root>
+              <Dialog.Trigger asChild>
+                <button aria-label="Open navigation" className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ink text-paper">
+                  <Menu className="h-5 w-5" />
+                </button>
+              </Dialog.Trigger>
+              <Dialog.Portal>
+                <Dialog.Overlay className="fixed inset-0 z-40 bg-[rgba(20,32,44,0.38)] backdrop-blur-sm" />
+                <Dialog.Content className="fixed inset-y-0 left-0 z-50 w-[88vw] max-w-sm border-r border-line bg-card p-5 shadow-[var(--shadow-panel)]">
+                  <Dialog.Title className="sr-only">Navigation menu</Dialog.Title>
+                  <Dialog.Description className="sr-only">Navigate between overview, sources, review, link review, and settings pages.</Dialog.Description>
+                  <div className="mb-4 flex items-center justify-end">
+                    <Dialog.Close asChild>
+                      <button aria-label="Close navigation" className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(20,32,44,0.06)] text-ink">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </Dialog.Close>
+                  </div>
+                  <NavContent pathname={pathname} />
+                </Dialog.Content>
+              </Dialog.Portal>
+            </Dialog.Root>
+          </div>
         </div>
         {children}
       </div>

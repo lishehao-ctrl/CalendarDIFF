@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, Enum as SAEnum, Index, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, DateTime, Enum as SAEnum, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -28,11 +28,15 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    notify_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    notify_email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     timezone_name: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC", server_default="UTC")
     calendar_delay_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=120, server_default="120")
     onboarding_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
     inputs: Mapped[list["Input"]] = relationship("Input", back_populates="user")
     input_sources: Mapped[list["InputSource"]] = relationship("InputSource", back_populates="user", cascade="all, delete-orphan")
@@ -57,6 +61,25 @@ class User(Base):
         foreign_keys="EventLinkAlert.user_id",
     )
     digest_send_logs: Mapped[list["DigestSendLog"]] = relationship("DigestSendLog", back_populates="user", cascade="all, delete-orphan")
+    sessions: Mapped[list["UserSession"]] = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+    __table_args__ = (
+        UniqueConstraint("session_id", name="uq_user_sessions_session_id"),
+        Index("ix_user_sessions_user_expires", "user_id", "expires_at"),
+        Index("ix_user_sessions_expires", "expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    user: Mapped[User] = relationship("User", back_populates="sessions")
 
 
 class IntegrationOutbox(Base):
@@ -104,4 +127,5 @@ __all__ = [
     "IntegrationOutbox",
     "OutboxStatus",
     "User",
+    "UserSession",
 ]

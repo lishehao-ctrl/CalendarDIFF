@@ -6,8 +6,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.models.input import IngestTriggerType
+from app.db.models.shared import User
 from app.db.session import get_db
-from app.modules.input_control_plane.router_common import require_owned_source_or_404, require_registered_user_or_409
+from app.modules.auth.deps import get_authenticated_user_or_401
+from app.modules.input_control_plane.router_common import require_owned_source_or_404
 from app.modules.input_control_plane.schemas import (
     SyncRequestCreateRequest,
     SyncRequestCreateResponse,
@@ -25,8 +27,8 @@ def create_sync_request(
     payload: SyncRequestCreateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
 ) -> SyncRequestCreateResponse:
-    user = require_registered_user_or_409(db)
     source = require_owned_source_or_404(db=db, user_id=user.id, source_id=source_id)
     if not source.is_active:
         raise HTTPException(
@@ -56,8 +58,8 @@ def create_sync_request(
 def get_sync_request(
     request_id: str,
     db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
 ) -> SyncRequestStatusResponse:
-    user = require_registered_user_or_409(db)
     row = get_sync_request_status(db, request_id=request_id)
     if row is None or row.source.user_id != user.id:
         raise HTTPException(status_code=404, detail="Sync request not found")

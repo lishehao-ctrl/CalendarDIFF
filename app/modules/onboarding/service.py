@@ -4,11 +4,8 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from app.modules.users.service import (
-    create_or_initialize_user,
-    get_first_active_input_source,
-    get_registered_user,
-)
+from app.db.models.shared import User
+from app.modules.users.service import get_first_active_input_source
 
 
 class OnboardingRegisterError(RuntimeError):
@@ -33,17 +30,7 @@ class OnboardingRegisterResult:
     first_source_id: int | None
 
 
-def get_onboarding_status(db: Session) -> OnboardingStatus:
-    user = get_registered_user(db)
-    if user is None:
-        return OnboardingStatus(
-            stage="needs_user",
-            message="Create user profile first with notify_email.",
-            registered_user_id=None,
-            first_source_id=None,
-            last_error=None,
-        )
-
+def get_onboarding_status_for_user(db: Session, *, user: User) -> OnboardingStatus:
     first_source = get_first_active_input_source(db, user_id=user.id)
 
     if first_source is None:
@@ -64,16 +51,21 @@ def get_onboarding_status(db: Session) -> OnboardingStatus:
     )
 
 
+def get_onboarding_status(db: Session, *, user: User) -> OnboardingStatus:
+    return get_onboarding_status_for_user(db, user=user)
+
+
 def register_onboarding(
     db: Session,
     *,
+    user: User,
     notify_email: str,
 ) -> OnboardingRegisterResult:
-    user, _ = create_or_initialize_user(db, notify_email=notify_email)
-    status = get_onboarding_status(db)
-    if status.registered_user_id is None:
-        raise OnboardingRegisterError("register user failed", status_code=422)
+    normalized = notify_email.strip().lower()
+    if normalized != (user.notify_email or "").strip().lower():
+        raise OnboardingRegisterError("notify_email is managed by auth register flow", status_code=422)
 
+    status = get_onboarding_status_for_user(db, user=user)
     return OnboardingRegisterResult(
         user_id=user.id,
         stage=status.stage,

@@ -4,33 +4,29 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.security import require_public_api_key
+from app.db.models.shared import User
 from app.db.session import get_db
+from app.modules.auth.deps import get_authenticated_user_or_401
 from app.modules.users.schemas import (
     UserResponse,
     UserUpdateRequest,
 )
-from app.modules.users.service import (
-    get_registered_user,
-    update_current_user,
-    user_not_initialized_detail,
-)
+from app.modules.users.service import update_current_user
 
 router = APIRouter(prefix="/users", tags=["users"], dependencies=[Depends(require_public_api_key)])
 
 
 @router.get("/me", response_model=UserResponse)
-def get_user(db: Session = Depends(get_db)) -> UserResponse:
-    user = get_registered_user(db)
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=user_not_initialized_detail())
+def get_user(user: User = Depends(get_authenticated_user_or_401)) -> UserResponse:
     return _to_user_response(user)
 
 
 @router.patch("/me", response_model=UserResponse)
-def patch_user(payload: UserUpdateRequest, db: Session = Depends(get_db)) -> UserResponse:
-    user = get_registered_user(db)
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=user_not_initialized_detail())
+def patch_user(
+    payload: UserUpdateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
+) -> UserResponse:
     if "notify_email" in payload.model_fields_set and payload.notify_email is None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="notify_email cannot be cleared")
 
@@ -48,7 +44,7 @@ def patch_user(payload: UserUpdateRequest, db: Session = Depends(get_db)) -> Use
     return _to_user_response(updated)
 
 
-def _to_user_response(user) -> UserResponse:
+def _to_user_response(user: User) -> UserResponse:
     return UserResponse(
         id=user.id,
         email=user.email,

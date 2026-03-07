@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Generator
+from datetime import datetime, timezone
 
 import pytest
 from alembic import command
@@ -15,10 +16,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import get_settings
 from app.db.models.shared import User
 from app.db.session import reset_engine
+from app.modules.auth.service import AUTH_SESSION_COOKIE_NAME, create_user_session
 from app.modules.input_control_plane.schemas import InputSourceCreateRequest
 from app.modules.input_control_plane.sources_service import create_input_source
-from datetime import datetime, timezone
-
 
 DEFAULT_TEST_DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/deadline_diff_test"
 
@@ -162,11 +162,31 @@ def input_client(configure_test_environment: None) -> Generator[TestClient, None
 
 
 @pytest.fixture()
+def authenticate_client(db_session: Session):
+    def _authenticate(test_client: TestClient, *, user: User) -> str:
+        cookie_value = create_user_session(db_session, user=user)
+        test_client.cookies.set(AUTH_SESSION_COOKIE_NAME, cookie_value)
+        return cookie_value
+
+    return _authenticate
+
+
+@pytest.fixture()
+def auth_headers(authenticate_client):
+    def _auth_headers(test_client: TestClient, *, user: User) -> dict[str, str]:
+        authenticate_client(test_client, user=user)
+        return {"X-API-Key": "test-api-key"}
+
+    return _auth_headers
+
+
+@pytest.fixture()
 def initialized_user(client: TestClient, db_session: Session) -> dict[str, object]:
     del client
     user = User(
         email=None,
         notify_email="student@example.com",
+        password_hash="hash",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
