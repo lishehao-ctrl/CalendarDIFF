@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 import httpx
@@ -32,11 +33,11 @@ def test_semester_demo_online(tmp_path: Path) -> None:
     if not app_api_key or not ops_token or not notification_jsonl:
         pytest.skip("APP_API_KEY, INTERNAL_SERVICE_TOKEN_OPS, and SEMESTER_DEMO_NOTIFICATION_JSONL are required")
 
-    input_api_base = os.getenv("SEMESTER_DEMO_INPUT_API_BASE", "http://127.0.0.1:8001").rstrip("/")
-    review_api_base = os.getenv("SEMESTER_DEMO_REVIEW_API_BASE", "http://127.0.0.1:8000").rstrip("/")
-    ingest_api_base = os.getenv("SEMESTER_DEMO_INGEST_API_BASE", "http://127.0.0.1:8002").rstrip("/")
-    notify_api_base = os.getenv("SEMESTER_DEMO_NOTIFY_API_BASE", "http://127.0.0.1:8004").rstrip("/")
-    llm_api_base = os.getenv("SEMESTER_DEMO_LLM_API_BASE", "http://127.0.0.1:8005").rstrip("/")
+    input_api_base = os.getenv("SEMESTER_DEMO_INPUT_API_BASE", "http://127.0.0.1:8201").rstrip("/")
+    review_api_base = os.getenv("SEMESTER_DEMO_REVIEW_API_BASE", "http://127.0.0.1:8200").rstrip("/")
+    ingest_api_base = os.getenv("SEMESTER_DEMO_INGEST_API_BASE", "http://127.0.0.1:8202").rstrip("/")
+    notify_api_base = os.getenv("SEMESTER_DEMO_NOTIFY_API_BASE", "http://127.0.0.1:8204").rstrip("/")
+    llm_api_base = os.getenv("SEMESTER_DEMO_LLM_API_BASE", "http://127.0.0.1:8205").rstrip("/")
 
     for base_url in (input_api_base, review_api_base, ingest_api_base, notify_api_base, llm_api_base):
         try:
@@ -47,6 +48,8 @@ def test_semester_demo_online(tmp_path: Path) -> None:
             pytest.skip(f"health check returned status={response.status_code} for {base_url}")
 
     sink_path = Path(notification_jsonl)
+    notify_email = f"semester-{uuid.uuid4().hex[:8]}@example.com"
+    auth_password = "password123"
     rows_before = _count_jsonl_rows(sink_path)
     report_path = tmp_path / "semester_demo_online_report.json"
     cmd = [
@@ -66,6 +69,10 @@ def test_semester_demo_online(tmp_path: Path) -> None:
         app_api_key,
         "--ops-token",
         ops_token,
+        "--notify-email",
+        notify_email,
+        "--auth-password",
+        auth_password,
         "--notification-jsonl",
         str(sink_path),
         "--report",

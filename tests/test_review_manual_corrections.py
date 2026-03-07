@@ -9,8 +9,8 @@ from app.db.models.review import Change, ChangeType, Event, Input, InputType, Re
 from app.db.models.shared import IntegrationOutbox, User
 
 
-def _headers() -> dict[str, str]:
-    return {"X-API-Key": "test-api-key"}
+def _headers(client, auth_headers, user) -> dict[str, str]:
+    return auth_headers(client, user=user)
 
 
 def _as_utc(value: str) -> datetime:
@@ -57,7 +57,7 @@ def _create_canonical_input(db_session, *, user_id: int) -> Input:
     return row
 
 
-def test_manual_correction_preview_uses_date_only_as_local_2359(client, db_session) -> None:
+def test_manual_correction_preview_uses_date_only_as_local_2359(client, db_session, auth_headers) -> None:
     user = _create_onboarded_user(db_session, timezone_name="America/Los_Angeles")
     canonical_input = _create_canonical_input(db_session, user_id=user.id)
     event_uid = "cse8a-hw1-deadline"
@@ -114,7 +114,7 @@ def test_manual_correction_preview_uses_date_only_as_local_2359(client, db_sessi
 
     response = client.post(
         "/review/corrections/preview",
-        headers=_headers(),
+        headers=_headers(client, auth_headers, user),
         json={
             "target": {"change_id": target_change.id, "event_uid": None},
             "patch": {
@@ -135,7 +135,7 @@ def test_manual_correction_preview_uses_date_only_as_local_2359(client, db_sessi
     assert payload["will_reject_pending_change_ids"] == sorted([target_change.id, extra_pending.id])
 
 
-def test_manual_correction_apply_updates_canonical_and_rejects_pending(client, db_session) -> None:
+def test_manual_correction_apply_updates_canonical_and_rejects_pending(client, db_session, auth_headers) -> None:
     user = _create_onboarded_user(db_session, timezone_name="UTC")
     canonical_input = _create_canonical_input(db_session, user_id=user.id)
     event_uid = "math20b-hw2-deadline"
@@ -171,7 +171,7 @@ def test_manual_correction_apply_updates_canonical_and_rejects_pending(client, d
 
     response = client.post(
         "/review/corrections",
-        headers=_headers(),
+        headers=_headers(client, auth_headers, user),
         json={
             "target": {"change_id": None, "event_uid": event_uid},
             "patch": {
@@ -222,7 +222,7 @@ def test_manual_correction_apply_updates_canonical_and_rejects_pending(client, d
     assert outbox_row.payload_json.get("decision_origin") == "manual_correction"
 
 
-def test_manual_correction_apply_can_create_canonical_event_from_pending(client, db_session) -> None:
+def test_manual_correction_apply_can_create_canonical_event_from_pending(client, db_session, auth_headers) -> None:
     user = _create_onboarded_user(db_session, timezone_name="UTC")
     canonical_input = _create_canonical_input(db_session, user_id=user.id)
     event_uid = "cse100-hw3-deadline"
@@ -251,7 +251,7 @@ def test_manual_correction_apply_can_create_canonical_event_from_pending(client,
 
     response = client.post(
         "/review/corrections",
-        headers=_headers(),
+        headers=_headers(client, auth_headers, user),
         json={
             "target": {"change_id": None, "event_uid": event_uid},
             "patch": {
@@ -279,7 +279,7 @@ def test_manual_correction_apply_can_create_canonical_event_from_pending(client,
     assert correction_row.review_status == ReviewStatus.APPROVED
 
 
-def test_manual_correction_apply_idempotent_when_candidate_matches_canonical(client, db_session) -> None:
+def test_manual_correction_apply_idempotent_when_candidate_matches_canonical(client, db_session, auth_headers) -> None:
     user = _create_onboarded_user(db_session, timezone_name="UTC")
     canonical_input = _create_canonical_input(db_session, user_id=user.id)
     event_uid = "ece45-hw4-deadline"
@@ -299,7 +299,7 @@ def test_manual_correction_apply_idempotent_when_candidate_matches_canonical(cli
     before_count = db_session.scalar(select(func.count(Change.id))) or 0
     response = client.post(
         "/review/corrections",
-        headers=_headers(),
+        headers=_headers(client, auth_headers, user),
         json={
             "target": {"change_id": None, "event_uid": event_uid},
             "patch": {
@@ -319,7 +319,7 @@ def test_manual_correction_apply_idempotent_when_candidate_matches_canonical(cli
     assert after_count == before_count
 
 
-def test_manual_correction_rejects_mismatched_target(client, db_session) -> None:
+def test_manual_correction_rejects_mismatched_target(client, db_session, auth_headers) -> None:
     user = _create_onboarded_user(db_session, timezone_name="UTC")
     canonical_input = _create_canonical_input(db_session, user_id=user.id)
     event_uid = "cse11-hw5-deadline"
@@ -347,7 +347,7 @@ def test_manual_correction_rejects_mismatched_target(client, db_session) -> None
 
     response = client.post(
         "/review/corrections/preview",
-        headers=_headers(),
+        headers=_headers(client, auth_headers, user),
         json={
             "target": {"change_id": change.id, "event_uid": "mismatch-uid"},
             "patch": {"due_at": "2026-03-15", "title": "HW5", "course_label": "CSE11"},

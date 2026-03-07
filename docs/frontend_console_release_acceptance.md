@@ -101,31 +101,34 @@ Expected result:
 Expected HTTP `200`:
 
 1. `http://127.0.0.1:3000`
-2. `http://127.0.0.1:8000/health`
-3. `http://127.0.0.1:8001/health`
-4. `http://127.0.0.1:8002/health`
-5. `http://127.0.0.1:8004/health`
-6. `http://127.0.0.1:8005/health`
+2. `http://127.0.0.1:8200/health`
+3. `http://127.0.0.1:8201/health`
+4. `http://127.0.0.1:8202/health`
+5. `http://127.0.0.1:8204/health`
+6. `http://127.0.0.1:8205/health`
 
 ### 3. Frontend walkthrough
 
 Open:
 
-1. `http://127.0.0.1:3000/`
-2. `http://127.0.0.1:3000/sources`
-3. `http://127.0.0.1:3000/review/changes`
-4. `http://127.0.0.1:3000/review/links`
-5. `http://127.0.0.1:3000/settings`
+1. `http://127.0.0.1:3000/login`
+2. `http://127.0.0.1:3000/register`
+3. `http://127.0.0.1:3000/sources`
+4. `http://127.0.0.1:3000/review/changes`
+5. `http://127.0.0.1:3000/review/links`
+6. `http://127.0.0.1:3000/settings`
 
 Minimum UI checks:
 
-1. Overview loads without requiring manual per-service startup
-2. Sources page lists existing sources or empty state correctly
-3. Creating an ICS source from the UI succeeds
-4. Manual sync can be triggered from Sources
-5. Review pages render loading / empty / populated states without route failure
-6. Settings page can read and save user profile fields
-7. Mobile navigation opens as a sheet on narrow screens
+1. Unauthenticated root/dashboard access redirects to `/login`
+2. Register creates a user session and lands on `/onboarding` when no source exists
+3. Sources page lists existing sources or empty state correctly for the logged-in user
+4. Creating an ICS source from the UI succeeds
+5. Manual sync can be triggered from Sources
+6. Review pages render loading / empty / populated states without leaking another user's data
+7. Settings page can read and save user profile fields while keeping `notify_email` read-only
+8. Logout returns the browser to `/login`
+9. Mobile navigation opens as a sheet on narrow screens
 
 ### 4. Launcher operability
 
@@ -136,6 +139,17 @@ scripts/dev_stack.sh status
 scripts/dev_stack.sh logs frontend
 scripts/dev_stack.sh logs input
 ```
+
+For browser flow checks, use the repo-local Playwright wrapper so npm cache stays inside the repo instead of `~/.npm`:
+
+```bash
+scripts/run_playwright_cli.sh bootstrap
+scripts/run_playwright_cli.sh open http://127.0.0.1:3000/login
+scripts/run_playwright_cli.sh snapshot
+scripts/run_playwright_cli.sh screenshot
+```
+
+If the wrapper still fails after bootstrap, the remaining fault domain is browser runtime startup (for example Firefox/Chrome SIGABRT on this machine), not npm cache permissions or auth/session routing.
 
 Expected result:
 

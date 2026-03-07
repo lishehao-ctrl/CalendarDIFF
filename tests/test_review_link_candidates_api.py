@@ -35,7 +35,7 @@ def _create_user_and_email_source(db_session) -> tuple[User, InputSource]:
     return user, source
 
 
-def test_link_candidate_approve_creates_manual_link(client, db_session) -> None:
+def test_link_candidate_approve_creates_manual_link(client, db_session, auth_headers) -> None:
     user, source = _create_user_and_email_source(db_session)
     db_session.add(
         EventEntity(
@@ -62,7 +62,7 @@ def test_link_candidate_approve_creates_manual_link(client, db_session) -> None:
     )
     db_session.commit()
 
-    headers = {"X-API-Key": "test-api-key"}
+    headers = auth_headers(client, user=user)
     response = client.get("/review/link-candidates?status=pending", headers=headers)
     assert response.status_code == 200
     rows = response.json()
@@ -100,7 +100,7 @@ def test_link_candidate_approve_creates_manual_link(client, db_session) -> None:
     assert decide_again.json()["idempotent"] is True
 
 
-def test_link_candidate_reject_creates_block_and_unblock(client, db_session) -> None:
+def test_link_candidate_reject_creates_block_and_unblock(client, db_session, auth_headers) -> None:
     user, source = _create_user_and_email_source(db_session)
     db_session.add(
         EventLinkCandidate(
@@ -116,7 +116,7 @@ def test_link_candidate_reject_creates_block_and_unblock(client, db_session) -> 
     )
     db_session.commit()
 
-    headers = {"X-API-Key": "test-api-key"}
+    headers = auth_headers(client, user=user)
     rows = client.get("/review/link-candidates?status=pending", headers=headers).json()
     assert len(rows) == 1
     candidate_id = rows[0]["id"]
@@ -155,7 +155,7 @@ def test_link_candidate_reject_creates_block_and_unblock(client, db_session) -> 
     assert blocks_after.json() == []
 
 
-def test_links_api_list_delete_and_relink(client, db_session) -> None:
+def test_links_api_list_delete_and_relink(client, db_session, auth_headers) -> None:
     user, source = _create_user_and_email_source(db_session)
     db_session.add(
         EventEntity(
@@ -194,7 +194,7 @@ def test_links_api_list_delete_and_relink(client, db_session) -> None:
     )
     db_session.commit()
 
-    headers = {"X-API-Key": "test-api-key"}
+    headers = auth_headers(client, user=user)
     links_resp = client.get("/review/links", headers=headers)
     assert links_resp.status_code == 200
     rows = links_resp.json()
@@ -239,7 +239,7 @@ def test_links_api_list_delete_and_relink(client, db_session) -> None:
     assert final_rows[0]["entity_uid"] == "ent_target_b"
 
 
-def test_link_candidate_batch_approve_partial_success(client, db_session) -> None:
+def test_link_candidate_batch_approve_partial_success(client, db_session, auth_headers) -> None:
     user, source = _create_user_and_email_source(db_session)
     db_session.add(
         EventEntity(
@@ -278,7 +278,7 @@ def test_link_candidate_batch_approve_partial_success(client, db_session) -> Non
     db_session.add(candidate_invalid)
     db_session.commit()
 
-    headers = {"X-API-Key": "test-api-key"}
+    headers = auth_headers(client, user=user)
     resp = client.post(
         "/review/link-candidates/batch/decisions",
         headers=headers,
@@ -310,7 +310,7 @@ def test_link_candidate_batch_approve_partial_success(client, db_session) -> Non
     assert by_id[999999]["error_code"] == "not_found"
 
 
-def test_link_candidate_batch_reject_creates_blocks(client, db_session) -> None:
+def test_link_candidate_batch_reject_creates_blocks(client, db_session, auth_headers) -> None:
     user, source = _create_user_and_email_source(db_session)
     candidate_a = EventLinkCandidate(
         user_id=user.id,
@@ -336,7 +336,7 @@ def test_link_candidate_batch_reject_creates_blocks(client, db_session) -> None:
     db_session.add(candidate_b)
     db_session.commit()
 
-    headers = {"X-API-Key": "test-api-key"}
+    headers = auth_headers(client, user=user)
     resp = client.post(
         "/review/link-candidates/batch/decisions",
         headers=headers,
@@ -360,9 +360,9 @@ def test_link_candidate_batch_reject_creates_blocks(client, db_session) -> None:
         assert isinstance(row["block_id"], int)
 
 
-def test_link_candidate_batch_decisions_validate_payload(client, db_session) -> None:
-    _create_user_and_email_source(db_session)
-    headers = {"X-API-Key": "test-api-key"}
+def test_link_candidate_batch_decisions_validate_payload(client, db_session, auth_headers) -> None:
+    user, _ = _create_user_and_email_source(db_session)
+    headers = auth_headers(client, user=user)
 
     empty_ids = client.post(
         "/review/link-candidates/batch/decisions",

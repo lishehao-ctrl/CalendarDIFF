@@ -104,7 +104,7 @@ def _seed_result(db_session, *, source: InputSource, request_id: str, records: l
     db_session.commit()
 
 
-def test_cross_source_merge_produces_single_pending_review_item(client, db_session) -> None:
+def test_cross_source_merge_produces_single_pending_review_item(client, db_session, auth_headers) -> None:
     user, calendar_source, gmail_source = _create_sources(db_session)
     due = datetime(2026, 3, 4, 7, 59, tzinfo=timezone.utc)
 
@@ -155,7 +155,7 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
     second_apply = apply_ingest_result_idempotent(db_session, request_id="merge-gmail-1")
     assert second_apply["changes_created"] == 0
 
-    headers = {"X-API-Key": "test-api-key"}
+    headers = auth_headers(client, user=user)
     review_response = client.get("/review/changes?review_status=pending", headers=headers)
     assert review_response.status_code == 200
     review_rows = review_response.json()
@@ -221,7 +221,7 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
     assert removed_timeline.status_code == 404
 
 
-def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session) -> None:
+def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session, auth_headers) -> None:
     user, calendar_source, gmail_source = _create_sources(db_session)
     due_round1 = datetime(2026, 3, 10, 23, 59, tzinfo=timezone.utc)
     due_round2 = datetime(2026, 3, 12, 20, 30, tzinfo=timezone.utc)
@@ -272,7 +272,7 @@ def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session
     _seed_result(db_session, source=gmail_source, request_id="merge-round1-gmail", records=round1_gmail_records)
     apply_ingest_result_idempotent(db_session, request_id="merge-round1-gmail")
 
-    headers = {"X-API-Key": "test-api-key"}
+    headers = auth_headers(client, user=user)
     pending_round1 = client.get("/review/changes?review_status=pending", headers=headers)
     assert pending_round1.status_code == 200
     round1_rows = pending_round1.json()

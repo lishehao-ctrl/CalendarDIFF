@@ -7,7 +7,7 @@ from sqlalchemy import select
 from app.db.models.shared import User
 
 
-def test_get_user_returns_timezone_name(input_client, db_session) -> None:
+def test_get_user_returns_timezone_name(input_client, db_session, auth_headers) -> None:
     user = User(
         email="tz-user@example.com",
         notify_email="tz-user@example.com",
@@ -16,13 +16,14 @@ def test_get_user_returns_timezone_name(input_client, db_session) -> None:
     db_session.add(user)
     db_session.commit()
 
-    response = input_client.get("/users/me", headers={"X-API-Key": "test-api-key"})
+    headers = auth_headers(input_client, user=user)
+    response = input_client.get("/users/me", headers=headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["timezone_name"] == "UTC"
 
 
-def test_patch_user_timezone_name_validates_iana_name(input_client, db_session) -> None:
+def test_patch_user_timezone_name_validates_iana_name(input_client, db_session, auth_headers) -> None:
     user = User(
         email="tz-user@example.com",
         notify_email="tz-user@example.com",
@@ -31,9 +32,11 @@ def test_patch_user_timezone_name_validates_iana_name(input_client, db_session) 
     db_session.add(user)
     db_session.commit()
 
+    headers = auth_headers(input_client, user=user)
+
     patch_response = input_client.patch(
         "/users/me",
-        headers={"X-API-Key": "test-api-key"},
+        headers=headers,
         json={"timezone_name": "America/Los_Angeles"},
     )
     assert patch_response.status_code == 200
@@ -46,7 +49,7 @@ def test_patch_user_timezone_name_validates_iana_name(input_client, db_session) 
 
     invalid_response = input_client.patch(
         "/users/me",
-        headers={"X-API-Key": "test-api-key"},
+        headers=headers,
         json={"timezone_name": "Mars/Olympus"},
     )
     assert invalid_response.status_code == 422

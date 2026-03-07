@@ -75,7 +75,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--notify-email",
         default="smoke.runner@example.com",
-        help="Notify email used when onboarding is missing.",
+        help="Notify email used for auth register/login.",
+    )
+    parser.add_argument(
+        "--auth-password",
+        default=os.getenv("SMOKE_AUTH_PASSWORD", "password123"),
+        help="Password used for auth register/login.",
     )
     return parser.parse_args()
 
@@ -103,6 +108,26 @@ def _require_llm_env() -> tuple[str, str]:
     if missing:
         raise SmokeFailure(f"missing llm env config: {missing}")
     return model, base_url
+
+
+def _ensure_authenticated_session(client: httpx.Client, *, notify_email: str, password: str) -> None:
+    register_response = client.post(
+        "/auth/register",
+        json={"notify_email": notify_email, "password": password},
+        timeout=10.0,
+    )
+    if register_response.status_code == 201:
+        return
+    if register_response.status_code != 409:
+        raise SmokeFailure(f"auth register failed status={register_response.status_code} body={register_response.text[:800]}")
+
+    login_response = client.post(
+        "/auth/login",
+        json={"notify_email": notify_email, "password": password},
+        timeout=10.0,
+    )
+    if login_response.status_code != 200:
+        raise SmokeFailure(f"auth login failed status={login_response.status_code} body={login_response.text[:800]}")
 
 
 def _request_json(
@@ -292,8 +317,9 @@ def main() -> int:
         api_headers = {"X-API-Key": args.api_key}
         input_api_base = args.input_api_base.rstrip("/")
         review_api_base = args.review_api_base.rstrip("/")
-        input_client = httpx.Client(base_url=input_api_base, headers=api_headers)
-        review_client = httpx.Client(base_url=review_api_base, headers=api_headers)
+        shared_cookies = httpx.Cookies()
+        input_client = httpx.Client(base_url=input_api_base, headers=api_headers, cookies=shared_cookies)
+        review_client = httpx.Client(base_url=review_api_base, headers=api_headers, cookies=shared_cookies)
         try:
             input_health = input_client.get("/health", timeout=8.0)
             review_health = review_client.get("/health", timeout=8.0)
@@ -318,15 +344,8 @@ def main() -> int:
                         f"notify health check failed status={notify_health.status_code} body={notify_health.text[:400]}"
                     )
 
-            status_payload = _request_json(input_client, "GET", "/onboarding/status")
-            stage = str(status_payload.get("stage") or "")
-            if stage == "needs_user":
-                _request_json(
-                    input_client,
-                    "POST",
-                    "/onboarding/registrations",
-                    json_payload={"notify_email": args.notify_email},
-                )
+            _ensure_authenticated_session(input_client, notify_email=args.notify_email, password=args.auth_password)
+            _request_json(input_client, "GET", "/onboarding/status")
 
             fake_cmd = [
                 sys.executable,

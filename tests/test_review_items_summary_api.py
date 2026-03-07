@@ -33,7 +33,7 @@ def _create_onboarded_user_with_source(db_session, *, email: str, source_key: st
     return user, source
 
 
-def test_review_items_summary_counts_pending_only_for_current_user(client, db_session) -> None:
+def test_review_items_summary_counts_pending_only_for_current_user(client, db_session, auth_headers) -> None:
     user, source = _create_onboarded_user_with_source(
         db_session,
         email="summary-owner@example.com",
@@ -186,7 +186,7 @@ def test_review_items_summary_counts_pending_only_for_current_user(client, db_se
     )
     db_session.commit()
 
-    headers = {"X-API-Key": "test-api-key"}
+    headers = auth_headers(client, user=user)
     response = client.get("/review/summary", headers=headers)
     assert response.status_code == 200
     payload = response.json()

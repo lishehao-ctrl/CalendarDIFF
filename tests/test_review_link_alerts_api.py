@@ -64,7 +64,7 @@ def _add_alert(
     return row
 
 
-def test_link_alerts_list_and_decisions(client, db_session) -> None:
+def test_link_alerts_list_and_decisions(client, db_session, auth_headers) -> None:
     user, source = _create_user_and_email_source(db_session)
     db_session.add(
         EventEntity(
@@ -87,7 +87,7 @@ def test_link_alerts_list_and_decisions(client, db_session) -> None:
     )
     db_session.commit()
 
-    headers = {"X-API-Key": "test-api-key"}
+    headers = auth_headers(client, user=user)
     list_pending = client.get("/review/link-alerts", headers=headers)
     assert list_pending.status_code == 200
     rows = list_pending.json()
@@ -152,7 +152,7 @@ def test_link_alerts_list_and_decisions(client, db_session) -> None:
     assert "marked_safe" in statuses
 
 
-def test_link_alert_resolved_by_link_delete_and_relink(client, db_session) -> None:
+def test_link_alert_resolved_by_link_delete_and_relink(client, db_session, auth_headers) -> None:
     user, source = _create_user_and_email_source(db_session)
     db_session.add(
         EventEntity(
@@ -199,7 +199,7 @@ def test_link_alert_resolved_by_link_delete_and_relink(client, db_session) -> No
     )
     db_session.commit()
 
-    headers = {"X-API-Key": "test-api-key"}
+    headers = auth_headers(client, user=user)
     delete_resp = client.delete(f"/review/links/{link.id}", headers=headers)
     assert delete_resp.status_code == 200
 
@@ -262,7 +262,7 @@ def test_link_alert_resolved_by_link_delete_and_relink(client, db_session) -> No
     assert resolved_after_relink.resolution_code == EventLinkAlertResolution.LINK_RELINKED
 
 
-def test_link_alert_batch_dismiss_partial_success(client, db_session) -> None:
+def test_link_alert_batch_dismiss_partial_success(client, db_session, auth_headers) -> None:
     user, source = _create_user_and_email_source(db_session)
     db_session.add(
         EventEntity(
@@ -295,7 +295,7 @@ def test_link_alert_batch_dismiss_partial_success(client, db_session) -> None:
     )
     db_session.commit()
 
-    headers = {"X-API-Key": "test-api-key"}
+    headers = auth_headers(client, user=user)
     resp = client.post(
         "/review/link-alerts/batch/decisions",
         headers=headers,
@@ -328,7 +328,7 @@ def test_link_alert_batch_dismiss_partial_success(client, db_session) -> None:
     assert by_id[999999]["error_code"] == "not_found"
 
 
-def test_link_alert_batch_mark_safe_success(client, db_session) -> None:
+def test_link_alert_batch_mark_safe_success(client, db_session, auth_headers) -> None:
     user, source = _create_user_and_email_source(db_session)
     db_session.add(
         EventEntity(
@@ -359,7 +359,7 @@ def test_link_alert_batch_mark_safe_success(client, db_session) -> None:
     )
     db_session.commit()
 
-    headers = {"X-API-Key": "test-api-key"}
+    headers = auth_headers(client, user=user)
     resp = client.post(
         "/review/link-alerts/batch/decisions",
         headers=headers,
@@ -384,9 +384,9 @@ def test_link_alert_batch_mark_safe_success(client, db_session) -> None:
         assert row["reviewed_at"] is not None
 
 
-def test_link_alert_batch_decisions_validate_payload(client, db_session) -> None:
-    _create_user_and_email_source(db_session)
-    headers = {"X-API-Key": "test-api-key"}
+def test_link_alert_batch_decisions_validate_payload(client, db_session, auth_headers) -> None:
+    user, _ = _create_user_and_email_source(db_session)
+    headers = auth_headers(client, user=user)
 
     empty_ids = client.post(
         "/review/link-alerts/batch/decisions",

@@ -16,7 +16,7 @@ from tests.support.payload_builders import (
 )
 
 
-def _create_calendar_source(db_session) -> InputSource:
+def _create_calendar_source(db_session) -> tuple[User, InputSource]:
     now = datetime.now(timezone.utc)
     user = User(
         email="bridge-owner@example.com",
@@ -49,8 +49,9 @@ def _create_calendar_source(db_session) -> InputSource:
     )
     db_session.add(InputSourceCursor(source_id=source.id, version=1, cursor_json={}))
     db_session.commit()
+    db_session.refresh(user)
     db_session.refresh(source)
-    return source
+    return user, source
 
 
 def _seed_calendar_ingest_result(db_session, *, source: InputSource, request_id: str) -> None:
@@ -100,12 +101,12 @@ def _seed_calendar_ingest_result(db_session, *, source: InputSource, request_id:
     db_session.commit()
 
 
-def test_feed_read_source_id_via_review_pool(client, db_session) -> None:
-    source = _create_calendar_source(db_session)
+def test_feed_read_source_id_via_review_pool(client, db_session, auth_headers) -> None:
+    user, source = _create_calendar_source(db_session)
     _seed_calendar_ingest_result(db_session, source=source, request_id="bridge-read-req-1")
     apply_ingest_result_idempotent(db_session, request_id="bridge-read-req-1")
 
-    headers = {"X-API-Key": "test-api-key"}
+    headers = auth_headers(client, user=user)
 
     pending_response = client.get("/review/changes?review_status=pending", headers=headers)
     assert pending_response.status_code == 200

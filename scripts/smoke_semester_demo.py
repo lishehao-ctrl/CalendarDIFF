@@ -103,6 +103,26 @@ def _require_online_llm_env() -> tuple[str, str]:
     return model, base_url
 
 
+def _ensure_authenticated_session(client: httpx.Client, *, notify_email: str, password: str) -> None:
+    register_response = client.post(
+        "/auth/register",
+        json={"notify_email": notify_email, "password": password},
+        timeout=10.0,
+    )
+    if register_response.status_code == 201:
+        return
+    if register_response.status_code != 409:
+        raise DemoFailure(f"auth register failed status={register_response.status_code} body={register_response.text[:800]}")
+
+    login_response = client.post(
+        "/auth/login",
+        json={"notify_email": notify_email, "password": password},
+        timeout=10.0,
+    )
+    if login_response.status_code != 200:
+        raise DemoFailure(f"auth login failed status={login_response.status_code} body={login_response.text[:800]}")
+
+
 def _request_json(
     client: httpx.Client,
     method: str,
@@ -347,14 +367,8 @@ def main() -> int:
         if args.llm_api_base:
             _check_external_health(args.llm_api_base)
 
-        onboarding = _request_json(input_client, "GET", "/onboarding/status")
-        if str(onboarding.get("stage") or "") == "needs_user":
-            _request_json(
-                input_client,
-                "POST",
-                "/onboarding/registrations",
-                json_payload={"notify_email": args.notify_email},
-            )
+        _ensure_authenticated_session(input_client, notify_email=args.notify_email, password=args.auth_password)
+        _request_json(input_client, "GET", "/onboarding/status")
 
         fake_cmd = [
             sys.executable,

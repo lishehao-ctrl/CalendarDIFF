@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 import httpx
@@ -20,8 +21,8 @@ def test_real_source_three_round_smoke_online(tmp_path: Path) -> None:
     if run_flag not in {"1", "true", "yes"}:
         pytest.skip("set RUN_REAL_SOURCE_SMOKE=true to run online real-source smoke")
 
-    input_api_base = os.getenv("REAL_SOURCE_SMOKE_INPUT_API_BASE", "http://127.0.0.1:8001").rstrip("/")
-    review_api_base = os.getenv("REAL_SOURCE_SMOKE_REVIEW_API_BASE", "http://127.0.0.1:8000").rstrip("/")
+    input_api_base = os.getenv("REAL_SOURCE_SMOKE_INPUT_API_BASE", "http://127.0.0.1:8201").rstrip("/")
+    review_api_base = os.getenv("REAL_SOURCE_SMOKE_REVIEW_API_BASE", "http://127.0.0.1:8200").rstrip("/")
     api_key = (os.getenv("APP_API_KEY") or "").strip()
     if not api_key:
         pytest.skip("APP_API_KEY is required for online real-source smoke")
@@ -37,6 +38,8 @@ def test_real_source_three_round_smoke_online(tmp_path: Path) -> None:
         pytest.skip(f"review api health check returned status={review_health.status_code}")
 
     report_path = tmp_path / "real_source_smoke_report.json"
+    notify_email = f"smoke-{uuid.uuid4().hex[:8]}@example.com"
+    auth_password = "password123"
     cmd = [
         sys.executable,
         "scripts/smoke_real_sources_three_rounds.py",
@@ -46,6 +49,10 @@ def test_real_source_three_round_smoke_online(tmp_path: Path) -> None:
         review_api_base,
         "--api-key",
         api_key,
+        "--notify-email",
+        notify_email,
+        "--auth-password",
+        auth_password,
         "--report",
         str(report_path),
     ]
