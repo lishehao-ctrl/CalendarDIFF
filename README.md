@@ -4,7 +4,7 @@ CalendarDIFF runs as 5 services with shared PostgreSQL + Redis and event-driven 
 
 Core flow:
 
-1. ingest input sources (ICS/Gmail) and build event observations
+1. ingest input sources (Canvas ICS/Gmail) and build event observations
 2. ICS uses RFC-based delta detection first; only changed VEVENT components go to LLM
 3. removed/cancelled ICS components are handled as deterministic removals
 4. ICS canonical fields (`title/start/end/status/location`) stay deterministic from parser/source
@@ -31,9 +31,10 @@ Core flow:
 
 ## Quick Start
 
-Combined release / acceptance guide for the frontend console and local launcher:
+Current implementation guides:
 
 - `docs/frontend_console_release_acceptance.md`
+- `docs/deploy_three_layer_runtime.md`
 
 1. Create environment and install dependencies:
 
@@ -74,16 +75,6 @@ scripts/dev_stack.sh down
 scripts/dev_stack.sh down --infra
 ```
 
-### Migration Revision Rename Note
-
-This cleanup rewrites migration revision identifiers in `app/db/migrations/versions`.
-Rebuild and re-init the database:
-
-```bash
-scripts/reset_postgres_db.sh
-python -m alembic upgrade head
-```
-
 ### Manual Service Startup
 
 If you want to run services one by one instead of using the local launcher:
@@ -119,8 +110,10 @@ Compose includes:
 
 Default host-exposed ports:
 
-1. `input-service` on `localhost:8201`
-2. `review-service` on `localhost:8200`
+1. `input-service` on `localhost:8001`
+2. `review-service` on `localhost:8000`
+
+For the preferred local launcher, use `scripts/dev_stack.sh up` and the `820x` port set instead.
 
 `ingest-service`, `llm-service`, and `notification-service` are internal-only in default compose. Use `docker-compose.dev.yml` for dev-only port exposure.
 
@@ -368,11 +361,12 @@ python -m pytest -q
 
 ## Documentation
 
-1. `docs/architecture.md`
+1. `docs/frontend_console_release_acceptance.md`
 2. `docs/deploy_three_layer_runtime.md`
-3. `docs/api_surface_current.md`
-4. `docs/ops_retention_replay_smoke.md`
+3. `docs/architecture.md`
+4. `docs/api_surface_current.md`
 5. `docs/service_table_ownership.md`
 6. `docs/event_contracts.md`
 7. `docs/ops_microservice_slo.md`
 8. `docs/dataflow_input_to_notification.md`
+9. `docs/archive/README.md`
