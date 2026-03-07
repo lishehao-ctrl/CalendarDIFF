@@ -17,7 +17,7 @@ import httpx
 if __package__ in {None, ""}:
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from scripts.semester_demo_scenarios import ScenarioManifest, build_scenario_manifest, write_scenario_manifest
+from tools.datasets.semester_demo_scenarios import ScenarioManifest, build_scenario_manifest, write_scenario_manifest
 
 
 @dataclass(frozen=True)

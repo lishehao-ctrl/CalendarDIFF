@@ -9,7 +9,7 @@ from pathlib import Path
 
 import httpx
 
-from scripts.semester_demo_scenarios import build_scenario_manifest, write_scenario_manifest
+from tools.datasets.semester_demo_scenarios import build_scenario_manifest, write_scenario_manifest
 
 
 def _find_free_port() -> int:

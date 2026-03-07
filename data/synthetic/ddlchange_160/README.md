@@ -93,13 +93,13 @@ This dataset is a fully synthetic benchmark for deadline-change extraction and d
 Run:
 
 ```bash
-python scripts/validate_synthetic_dataset.py
+python tools/datasets/validate_synthetic_dataset.py
 ```
 
 Optional:
 
 ```bash
-python scripts/validate_synthetic_dataset.py \
+python tools/datasets/validate_synthetic_dataset.py \
   --dataset-root data/synthetic/ddlchange_160 \
   --schema tools/labeling/schema/email_label.json \
   --report data/synthetic/ddlchange_160/qa/validation_report.json

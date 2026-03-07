@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.semester_demo_scenarios import build_scenario_manifest
+from tools.datasets.semester_demo_scenarios import build_scenario_manifest
 
 
 def test_semester_demo_manifest_shape_and_volume() -> None:
