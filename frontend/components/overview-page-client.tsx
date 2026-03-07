@@ -9,14 +9,14 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { SummaryGrid } from "@/components/summary-grid";
 import { useResource } from "@/lib/use-resource";
 import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
-import type { OnboardingStatus, ReviewSummary } from "@/lib/types";
+import type { OnboardingStatus, ReviewSummary, SourceHealth } from "@/lib/types";
 
 const actionCards = [
   {
     href: "/sources",
     eyebrow: "Source control",
     title: "Manage intake",
-    description: "Connect calendar URLs, maintain Gmail, and trigger manual syncs without leaving the console.",
+    description: "Connect your Canvas ICS link, maintain Gmail, and trigger manual syncs without leaving the console.",
     icon: BellDot
   },
   {
@@ -45,6 +45,33 @@ function readinessTone(stage: string | null | undefined): "approved" | "pending"
   return "default";
 }
 
+function sourceHealthTone(status: SourceHealth["status"] | undefined): "approved" | "pending" | "default" {
+  if (status === "healthy") {
+    return "approved";
+  }
+  if (status === "attention") {
+    return "pending";
+  }
+  return "default";
+}
+
+function fallbackSourceHealth(stage: string): SourceHealth {
+  if (stage === "needs_source_connection") {
+    return {
+      status: "disconnected",
+      message: "No active sources connected yet.",
+      affected_source_id: null,
+      affected_provider: null,
+    };
+  }
+  return {
+    status: "healthy",
+    message: "Connected sources are ready for intake.",
+    affected_source_id: null,
+    affected_provider: null,
+  };
+}
+
 export default function OverviewPage() {
   const onboarding = useResource<OnboardingStatus>("/onboarding/status");
   const summary = useResource<ReviewSummary>("/review/summary");
@@ -66,6 +93,7 @@ export default function OverviewPage() {
   }
 
   const stage = onboarding.data.stage || "unknown";
+  const sourceHealth = onboarding.data.source_health || fallbackSourceHealth(stage);
   const summaryItems = [
     {
       label: "Onboarding stage",
@@ -120,14 +148,17 @@ export default function OverviewPage() {
 
       <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
         <Card className="p-6 md:p-7">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(47,143,91,0.12)] text-moss">
-              <CheckCircle2 className="h-5 w-5" />
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(47,143,91,0.12)] text-moss">
+                <CheckCircle2 className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Current status</p>
+                <h2 className="mt-1 text-2xl font-semibold">Workspace readiness</h2>
+              </div>
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Current status</p>
-              <h2 className="mt-1 text-2xl font-semibold">Workspace readiness</h2>
-            </div>
+            <Badge tone={sourceHealthTone(sourceHealth.status)}>{formatStatusLabel(sourceHealth.status)}</Badge>
           </div>
           <div className="mt-5 rounded-[1.2rem] border border-line/80 bg-white/60 p-5">
             <p className="text-sm font-medium text-[#314051]">{onboarding.data.message || "Your workspace is ready for source intake and review work."}</p>
@@ -135,13 +166,17 @@ export default function OverviewPage() {
               <p>Registered user id: {onboarding.data.registered_user_id ?? "Unavailable"}</p>
               <p>First active source: {onboarding.data.first_source_id ?? "Not connected"}</p>
               <p>Stage: {formatStatusLabel(stage)}</p>
-              <p>Last issue: {onboarding.data.last_error || "None"}</p>
+              <p>Source health: {formatStatusLabel(sourceHealth.status)}</p>
             </div>
           </div>
           <div className="mt-4 rounded-[1.2rem] border border-line/80 bg-white/60 p-5 text-sm text-[#596270]">
-            {stage === "ready"
-              ? "The dashboard is live. Keep an eye on pending review changes and link alerts so the queue does not drift."
-              : "This account is authenticated, but source intake is not complete yet. Connect a source before expecting review or link activity."}
+            <p className="font-medium text-[#314051]">{sourceHealth.message}</p>
+            {sourceHealth.affected_provider || sourceHealth.affected_source_id ? (
+              <p className="mt-3">
+                Affected source: {sourceHealth.affected_provider || "source"}
+                {sourceHealth.affected_source_id ? ` #${sourceHealth.affected_source_id}` : ""}
+              </p>
+            ) : null}
           </div>
         </Card>
 

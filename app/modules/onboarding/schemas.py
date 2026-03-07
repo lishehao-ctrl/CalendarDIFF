@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.modules.users.email_utils import is_valid_email_address
 
+SourceHealthStatusLiteral = Literal["healthy", "attention", "disconnected"]
+
 
 class OnboardingRegisterRequest(BaseModel):
     notify_email: str = Field(min_length=3, max_length=255)
@@ -23,12 +25,20 @@ class OnboardingRegisterRequest(BaseModel):
         return stripped
 
 
+class SourceHealthSummaryResponse(BaseModel):
+    status: SourceHealthStatusLiteral
+    message: str
+    affected_source_id: int | None = None
+    affected_provider: str | None = None
+
+
 class OnboardingStatusResponse(BaseModel):
     stage: Literal["needs_user", "needs_source_connection", "ready"]
     message: str
     registered_user_id: int | None = None
     first_source_id: int | None = None
     last_error: str | None = None
+    source_health: SourceHealthSummaryResponse | None = None
 
 
 class OnboardingRegisterResponse(BaseModel):

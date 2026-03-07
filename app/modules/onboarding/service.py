@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.db.models.input import InputSource
 from app.db.models.shared import User
-from app.modules.users.service import get_first_active_input_source
 
 
 class OnboardingRegisterError(RuntimeError):
@@ -15,12 +16,21 @@ class OnboardingRegisterError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class SourceHealthSummary:
+    status: str
+    message: str
+    affected_source_id: int | None
+    affected_provider: str | None
+
+
+@dataclass(frozen=True)
 class OnboardingStatus:
     stage: str
     message: str
     registered_user_id: int | None
     first_source_id: int | None
     last_error: str | None
+    source_health: SourceHealthSummary
 
 
 @dataclass(frozen=True)
@@ -31,7 +41,19 @@ class OnboardingRegisterResult:
 
 
 def get_onboarding_status_for_user(db: Session, *, user: User) -> OnboardingStatus:
-    first_source = get_first_active_input_source(db, user_id=user.id)
+    active_sources = list(
+        db.scalars(
+            select(InputSource)
+            .where(
+                InputSource.user_id == user.id,
+                InputSource.is_active.is_(True),
+            )
+            .order_by(InputSource.id.asc())
+        ).all()
+    )
+    first_source = active_sources[0] if active_sources else None
+    first_error_source = next((source for source in active_sources if source.last_error_message), None)
+    source_health = _derive_source_health(active_sources=active_sources, first_error_source=first_error_source)
 
     if first_source is None:
         return OnboardingStatus(
@@ -40,6 +62,7 @@ def get_onboarding_status_for_user(db: Session, *, user: User) -> OnboardingStat
             registered_user_id=user.id,
             first_source_id=None,
             last_error=None,
+            source_health=source_health,
         )
 
     return OnboardingStatus(
@@ -47,7 +70,8 @@ def get_onboarding_status_for_user(db: Session, *, user: User) -> OnboardingStat
         message="Onboarding complete.",
         registered_user_id=user.id,
         first_source_id=first_source.id,
-        last_error=first_source.last_error_message,
+        last_error=first_error_source.last_error_message if first_error_source is not None else None,
+        source_health=source_health,
     )
 
 
@@ -70,4 +94,27 @@ def register_onboarding(
         user_id=user.id,
         stage=status.stage,
         first_source_id=status.first_source_id,
+    )
+
+
+def _derive_source_health(*, active_sources: list[InputSource], first_error_source: InputSource | None) -> SourceHealthSummary:
+    if not active_sources:
+        return SourceHealthSummary(
+            status="disconnected",
+            message="No active sources connected yet.",
+            affected_source_id=None,
+            affected_provider=None,
+        )
+    if first_error_source is not None:
+        return SourceHealthSummary(
+            status="attention",
+            message="A connected source needs attention before syncs are reliable.",
+            affected_source_id=first_error_source.id,
+            affected_provider=first_error_source.provider,
+        )
+    return SourceHealthSummary(
+        status="healthy",
+        message="Connected sources are ready for intake.",
+        affected_source_id=None,
+        affected_provider=None,
     )

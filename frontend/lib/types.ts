@@ -1,9 +1,17 @@
+export type SourceHealth = {
+  status: "healthy" | "attention" | "disconnected";
+  message: string;
+  affected_source_id: number | null;
+  affected_provider: string | null;
+};
+
 export type OnboardingStatus = {
   stage: string;
   message: string;
   registered_user_id: number | null;
   first_source_id: number | null;
   last_error: string | null;
+  source_health: SourceHealth | null;
 };
 
 export type ReviewSummary = {

@@ -17,8 +17,6 @@ def create_ics_input_for_user(db_session: Session, *, user_id: int, url: str) ->
         payload=InputSourceCreateRequest(
             source_kind="calendar",
             provider="ics",
-            source_key=f"calendar-{user_id}",
-            display_name="Calendar Source",
             config={},
             secrets={"url": url},
         ),

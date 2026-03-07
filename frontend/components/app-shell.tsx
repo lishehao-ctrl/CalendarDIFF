@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 
 const items = [
   { href: "/", label: "Overview", icon: LayoutDashboard, description: "Health, onboarding, queue pressure" },
-  { href: "/sources", label: "Sources", icon: BellDot, description: "Calendar URLs, sync controls, source health" },
+  { href: "/sources", label: "Sources", icon: BellDot, description: "Canvas ICS, sync controls, source health" },
   { href: "/review/changes", label: "Review Inbox", icon: GitCompareArrows, description: "Canonical change moderation" },
   { href: "/review/links", label: "Link Review", icon: Link2, description: "Candidates, links, alerts" },
   { href: "/settings", label: "Settings", icon: Settings2, description: "Timezone and notifications" }
@@ -70,7 +70,7 @@ function NavContent({ pathname, onNavigate }: { pathname: string; onNavigate?: (
       </nav>
       <div className="mt-6 space-y-3">
         <div className="rounded-[1.25rem] border border-line/80 bg-white/55 p-4 text-sm text-[#596270]">
-          Gmail OAuth is available from Sources. Connect one Gmail mailbox, keep calendar URL sources alongside it, and review everything from one console.
+          Gmail OAuth is available from Sources. Connect one Gmail mailbox, keep your Canvas ICS link alongside it, and review everything from one console.
         </div>
         <LogoutButton />
       </div>

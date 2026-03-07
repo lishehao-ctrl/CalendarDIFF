@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarSync, Mailbox, RefreshCw, ShieldAlert, Trash2 } from "lucide-react";
+import { CalendarSync, Mailbox, RefreshCw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,12 +11,6 @@ import { backendFetch } from "@/lib/backend";
 import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
 import type { SourceRow, SyncStatus } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
-
-const blankForm = {
-  source_key: "",
-  display_name: "",
-  secrets_url: ""
-};
 
 const oauthQueryKeys = ["oauth_provider", "oauth_status", "source_id", "request_id", "message"] as const;
 
@@ -33,9 +27,23 @@ function syncTone(value: string | undefined) {
   return "default";
 }
 
+function formatSourceTitle(source: SourceRow) {
+  if (source.provider === "ics") {
+    return "Canvas ICS";
+  }
+  return source.display_name || source.source_key;
+}
+
+function formatSourceSubtitle(source: SourceRow) {
+  if (source.provider === "ics") {
+    return "Student calendar feed";
+  }
+  return `${source.source_kind} source · key \`${source.source_key}\``;
+}
+
 export function SourcesPanel() {
   const { data, loading, error, refresh } = useResource<SourceRow[]>("/sources");
-  const [form, setForm] = useState(blankForm);
+  const [canvasIcsUrl, setCanvasIcsUrl] = useState("");
   const [syncState, setSyncState] = useState<Record<number, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [busyDelete, setBusyDelete] = useState<number | null>(null);
@@ -47,7 +55,9 @@ export function SourcesPanel() {
   const activeCount = sources.filter((source) => source.is_active).length;
   const erroredCount = sources.filter((source) => Boolean(source.last_error_message)).length;
   const gmailSource = useMemo(() => sources.find((source) => source.provider === "gmail") || null, [sources]);
+  const canvasIcsSource = useMemo(() => sources.find((source) => source.provider === "ics") || null, [sources]);
   const gmailConnected = gmailSource?.oauth_connection_status === "connected";
+  const canvasIcsConnected = Boolean(canvasIcsSource?.is_active);
 
   const pollSyncRequest = useCallback(async (
     sourceId: number,
@@ -111,33 +121,69 @@ export function SourcesPanel() {
     }
   }, [pollSyncRequest, refresh]);
 
-  async function createIcsSource() {
+  async function createOrUpdateCanvasIcsSource() {
+    const normalizedUrl = canvasIcsUrl.trim();
+    if (!normalizedUrl) {
+      return;
+    }
+
     setSubmitting(true);
     setBanner(null);
     try {
-      await backendFetch<SourceRow>("/sources", {
-        method: "POST",
-        body: JSON.stringify({
-          source_kind: "calendar",
-          provider: "ics",
-          source_key: form.source_key,
-          display_name: form.display_name,
-          config: {},
-          secrets: { url: form.secrets_url }
-        })
-      });
-      setForm(blankForm);
-      setBanner({ tone: "info", text: "Calendar URL source created. You can trigger a manual sync immediately." });
+      const existing = canvasIcsSource || await findExistingSource("ics");
+      if (existing) {
+        await backendFetch<SourceRow>(`/sources/${existing.source_id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            is_active: true,
+            secrets: { url: normalizedUrl }
+          })
+        });
+        setBanner({ tone: "info", text: "Canvas ICS link updated for this workspace." });
+      } else {
+        try {
+          await backendFetch<SourceRow>("/sources", {
+            method: "POST",
+            body: JSON.stringify({
+              source_kind: "calendar",
+              provider: "ics",
+              config: {},
+              secrets: { url: normalizedUrl }
+            })
+          });
+          setBanner({ tone: "info", text: "Canvas ICS link connected. You can trigger a manual sync immediately." });
+        } catch (err) {
+          const recovered = await findExistingSource("ics");
+          if (!recovered) {
+            throw err;
+          }
+          await backendFetch<SourceRow>(`/sources/${recovered.source_id}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              is_active: true,
+              secrets: { url: normalizedUrl }
+            })
+          });
+          setBanner({ tone: "info", text: "Canvas ICS link updated for this workspace." });
+        }
+      }
+      setCanvasIcsUrl("");
       await refresh();
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to create source" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to save Canvas ICS link" });
     } finally {
       setSubmitting(false);
     }
   }
 
   async function deleteSource(sourceId: number, provider: string) {
-    const confirmed = window.confirm(provider === "gmail" ? "Disconnect this Gmail source from the workspace?" : "Delete this source from the workspace?");
+    const confirmed = window.confirm(
+      provider === "gmail"
+        ? "Disconnect this Gmail source from the workspace?"
+        : provider === "ics"
+          ? "Remove this Canvas ICS link from the workspace?"
+          : "Delete this source from the workspace?"
+    );
     if (!confirmed) {
       return;
     }
@@ -146,7 +192,14 @@ export function SourcesPanel() {
     setBanner(null);
     try {
       await backendFetch(`/sources/${sourceId}`, { method: "DELETE" });
-      setBanner({ tone: "info", text: provider === "gmail" ? "Gmail source disconnected." : `Source #${sourceId} deleted.` });
+      setBanner({
+        tone: "info",
+        text: provider === "gmail"
+          ? "Gmail source disconnected."
+          : provider === "ics"
+            ? "Canvas ICS link removed."
+            : `Source #${sourceId} deleted.`
+      });
       await refresh();
     } catch (err) {
       setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to delete source" });
@@ -205,14 +258,19 @@ export function SourcesPanel() {
       await refresh();
       return created;
     } catch (err) {
-      const latestSources = await backendFetch<SourceRow[]>("/sources");
-      const existing = latestSources.find((source) => source.provider === "gmail");
+      const existing = await findExistingSource("gmail");
       if (existing) {
-        await refresh();
         return existing;
       }
       throw err;
     }
+  }
+
+  async function findExistingSource(provider: string): Promise<SourceRow | null> {
+    const latestSources = await backendFetch<SourceRow[]>("/sources");
+    const existing = latestSources.find((source) => source.provider === provider) || null;
+    await refresh();
+    return existing;
   }
 
   if (loading) return <LoadingState label="sources" />;
@@ -227,9 +285,9 @@ export function SourcesPanel() {
           <p className="mt-2 text-sm text-[#596270]">Total source records attached to the current user.</p>
         </Card>
         <Card className="p-5">
-          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Active feeds</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Active sources</p>
           <p className="mt-3 text-3xl font-semibold">{activeCount}</p>
-          <p className="mt-2 text-sm text-[#596270]">Feeds that can accept manual or worker-driven sync requests.</p>
+          <p className="mt-2 text-sm text-[#596270]">Sources that can accept manual or worker-driven sync requests.</p>
         </Card>
         <Card className="p-5">
           <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Errored sources</p>
@@ -256,7 +314,7 @@ export function SourcesPanel() {
               <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Live inventory</p>
               <h3 className="mt-3 text-2xl font-semibold">Connected sources</h3>
               <p className="mt-2 text-sm leading-6 text-[#596270]">
-                Calendar URL sources and Gmail are both visible here. Gmail is a single OAuth-backed mailbox, while ICS remains a direct URL source.
+                Canvas ICS and Gmail are both visible here. Gmail is a single OAuth-backed mailbox, while Canvas ICS is the student calendar subscription for this workspace.
               </p>
             </div>
             <Badge tone="approved">API-backed</Badge>
@@ -264,17 +322,18 @@ export function SourcesPanel() {
 
           <div className="mt-5 space-y-4">
             {sources.length === 0 ? (
-              <EmptyState title="No sources yet" description="Create a calendar URL source or connect Gmail to open the intake loop." />
+              <EmptyState title="No sources yet" description="Connect your Canvas ICS link or Gmail to open the intake loop." />
             ) : (
               sources.map((source) => {
                 const syncLabel = syncState[source.source_id];
                 const isGmail = source.provider === "gmail";
+                const isCanvasIcs = source.provider === "ics";
                 return (
                   <Card key={source.source_id} className="overflow-hidden p-5">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div className="space-y-3">
                         <div className="flex flex-wrap items-center gap-3">
-                          <h4 className="text-lg font-semibold">{source.display_name || source.source_key}</h4>
+                          <h4 className="text-lg font-semibold">{formatSourceTitle(source)}</h4>
                           <Badge tone={source.is_active ? "active" : "default"}>{source.provider}</Badge>
                           <Badge tone={syncTone(syncLabel)}>{formatStatusLabel(syncLabel, "Idle")}</Badge>
                           {isGmail && source.oauth_connection_status ? (
@@ -283,9 +342,12 @@ export function SourcesPanel() {
                             </Badge>
                           ) : null}
                         </div>
-                        <p className="text-sm text-[#596270]">{source.source_kind} source · key `{source.source_key}`</p>
+                        <p className="text-sm text-[#596270]">{formatSourceSubtitle(source)}</p>
                         {isGmail && source.oauth_account_email ? (
                           <p className="text-sm text-[#314051]">Connected Gmail account: {source.oauth_account_email}</p>
+                        ) : null}
+                        {isCanvasIcs ? (
+                          <p className="text-sm text-[#314051]">Canvas ICS is the single student calendar link attached to this workspace.</p>
                         ) : null}
                         <div className="grid gap-2 text-sm text-[#314051] md:grid-cols-2">
                           <p>Last polled: {formatDateTime(source.last_polled_at, "Never")}</p>
@@ -310,7 +372,7 @@ export function SourcesPanel() {
                           disabled={busyDelete === source.source_id}
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
-                          {busyDelete === source.source_id ? "Removing..." : isGmail ? "Disconnect" : "Delete"}
+                          {busyDelete === source.source_id ? "Removing..." : isGmail ? "Disconnect" : isCanvasIcs ? "Remove link" : "Delete"}
                         </Button>
                       </div>
                     </div>
@@ -328,31 +390,32 @@ export function SourcesPanel() {
                 <CalendarSync className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Calendar URL source</p>
-                <h3 className="mt-1 text-xl font-semibold">Add a calendar URL source</h3>
+                <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Canvas ICS</p>
+                <h3 className="mt-1 text-xl font-semibold">{canvasIcsSource ? "Update Canvas ICS link" : "Connect Canvas ICS"}</h3>
               </div>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-[#596270]">
+              A single Canvas ICS link represents the student calendar subscription for this workspace. Saving a new URL replaces the existing Canvas ICS link instead of creating another source.
+            </p>
+            <div className="mt-5 rounded-[1.25rem] border border-line bg-white/55 p-4 text-sm text-[#314051]">
+              <p>Status: {canvasIcsConnected ? "Connected" : "Not connected"}</p>
+              <p className="mt-2">Source: {canvasIcsSource ? `#${canvasIcsSource.source_id}` : "Will be created on first save"}</p>
+              <p className="mt-2">Kind: Student calendar feed</p>
             </div>
             <div className="mt-5 space-y-4">
               <div>
-                <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="source-key">
-                  Source key
+                <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="canvas-ics-url">
+                  Canvas ICS URL
                 </label>
-                <Input id="source-key" placeholder="winter-quarter-cse151a" value={form.source_key} onChange={(event) => setForm((prev) => ({ ...prev, source_key: event.target.value }))} />
+                <Input
+                  id="canvas-ics-url"
+                  placeholder="https://canvas.example.edu/feeds/calendars/user_12345.ics"
+                  value={canvasIcsUrl}
+                  onChange={(event) => setCanvasIcsUrl(event.target.value)}
+                />
               </div>
-              <div>
-                <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="display-name">
-                  Display name
-                </label>
-                <Input id="display-name" placeholder="CSE 151A Winter quarter ICS" value={form.display_name} onChange={(event) => setForm((prev) => ({ ...prev, display_name: event.target.value }))} />
-              </div>
-              <div>
-                <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="ics-url">
-                  ICS URL
-                </label>
-                <Input id="ics-url" placeholder="https://example.com/calendar.ics" value={form.secrets_url} onChange={(event) => setForm((prev) => ({ ...prev, secrets_url: event.target.value }))} />
-              </div>
-              <Button className="w-full" disabled={submitting || !form.source_key || !form.display_name || !form.secrets_url} onClick={() => void createIcsSource()}>
-                {submitting ? "Adding source..." : "Create calendar URL source"}
+              <Button className="w-full" disabled={submitting || !canvasIcsUrl.trim()} onClick={() => void createOrUpdateCanvasIcsSource()}>
+                {submitting ? "Saving Canvas ICS..." : canvasIcsSource ? "Update Canvas ICS link" : "Connect Canvas ICS"}
               </Button>
             </div>
           </Card>
@@ -368,7 +431,7 @@ export function SourcesPanel() {
               </div>
             </div>
             <p className="mt-4 text-sm leading-6 text-[#596270]">
-              Browser-based Google OAuth creates or reuses a single Gmail source for this workspace. Calendar URLs stay separate and are managed as direct source records.
+              Browser-based Google OAuth creates or reuses a single Gmail source for this workspace. Canvas ICS remains a separate student calendar input.
             </p>
             <div className="mt-5 rounded-[1.25rem] border border-line bg-white/55 p-4 text-sm text-[#314051]">
               <p>Status: {gmailConnected ? "Connected" : "Not connected"}</p>

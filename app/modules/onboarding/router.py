@@ -11,6 +11,7 @@ from app.modules.onboarding.schemas import (
     OnboardingRegisterRequest,
     OnboardingRegisterResponse,
     OnboardingStatusResponse,
+    SourceHealthSummaryResponse,
 )
 from app.modules.onboarding.service import OnboardingRegisterError, get_onboarding_status, register_onboarding
 
@@ -29,6 +30,12 @@ def get_status(
         registered_user_id=status_payload.registered_user_id,
         first_source_id=status_payload.first_source_id,
         last_error=status_payload.last_error,
+        source_health=SourceHealthSummaryResponse(
+            status=status_payload.source_health.status,  # type: ignore[arg-type]
+            message=status_payload.source_health.message,
+            affected_source_id=status_payload.source_health.affected_source_id,
+            affected_provider=status_payload.source_health.affected_provider,
+        ),
     )
 
 

@@ -4,24 +4,31 @@ import json
 
 from app.core.security import decrypt_secret
 from app.db.models.input import InputSource
+from app.modules.input_control_plane.sources_service import CANVAS_ICS_DISPLAY_NAME, CANVAS_ICS_SOURCE_KEY
 
 
 def serialize_source(source: InputSource) -> dict:
     oauth_connection_status = None
     oauth_account_email = None
+    source_key = source.source_key
+    display_name = source.display_name
+
     if source.provider == "gmail":
         oauth_connection_status = "not_connected"
         oauth_account_email = _extract_gmail_account_email(source)
         if oauth_account_email:
             oauth_connection_status = "connected"
+    if source.provider == "ics":
+        source_key = CANVAS_ICS_SOURCE_KEY
+        display_name = CANVAS_ICS_DISPLAY_NAME
 
     return {
         "source_id": source.id,
         "user_id": source.user_id,
         "source_kind": source.source_kind.value,
         "provider": source.provider,
-        "source_key": source.source_key,
-        "display_name": source.display_name,
+        "source_key": source_key,
+        "display_name": display_name,
         "is_active": source.is_active,
         "poll_interval_seconds": source.poll_interval_seconds,
         "last_polled_at": source.last_polled_at,

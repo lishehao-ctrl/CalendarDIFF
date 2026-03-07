@@ -12,6 +12,7 @@ from app.modules.input_control_plane.schemas import InputSourceCreateRequest, In
 from app.modules.input_control_plane.source_serializers import serialize_source
 from app.modules.input_control_plane.sources_service import (
     GmailSourceAlreadyExistsError,
+    IcsSourceAlreadyExistsError,
     create_input_source,
     list_input_sources,
     soft_delete_input_source,
@@ -35,6 +36,15 @@ def create_source(
             detail={
                 "code": "gmail_source_exists",
                 "message": "gmail source already exists for this user",
+                "existing_source_id": exc.source_id,
+            },
+        ) from exc
+    except IcsSourceAlreadyExistsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "ics_source_exists",
+                "message": "ics source already exists for this user",
                 "existing_source_id": exc.source_id,
             },
         ) from exc

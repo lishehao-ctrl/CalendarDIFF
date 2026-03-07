@@ -371,8 +371,6 @@ def main() -> int:
                 json_payload={
                     "source_kind": "calendar",
                     "provider": "ics",
-                    "source_key": f"{run_id}-ics",
-                    "display_name": "Smoke Calendar Source",
                     "poll_interval_seconds": 900,
                     "config": {},
                     "secrets": {"url": f"http://{args.fake_provider_host}:{args.fake_provider_port}/ics/calendar.ics"},
