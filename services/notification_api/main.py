@@ -13,26 +13,12 @@ from app.modules.notify.consumer import run_notification_enqueue_tick
 from app.modules.notify.digest_service import process_due_digests
 from app.modules.notify.metrics_router import router as notify_metrics_router
 from app.modules.notify.ops_router import router as notify_ops_router
-from app.runtime.worker_loop import (
-    build_worker_id,
-    read_tick_seconds,
-    read_worker_enabled,
-    run_periodic_sync_worker,
-)
+from app.runtime.service_workers import TickResult, build_periodic_worker_task, coerce_int_metric
 from app.service_app import create_service_app
 
 logger = logging.getLogger(__name__)
-
-
-def _coerce_int_metric(value: object) -> int:
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        try:
-            return int(value)
-        except Exception:
-            return 0
-    return 0
+session_factory = get_session_factory()
+settings = get_settings()
 
 
 def _count_digest_results(db) -> tuple[int, int]:
@@ -47,17 +33,7 @@ def _count_digest_results(db) -> tuple[int, int]:
     return sent, failed
 
 
-async def _run_notification_worker() -> None:
-    worker_id = build_worker_id(service_name="notification-service", env_var="NOTIFICATION_WORKER_ID")
-    tick_seconds = read_tick_seconds(
-        env_var="NOTIFICATION_TICK_SECONDS",
-        default=30.0,
-        logger=logger,
-    )
-    enabled = read_worker_enabled(env_var="NOTIFICATION_SERVICE_ENABLE_WORKER", default=True)
-    session_factory = get_session_factory()
-    settings = get_settings()
-
+def _build_tick(worker_id: str):
     def _tick() -> dict[str, object]:
         enqueued_notifications = 0
         processed_slots = 0
@@ -90,35 +66,39 @@ async def _run_notification_worker() -> None:
             "failed_count": failed_count,
         }
 
-    def _log_success(result: dict[str, object] | int | None, latency_ms: int) -> str:
-        payload = result if isinstance(result, dict) else {}
-        enqueued_notifications = _coerce_int_metric(payload.get("enqueued_notifications"))
-        processed_slots = _coerce_int_metric(payload.get("processed_slots"))
-        sent_count = _coerce_int_metric(payload.get("sent_count"))
-        failed_count = _coerce_int_metric(payload.get("failed_count"))
-        return (
-            "notification tick worker_id=%s enqueued_notifications=%s processed_slots=%s "
-            "sent_count=%s failed_count=%s tick_latency_ms=%s"
-            % (
-                worker_id,
-                enqueued_notifications,
-                processed_slots,
-                sent_count,
-                failed_count,
-                latency_ms,
-            )
-        )
+    return _tick
 
-    await run_periodic_sync_worker(
-        worker_name="notification",
-        worker_id=worker_id,
-        tick_seconds=tick_seconds,
-        tick_sync_fn=_tick,
-        logger=logger,
-        enabled=enabled,
-        disabled_env_var="NOTIFICATION_SERVICE_ENABLE_WORKER",
-        log_success=_log_success,
+
+def _log_success(worker_id: str, result: TickResult, latency_ms: int) -> str:
+    payload = result if isinstance(result, dict) else {}
+    enqueued_notifications = coerce_int_metric(payload.get("enqueued_notifications"))
+    processed_slots = coerce_int_metric(payload.get("processed_slots"))
+    sent_count = coerce_int_metric(payload.get("sent_count"))
+    failed_count = coerce_int_metric(payload.get("failed_count"))
+    return (
+        "notification tick worker_id=%s enqueued_notifications=%s processed_slots=%s sent_count=%s failed_count=%s tick_latency_ms=%s"
+        % (
+            worker_id,
+            enqueued_notifications,
+            processed_slots,
+            sent_count,
+            failed_count,
+            latency_ms,
+        )
     )
+
+
+_run_notification_worker = build_periodic_worker_task(
+    service_name="notification-service",
+    worker_name="notification",
+    worker_id_env="NOTIFICATION_WORKER_ID",
+    enabled_env="NOTIFICATION_SERVICE_ENABLE_WORKER",
+    tick_seconds_env="NOTIFICATION_TICK_SECONDS",
+    default_tick_seconds=30.0,
+    logger=logger,
+    tick_builder=_build_tick,
+    log_success=_log_success,
+)
 
 
 app = create_service_app(

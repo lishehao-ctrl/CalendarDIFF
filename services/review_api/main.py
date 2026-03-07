@@ -5,44 +5,20 @@ import logging
 from app.core.logging import sanitize_log_message
 from app.db.session import get_session_factory
 from app.modules.core_ingest.router import router as core_ingest_router
-from app.modules.health.router import router as health_router
 from app.modules.core_ingest.worker import run_core_apply_tick
+from app.modules.health.router import router as health_router
 from app.modules.review_changes.metrics_router import router as review_metrics_router
 from app.modules.review_changes.router import router as review_changes_router
 from app.modules.review_links.alerts_event_consumer import run_review_link_alert_events_tick
 from app.modules.review_links.router import router as review_links_router
-from app.runtime.worker_loop import (
-    build_worker_id,
-    read_tick_seconds,
-    read_worker_enabled,
-    run_periodic_sync_worker,
-)
+from app.runtime.service_workers import TickResult, build_periodic_worker_task, coerce_int_metric
 from app.service_app import create_service_app
 
 logger = logging.getLogger(__name__)
+session_factory = get_session_factory()
 
 
-def _coerce_int_metric(value: object) -> int:
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        try:
-            return int(value)
-        except Exception:
-            return 0
-    return 0
-
-
-async def _run_review_apply_worker() -> None:
-    worker_id = build_worker_id(service_name="review-service", env_var="REVIEW_APPLY_WORKER_ID")
-    tick_seconds = read_tick_seconds(
-        env_var="REVIEW_APPLY_TICK_SECONDS",
-        default=2.0,
-        logger=logger,
-    )
-    enabled = read_worker_enabled(env_var="REVIEW_SERVICE_ENABLE_APPLY_WORKER", default=True)
-    session_factory = get_session_factory()
-
+def _build_tick(worker_id: str):
     def _tick() -> dict[str, object]:
         apply_processed = 0
         alert_events_processed = 0
@@ -66,27 +42,32 @@ async def _run_review_apply_worker() -> None:
             )
         return {"apply_processed": apply_processed, "alert_events_processed": alert_events_processed}
 
-    def _log_success(result: dict[str, object] | int | None, latency_ms: int) -> str:
-        payload = result if isinstance(result, dict) else {}
-        apply_processed = _coerce_int_metric(payload.get("apply_processed"))
-        alert_events_processed = _coerce_int_metric(payload.get("alert_events_processed"))
-        return "review apply tick worker_id=%s apply_processed=%s alert_events_processed=%s latency_ms=%s" % (
-            worker_id,
-            apply_processed,
-            alert_events_processed,
-            latency_ms,
-        )
+    return _tick
 
-    await run_periodic_sync_worker(
-        worker_name="review apply",
-        worker_id=worker_id,
-        tick_seconds=tick_seconds,
-        tick_sync_fn=_tick,
-        logger=logger,
-        enabled=enabled,
-        disabled_env_var="REVIEW_SERVICE_ENABLE_APPLY_WORKER",
-        log_success=_log_success,
+
+def _log_success(worker_id: str, result: TickResult, latency_ms: int) -> str:
+    payload = result if isinstance(result, dict) else {}
+    apply_processed = coerce_int_metric(payload.get("apply_processed"))
+    alert_events_processed = coerce_int_metric(payload.get("alert_events_processed"))
+    return "review apply tick worker_id=%s apply_processed=%s alert_events_processed=%s latency_ms=%s" % (
+        worker_id,
+        apply_processed,
+        alert_events_processed,
+        latency_ms,
     )
+
+
+_run_review_apply_worker = build_periodic_worker_task(
+    service_name="review-service",
+    worker_name="review apply",
+    worker_id_env="REVIEW_APPLY_WORKER_ID",
+    enabled_env="REVIEW_SERVICE_ENABLE_APPLY_WORKER",
+    tick_seconds_env="REVIEW_APPLY_TICK_SECONDS",
+    default_tick_seconds=2.0,
+    logger=logger,
+    tick_builder=_build_tick,
+    log_success=_log_success,
+)
 
 
 app = create_service_app(

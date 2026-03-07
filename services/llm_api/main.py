@@ -7,18 +7,15 @@ from app.modules.health.router import router as health_router
 from app.modules.llm_runtime.metrics_router import router as llm_metrics_router
 from app.modules.llm_runtime.tick_runner import run_llm_worker_tick
 from app.modules.runtime_kernel.parse_task_queue import get_parse_queue_redis_client
-from app.runtime.worker_loop import build_worker_id, read_worker_enabled, run_periodic_sync_worker
+from app.runtime.service_workers import TickResult, build_periodic_worker_task
 from app.service_app import create_service_app
 
 logger = logging.getLogger(__name__)
+session_factory = get_session_factory()
+redis_client = get_parse_queue_redis_client()
 
 
-async def _run_llm_worker() -> None:
-    worker_id = build_worker_id(service_name="llm-service", env_var="LLM_WORKER_ID")
-    enabled = read_worker_enabled(env_var="LLM_SERVICE_ENABLE_WORKER", default=True)
-    session_factory = get_session_factory()
-    redis_client = get_parse_queue_redis_client()
-
+def _build_tick(worker_id: str):
     def _tick() -> int:
         return run_llm_worker_tick(
             redis_client=redis_client,
@@ -26,26 +23,30 @@ async def _run_llm_worker() -> None:
             worker_id=worker_id,
         )
 
-    def _log_success(result: dict[str, object] | int | None, latency_ms: int) -> str | None:
-        processed = int(result) if isinstance(result, int) else 0
-        if processed <= 0:
-            return None
-        return "llm worker tick worker_id=%s processed=%s latency_ms=%s" % (
-            worker_id,
-            processed,
-            latency_ms,
-        )
+    return _tick
 
-    await run_periodic_sync_worker(
-        worker_name="llm",
-        worker_id=worker_id,
-        tick_seconds=0.05,
-        tick_sync_fn=_tick,
-        logger=logger,
-        enabled=enabled,
-        disabled_env_var="LLM_SERVICE_ENABLE_WORKER",
-        log_success=_log_success,
+
+def _log_success(worker_id: str, result: TickResult, latency_ms: int) -> str | None:
+    processed = int(result) if isinstance(result, int) else 0
+    if processed <= 0:
+        return None
+    return "llm worker tick worker_id=%s processed=%s latency_ms=%s" % (
+        worker_id,
+        processed,
+        latency_ms,
     )
+
+
+_run_llm_worker = build_periodic_worker_task(
+    service_name="llm-service",
+    worker_name="llm",
+    worker_id_env="LLM_WORKER_ID",
+    enabled_env="LLM_SERVICE_ENABLE_WORKER",
+    logger=logger,
+    tick_builder=_build_tick,
+    log_success=_log_success,
+    fixed_tick_seconds=0.05,
+)
 
 
 app = create_service_app(
