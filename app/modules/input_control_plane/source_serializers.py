@@ -4,7 +4,7 @@ import json
 
 from app.core.security import decrypt_secret
 from app.db.models.input import InputSource
-from app.modules.input_control_plane.sources_service import CANVAS_ICS_DISPLAY_NAME, CANVAS_ICS_SOURCE_KEY
+from app.modules.input_control_plane.provider_sources import CANVAS_ICS_DISPLAY_NAME, CANVAS_ICS_SOURCE_KEY
 
 
 def serialize_source(source: InputSource) -> dict:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -8,24 +7,20 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.security import encrypt_secret
-from app.db.models.input import InputSource, InputSourceConfig, InputSourceCursor, InputSourceSecret, SourceKind
+from app.db.models.input import InputSource, InputSourceConfig, InputSourceCursor, InputSourceSecret
 from app.db.models.shared import User
+from app.modules.input_control_plane.provider_sources import (
+    CANVAS_ICS_DISPLAY_NAME,
+    CANVAS_ICS_SOURCE_KEY,
+    GmailSourceAlreadyExistsError,
+    IcsSourceAlreadyExistsError,
+    ensure_provider_source_available,
+    get_canvas_ics_source_for_user,
+    get_gmail_source_for_user,
+    normalize_source_create_request,
+    normalize_source_patch_request,
+)
 from app.modules.input_control_plane.schemas import InputSourceCreateRequest, InputSourcePatchRequest
-
-CANVAS_ICS_SOURCE_KEY = "canvas_ics"
-CANVAS_ICS_DISPLAY_NAME = "Canvas ICS"
-
-
-class GmailSourceAlreadyExistsError(RuntimeError):
-    def __init__(self, *, source_id: int) -> None:
-        self.source_id = source_id
-        super().__init__(f"gmail source already exists for this user (source_id={source_id})")
-
-
-class IcsSourceAlreadyExistsError(RuntimeError):
-    def __init__(self, *, source_id: int) -> None:
-        self.source_id = source_id
-        super().__init__(f"ics source already exists for this user (source_id={source_id})")
 
 
 def list_input_sources(db: Session, *, user_id: int) -> list[InputSource]:
@@ -48,43 +43,28 @@ def get_input_source(db: Session, *, user_id: int, source_id: int) -> InputSourc
     )
 
 
+def get_canvas_ics_source(db: Session, *, user_id: int) -> InputSource | None:
+    return get_canvas_ics_source_for_user(db, user_id=user_id)
+
+
+def get_gmail_source(db: Session, *, user_id: int) -> InputSource | None:
+    return get_gmail_source_for_user(db, user_id=user_id)
+
+
 def create_input_source(db: Session, *, user: User, payload: InputSourceCreateRequest) -> InputSource:
-    normalized_provider = payload.provider.strip().lower()
-    if normalized_provider == "gmail":
-        existing = _get_existing_source_for_provider(db=db, user_id=user.id, provider="gmail")
-        if existing is not None:
-            raise GmailSourceAlreadyExistsError(source_id=existing.id)
-    if normalized_provider == "ics":
-        existing = _get_existing_source_for_provider(db=db, user_id=user.id, provider="ics")
-        if existing is not None:
-            raise IcsSourceAlreadyExistsError(source_id=existing.id)
-
-    source_kind = SourceKind(payload.source_kind)
-    source_key = (payload.source_key or "").strip() or _build_source_key(
-        source_kind=payload.source_kind,
-        provider=normalized_provider,
-        config=payload.config,
-    )
-    display_name = _normalize_optional_text(payload.display_name)
-    config = dict(payload.config)
-    secrets = dict(payload.secrets)
-
-    if normalized_provider == "ics":
-        source_kind = SourceKind.CALENDAR
-        source_key = CANVAS_ICS_SOURCE_KEY
-        display_name = CANVAS_ICS_DISPLAY_NAME
-        config = {}
-        secrets = _normalize_ics_secrets(payload.secrets)
+    normalized = normalize_source_create_request(payload)
+    if normalized.provider in {"gmail", "ics"}:
+        ensure_provider_source_available(db, user_id=user.id, provider=normalized.provider)
 
     now = datetime.now(timezone.utc)
     source = InputSource(
         user_id=user.id,
-        source_kind=source_kind,
-        provider=normalized_provider,
-        source_key=source_key,
-        display_name=display_name,
+        source_kind=normalized.source_kind,
+        provider=normalized.provider,
+        source_key=normalized.source_key,
+        display_name=normalized.display_name,
         is_active=True,
-        poll_interval_seconds=payload.poll_interval_seconds,
+        poll_interval_seconds=normalized.poll_interval_seconds,
         last_polled_at=None,
         next_poll_at=now,
     )
@@ -95,13 +75,13 @@ def create_input_source(db: Session, *, user: User, payload: InputSourceCreateRe
         InputSourceConfig(
             source_id=source.id,
             schema_version=1,
-            config_json=config,
+            config_json=normalized.config,
         )
     )
     db.add(
         InputSourceSecret(
             source_id=source.id,
-            encrypted_payload=encrypt_secret(json.dumps(secrets, separators=(",", ":"), ensure_ascii=True)),
+            encrypted_payload=encrypt_secret(json.dumps(normalized.secrets, separators=(",", ":"), ensure_ascii=True)),
         )
     )
     db.add(
@@ -119,6 +99,35 @@ def create_input_source(db: Session, *, user: User, payload: InputSourceCreateRe
     return source
 
 
+def upsert_canvas_ics_source(
+    db: Session,
+    *,
+    user: User,
+    url: str,
+    poll_interval_seconds: int = 900,
+) -> InputSource:
+    existing = get_canvas_ics_source_for_user(db, user_id=user.id)
+    if existing is not None:
+        payload = InputSourcePatchRequest(
+            is_active=True,
+            poll_interval_seconds=poll_interval_seconds,
+            secrets={"url": url},
+        )
+        return update_input_source(db, source=existing, payload=payload)
+
+    return create_input_source(
+        db,
+        user=user,
+        payload=InputSourceCreateRequest(
+            source_kind="calendar",
+            provider="ics",
+            poll_interval_seconds=poll_interval_seconds,
+            config={},
+            secrets={"url": url},
+        ),
+    )
+
+
 def update_input_source(
     db: Session,
     *,
@@ -126,35 +135,35 @@ def update_input_source(
     payload: InputSourcePatchRequest,
 ) -> InputSource:
     now = datetime.now(timezone.utc)
-    is_ics = source.provider == "ics"
+    normalized = normalize_source_patch_request(source=source, payload=payload)
 
-    if payload.display_name is not None and not is_ics:
-        source.display_name = _normalize_optional_text(payload.display_name)
-    if payload.is_active is not None:
-        source.is_active = payload.is_active
-    if payload.poll_interval_seconds is not None:
-        source.poll_interval_seconds = payload.poll_interval_seconds
+    if payload.display_name is not None and normalized.allow_display_name_update:
+        source.display_name = normalized.display_name
+    if normalized.is_active is not None:
+        source.is_active = normalized.is_active
+    if normalized.poll_interval_seconds is not None:
+        source.poll_interval_seconds = normalized.poll_interval_seconds
         if source.next_poll_at is None:
-            source.next_poll_at = now + timedelta(seconds=payload.poll_interval_seconds)
-    if payload.config is not None:
-        config_json = {} if is_ics else dict(payload.config)
+            source.next_poll_at = now + timedelta(seconds=normalized.poll_interval_seconds)
+    if normalized.config is not None:
         if source.config is None:
-            source.config = InputSourceConfig(source_id=source.id, schema_version=1, config_json=config_json)
+            source.config = InputSourceConfig(source_id=source.id, schema_version=1, config_json=normalized.config)
         else:
-            source.config.config_json = config_json
-    if payload.secrets is not None:
-        secret_payload = _normalize_ics_secrets(payload.secrets) if is_ics else dict(payload.secrets)
-        encrypted_payload = encrypt_secret(json.dumps(secret_payload, separators=(",", ":"), ensure_ascii=True))
+            source.config.config_json = normalized.config
+    if normalized.secrets is not None:
+        encrypted_payload = encrypt_secret(json.dumps(normalized.secrets, separators=(",", ":"), ensure_ascii=True))
         if source.secrets is None:
             source.secrets = InputSourceSecret(source_id=source.id, encrypted_payload=encrypted_payload)
         else:
             source.secrets.encrypted_payload = encrypted_payload
-        if is_ics and payload.is_active is None and not source.is_active:
+        if normalized.reactivate_on_secret_update and payload.is_active is None and not source.is_active:
             source.is_active = True
-        if is_ics and source.next_poll_at is None:
+        if normalized.reactivate_on_secret_update and source.next_poll_at is None:
             source.next_poll_at = now + timedelta(seconds=source.poll_interval_seconds)
-        source.source_key = CANVAS_ICS_SOURCE_KEY
-        source.display_name = CANVAS_ICS_DISPLAY_NAME
+    if normalized.force_source_key is not None:
+        source.source_key = normalized.force_source_key
+    if normalized.force_display_name is not None:
+        source.display_name = normalized.force_display_name
     db.commit()
     db.refresh(source)
     return source
@@ -171,50 +180,17 @@ def soft_delete_input_source(db: Session, *, source: InputSource) -> None:
     db.commit()
 
 
-def _normalize_optional_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    stripped = value.strip()
-    return stripped or None
-
-
-def _normalize_ics_secrets(secrets: dict) -> dict[str, str]:
-    url = secrets.get("url") if isinstance(secrets, dict) else None
-    if not isinstance(url, str) or not url.strip():
-        raise ValueError("ics source requires a non-empty secrets.url")
-    return {"url": url.strip()}
-
-
-def _build_source_key(*, source_kind: str, provider: str, config: dict) -> str:
-    payload = {
-        "source_kind": source_kind,
-        "provider": provider,
-        "config": config,
-    }
-    digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
-    return digest
-
-
-def _get_existing_source_for_provider(*, db: Session, user_id: int, provider: str) -> InputSource | None:
-    return db.scalar(
-        select(InputSource)
-        .where(
-            InputSource.user_id == user_id,
-            InputSource.provider == provider,
-        )
-        .order_by(InputSource.created_at.desc(), InputSource.id.desc())
-        .limit(1)
-    )
-
-
 __all__ = [
     "CANVAS_ICS_DISPLAY_NAME",
     "CANVAS_ICS_SOURCE_KEY",
     "GmailSourceAlreadyExistsError",
     "IcsSourceAlreadyExistsError",
     "create_input_source",
+    "get_canvas_ics_source",
+    "get_gmail_source",
     "get_input_source",
     "list_input_sources",
     "soft_delete_input_source",
     "update_input_source",
+    "upsert_canvas_ics_source",
 ]
