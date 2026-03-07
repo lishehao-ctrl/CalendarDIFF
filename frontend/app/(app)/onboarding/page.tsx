@@ -16,7 +16,7 @@ export default async function OnboardingPage() {
         <p className="text-xs uppercase tracking-[0.24em] text-[#6d7885]">Onboarding</p>
         <h1 className="mt-3 text-3xl font-semibold">Connect your first source</h1>
         <p className="mt-4 text-sm leading-7 text-[#596270]">
-          Your account is active, but the workspace has no active source yet. Start by connecting an ICS feed or Gmail so review and linking work can begin.
+          Your account is active, but the workspace has no active source yet. Start by connecting a calendar URL source or Gmail so review and linking work can begin.
         </p>
         <div className="mt-6 flex gap-3">
           <Link href="/sources"><Button>Open Sources</Button></Link>

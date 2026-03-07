@@ -127,7 +127,7 @@ export function SourcesPanel() {
         })
       });
       setForm(blankForm);
-      setBanner({ tone: "info", text: "ICS source created. You can trigger a manual sync immediately." });
+      setBanner({ tone: "info", text: "Calendar URL source created. You can trigger a manual sync immediately." });
       await refresh();
     } catch (err) {
       setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to create source" });
@@ -256,7 +256,7 @@ export function SourcesPanel() {
               <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Live inventory</p>
               <h3 className="mt-3 text-2xl font-semibold">Connected sources</h3>
               <p className="mt-2 text-sm leading-6 text-[#596270]">
-                ICS and Gmail sources are both visible here. Gmail now uses the production OAuth flow instead of a placeholder CTA.
+                Calendar URL sources and Gmail are both visible here. Gmail is a single OAuth-backed mailbox, while ICS remains a direct URL source.
               </p>
             </div>
             <Badge tone="approved">API-backed</Badge>
@@ -264,7 +264,7 @@ export function SourcesPanel() {
 
           <div className="mt-5 space-y-4">
             {sources.length === 0 ? (
-              <EmptyState title="No sources yet" description="Create an ICS source or connect Gmail to open the intake loop." />
+              <EmptyState title="No sources yet" description="Create a calendar URL source or connect Gmail to open the intake loop." />
             ) : (
               sources.map((source) => {
                 const syncLabel = syncState[source.source_id];
@@ -328,8 +328,8 @@ export function SourcesPanel() {
                 <CalendarSync className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Create source</p>
-                <h3 className="mt-1 text-xl font-semibold">Add an ICS feed</h3>
+                <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Calendar URL source</p>
+                <h3 className="mt-1 text-xl font-semibold">Add a calendar URL source</h3>
               </div>
             </div>
             <div className="mt-5 space-y-4">
@@ -352,7 +352,7 @@ export function SourcesPanel() {
                 <Input id="ics-url" placeholder="https://example.com/calendar.ics" value={form.secrets_url} onChange={(event) => setForm((prev) => ({ ...prev, secrets_url: event.target.value }))} />
               </div>
               <Button className="w-full" disabled={submitting || !form.source_key || !form.display_name || !form.secrets_url} onClick={() => void createIcsSource()}>
-                {submitting ? "Adding source..." : "Create ICS source"}
+                {submitting ? "Adding source..." : "Create calendar URL source"}
               </Button>
             </div>
           </Card>
@@ -368,7 +368,7 @@ export function SourcesPanel() {
               </div>
             </div>
             <p className="mt-4 text-sm leading-6 text-[#596270]">
-              Browser-based Google OAuth now creates or reuses a single Gmail source for this workspace and routes the callback back to this page.
+              Browser-based Google OAuth creates or reuses a single Gmail source for this workspace. Calendar URLs stay separate and are managed as direct source records.
             </p>
             <div className="mt-5 rounded-[1.25rem] border border-line bg-white/55 p-4 text-sm text-[#314051]">
               <p>Status: {gmailConnected ? "Connected" : "Not connected"}</p>

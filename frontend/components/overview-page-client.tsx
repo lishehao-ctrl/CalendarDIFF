@@ -1,11 +1,175 @@
-import { redirect } from "next/navigation";
-import OverviewPage from "@/components/overview-page-client";
-import { requireServerSession } from "@/lib/server-auth";
+"use client";
 
-export default async function DashboardPage() {
-  const session = await requireServerSession();
-  if (session.user.onboarding_stage !== "ready") {
-    redirect("/onboarding");
+import Link from "next/link";
+import { ArrowRight, BellDot, CheckCircle2, Link2, Sparkles } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
+import { SummaryGrid } from "@/components/summary-grid";
+import { useResource } from "@/lib/use-resource";
+import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
+import type { OnboardingStatus, ReviewSummary } from "@/lib/types";
+
+const actionCards = [
+  {
+    href: "/sources",
+    eyebrow: "Source control",
+    title: "Manage intake",
+    description: "Connect calendar URLs, maintain Gmail, and trigger manual syncs without leaving the console.",
+    icon: BellDot
+  },
+  {
+    href: "/review/changes",
+    eyebrow: "Moderation",
+    title: "Work the inbox",
+    description: "Review detected changes, inspect evidence, and approve or reject from the same lane.",
+    icon: Sparkles
+  },
+  {
+    href: "/review/links",
+    eyebrow: "Link governance",
+    title: "Resolve relationship risk",
+    description: "Clear pending link candidates and keep active links and alerts under control.",
+    icon: Link2
   }
-  return <OverviewPage />;
+] as const;
+
+function readinessTone(stage: string | null | undefined): "approved" | "pending" | "default" {
+  if (stage === "ready") {
+    return "approved";
+  }
+  if (stage) {
+    return "pending";
+  }
+  return "default";
+}
+
+export default function OverviewPage() {
+  const onboarding = useResource<OnboardingStatus>("/onboarding/status");
+  const summary = useResource<ReviewSummary>("/review/summary");
+
+  if (onboarding.loading || summary.loading) {
+    return <LoadingState label="overview" />;
+  }
+
+  if (onboarding.error) {
+    return <ErrorState message={onboarding.error} />;
+  }
+
+  if (summary.error) {
+    return <ErrorState message={summary.error} />;
+  }
+
+  if (!onboarding.data || !summary.data) {
+    return <EmptyState title="Overview unavailable" description="The workspace summary could not be loaded." />;
+  }
+
+  const stage = onboarding.data.stage || "unknown";
+  const summaryItems = [
+    {
+      label: "Onboarding stage",
+      value: formatStatusLabel(stage),
+      detail: onboarding.data.message || "Workspace readiness snapshot"
+    },
+    {
+      label: "Pending changes",
+      value: String(summary.data.changes_pending),
+      detail: "Items waiting for moderation in the review inbox"
+    },
+    {
+      label: "Link candidates",
+      value: String(summary.data.link_candidates_pending),
+      detail: "Proposed event-to-entity matches still awaiting a decision"
+    },
+    {
+      label: "Link alerts",
+      value: String(summary.data.link_alerts_pending),
+      detail: `Summary generated ${formatDateTime(summary.data.generated_at, "recently")}`
+    }
+  ];
+
+  return (
+    <div className="space-y-5">
+      <Card className="relative overflow-hidden px-6 py-7 md:px-8 md:py-8">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.16),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(215,90,45,0.14),transparent_28%)]" />
+        <div className="relative flex flex-wrap items-start justify-between gap-5">
+          <div className="max-w-3xl">
+            <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">Overview hub</p>
+            <h1 className="mt-3 text-3xl font-semibold text-ink md:text-4xl">Run source intake, moderation, and link risk from one operational view.</h1>
+            <p className="mt-4 text-sm leading-7 text-[#596270]">
+              This landing page is the current-state summary for your workspace: readiness, pending moderation pressure, and the next action that keeps the queue healthy.
+            </p>
+          </div>
+          <Badge tone={readinessTone(stage)}>{formatStatusLabel(stage)}</Badge>
+        </div>
+        <div className="relative mt-6 flex flex-wrap gap-3">
+          <Link href={stage === "ready" ? "/review/changes" : "/sources"}>
+            <Button>
+              {stage === "ready" ? "Open review inbox" : "Connect a source"}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </Link>
+          <Link href="/sources">
+            <Button variant="ghost">Open sources</Button>
+          </Link>
+        </div>
+      </Card>
+
+      <SummaryGrid items={summaryItems} />
+
+      <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+        <Card className="p-6 md:p-7">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(47,143,91,0.12)] text-moss">
+              <CheckCircle2 className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Current status</p>
+              <h2 className="mt-1 text-2xl font-semibold">Workspace readiness</h2>
+            </div>
+          </div>
+          <div className="mt-5 rounded-[1.2rem] border border-line/80 bg-white/60 p-5">
+            <p className="text-sm font-medium text-[#314051]">{onboarding.data.message || "Your workspace is ready for source intake and review work."}</p>
+            <div className="mt-4 grid gap-3 text-sm text-[#596270] md:grid-cols-2">
+              <p>Registered user id: {onboarding.data.registered_user_id ?? "Unavailable"}</p>
+              <p>First active source: {onboarding.data.first_source_id ?? "Not connected"}</p>
+              <p>Stage: {formatStatusLabel(stage)}</p>
+              <p>Last issue: {onboarding.data.last_error || "None"}</p>
+            </div>
+          </div>
+          <div className="mt-4 rounded-[1.2rem] border border-line/80 bg-white/60 p-5 text-sm text-[#596270]">
+            {stage === "ready"
+              ? "The dashboard is live. Keep an eye on pending review changes and link alerts so the queue does not drift."
+              : "This account is authenticated, but source intake is not complete yet. Connect a source before expecting review or link activity."}
+          </div>
+        </Card>
+
+        <div className="grid gap-5 md:grid-cols-3 xl:grid-cols-1">
+          {actionCards.map(({ href, eyebrow, title, description, icon: Icon }) => (
+            <Card key={href} className="p-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(20,32,44,0.08)] text-ink">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">{eyebrow}</p>
+                  <h2 className="mt-1 text-xl font-semibold">{title}</h2>
+                </div>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-[#596270]">{description}</p>
+              <div className="mt-5">
+                <Link href={href}>
+                  <Button variant="ghost" className="px-0 text-cobalt hover:bg-transparent hover:text-[#184fd9]">
+                    Open panel
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }

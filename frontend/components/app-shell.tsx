@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   BellDot,
@@ -18,13 +19,13 @@ import { cn } from "@/lib/utils";
 
 const items = [
   { href: "/", label: "Overview", icon: LayoutDashboard, description: "Health, onboarding, queue pressure" },
-  { href: "/sources", label: "Sources", icon: BellDot, description: "Feeds, sync controls, source health" },
+  { href: "/sources", label: "Sources", icon: BellDot, description: "Calendar URLs, sync controls, source health" },
   { href: "/review/changes", label: "Review Inbox", icon: GitCompareArrows, description: "Canonical change moderation" },
   { href: "/review/links", label: "Link Review", icon: Link2, description: "Candidates, links, alerts" },
   { href: "/settings", label: "Settings", icon: Settings2, description: "Timezone and notifications" }
 ] as const;
 
-function NavContent({ pathname }: { pathname: string }) {
+function NavContent({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
   return (
     <>
       <div className="mb-8 rounded-[1.6rem] bg-[linear-gradient(135deg,rgba(31,94,255,0.18),rgba(215,90,45,0.12))] p-5">
@@ -52,6 +53,7 @@ function NavContent({ pathname }: { pathname: string }) {
                 "rounded-[1.25rem] px-4 py-4 transition",
                 active ? "bg-ink text-paper shadow-[0_16px_32px_rgba(20,32,44,0.18)]" : "text-[#314051] hover:bg-white/70"
               )}
+              onClick={onNavigate}
             >
               <div className="flex items-center gap-3">
                 <div className={cn("flex h-10 w-10 items-center justify-center rounded-2xl", active ? "bg-white/12" : "bg-[rgba(20,32,44,0.06)]") }>
@@ -68,7 +70,7 @@ function NavContent({ pathname }: { pathname: string }) {
       </nav>
       <div className="mt-6 space-y-3">
         <div className="rounded-[1.25rem] border border-line/80 bg-white/55 p-4 text-sm text-[#596270]">
-          Gmail OAuth is available from Sources. Connect a single Gmail account, keep ICS feeds alongside it, and review everything from one console.
+          Gmail OAuth is available from Sources. Connect one Gmail mailbox, keep calendar URL sources alongside it, and review everything from one console.
         </div>
         <LogoutButton />
       </div>
@@ -78,6 +80,11 @@ function NavContent({ pathname }: { pathname: string }) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
 
   return (
     <div className="mx-auto flex min-h-screen max-w-[1500px] gap-6 p-4 md:p-6">
@@ -92,7 +99,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex items-center gap-2">
             <LogoutButton />
-            <Dialog.Root>
+            <Dialog.Root open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
               <Dialog.Trigger asChild>
                 <button aria-label="Open navigation" className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ink text-paper">
                   <Menu className="h-5 w-5" />
@@ -110,7 +117,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       </button>
                     </Dialog.Close>
                   </div>
-                  <NavContent pathname={pathname} />
+                  <NavContent pathname={pathname} onNavigate={() => setMobileNavOpen(false)} />
                 </Dialog.Content>
               </Dialog.Portal>
             </Dialog.Root>

@@ -98,12 +98,9 @@ export function SettingsPanel() {
           </div>
           <div className="mt-5 space-y-3 text-sm text-[#314051]">
             <div className="rounded-[1.15rem] border border-line/80 bg-white/60 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Primary email</p>
-              <p className="mt-2 font-medium">{data.email || "Not set"}</p>
-            </div>
-            <div className="rounded-[1.15rem] border border-line/80 bg-white/60 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Login / notify email</p>
               <p className="mt-2 font-medium">{data.notify_email || "Not set"}</p>
+              <p className="mt-2 text-xs text-[#596270]">This identifier is managed by auth and intentionally stays read-only inside the app.</p>
             </div>
             <div className="rounded-[1.15rem] border border-line/80 bg-white/60 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Created</p>
