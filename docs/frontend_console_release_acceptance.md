@@ -1,17 +1,15 @@
 # Frontend Console + Dev Launcher Release / Acceptance Guide
 
-## Release Summary
+## Summary
 
-This release combines two local-development deliverables into one acceptance package:
+This guide covers the current local development and acceptance path for CalendarDIFF.
 
-1. frontend console: commit `b1b8e67` (`feat: add calendardiff frontend console`)
-2. full-stack local launcher: commit `a914101` (`chore: add local full-stack dev launcher`)
+It assumes the active runtime shape:
 
-Together they provide:
-
-1. a standalone `frontend/` Next.js console for CalendarDIFF
-2. a single-command local stack launcher for `frontend + input + review + ingest + notification + llm + postgres + redis`
-3. an acceptance path that no longer requires manually starting services one by one
+1. frontend at `http://127.0.0.1:3000`
+2. backend services at `8200 / 8201 / 8202 / 8204 / 8205`
+3. login-first dashboard access with session auth
+4. Sources page using a single Canvas ICS link plus a single Gmail OAuth source per user
 
 ## What Is Included
 
@@ -19,18 +17,22 @@ Together they provide:
 
 Routes:
 
-1. `/` — Overview / onboarding hub
-2. `/sources` — sources and sync control
-3. `/review/changes` — review inbox
-4. `/review/links` — link review workspace
-5. `/settings` — user settings
+1. `/login`
+2. `/register`
+3. `/onboarding`
+4. `/`
+5. `/sources`
+6. `/review/changes`
+7. `/review/links`
+8. `/settings`
 
 Behavior:
 
 1. browser requests go through Next route handlers, not directly to Python services
-2. `/review/*` routes proxy to `review-service`
-3. current MVP routes proxy all other public UI requests to `input-service`
-4. Gmail remains visible in UI, but real OAuth connect is intentionally blocked in this release
+2. dashboard routes require an authenticated session
+3. unauthenticated `/` redirects to `/login`
+4. `/sources` manages one Canvas ICS link per user and one Gmail OAuth source per user
+5. Overview shows structured source health instead of raw backend error text
 
 ### Local Dev Launcher
 
@@ -46,6 +48,7 @@ Supported commands:
 scripts/dev_stack.sh up
 scripts/dev_stack.sh down
 scripts/dev_stack.sh down --infra
+scripts/dev_stack.sh reset
 scripts/dev_stack.sh status
 scripts/dev_stack.sh logs frontend
 scripts/dev_stack.sh logs all
@@ -56,20 +59,21 @@ Behavior:
 1. `up` starts `postgres` and `redis` through `docker compose`
 2. `up` applies schema with `python -m alembic upgrade head`
 3. `up` starts `input`, `review`, `ingest`, `notification`, `llm`, and `frontend`
-4. `status` reports infra reachability plus per-process health/pid/log path
-5. `down` stops only the app layer
-6. `down --infra` additionally stops this repo's compose-managed `postgres` and `redis`
-7. logs and pid files are written to `output/dev-stack/`
+4. frontend readiness is checked through `/login`, not `/`, because `/` redirects unauthenticated users
+5. `status` reports infra reachability plus per-process health, pid, and log path
+6. `down` stops only the app layer
+7. `down --infra` additionally stops this repo's compose-managed `postgres` and `redis`
+8. logs and pid files are written to `output/dev-stack/`
 
 ## Prerequisites
 
 Required before acceptance:
 
-1. root `.env` exists and contains valid app/database/redis/LLM settings
+1. root `.env` exists and contains valid app, database, redis, and LLM settings
 2. `frontend/node_modules` exists
 3. `docker compose` is available
-4. local ports are free unless intentionally already in use by this stack:
-   - `3000`, `8000`, `8001`, `8002`, `8004`, `8005`, `5432`, `6379`
+4. local launcher ports are free unless already owned by this stack:
+   - `3000`, `8200`, `8201`, `8202`, `8204`, `8205`, `5432`, `6379`
 
 Recommended bootstrap:
 
@@ -96,39 +100,34 @@ Expected result:
 2. it prints frontend URL and backend health URLs
 3. `scripts/dev_stack.sh status` shows all six applications as `healthy`
 
-### 2. Verify health endpoints
+### 2. Verify runtime reachability
 
-Expected HTTP `200`:
+Expected result:
 
-1. `http://127.0.0.1:3000`
-2. `http://127.0.0.1:8200/health`
-3. `http://127.0.0.1:8201/health`
-4. `http://127.0.0.1:8202/health`
-5. `http://127.0.0.1:8204/health`
-6. `http://127.0.0.1:8205/health`
+1. `http://127.0.0.1:3000/login` returns `200`
+2. unauthenticated `http://127.0.0.1:3000/` redirects to `/login`
+3. backend health endpoints return `200`:
+   - `http://127.0.0.1:8200/health`
+   - `http://127.0.0.1:8201/health`
+   - `http://127.0.0.1:8202/health`
+   - `http://127.0.0.1:8204/health`
+   - `http://127.0.0.1:8205/health`
 
 ### 3. Frontend walkthrough
 
-Open:
-
-1. `http://127.0.0.1:3000/login`
-2. `http://127.0.0.1:3000/register`
-3. `http://127.0.0.1:3000/sources`
-4. `http://127.0.0.1:3000/review/changes`
-5. `http://127.0.0.1:3000/review/links`
-6. `http://127.0.0.1:3000/settings`
-
 Minimum UI checks:
 
-1. Unauthenticated root/dashboard access redirects to `/login`
-2. Register creates a user session and lands on `/onboarding` when no source exists
-3. Sources page lists existing sources or empty state correctly for the logged-in user
-4. Creating an ICS source from the UI succeeds
-5. Manual sync can be triggered from Sources
-6. Review pages render loading / empty / populated states without leaking another user's data
-7. Settings page can read and save user profile fields while keeping `notify_email` read-only
-8. Logout returns the browser to `/login`
-9. Mobile navigation opens as a sheet on narrow screens
+1. unauthenticated root/dashboard access redirects to `/login`
+2. register creates a user session and lands on `/onboarding` when no source exists
+3. `/sources` shows the current user's sources only
+4. Sources page accepts only `Canvas ICS URL` for ICS input; no `source_key` or `display_name` field remains
+5. saving Canvas ICS creates or updates a single per-user Canvas ICS source
+6. Gmail OAuth is visible and usable from `/sources`
+7. Overview shows structured source health, not raw backend exception text
+8. review pages render loading, empty, and populated states without leaking another user's data
+9. Settings keeps `notify_email` read-only
+10. logout returns the browser to `/login`
+11. mobile navigation opens as a sheet on narrow screens and closes after navigation
 
 ### 4. Launcher operability
 
@@ -140,7 +139,7 @@ scripts/dev_stack.sh logs frontend
 scripts/dev_stack.sh logs input
 ```
 
-For browser flow checks, use the repo-local Playwright wrapper so npm cache stays inside the repo instead of `~/.npm`:
+For browser flow checks, use the repo-local Playwright wrapper:
 
 ```bash
 scripts/run_playwright_cli.sh bootstrap
@@ -149,12 +148,11 @@ scripts/run_playwright_cli.sh snapshot
 scripts/run_playwright_cli.sh screenshot
 ```
 
-If the wrapper still fails after bootstrap, the remaining fault domain is browser runtime startup (for example Firefox/Chrome SIGABRT on this machine), not npm cache permissions or auth/session routing.
-
 Expected result:
 
 1. `status` shows per-service pid, health, and log path
 2. `logs <service>` tails the correct log file
+3. Playwright wrapper runs without relying on `~/.npm` cache
 
 ### 5. Shutdown
 
@@ -167,22 +165,17 @@ scripts/dev_stack.sh down
 Then verify app ports are released:
 
 1. `3000`
-2. `8000`
-3. `8001`
-4. `8002`
-5. `8004`
-6. `8005`
+2. `8200`
+3. `8201`
+4. `8202`
+5. `8204`
+6. `8205`
 
 Optional infra shutdown:
 
 ```bash
 scripts/dev_stack.sh down --infra
 ```
-
-Expected result:
-
-1. compose-managed `postgres` and `redis` stop
-2. if another unrelated local instance already owns `5432` or `6379`, that external instance may still remain reachable
 
 ## Acceptance Criteria
 
@@ -193,22 +186,15 @@ The release is accepted when all of the following are true:
 3. all five backend services return healthy status
 4. frontend can proxy successfully to both `input-service` and `review-service`
 5. `scripts/dev_stack.sh status` reports healthy application state during runtime
-6. `scripts/dev_stack.sh down` stops the app layer cleanly
-7. `scripts/dev_stack.sh down --infra` stops compose-managed infra cleanly
+6. `/sources` uses the single Canvas ICS link workflow
+7. `/` shows source health rather than raw backend error output
+8. `scripts/dev_stack.sh down` stops the app layer cleanly
+9. `scripts/dev_stack.sh down --infra` stops compose-managed infra cleanly
 
 ## Known Limitations
 
 1. this launcher is for local development and acceptance only; it is not a production deployment tool
-2. Gmail OAuth is intentionally not part of this frontend MVP; the UI keeps Gmail visible but disabled
+2. Gmail OAuth depends on working Google app configuration and local secret file setup
 3. `down --infra` only stops this repo's `docker compose` services; it does not stop unrelated external local containers or services using the same ports
 4. frontend uses polling-based file watching in the launcher to reduce local `EMFILE` watcher failures on this machine
 5. some review evidence previews can still return backend `404` if the underlying seeded/test change has no persisted evidence file; the UI should still present a controlled error state
-
-## Rollback Reference
-
-If this release needs to be split apart again:
-
-1. frontend-only baseline is available in commit `b1b8e67`
-2. launcher/docs addition is isolated in commit `a914101`
-
-That means the launcher can be reverted independently of the frontend UI if needed.

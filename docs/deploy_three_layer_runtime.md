@@ -12,6 +12,13 @@ Run backend as 5 microservices plus PostgreSQL + Redis:
 6. postgres
 7. redis
 
+## Current Runtime Notes
+
+1. local launcher flow uses `3000 / 8200 / 8201 / 8202 / 8204 / 8205`
+2. compose host exposure remains a separate compatibility path and may expose different host ports
+3. public dashboard traffic is session-based and enters through the frontend, not by anonymously calling backend APIs
+4. input-service owns source lifecycle, OAuth session/callback, onboarding, and user profile APIs
+
 ## Prerequisites
 
 1. `.env` configured with DB and app secrets
@@ -61,47 +68,29 @@ GMAIL_OAUTH_TOKEN_URL=http://127.0.0.1:8765/oauth2/token
 GMAIL_OAUTH_AUTHORIZE_URL=http://127.0.0.1:8765/oauth2/auth
 ```
 
-## Local Startup (Manual)
+## Preferred Local Startup
 
-1. migrate DB:
-
-```bash
-alembic upgrade head
-```
-
-Migration revision rename handling:
-
-1. reset + upgrade (preferred for local/dev):
+Use the launcher when you want the active development topology:
 
 ```bash
-scripts/reset_postgres_db.sh
-alembic upgrade head
+scripts/dev_stack.sh up
 ```
 
-2. remap current revision and then upgrade (for existing DB state):
+This path starts frontend plus all 5 services, applies migrations, and uses the current local dev port set.
 
-```sql
-UPDATE alembic_version
-SET version_num = '20260302_0004_src_bridge_map'
-WHERE version_num LIKE '20260302_0004_src_%_map'
-  AND version_num <> '20260302_0004_src_bridge_map';
-```
+## Manual Local Startup
 
 ```bash
-alembic upgrade head
+docker compose up -d postgres redis
+python -m alembic upgrade head
+SERVICE_NAME=input RUN_MIGRATIONS=false PORT=8201 ./scripts/start_service.sh
+SERVICE_NAME=ingest RUN_MIGRATIONS=false PORT=8202 ./scripts/start_service.sh
+SERVICE_NAME=llm RUN_MIGRATIONS=false PORT=8205 ./scripts/start_service.sh
+SERVICE_NAME=review RUN_MIGRATIONS=false PORT=8200 ./scripts/start_service.sh
+SERVICE_NAME=notification RUN_MIGRATIONS=false PORT=8204 ./scripts/start_service.sh
 ```
 
-2. start services:
-
-```bash
-SERVICE_NAME=input PORT=8201 ./scripts/start_service.sh
-SERVICE_NAME=ingest PORT=8202 ./scripts/start_service.sh
-SERVICE_NAME=llm PORT=8205 ./scripts/start_service.sh
-SERVICE_NAME=review PORT=8200 ./scripts/start_service.sh
-SERVICE_NAME=notification PORT=8204 ./scripts/start_service.sh
-```
-
-## Local Startup (Compose)
+## Compose Startup
 
 ```bash
 docker compose up --build
@@ -117,13 +106,15 @@ Expected services:
 6. `review-service`
 7. `notification-service`
 
-Default exposure model:
+Compose exposure model:
 
-1. public: `input-service` (`8001`), `review-service` (`8000`)
-2. internal-only: `ingest-service`, `llm-service`, `notification-service`
+1. public host ports remain `8001 -> input-service` and `8000 -> review-service`
+2. `ingest-service`, `llm-service`, and `notification-service` remain internal-only in default compose
 3. use `docker-compose.dev.yml` for dev-only ingest/llm/notification host port mappings
 
 ## Health Checks
+
+Manual / launcher path:
 
 ```bash
 curl -s http://localhost:8201/health
@@ -131,6 +122,13 @@ curl -s http://localhost:8202/health
 curl -s http://localhost:8205/health
 curl -s http://localhost:8200/health
 curl -s http://localhost:8204/health
+```
+
+Compose public path:
+
+```bash
+curl -s http://localhost:8001/health
+curl -s http://localhost:8000/health
 ```
 
 ## Internal API Auth
@@ -142,25 +140,20 @@ X-Service-Name: ops
 X-Service-Token: <INTERNAL_SERVICE_TOKEN_OPS>
 ```
 
-Import smoke:
-
-```bash
-python -c "import services.input_api.main"
-python -c "import services.ingest_api.main"
-python -c "import services.llm_api.main"
-python -c "import services.review_api.main"
-python -c "import services.notification_api.main"
-```
-
 ## API Routing Suggestion
 
-Because services are direct-exposed, client should configure per-domain base URLs:
+For local direct-run services:
 
 1. `INPUT_API_BASE_URL=http://127.0.0.1:8201`
-2. `INGEST_API_BASE_URL=http://127.0.0.1:8202` (internal ops)
-3. `LLM_API_BASE_URL=http://127.0.0.1:8205` (internal ops)
+2. `INGEST_API_BASE_URL=http://127.0.0.1:8202`
+3. `LLM_API_BASE_URL=http://127.0.0.1:8205`
 4. `REVIEW_API_BASE_URL=http://127.0.0.1:8200`
-5. `NOTIFY_API_BASE_URL=http://127.0.0.1:8204` (internal ops)
+5. `NOTIFY_API_BASE_URL=http://127.0.0.1:8204`
+
+For compose public host routing:
+
+1. `INPUT_API_BASE_URL=http://127.0.0.1:8001`
+2. `REVIEW_API_BASE_URL=http://127.0.0.1:8000`
 
 ## E2E Smoke
 

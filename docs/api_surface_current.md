@@ -1,8 +1,10 @@
-# API Surface Snapshot (Current, V2, Multi-Service)
+# API Surface Snapshot (Current Multi-Service Runtime)
 
-This document captures active HTTP APIs after microservice split with shared PostgreSQL.
+This document captures the active HTTP APIs after the microservice split with shared PostgreSQL.
 
 ## Service Endpoints
+
+Direct-run local defaults:
 
 1. input-service: `http://localhost:8201`
 2. ingest-service: `http://localhost:8202`
@@ -14,12 +16,26 @@ Default compose exposure:
 
 1. external: input-service + review-service
 2. internal-only: ingest-service + llm-service + notification-service
+3. compose public host ports remain `8001 -> input-service` and `8000 -> review-service`
 
 ## input-service (public)
 
 ### Workspace
 
 1. `GET /health`
+
+### Auth
+
+1. `POST /auth/register`
+2. `POST /auth/login`
+3. `POST /auth/logout`
+4. `GET /auth/session`
+
+Session model:
+
+1. browser session uses HttpOnly cookie
+2. dashboard-facing requests still pass through frontend proxy with `X-API-Key`
+3. public APIs are scoped to the authenticated current user
 
 ### Onboarding + User
 
@@ -28,9 +44,20 @@ Default compose exposure:
 3. `GET /users/me`
 4. `PATCH /users/me`
 
-User profile includes:
+Current onboarding status shape includes:
 
-1. `timezone_name` (IANA timezone, default `UTC`)
+1. `stage`
+2. `message`
+3. `registered_user_id`
+4. `first_source_id`
+5. `source_health`
+
+`source_health` includes:
+
+1. `status` (`healthy | attention | disconnected`)
+2. `message`
+3. `affected_source_id`
+4. `affected_provider`
 
 ### Input Sources + Sync
 
@@ -45,6 +72,13 @@ User profile includes:
 9. `POST /sources/{source_id}/webhooks/{provider}`
 10. `GET /internal/metrics` (internal token auth)
 
+Current source semantics:
+
+1. `provider=gmail` is single-source per user
+2. `provider=ics` is single Canvas ICS link per user
+3. Canvas ICS create/update is URL-driven; the frontend no longer collects `source_key` or `display_name`
+4. `GET /sources` still returns `source_key` and `display_name`, but Canvas ICS is normalized to fixed values
+
 ## ingest-service (internal ops + worker)
 
 1. `GET /health`
@@ -58,7 +92,7 @@ Runtime responsibilities:
 2. connector tick (`gmail` incremental fetch, `ics` delta parser)
 3. enqueue llm parse tasks to Redis only for changed payloads
 4. emits `ingest.result.ready`
-5. worker lifecycle runs under app lifespan via AnyIO task groups (no per-service thread starter)
+5. worker lifecycle runs under app lifespan via AnyIO task groups
 
 ## llm-service (internal worker + metrics)
 
@@ -72,7 +106,7 @@ Runtime responsibilities:
 3. process ICS removed delta records without LLM call
 4. manage retry zset and backoff
 5. write `ingest_results` and emit `ingest.result.ready`
-6. worker lifecycle runs under app lifespan via AnyIO task groups (no per-service thread starter)
+6. worker lifecycle runs under app lifespan via AnyIO task groups
 
 ## review-service (read/review + internal apply)
 
@@ -105,13 +139,8 @@ Notes:
 1. review-service consumes `ingest.result.ready` and emits `review.pending.created`
 2. approve mutates canonical events; reject does not
 3. manual correction mutates canonical events directly and writes an approved audit change
-4. manual correction does not emit `review.pending.created` (no notification enqueue)
-5. link-candidate generation/decisions are parallel linker governance flow and do not emit `review.pending.created`
-6. link-alert queue is medium-risk, non-blocking, and only stores `auto-link` records that produced no canonical pending change in the same apply round
-7. `GET /review/summary` returns pending counts only (`changes`, `link-candidates`, `link-alerts`) for top-level badge rendering
-8. batch decision endpoints are partial-success by design and return per-item results:
-   - `POST /review/link-candidates/batch/decisions`
-   - `POST /review/link-alerts/batch/decisions`
+4. link-candidate and link-alert flows are separate governance queues from canonical pending review
+5. `GET /review/summary` returns pending counts for `changes`, `link-candidates`, and `link-alerts`
 
 ## notification-service (internal ops + worker)
 
@@ -124,7 +153,7 @@ Runtime responsibilities:
 1. consumes `review.pending.created`
 2. enqueues `notifications`
 3. processes digest sends (`digest_send_log`)
-4. worker lifecycle runs under app lifespan via AnyIO task groups (no per-service thread starter)
+4. worker lifecycle runs under app lifespan via AnyIO task groups
 
 ## Event Contracts
 
@@ -144,15 +173,12 @@ All `/internal/*` endpoints require:
 
 ## LLM Runtime
 
-1. parser location: ingest-service
-2. parser runtime service: llm-service
-3. protocol: OpenAI-compatible `chat/completions`
-4. ICS parser contract: connector emits `calendar_delta_v1` payload, llm-service only parses changed VEVENT components
-5. canonical/enrichment split: payloads include `source_canonical` (deterministic) and `enrichment` (LLM/rule metadata)
-6. parser payload contract is hard-cut to `obs_v3`:
-   - calendar payload: `source_canonical` + `enrichment(course_parse,event_parts,link_signals,payload_schema_version)`
-   - gmail payload: `message_id` + `source_canonical` + `enrichment(course_parse,event_parts,link_signals,payload_schema_version)`
-7. ICS canonical fields come from parser/source; LLM output remains enrichment-only (no canonical fallback fields)
+1. parser implementation lives in shared modules used by ingest + llm flows
+2. parser runtime service is `llm-service`
+3. protocol is OpenAI-compatible `chat/completions`
+4. ICS parser contract uses `calendar_delta_v1` payloads for changed VEVENT components only
+5. canonical/enrichment split keeps canonical fields deterministic and enrichment LLM-derived
+6. parser payload contract is fixed at `obs_v3`
 7. env:
    - `INGESTION_LLM_MODEL`
    - `INGESTION_LLM_BASE_URL`
