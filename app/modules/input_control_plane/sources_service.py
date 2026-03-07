@@ -13,6 +13,12 @@ from app.db.models.shared import User
 from app.modules.input_control_plane.schemas import InputSourceCreateRequest, InputSourcePatchRequest
 
 
+class GmailSourceAlreadyExistsError(RuntimeError):
+    def __init__(self, *, source_id: int) -> None:
+        self.source_id = source_id
+        super().__init__(f"gmail source already exists for this user (source_id={source_id})")
+
+
 def list_input_sources(db: Session, *, user_id: int) -> list[InputSource]:
     return list(
         db.scalars(
@@ -35,6 +41,11 @@ def get_input_source(db: Session, *, user_id: int, source_id: int) -> InputSourc
 
 def create_input_source(db: Session, *, user: User, payload: InputSourceCreateRequest) -> InputSource:
     normalized_provider = payload.provider.strip().lower()
+    if normalized_provider == "gmail":
+        existing = _get_existing_gmail_source(db=db, user_id=user.id)
+        if existing is not None:
+            raise GmailSourceAlreadyExistsError(source_id=existing.id)
+
     source_key = (payload.source_key or "").strip() or _build_source_key(
         source_kind=payload.source_kind,
         provider=normalized_provider,
@@ -118,6 +129,11 @@ def update_input_source(
 def soft_delete_input_source(db: Session, *, source: InputSource) -> None:
     source.is_active = False
     source.next_poll_at = None
+    if source.provider == "gmail":
+        source.last_error_code = None
+        source.last_error_message = None
+        source.secrets = None
+        source.cursor = None
     db.commit()
 
 
@@ -138,7 +154,20 @@ def _build_source_key(*, source_kind: str, provider: str, config: dict) -> str:
     return digest
 
 
+def _get_existing_gmail_source(*, db: Session, user_id: int) -> InputSource | None:
+    return db.scalar(
+        select(InputSource)
+        .where(
+            InputSource.user_id == user_id,
+            InputSource.provider == "gmail",
+        )
+        .order_by(InputSource.created_at.desc(), InputSource.id.desc())
+        .limit(1)
+    )
+
+
 __all__ = [
+    "GmailSourceAlreadyExistsError",
     "create_input_source",
     "get_input_source",
     "list_input_sources",

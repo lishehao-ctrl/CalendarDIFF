@@ -59,6 +59,7 @@ This local launcher will:
 3. start `frontend`, `input-service`, `ingest-service`, `llm-service`, `review-service`, and `notification-service`
 4. write pid/log files under `output/dev-stack/`
 5. keep PostgreSQL and Redis running unless you explicitly stop them with `scripts/dev_stack.sh down --infra`
+6. support `scripts/dev_stack.sh reset` to stop the app layer, reset the configured PostgreSQL database to migration head, and restart the full local stack
 
 `down --infra` only stops the `postgres` and `redis` services defined in this repo's `docker compose` files. It does not stop unrelated local instances already bound to the same ports.
 
@@ -68,6 +69,7 @@ Helpful follow-up commands:
 scripts/dev_stack.sh status
 scripts/dev_stack.sh logs frontend
 scripts/dev_stack.sh logs all
+scripts/dev_stack.sh reset
 scripts/dev_stack.sh down
 scripts/dev_stack.sh down --infra
 ```
@@ -89,12 +91,12 @@ If you want to run services one by one instead of using the local launcher:
 ```bash
 docker compose up -d postgres redis
 python -m alembic upgrade head
-SERVICE_NAME=input RUN_MIGRATIONS=false PORT=8001 ./scripts/start_service.sh
-SERVICE_NAME=ingest RUN_MIGRATIONS=false PORT=8002 ./scripts/start_service.sh
-SERVICE_NAME=llm RUN_MIGRATIONS=false PORT=8005 ./scripts/start_service.sh
-SERVICE_NAME=review RUN_MIGRATIONS=false PORT=8000 ./scripts/start_service.sh
-SERVICE_NAME=notification RUN_MIGRATIONS=false PORT=8004 ./scripts/start_service.sh
-cd frontend && INPUT_BACKEND_BASE_URL=http://127.0.0.1:8001 REVIEW_BACKEND_BASE_URL=http://127.0.0.1:8000 BACKEND_API_KEY="$APP_API_KEY" npm run dev -- --hostname 127.0.0.1 --port 3000
+SERVICE_NAME=input RUN_MIGRATIONS=false PORT=8201 ./scripts/start_service.sh
+SERVICE_NAME=ingest RUN_MIGRATIONS=false PORT=8202 ./scripts/start_service.sh
+SERVICE_NAME=llm RUN_MIGRATIONS=false PORT=8205 ./scripts/start_service.sh
+SERVICE_NAME=review RUN_MIGRATIONS=false PORT=8200 ./scripts/start_service.sh
+SERVICE_NAME=notification RUN_MIGRATIONS=false PORT=8204 ./scripts/start_service.sh
+cd frontend && INPUT_BACKEND_BASE_URL=http://127.0.0.1:8201 REVIEW_BACKEND_BASE_URL=http://127.0.0.1:8200 BACKEND_API_KEY="$APP_API_KEY" npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
 ## Docker Compose
@@ -117,8 +119,8 @@ Compose includes:
 
 Default host-exposed ports:
 
-1. `input-service` on `localhost:8001`
-2. `review-service` on `localhost:8000`
+1. `input-service` on `localhost:8201`
+2. `review-service` on `localhost:8200`
 
 `ingest-service`, `llm-service`, and `notification-service` are internal-only in default compose. Use `docker-compose.dev.yml` for dev-only port exposure.
 
@@ -137,7 +139,7 @@ INTERNAL_SERVICE_TOKEN_LLM=dev-internal-token-llm
 INTERNAL_SERVICE_TOKEN_OPS=dev-internal-token-ops
 DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/deadline_diff
 REDIS_URL=redis://localhost:6379/0
-PUBLIC_WEB_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
+PUBLIC_WEB_ORIGINS=http://localhost:8200,http://127.0.0.1:8200
 ```
 
 Ingestion LLM (chat/completions only):
@@ -153,8 +155,8 @@ OAuth runtime config (single source of truth for route/base/redirect/key source)
 
 ```env
 # Priority for OAuth public base URL:
-# OAUTH_PUBLIC_BASE_URL > APP_BASE_URL > INPUT_API_BASE_URL > http://localhost:8001
-OAUTH_PUBLIC_BASE_URL=http://localhost:8001
+# OAUTH_PUBLIC_BASE_URL > APP_BASE_URL > INPUT_API_BASE_URL > http://localhost:8201
+OAUTH_PUBLIC_BASE_URL=http://localhost:8201
 OAUTH_ROUTE_PREFIX=
 OAUTH_SESSION_ROUTE_TEMPLATE=/sources/{source_id}/oauth-sessions
 OAUTH_CALLBACK_ROUTE_TEMPLATE=/oauth/callbacks/{provider}
@@ -202,10 +204,10 @@ NOTIFY_JSONL_PATH=data/smoke/notify_sink.jsonl
 Optional per-service base URLs (useful when services run on different ports):
 
 ```env
-INPUT_API_BASE_URL=http://localhost:8001
-REVIEW_API_BASE_URL=http://localhost:8000
-INGEST_API_BASE_URL=http://localhost:8002
-NOTIFY_API_BASE_URL=http://localhost:8004
+INPUT_API_BASE_URL=http://localhost:8201
+REVIEW_API_BASE_URL=http://localhost:8200
+INGEST_API_BASE_URL=http://localhost:8202
+NOTIFY_API_BASE_URL=http://localhost:8204
 ```
 
 ## Internal Ops Auth
@@ -231,19 +233,19 @@ ENABLE_NOTIFICATIONS=false
 ## Health Checks
 
 ```bash
-curl -s http://localhost:8001/health
-curl -s http://localhost:8002/health
-curl -s http://localhost:8005/health
-curl -s http://localhost:8000/health
-curl -s http://localhost:8004/health
+curl -s http://localhost:8201/health
+curl -s http://localhost:8202/health
+curl -s http://localhost:8205/health
+curl -s http://localhost:8200/health
+curl -s http://localhost:8204/health
 ```
 
 ## Real Source Smoke (3 Rounds)
 
 ```bash
 python scripts/smoke_real_sources_three_rounds.py \
-  --input-api-base http://127.0.0.1:8001 \
-  --review-api-base http://127.0.0.1:8000 \
+  --input-api-base http://127.0.0.1:8201 \
+  --review-api-base http://127.0.0.1:8200 \
   --report data/synthetic/ddlchange_160/qa/real_source_smoke_report.json
 ```
 
@@ -255,11 +257,11 @@ Use online LLM + local JSONL notification sink. This flow does not require Gmail
 NOTIFY_SINK_MODE=jsonl \
 NOTIFY_JSONL_PATH=data/smoke/notify_sink.jsonl \
 python scripts/smoke_semester_demo.py \
-  --input-api-base http://127.0.0.1:8001 \
-  --review-api-base http://127.0.0.1:8000 \
-  --ingest-api-base http://127.0.0.1:8002 \
-  --notify-api-base http://127.0.0.1:8004 \
-  --llm-api-base http://127.0.0.1:8005 \
+  --input-api-base http://127.0.0.1:8201 \
+  --review-api-base http://127.0.0.1:8200 \
+  --ingest-api-base http://127.0.0.1:8202 \
+  --notify-api-base http://127.0.0.1:8204 \
+  --llm-api-base http://127.0.0.1:8205 \
   --ops-token "${INTERNAL_SERVICE_TOKEN_OPS}" \
   --notification-jsonl data/smoke/notify_sink.jsonl \
   --report data/synthetic/semester_demo/qa/semester_demo_report.json
@@ -285,22 +287,22 @@ Full closure check:
 
 ```bash
 python scripts/smoke_microservice_closure.py \
-  --input-api-base http://127.0.0.1:8001 \
-  --review-api-base http://127.0.0.1:8000 \
-  --ingest-api-base http://127.0.0.1:8002 \
-  --notify-api-base http://127.0.0.1:8004 \
-  --llm-api-base http://127.0.0.1:8005
+  --input-api-base http://127.0.0.1:8201 \
+  --review-api-base http://127.0.0.1:8200 \
+  --ingest-api-base http://127.0.0.1:8202 \
+  --notify-api-base http://127.0.0.1:8204 \
+  --llm-api-base http://127.0.0.1:8205
 ```
 
 SLO check:
 
 ```bash
 python scripts/ops_slo_check.py \
-  --input-base http://127.0.0.1:8001 \
-  --ingest-base http://127.0.0.1:8002 \
-  --review-base http://127.0.0.1:8000 \
-  --notify-base http://127.0.0.1:8004 \
-  --llm-base http://127.0.0.1:8005 \
+  --input-base http://127.0.0.1:8201 \
+  --ingest-base http://127.0.0.1:8202 \
+  --review-base http://127.0.0.1:8200 \
+  --notify-base http://127.0.0.1:8204 \
+  --llm-base http://127.0.0.1:8205 \
   --ops-token "${INTERNAL_SERVICE_TOKEN_OPS}" \
   --json
 ```

@@ -1,15 +1,25 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.core.oauth_config import build_oauth_runtime_config
+from app.core.oauth_config import build_frontend_sources_return_url, build_oauth_runtime_config
 from app.core.security import decrypt_secret, encrypt_secret
 from app.db.models.input import IngestTriggerType, InputSource, InputSourceCursor, InputSourceSecret, SyncRequest
 from app.modules.input_control_plane.sync_requests_service import enqueue_sync_request_idempotent
-from app.modules.sync.gmail_client import GmailClient
+from app.modules.sync.gmail_client import GmailClient, GmailOAuthTokens
+
+
+@dataclass(frozen=True)
+class OAuthBrowserCallbackResult:
+    provider: str
+    status: str
+    source_id: int | None = None
+    request_id: str | None = None
+    message: str | None = None
 
 
 def build_gmail_oauth_start_for_source(
@@ -63,13 +73,15 @@ def handle_gmail_oauth_callback(
         raise RuntimeError("Input source not found for oauth callback")
 
     client = gmail_client or GmailClient()
+    previous_payload = _load_existing_gmail_secret_payload(source)
     tokens = client.exchange_code(code=code)
-    profile = client.get_profile(access_token=tokens.access_token)
+    merged_tokens = _merge_gmail_oauth_tokens(tokens=tokens, previous_payload=previous_payload)
+    profile = client.get_profile(access_token=merged_tokens.access_token)
 
     merged_payload = {
-        "access_token": tokens.access_token,
-        "refresh_token": tokens.refresh_token,
-        "expires_at": tokens.expires_at.isoformat() if tokens.expires_at is not None else None,
+        "access_token": merged_tokens.access_token,
+        "refresh_token": merged_tokens.refresh_token,
+        "expires_at": merged_tokens.expires_at.isoformat() if merged_tokens.expires_at is not None else None,
         "account_email": profile.email_address,
         "history_id": profile.history_id,
     }
@@ -82,6 +94,10 @@ def handle_gmail_oauth_callback(
     if source.cursor is None:
         source.cursor = InputSourceCursor(source_id=source.id, version=1, cursor_json={})
     source.cursor.cursor_json = {"history_id": profile.history_id}
+    source.is_active = True
+    source.next_poll_at = current
+    source.last_error_code = None
+    source.last_error_message = None
 
     request = enqueue_sync_request_idempotent(
         db,
@@ -91,6 +107,23 @@ def handle_gmail_oauth_callback(
         metadata={"reason": "oauth_callback"},
     )
     return source, request
+
+
+def build_oauth_browser_callback_redirect_url(
+    *,
+    provider: str,
+    status: str,
+    source_id: int | None = None,
+    request_id: str | None = None,
+    message: str | None = None,
+) -> str:
+    return build_frontend_sources_return_url(
+        oauth_provider=provider,
+        oauth_status=status,
+        source_id=source_id,
+        request_id=request_id,
+        message=message,
+    )
 
 
 def _parse_oauth_state(state_token: str) -> dict:
@@ -104,7 +137,38 @@ def _parse_oauth_state(state_token: str) -> dict:
     return parsed
 
 
+def _load_existing_gmail_secret_payload(source: InputSource) -> dict[str, object]:
+    if source.secrets is None or not source.secrets.encrypted_payload:
+        return {}
+    try:
+        decoded = decrypt_secret(source.secrets.encrypted_payload)
+        payload = json.loads(decoded)
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _merge_gmail_oauth_tokens(
+    *,
+    tokens: GmailOAuthTokens,
+    previous_payload: dict[str, object],
+) -> GmailOAuthTokens:
+    if tokens.refresh_token:
+        return tokens
+
+    existing_refresh_token = previous_payload.get("refresh_token")
+    if isinstance(existing_refresh_token, str) and existing_refresh_token.strip():
+        return GmailOAuthTokens(
+            access_token=tokens.access_token,
+            refresh_token=existing_refresh_token.strip(),
+            expires_at=tokens.expires_at,
+        )
+    return tokens
+
+
 __all__ = [
+    "OAuthBrowserCallbackResult",
     "build_gmail_oauth_start_for_source",
+    "build_oauth_browser_callback_redirect_url",
     "handle_gmail_oauth_callback",
 ]

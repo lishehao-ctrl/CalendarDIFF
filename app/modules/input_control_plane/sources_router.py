@@ -4,11 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.logging import sanitize_log_message
+from app.db.models.shared import User
 from app.db.session import get_db
-from app.modules.input_control_plane.router_common import require_owned_source_or_404, require_registered_user_or_409
+from app.modules.auth.deps import get_authenticated_user_or_401
+from app.modules.input_control_plane.router_common import require_owned_source_or_404
 from app.modules.input_control_plane.schemas import InputSourceCreateRequest, InputSourcePatchRequest, InputSourceResponse
 from app.modules.input_control_plane.source_serializers import serialize_source
 from app.modules.input_control_plane.sources_service import (
+    GmailSourceAlreadyExistsError,
     create_input_source,
     list_input_sources,
     soft_delete_input_source,
@@ -22,10 +25,19 @@ router = APIRouter()
 def create_source(
     payload: InputSourceCreateRequest,
     db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
 ) -> InputSourceResponse:
-    user = require_registered_user_or_409(db)
     try:
         source = create_input_source(db, user=user, payload=payload)
+    except GmailSourceAlreadyExistsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "gmail_source_exists",
+                "message": "gmail source already exists for this user",
+                "existing_source_id": exc.source_id,
+            },
+        ) from exc
     except Exception as exc:
         raise HTTPException(status_code=422, detail=sanitize_log_message(str(exc))) from exc
     return InputSourceResponse.model_validate(serialize_source(source))
@@ -34,8 +46,8 @@ def create_source(
 @router.get("/sources", response_model=list[InputSourceResponse])
 def list_sources(
     db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
 ) -> list[InputSourceResponse]:
-    user = require_registered_user_or_409(db)
     rows = list_input_sources(db, user_id=user.id)
     return [InputSourceResponse.model_validate(serialize_source(row)) for row in rows]
 
@@ -45,8 +57,8 @@ def patch_source(
     source_id: int,
     payload: InputSourcePatchRequest,
     db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
 ) -> InputSourceResponse:
-    user = require_registered_user_or_409(db)
     source = require_owned_source_or_404(db=db, user_id=user.id, source_id=source_id)
     try:
         updated = update_input_source(db, source=source, payload=payload)
@@ -59,8 +71,8 @@ def patch_source(
 def delete_source(
     source_id: int,
     db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
 ) -> dict[str, bool]:
-    user = require_registered_user_or_409(db)
     source = require_owned_source_or_404(db=db, user_id=user.id, source_id=source_id)
     soft_delete_input_source(db, source=source)
     return {"deleted": True}

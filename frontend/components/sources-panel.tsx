@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarSync, Mailbox, RefreshCw, ShieldAlert, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,8 @@ const blankForm = {
   display_name: "",
   secrets_url: ""
 };
+
+const oauthQueryKeys = ["oauth_provider", "oauth_status", "source_id", "request_id", "message"] as const;
 
 type Banner = {
   tone: "info" | "error";
@@ -37,11 +39,77 @@ export function SourcesPanel() {
   const [syncState, setSyncState] = useState<Record<number, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [busyDelete, setBusyDelete] = useState<number | null>(null);
+  const [gmailConnecting, setGmailConnecting] = useState(false);
   const [banner, setBanner] = useState<Banner>(null);
+  const oauthQueryHandled = useRef(false);
 
   const sources = useMemo(() => data || [], [data]);
   const activeCount = sources.filter((source) => source.is_active).length;
   const erroredCount = sources.filter((source) => Boolean(source.last_error_message)).length;
+  const gmailSource = useMemo(() => sources.find((source) => source.provider === "gmail") || null, [sources]);
+  const gmailConnected = gmailSource?.oauth_connection_status === "connected";
+
+  const pollSyncRequest = useCallback(async (
+    sourceId: number,
+    requestId: string,
+    options?: { successMessage?: string; failurePrefix?: string }
+  ) => {
+    setSyncState((prev) => ({ ...prev, [sourceId]: "queued" }));
+    for (let attempt = 0; attempt < 15; attempt += 1) {
+      const status = await backendFetch<SyncStatus>(`/sync-requests/${requestId}`);
+      const normalized = status.status.toLowerCase();
+      setSyncState((prev) => ({ ...prev, [sourceId]: normalized }));
+      if (status.status === "SUCCEEDED" || status.status === "FAILED") {
+        if (status.status === "SUCCEEDED") {
+          setBanner({ tone: "info", text: options?.successMessage || `Source #${sourceId} sync succeeded.` });
+        }
+        if (status.status === "FAILED") {
+          const failure = status.error_message || status.connector_result?.error_message || options?.failurePrefix || `Source #${sourceId} sync failed.`;
+          setBanner({ tone: "error", text: failure });
+        }
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    await refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    if (oauthQueryHandled.current) {
+      return;
+    }
+    oauthQueryHandled.current = true;
+
+    const url = new URL(window.location.href);
+    const provider = url.searchParams.get("oauth_provider");
+    const status = url.searchParams.get("oauth_status");
+    const sourceIdRaw = url.searchParams.get("source_id");
+    const requestId = url.searchParams.get("request_id");
+    const message = url.searchParams.get("message");
+
+    if (!provider || provider !== "gmail" || !status) {
+      return;
+    }
+
+    const sourceId = sourceIdRaw ? Number(sourceIdRaw) : null;
+    setBanner({
+      tone: status === "success" ? "info" : "error",
+      text: message || (status === "success" ? "Gmail connection succeeded." : "Gmail connection failed.")
+    });
+
+    for (const key of oauthQueryKeys) {
+      url.searchParams.delete(key);
+    }
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+
+    void refresh();
+    if (status === "success" && requestId && sourceId) {
+      void pollSyncRequest(sourceId, requestId, {
+        successMessage: "Gmail initial sync succeeded.",
+        failurePrefix: "Gmail initial sync failed"
+      });
+    }
+  }, [pollSyncRequest, refresh]);
 
   async function createIcsSource() {
     setSubmitting(true);
@@ -68,8 +136,8 @@ export function SourcesPanel() {
     }
   }
 
-  async function deleteSource(sourceId: number) {
-    const confirmed = window.confirm("Delete this source from the workspace?");
+  async function deleteSource(sourceId: number, provider: string) {
+    const confirmed = window.confirm(provider === "gmail" ? "Disconnect this Gmail source from the workspace?" : "Delete this source from the workspace?");
     if (!confirmed) {
       return;
     }
@@ -78,7 +146,7 @@ export function SourcesPanel() {
     setBanner(null);
     try {
       await backendFetch(`/sources/${sourceId}`, { method: "DELETE" });
-      setBanner({ tone: "info", text: `Source #${sourceId} deleted.` });
+      setBanner({ tone: "info", text: provider === "gmail" ? "Gmail source disconnected." : `Source #${sourceId} deleted.` });
       await refresh();
     } catch (err) {
       setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to delete source" });
@@ -88,33 +156,62 @@ export function SourcesPanel() {
   }
 
   async function triggerSync(sourceId: number) {
-    setSyncState((prev) => ({ ...prev, [sourceId]: "queued" }));
     setBanner(null);
     try {
       const created = await backendFetch<{ request_id: string }>(`/sources/${sourceId}/sync-requests`, {
         method: "POST",
         body: JSON.stringify({ metadata: { kind: "ui_manual_sync" } })
       });
-      for (let attempt = 0; attempt < 15; attempt += 1) {
-        const status = await backendFetch<SyncStatus>(`/sync-requests/${created.request_id}`);
-        const normalized = status.status.toLowerCase();
-        setSyncState((prev) => ({ ...prev, [sourceId]: normalized }));
-        if (status.status === "SUCCEEDED" || status.status === "FAILED") {
-          if (status.status === "SUCCEEDED") {
-            setBanner({ tone: "info", text: `Source #${sourceId} sync succeeded.` });
-          }
-          if (status.status === "FAILED") {
-            setBanner({ tone: "error", text: status.error_message || status.connector_result?.error_message || `Source #${sourceId} sync failed.` });
-          }
-          break;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-      await refresh();
+      await pollSyncRequest(sourceId, created.request_id);
     } catch (err) {
       const text = err instanceof Error ? err.message : "Sync failed";
       setSyncState((prev) => ({ ...prev, [sourceId]: "failed" }));
       setBanner({ tone: "error", text });
+    }
+  }
+
+  async function connectGmail() {
+    setGmailConnecting(true);
+    setBanner(null);
+    try {
+      const source = await createOrReuseGmailSource();
+      const session = await backendFetch<{ authorization_url: string }>(`/sources/${source.source_id}/oauth-sessions`, {
+        method: "POST",
+        body: JSON.stringify({ provider: "gmail" })
+      });
+      window.location.assign(session.authorization_url);
+    } catch (err) {
+      setGmailConnecting(false);
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to start Gmail OAuth" });
+    }
+  }
+
+  async function createOrReuseGmailSource(): Promise<SourceRow> {
+    if (gmailSource) {
+      return gmailSource;
+    }
+
+    try {
+      const created = await backendFetch<SourceRow>("/sources", {
+        method: "POST",
+        body: JSON.stringify({
+          source_kind: "email",
+          provider: "gmail",
+          display_name: "Gmail Inbox",
+          config: { label_id: "INBOX" },
+          secrets: {}
+        })
+      });
+      await refresh();
+      return created;
+    } catch (err) {
+      const latestSources = await backendFetch<SourceRow[]>("/sources");
+      const existing = latestSources.find((source) => source.provider === "gmail");
+      if (existing) {
+        await refresh();
+        return existing;
+      }
+      throw err;
     }
   }
 
@@ -140,9 +237,9 @@ export function SourcesPanel() {
           <p className="mt-2 text-sm text-[#596270]">Sources with a recorded connector or validation failure.</p>
         </Card>
         <Card className="p-5">
-          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Auth-gated Gmail</p>
-          <p className="mt-3 text-3xl font-semibold">1</p>
-          <p className="mt-2 text-sm text-[#596270]">Visible in the UI, intentionally disabled until backend auth hardening is complete.</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Gmail connection</p>
+          <p className="mt-3 text-3xl font-semibold">{gmailConnected ? "Live" : "Ready"}</p>
+          <p className="mt-2 text-sm text-[#596270]">Single Gmail account, default label `INBOX`, browser-based Google OAuth.</p>
         </Card>
       </div>
 
@@ -159,7 +256,7 @@ export function SourcesPanel() {
               <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Live inventory</p>
               <h3 className="mt-3 text-2xl font-semibold">Connected sources</h3>
               <p className="mt-2 text-sm leading-6 text-[#596270]">
-                ICS sources are fully actionable. Use manual sync to force fresh evidence into review without waiting for the worker cadence.
+                ICS and Gmail sources are both visible here. Gmail now uses the production OAuth flow instead of a placeholder CTA.
               </p>
             </div>
             <Badge tone="approved">API-backed</Badge>
@@ -167,20 +264,29 @@ export function SourcesPanel() {
 
           <div className="mt-5 space-y-4">
             {sources.length === 0 ? (
-              <EmptyState title="No sources yet" description="Create an ICS source on the right to open the intake loop." />
+              <EmptyState title="No sources yet" description="Create an ICS source or connect Gmail to open the intake loop." />
             ) : (
               sources.map((source) => {
                 const syncLabel = syncState[source.source_id];
+                const isGmail = source.provider === "gmail";
                 return (
                   <Card key={source.source_id} className="overflow-hidden p-5">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div className="space-y-3">
                         <div className="flex flex-wrap items-center gap-3">
-                          <h4 className="text-lg font-semibold">{source.display_name}</h4>
+                          <h4 className="text-lg font-semibold">{source.display_name || source.source_key}</h4>
                           <Badge tone={source.is_active ? "active" : "default"}>{source.provider}</Badge>
                           <Badge tone={syncTone(syncLabel)}>{formatStatusLabel(syncLabel, "Idle")}</Badge>
+                          {isGmail && source.oauth_connection_status ? (
+                            <Badge tone={source.oauth_connection_status === "connected" ? "approved" : "pending"}>
+                              {formatStatusLabel(source.oauth_connection_status)}
+                            </Badge>
+                          ) : null}
                         </div>
                         <p className="text-sm text-[#596270]">{source.source_kind} source · key `{source.source_key}`</p>
+                        {isGmail && source.oauth_account_email ? (
+                          <p className="text-sm text-[#314051]">Connected Gmail account: {source.oauth_account_email}</p>
+                        ) : null}
                         <div className="grid gap-2 text-sm text-[#314051] md:grid-cols-2">
                           <p>Last polled: {formatDateTime(source.last_polled_at, "Never")}</p>
                           <p>Next poll: {formatDateTime(source.next_poll_at, "Not scheduled")}</p>
@@ -200,11 +306,11 @@ export function SourcesPanel() {
                         </Button>
                         <Button
                           variant="ghost"
-                          onClick={() => void deleteSource(source.source_id)}
+                          onClick={() => void deleteSource(source.source_id, source.provider)}
                           disabled={busyDelete === source.source_id}
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
-                          {busyDelete === source.source_id ? "Removing..." : "Delete"}
+                          {busyDelete === source.source_id ? "Removing..." : isGmail ? "Disconnect" : "Delete"}
                         </Button>
                       </div>
                     </div>
@@ -257,22 +363,34 @@ export function SourcesPanel() {
                 <Mailbox className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Reserved entry</p>
-                <h3 className="mt-1 text-xl font-semibold">Gmail connect</h3>
+                <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Gmail source</p>
+                <h3 className="mt-1 text-xl font-semibold">Connect Gmail</h3>
               </div>
             </div>
             <p className="mt-4 text-sm leading-6 text-[#596270]">
-              The UI keeps Gmail visible as a first-class source family, but the actual OAuth connect path is intentionally held back until backend callback hardening is complete.
+              Browser-based Google OAuth now creates or reuses a single Gmail source for this workspace and routes the callback back to this page.
             </p>
-            <div className="mt-5 rounded-[1.25rem] border border-dashed border-line bg-white/50 p-4 text-sm text-[#314051]">
-              <div className="flex items-start gap-3">
-                <ShieldAlert className="mt-0.5 h-4 w-4 text-ember" />
-                <p>Gmail connect pending backend auth finalization.</p>
-              </div>
+            <div className="mt-5 rounded-[1.25rem] border border-line bg-white/55 p-4 text-sm text-[#314051]">
+              <p>Status: {gmailConnected ? "Connected" : "Not connected"}</p>
+              <p className="mt-2">Source: {gmailSource ? `#${gmailSource.source_id}` : "Will be created on first connect"}</p>
+              <p className="mt-2">Label: INBOX</p>
+              {gmailSource?.oauth_account_email ? <p className="mt-2">Account: {gmailSource.oauth_account_email}</p> : null}
             </div>
-            <Button className="mt-4 w-full" variant="secondary" disabled>
-              Gmail connect pending backend auth finalization
-            </Button>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Button className="flex-1" onClick={() => void connectGmail()} disabled={gmailConnecting}>
+                {gmailConnecting ? "Redirecting to Google..." : gmailConnected ? "Reconnect Gmail" : "Connect Gmail"}
+              </Button>
+              {gmailSource ? (
+                <Button
+                  className="flex-1"
+                  variant="ghost"
+                  onClick={() => void deleteSource(gmailSource.source_id, gmailSource.provider)}
+                  disabled={busyDelete === gmailSource.source_id}
+                >
+                  {busyDelete === gmailSource.source_id ? "Disconnecting..." : "Disconnect Gmail"}
+                </Button>
+              ) : null}
+            </div>
           </Card>
         </div>
       </div>

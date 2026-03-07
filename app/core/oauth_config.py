@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Iterable
-from urllib.parse import urlparse
+from typing import Iterable, Mapping
+from urllib.parse import urlencode, urljoin, urlparse
 
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
@@ -83,6 +83,43 @@ def resolve_oauth_token_encryption_key(*, settings: Settings | None = None) -> t
     return current_settings.app_secret_key, "APP_SECRET_KEY"
 
 
+def resolve_frontend_app_base_url(*, settings: Settings | None = None) -> str:
+    current_settings = settings or get_settings()
+    if _is_non_empty(current_settings.frontend_app_base_url):
+        assert isinstance(current_settings.frontend_app_base_url, str)
+        return _normalize_public_base_url(current_settings.frontend_app_base_url)
+
+    for item in current_settings.public_web_origins.split(","):
+        if _is_non_empty(item):
+            return _normalize_public_base_url(item)
+
+    raise RuntimeError("Frontend app base URL is not configured")
+
+
+def build_frontend_sources_return_url(
+    *,
+    oauth_provider: str,
+    oauth_status: str,
+    source_id: int | None = None,
+    request_id: str | None = None,
+    message: str | None = None,
+    settings: Settings | None = None,
+) -> str:
+    base_url = resolve_frontend_app_base_url(settings=settings)
+    sources_url = urljoin(f"{base_url}/", "sources")
+    query: dict[str, str] = {
+        "oauth_provider": oauth_provider,
+        "oauth_status": oauth_status,
+    }
+    if source_id is not None:
+        query["source_id"] = str(source_id)
+    if request_id:
+        query["request_id"] = request_id
+    if message:
+        query["message"] = message
+    return f"{sources_url}?{urlencode(query)}"
+
+
 def log_input_oauth_startup(app: FastAPI) -> None:
     runtime = build_oauth_runtime_config()
     callback_routes = list(_iter_callback_routes(app=app, callback_route_path=runtime.callback_route_path))
@@ -136,7 +173,7 @@ def _resolve_oauth_public_base_url(settings: Settings) -> str:
         settings.oauth_public_base_url,
         settings.app_base_url,
         settings.input_api_base_url,
-        "http://localhost:8001",
+        "http://localhost:8201",
     )
     for candidate in candidates:
         if _is_non_empty(candidate):
@@ -182,7 +219,9 @@ def _is_non_empty(value: str | None) -> bool:
 
 __all__ = [
     "OAuthRuntimeConfig",
+    "build_frontend_sources_return_url",
     "build_oauth_runtime_config",
     "log_input_oauth_startup",
+    "resolve_frontend_app_base_url",
     "resolve_oauth_token_encryption_key",
 ]

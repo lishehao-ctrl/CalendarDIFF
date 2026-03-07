@@ -66,11 +66,11 @@ Ingest delta observability fields (non-blocking but must be present):
 
 ```bash
 python scripts/ops_slo_check.py \
-  --input-base http://127.0.0.1:8001 \
-  --ingest-base http://127.0.0.1:8002 \
-  --llm-base http://127.0.0.1:8005 \
-  --review-base http://127.0.0.1:8000 \
-  --notify-base http://127.0.0.1:8004 \
+  --input-base http://127.0.0.1:8201 \
+  --ingest-base http://127.0.0.1:8202 \
+  --llm-base http://127.0.0.1:8205 \
+  --review-base http://127.0.0.1:8200 \
+  --notify-base http://127.0.0.1:8204 \
   --ops-token "${INTERNAL_SERVICE_TOKEN_OPS}" \
   --json
 ```

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 SourceKindLiteral = Literal["calendar", "email", "task", "exam", "announcement"]
 TriggerTypeLiteral = Literal["manual", "scheduler", "webhook"]
 SyncRequestStatusLiteral = Literal["PENDING", "QUEUED", "RUNNING", "SUCCEEDED", "FAILED"]
+OAuthConnectionStatusLiteral = Literal["connected", "not_connected"]
 
 
 class InputSourceCreateRequest(BaseModel):
@@ -49,6 +50,8 @@ class InputSourceResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     config: dict
+    oauth_connection_status: OAuthConnectionStatusLiteral | None = None
+    oauth_account_email: str | None = None
 
 
 class SyncRequestCreateResponse(BaseModel):

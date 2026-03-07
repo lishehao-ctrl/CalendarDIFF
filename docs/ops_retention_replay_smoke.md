@@ -58,7 +58,7 @@ Recommended classification:
 1. Single-job canary replay:
 
 ```bash
-curl -X POST "http://127.0.0.1:8002/internal/ingest/jobs/<job_id>/replays" \
+curl -X POST "http://127.0.0.1:8202/internal/ingest/jobs/<job_id>/replays" \
   -H "X-Service-Name: ops" \
   -H "X-Service-Token: ${INTERNAL_SERVICE_TOKEN_OPS}"
 ```
@@ -66,7 +66,7 @@ curl -X POST "http://127.0.0.1:8002/internal/ingest/jobs/<job_id>/replays" \
 2. If canary succeeds, batch replay:
 
 ```bash
-curl -X POST "http://127.0.0.1:8002/internal/ingest/jobs/dead-letter/replays?limit=50" \
+curl -X POST "http://127.0.0.1:8202/internal/ingest/jobs/dead-letter/replays?limit=50" \
   -H "X-Service-Name: ops" \
   -H "X-Service-Token: ${INTERNAL_SERVICE_TOKEN_OPS}"
 ```
@@ -108,7 +108,7 @@ python scripts/ops_cleanup_smoke_state.py \
 3. Verify pending is cleared for these sources:
 
 ```bash
-curl -s "http://127.0.0.1:8000/review/changes?review_status=pending&limit=200" \
+curl -s "http://127.0.0.1:8200/review/changes?review_status=pending&limit=200" \
   -H "X-API-Key: ${APP_API_KEY}"
 ```
 

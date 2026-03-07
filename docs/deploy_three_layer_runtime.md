@@ -33,7 +33,7 @@ INTERNAL_SERVICE_TOKEN_LLM=...
 INTERNAL_SERVICE_TOKEN_OPS=...
 DATABASE_URL=postgresql+psycopg://...
 REDIS_URL=redis://localhost:6379/0
-PUBLIC_WEB_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
+PUBLIC_WEB_ORIGINS=http://localhost:8200,http://127.0.0.1:8200
 ```
 
 LLM config (ingest-service):
@@ -94,11 +94,11 @@ alembic upgrade head
 2. start services:
 
 ```bash
-SERVICE_NAME=input PORT=8001 ./scripts/start_service.sh
-SERVICE_NAME=ingest PORT=8002 ./scripts/start_service.sh
-SERVICE_NAME=llm PORT=8005 ./scripts/start_service.sh
-SERVICE_NAME=review PORT=8000 ./scripts/start_service.sh
-SERVICE_NAME=notification PORT=8004 ./scripts/start_service.sh
+SERVICE_NAME=input PORT=8201 ./scripts/start_service.sh
+SERVICE_NAME=ingest PORT=8202 ./scripts/start_service.sh
+SERVICE_NAME=llm PORT=8205 ./scripts/start_service.sh
+SERVICE_NAME=review PORT=8200 ./scripts/start_service.sh
+SERVICE_NAME=notification PORT=8204 ./scripts/start_service.sh
 ```
 
 ## Local Startup (Compose)
@@ -126,11 +126,11 @@ Default exposure model:
 ## Health Checks
 
 ```bash
-curl -s http://localhost:8001/health
-curl -s http://localhost:8002/health
-curl -s http://localhost:8005/health
-curl -s http://localhost:8000/health
-curl -s http://localhost:8004/health
+curl -s http://localhost:8201/health
+curl -s http://localhost:8202/health
+curl -s http://localhost:8205/health
+curl -s http://localhost:8200/health
+curl -s http://localhost:8204/health
 ```
 
 ## Internal API Auth
@@ -156,18 +156,18 @@ python -c "import services.notification_api.main"
 
 Because services are direct-exposed, client should configure per-domain base URLs:
 
-1. `INPUT_API_BASE_URL=http://127.0.0.1:8001`
-2. `INGEST_API_BASE_URL=http://127.0.0.1:8002` (internal ops)
-3. `LLM_API_BASE_URL=http://127.0.0.1:8005` (internal ops)
-4. `REVIEW_API_BASE_URL=http://127.0.0.1:8000`
-5. `NOTIFY_API_BASE_URL=http://127.0.0.1:8004` (internal ops)
+1. `INPUT_API_BASE_URL=http://127.0.0.1:8201`
+2. `INGEST_API_BASE_URL=http://127.0.0.1:8202` (internal ops)
+3. `LLM_API_BASE_URL=http://127.0.0.1:8205` (internal ops)
+4. `REVIEW_API_BASE_URL=http://127.0.0.1:8200`
+5. `NOTIFY_API_BASE_URL=http://127.0.0.1:8204` (internal ops)
 
 ## E2E Smoke
 
 ```bash
 python scripts/smoke_real_sources_three_rounds.py \
-  --input-api-base http://127.0.0.1:8001 \
-  --review-api-base http://127.0.0.1:8000 \
+  --input-api-base http://127.0.0.1:8201 \
+  --review-api-base http://127.0.0.1:8200 \
   --report data/synthetic/ddlchange_160/qa/real_source_smoke_report.json
 ```
 
@@ -175,22 +175,22 @@ Closure pipeline:
 
 ```bash
 python scripts/smoke_microservice_closure.py \
-  --input-api-base http://127.0.0.1:8001 \
-  --review-api-base http://127.0.0.1:8000 \
-  --ingest-api-base http://127.0.0.1:8002 \
-  --notify-api-base http://127.0.0.1:8004 \
-  --llm-api-base http://127.0.0.1:8005
+  --input-api-base http://127.0.0.1:8201 \
+  --review-api-base http://127.0.0.1:8200 \
+  --ingest-api-base http://127.0.0.1:8202 \
+  --notify-api-base http://127.0.0.1:8204 \
+  --llm-api-base http://127.0.0.1:8205
 ```
 
 SLO check:
 
 ```bash
 python scripts/ops_slo_check.py \
-  --input-base http://127.0.0.1:8001 \
-  --ingest-base http://127.0.0.1:8002 \
-  --llm-base http://127.0.0.1:8005 \
-  --review-base http://127.0.0.1:8000 \
-  --notify-base http://127.0.0.1:8004 \
+  --input-base http://127.0.0.1:8201 \
+  --ingest-base http://127.0.0.1:8202 \
+  --llm-base http://127.0.0.1:8205 \
+  --review-base http://127.0.0.1:8200 \
+  --notify-base http://127.0.0.1:8204 \
   --ops-token "${INTERNAL_SERVICE_TOKEN_OPS}" \
   --json
 ```

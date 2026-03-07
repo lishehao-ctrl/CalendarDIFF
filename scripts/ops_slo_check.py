@@ -15,27 +15,27 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run minimal microservice SLO checks using internal metrics endpoints.")
     parser.add_argument(
         "--input-base",
-        default=os.getenv("INPUT_API_BASE_URL", "http://127.0.0.1:8001"),
+        default=os.getenv("INPUT_API_BASE_URL", "http://127.0.0.1:8201"),
         help="Input service base URL.",
     )
     parser.add_argument(
         "--ingest-base",
-        default=os.getenv("INGEST_API_BASE_URL", "http://127.0.0.1:8002"),
+        default=os.getenv("INGEST_API_BASE_URL", "http://127.0.0.1:8202"),
         help="Ingest service base URL.",
     )
     parser.add_argument(
         "--review-base",
-        default=os.getenv("REVIEW_API_BASE_URL", "http://127.0.0.1:8000"),
+        default=os.getenv("REVIEW_API_BASE_URL", "http://127.0.0.1:8200"),
         help="Review service base URL.",
     )
     parser.add_argument(
         "--notify-base",
-        default=os.getenv("NOTIFY_API_BASE_URL", "http://127.0.0.1:8004"),
+        default=os.getenv("NOTIFY_API_BASE_URL", "http://127.0.0.1:8204"),
         help="Notification service base URL.",
     )
     parser.add_argument(
         "--llm-base",
-        default=os.getenv("LLM_API_BASE_URL", "http://127.0.0.1:8005"),
+        default=os.getenv("LLM_API_BASE_URL", "http://127.0.0.1:8205"),
         help="LLM service base URL.",
     )
     parser.add_argument(

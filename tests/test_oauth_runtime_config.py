@@ -3,11 +3,16 @@ from __future__ import annotations
 import pytest
 
 from app.core.config import get_settings
-from app.core.oauth_config import build_oauth_runtime_config, resolve_oauth_token_encryption_key
+from app.core.oauth_config import (
+    build_frontend_sources_return_url,
+    build_oauth_runtime_config,
+    resolve_frontend_app_base_url,
+    resolve_oauth_token_encryption_key,
+)
 
 
 def test_oauth_runtime_defaults_fallback_and_deterministic(monkeypatch) -> None:
-    monkeypatch.delenv("OAUTH_PUBLIC_BASE_URL", raising=False)
+    monkeypatch.setenv("OAUTH_PUBLIC_BASE_URL", "")
     monkeypatch.setenv("APP_BASE_URL", "")
     monkeypatch.setenv("INPUT_API_BASE_URL", "")
     monkeypatch.delenv("OAUTH_ROUTE_PREFIX", raising=False)
@@ -18,16 +23,16 @@ def test_oauth_runtime_defaults_fallback_and_deterministic(monkeypatch) -> None:
     runtime_b = build_oauth_runtime_config()
 
     assert runtime_a == runtime_b
-    assert runtime_a.public_base_url == "http://localhost:8001"
+    assert runtime_a.public_base_url == "http://localhost:8201"
     assert runtime_a.oauth_session_route_path == "/sources/{source_id}/oauth-sessions"
     assert runtime_a.callback_route_path == "/oauth/callbacks/{provider}"
-    assert runtime_a.gmail_redirect_uri == "http://localhost:8001/oauth/callbacks/gmail"
+    assert runtime_a.gmail_redirect_uri == "http://localhost:8201/oauth/callbacks/gmail"
     assert runtime_a.token_encryption_key_source == "APP_SECRET_KEY"
     get_settings.cache_clear()
 
 
 def test_oauth_runtime_base_url_priority_and_normalization(monkeypatch) -> None:
-    monkeypatch.setenv("INPUT_API_BASE_URL", "http://127.0.0.1:8001/")
+    monkeypatch.setenv("INPUT_API_BASE_URL", "http://127.0.0.1:8201/")
     monkeypatch.setenv("APP_BASE_URL", "http://localhost:9000/app/")
     monkeypatch.setenv("OAUTH_PUBLIC_BASE_URL", "https://oauth.example.com/root/")
     get_settings.cache_clear()
@@ -71,4 +76,32 @@ def test_oauth_token_encryption_key_source_priority(monkeypatch) -> None:
 
     assert key == override_key
     assert source == "OAUTH_TOKEN_ENCRYPTION_KEY"
+    get_settings.cache_clear()
+
+
+def test_frontend_app_base_url_priority_and_return_url(monkeypatch) -> None:
+    monkeypatch.setenv("FRONTEND_APP_BASE_URL", "https://console.example.com/app/")
+    monkeypatch.setenv("PUBLIC_WEB_ORIGINS", "http://localhost:8200,http://127.0.0.1:8200")
+    get_settings.cache_clear()
+
+    assert resolve_frontend_app_base_url() == "https://console.example.com/app"
+    assert build_frontend_sources_return_url(
+        oauth_provider="gmail",
+        oauth_status="success",
+        source_id=42,
+        request_id="sync-req-1",
+        message="oauth callback processed",
+    ) == (
+        "https://console.example.com/app/sources?"
+        "oauth_provider=gmail&oauth_status=success&source_id=42&request_id=sync-req-1&message=oauth+callback+processed"
+    )
+    get_settings.cache_clear()
+
+
+def test_frontend_app_base_url_falls_back_to_first_public_origin(monkeypatch) -> None:
+    monkeypatch.delenv("FRONTEND_APP_BASE_URL", raising=False)
+    monkeypatch.setenv("PUBLIC_WEB_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+    get_settings.cache_clear()
+
+    assert resolve_frontend_app_base_url() == "http://localhost:3000"
     get_settings.cache_clear()

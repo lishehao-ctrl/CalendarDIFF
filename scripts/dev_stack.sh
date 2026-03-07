@@ -15,6 +15,7 @@ usage() {
 Usage:
   scripts/dev_stack.sh up
   scripts/dev_stack.sh down [--infra]
+  scripts/dev_stack.sh reset
   scripts/dev_stack.sh status
   scripts/dev_stack.sh logs [frontend|input|review|ingest|notification|llm|all]
 USAGE
@@ -28,11 +29,11 @@ die() {
 service_port() {
   case "$1" in
     frontend) echo 3000 ;;
-    review) echo 8000 ;;
-    input) echo 8001 ;;
-    ingest) echo 8002 ;;
-    notification) echo 8004 ;;
-    llm) echo 8005 ;;
+    review) echo 8200 ;;
+    input) echo 8201 ;;
+    ingest) echo 8202 ;;
+    notification) echo 8204 ;;
+    llm) echo 8205 ;;
     postgres) echo 5432 ;;
     redis) echo 6379 ;;
     *) die "unknown service '$1'" ;;
@@ -72,6 +73,7 @@ load_env() {
   : "${APP_API_KEY:?APP_API_KEY is required in .env}"
   : "${DATABASE_URL:?DATABASE_URL is required in .env}"
   : "${REDIS_URL:?REDIS_URL is required in .env}"
+  export FRONTEND_APP_BASE_URL="${FRONTEND_APP_BASE_URL:-http://127.0.0.1:3000}"
 }
 
 ensure_frontend_ready() {
@@ -163,6 +165,19 @@ run_migrations() {
   (cd "$ROOT_DIR" && python -m alembic upgrade head >/dev/null)
 }
 
+reset_database() {
+  local database_name
+  database_name="$(python - <<'PY'
+import os
+from sqlalchemy.engine.url import make_url
+url = make_url(os.environ["DATABASE_URL"])
+print(url.database or "deadline_diff")
+PY
+)"
+  printf 'Resetting PostgreSQL database %s...\n' "$database_name"
+  (cd "$ROOT_DIR" && DATABASE_URL="$DATABASE_URL" ./scripts/reset_postgres_db.sh "$database_name" >/dev/null)
+}
+
 launch_detached() {
   local cwd="$1"
   local pid_file="$2"
@@ -244,7 +259,7 @@ start_frontend() {
   fi
 
   : > "$log_file"
-  launch_detached "$FRONTEND_DIR" "$pid_file" "$log_file" env INPUT_BACKEND_BASE_URL="http://127.0.0.1:8001" REVIEW_BACKEND_BASE_URL="http://127.0.0.1:8000" BACKEND_API_KEY="$APP_API_KEY" WATCHPACK_POLLING=true CHOKIDAR_USEPOLLING=1 npm run dev -- --hostname 127.0.0.1 --port 3000
+  launch_detached "$FRONTEND_DIR" "$pid_file" "$log_file" env INPUT_BACKEND_BASE_URL="http://127.0.0.1:8201" REVIEW_BACKEND_BASE_URL="http://127.0.0.1:8200" BACKEND_API_KEY="$APP_API_KEY" WATCHPACK_POLLING=true CHOKIDAR_USEPOLLING=1 npm run dev -- --hostname 127.0.0.1 --port 3000
 
   wait_for_http "$service" 120
   listener="$(listening_pid "$port")"
@@ -381,11 +396,11 @@ start_all() {
   start_frontend
   printf '\nStack is ready.\n'
   printf 'Frontend:     http://127.0.0.1:3000\n'
-  printf 'Review API:   http://127.0.0.1:8000/health\n'
-  printf 'Input API:    http://127.0.0.1:8001/health\n'
-  printf 'Ingest API:   http://127.0.0.1:8002/health\n'
-  printf 'Notify API:   http://127.0.0.1:8004/health\n'
-  printf 'LLM API:      http://127.0.0.1:8005/health\n'
+  printf 'Review API:   http://127.0.0.1:8200/health\n'
+  printf 'Input API:    http://127.0.0.1:8201/health\n'
+  printf 'Ingest API:   http://127.0.0.1:8202/health\n'
+  printf 'Notify API:   http://127.0.0.1:8204/health\n'
+  printf 'LLM API:      http://127.0.0.1:8205/health\n'
 }
 
 stop_all() {
@@ -404,6 +419,28 @@ stop_all() {
   fi
 }
 
+reset_all() {
+  require_command python
+  require_command npm
+  require_command curl
+  ensure_log_dir
+  load_env
+  stop_all false
+  start_infra
+  reset_database
+  for service in "${BACKEND_SERVICES[@]}"; do
+    start_backend_service "$service"
+  done
+  start_frontend
+  printf '\nStack has been reset and restarted.\n'
+  printf 'Frontend:     http://127.0.0.1:3000\n'
+  printf 'Review API:   http://127.0.0.1:8200/health\n'
+  printf 'Input API:    http://127.0.0.1:8201/health\n'
+  printf 'Ingest API:   http://127.0.0.1:8202/health\n'
+  printf 'Notify API:   http://127.0.0.1:8204/health\n'
+  printf 'LLM API:      http://127.0.0.1:8205/health\n'
+}
+
 main() {
   local command="${1:-}"
   case "$command" in
@@ -419,6 +456,10 @@ main() {
       else
         die "usage: scripts/dev_stack.sh down [--infra]"
       fi
+      ;;
+    reset)
+      [ "$#" -eq 1 ] || die "'reset' does not accept extra arguments"
+      reset_all
       ;;
     status)
       [ "$#" -eq 1 ] || die "'status' does not accept extra arguments"

@@ -1,9 +1,20 @@
 from __future__ import annotations
 
+import json
+
+from app.core.security import decrypt_secret
 from app.db.models.input import InputSource
 
 
 def serialize_source(source: InputSource) -> dict:
+    oauth_connection_status = None
+    oauth_account_email = None
+    if source.provider == "gmail":
+        oauth_connection_status = "not_connected"
+        oauth_account_email = _extract_gmail_account_email(source)
+        if oauth_account_email:
+            oauth_connection_status = "connected"
+
     return {
         "source_id": source.id,
         "user_id": source.user_id,
@@ -20,7 +31,24 @@ def serialize_source(source: InputSource) -> dict:
         "created_at": source.created_at,
         "updated_at": source.updated_at,
         "config": source.config.config_json if source.config is not None else {},
+        "oauth_connection_status": oauth_connection_status,
+        "oauth_account_email": oauth_account_email,
     }
+
+
+def _extract_gmail_account_email(source: InputSource) -> str | None:
+    if source.secrets is None or not source.secrets.encrypted_payload:
+        return None
+    try:
+        payload = json.loads(decrypt_secret(source.secrets.encrypted_payload))
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    account_email = payload.get("account_email")
+    if isinstance(account_email, str) and account_email.strip():
+        return account_email.strip()
+    return None
 
 
 __all__ = ["serialize_source"]

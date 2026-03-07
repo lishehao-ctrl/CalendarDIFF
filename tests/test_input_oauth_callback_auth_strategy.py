@@ -6,7 +6,7 @@ from app.core.security import require_public_api_key
 
 
 def test_oauth_callback_route_does_not_require_api_key(input_client) -> None:
-    response = input_client.get("/oauth/callbacks/gmail")
+    response = input_client.get("/oauth/callbacks/gmail", params={"format": "json"})
     assert response.status_code == 200
     assert response.json() == {
         "source_id": None,

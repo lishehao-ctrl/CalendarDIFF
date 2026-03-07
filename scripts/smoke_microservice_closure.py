@@ -16,11 +16,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run microservice closure checks: health -> strict smoke -> cleanup -> retention dry-run -> slo check."
     )
-    parser.add_argument("--input-api-base", default=os.getenv("INPUT_API_BASE_URL", "http://127.0.0.1:8001"))
-    parser.add_argument("--review-api-base", default=os.getenv("REVIEW_API_BASE_URL", "http://127.0.0.1:8000"))
-    parser.add_argument("--ingest-api-base", default=os.getenv("INGEST_API_BASE_URL", "http://127.0.0.1:8002"))
-    parser.add_argument("--notify-api-base", default=os.getenv("NOTIFY_API_BASE_URL", "http://127.0.0.1:8004"))
-    parser.add_argument("--llm-api-base", default=os.getenv("LLM_API_BASE_URL", "http://127.0.0.1:8005"))
+    parser.add_argument("--input-api-base", default=os.getenv("INPUT_API_BASE_URL", "http://127.0.0.1:8201"))
+    parser.add_argument("--review-api-base", default=os.getenv("REVIEW_API_BASE_URL", "http://127.0.0.1:8200"))
+    parser.add_argument("--ingest-api-base", default=os.getenv("INGEST_API_BASE_URL", "http://127.0.0.1:8202"))
+    parser.add_argument("--notify-api-base", default=os.getenv("NOTIFY_API_BASE_URL", "http://127.0.0.1:8204"))
+    parser.add_argument("--llm-api-base", default=os.getenv("LLM_API_BASE_URL", "http://127.0.0.1:8205"))
     parser.add_argument("--api-key", default=os.getenv("APP_API_KEY", ""))
     parser.add_argument("--ops-token", default=os.getenv("INTERNAL_SERVICE_TOKEN_OPS", ""))
     parser.add_argument(

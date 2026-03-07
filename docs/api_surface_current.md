@@ -4,11 +4,11 @@ This document captures active HTTP APIs after microservice split with shared Pos
 
 ## Service Endpoints
 
-1. input-service: `http://localhost:8001`
-2. ingest-service: `http://localhost:8002`
-3. llm-service: `http://localhost:8005`
-4. review-service: `http://localhost:8000`
-5. notification-service: `http://localhost:8004`
+1. input-service: `http://localhost:8201`
+2. ingest-service: `http://localhost:8202`
+3. llm-service: `http://localhost:8205`
+4. review-service: `http://localhost:8200`
+5. notification-service: `http://localhost:8204`
 
 Default compose exposure:
 

@@ -18,14 +18,18 @@ export type SourceRow = {
   source_kind: string;
   provider: string;
   source_key: string;
-  display_name: string;
+  display_name: string | null;
   is_active: boolean;
   poll_interval_seconds: number;
   last_polled_at: string | null;
   next_poll_at: string | null;
   last_error_code: string | null;
   last_error_message: string | null;
+  created_at?: string;
+  updated_at?: string;
   config: Record<string, unknown>;
+  oauth_connection_status?: "connected" | "not_connected" | null;
+  oauth_account_email?: string | null;
 };
 
 export type SyncStatus = {
