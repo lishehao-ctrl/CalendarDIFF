@@ -9,10 +9,11 @@ from sqlalchemy import select
 from app.core.security import encrypt_secret
 from app.db.models.ingestion import ConnectorResultStatus, IngestResult
 from app.db.models.input import IngestTriggerType, InputSource, InputSourceConfig, InputSourceCursor, InputSourceSecret, SourceKind, SyncRequest, SyncRequestStatus
-from app.db.models.review import Change, ReviewStatus
+from app.db.models.review import Change, ChangeType, Input, InputType, ReviewStatus, SourceEventObservation
 from app.db.models.shared import User
 from app.modules.core_ingest.apply_service import apply_ingest_result_idempotent
-from tests.support.payload_builders import build_calendar_payload, build_course_parse, build_event_parts, build_link_signals
+from app.modules.core_ingest.evidence_snapshots import materialize_change_snapshot
+from tests.support.payload_builders import build_calendar_payload, build_course_parse, build_event_parts, build_gmail_payload, build_link_signals
 
 
 def _create_calendar_source(db_session) -> tuple[User, InputSource]:
@@ -45,6 +46,44 @@ def _create_calendar_source(db_session) -> tuple[User, InputSource]:
         )
     )
     db_session.add(InputSourceCursor(source_id=source.id, version=1, cursor_json={}))
+    db_session.commit()
+    db_session.refresh(user)
+    db_session.refresh(source)
+    return user, source
+
+
+def _create_gmail_source(db_session) -> tuple[User, InputSource]:
+    now = datetime.now(timezone.utc)
+    user = User(
+        email="gmail-evidence-owner@example.com",
+        notify_email="gmail-evidence-owner@example.com",
+        onboarding_completed_at=now,
+    )
+    db_session.add(user)
+    db_session.flush()
+
+    source = InputSource(
+        user_id=user.id,
+        source_kind=SourceKind.EMAIL,
+        provider="gmail",
+        source_key="gmail-evidence-source",
+        display_name="Gmail Inbox",
+        is_active=True,
+        poll_interval_seconds=900,
+        next_poll_at=now,
+    )
+    db_session.add(source)
+    db_session.flush()
+    db_session.add(InputSourceConfig(source_id=source.id, schema_version=1, config_json={"label_id": "INBOX"}))
+    db_session.add(
+        InputSourceSecret(
+            source_id=source.id,
+            encrypted_payload=encrypt_secret(
+                json.dumps({"access_token": "gmail-token", "account_email": "student@example.edu"})
+            ),
+        )
+    )
+    db_session.add(InputSourceCursor(source_id=source.id, version=1, cursor_json={"history_id": "100"}))
     db_session.commit()
     db_session.refresh(user)
     db_session.refresh(source)
@@ -207,3 +246,100 @@ def test_review_change_due_changed_preview_compares_before_and_after_ics(client,
     assert after_preview.status_code == 200
     assert "DTSTART:20260312T200000Z" in before_preview.json()["preview_text"]
     assert "DTSTART:20260313T013000Z" in after_preview.json()["preview_text"]
+
+
+def test_review_change_after_preview_builds_gmail_structured_summary(client, db_session, auth_headers) -> None:
+    user, source = _create_gmail_source(db_session)
+    due_at = datetime(2026, 3, 18, 20, 0, tzinfo=timezone.utc)
+    canonical_input = Input(
+        user_id=user.id,
+        type=InputType.ICS,
+        identity_key=f"canonical:user:{user.id}",
+        is_active=True,
+    )
+    db_session.add(canonical_input)
+    db_session.flush()
+
+    after_json = {
+        "uid": "merge:gmail-preview-1",
+        "title": "Homework 2 due",
+        "course_label": "CSE 100 WI26",
+        "start_at_utc": due_at.isoformat(),
+        "end_at_utc": (due_at + timedelta(hours=1)).isoformat(),
+    }
+    observation_payload = build_gmail_payload(
+        message_id="gmail-preview-1",
+        title="Homework 2 due",
+        due_at=due_at,
+        from_header="Professor Example <prof@example.edu>",
+        thread_id="thread-123",
+        internal_date="2026-03-08T14:00:00+00:00",
+        time_anchor_confidence=0.91,
+        course_parse=build_course_parse(dept="CSE", number=100, quarter="WI", year2=26, confidence=0.91, evidence="CSE 100 WI26"),
+        event_parts=build_event_parts(type="deadline", index=2, confidence=0.9, evidence="Homework 2"),
+        link_signals=build_link_signals(),
+    )
+    db_session.add(
+        SourceEventObservation(
+            user_id=user.id,
+            source_id=source.id,
+            source_kind=source.source_kind,
+            provider=source.provider,
+            external_event_id="gmail-preview-1",
+            merge_key="merge:gmail-preview-1",
+            event_payload=observation_payload,
+            event_hash="0" * 64,
+            observed_at=datetime.now(timezone.utc),
+            is_active=True,
+            last_request_id="gmail-preview-request",
+        )
+    )
+    after_snapshot_id = materialize_change_snapshot(
+        db=db_session,
+        input_id=canonical_input.id,
+        event_payload=observation_payload,
+        fallback_json=after_json,
+        retrieved_at=datetime.now(timezone.utc),
+    )
+    change = Change(
+        input_id=canonical_input.id,
+        event_uid="merge:gmail-preview-1",
+        change_type=ChangeType.CREATED,
+        detected_at=datetime.now(timezone.utc),
+        before_json=None,
+        after_json=after_json,
+        delta_seconds=None,
+        review_status=ReviewStatus.PENDING,
+        proposal_merge_key="merge:gmail-preview-1",
+        proposal_sources_json=[
+            {
+                "source_id": source.id,
+                "source_kind": "email",
+                "provider": "gmail",
+                "external_event_id": "gmail-preview-1",
+                "confidence": 0.91,
+            }
+        ],
+        before_snapshot_id=None,
+        after_snapshot_id=after_snapshot_id,
+        evidence_keys=None,
+    )
+    db_session.add(change)
+    db_session.commit()
+
+    headers = auth_headers(client, user=user)
+    preview_response = client.get(f"/review/changes/{change.id}/evidence/after/preview", headers=headers)
+    assert preview_response.status_code == 200
+    payload = preview_response.json()
+    assert payload["provider"] == "gmail"
+    assert payload["structured_kind"] == "gmail_event"
+    assert payload["event_count"] == 1
+    assert len(payload["structured_items"]) == 1
+    item = payload["structured_items"][0]
+    assert item["title"] == "Homework 2 due"
+    assert item["course_label"] == "CSE 100 WI26"
+    assert item["sender"] == "Professor Example <prof@example.edu>"
+    assert item["thread_id"] == "thread-123"
+    assert item["internal_date"] == "2026-03-08T14:00:00+00:00"
+    assert item["snippet"] == "Homework 2 due"
+    assert "BEGIN:VCALENDAR" in payload["preview_text"]

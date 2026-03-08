@@ -115,11 +115,29 @@ class EvidencePreviewEvent(BaseModel):
     url: str | None = None
 
 
+class EvidencePreviewStructuredItem(BaseModel):
+    uid: str | None = None
+    title: str | None = None
+    course_label: str | None = None
+    start_at: str | None = None
+    end_at: str | None = None
+    location: str | None = None
+    description: str | None = None
+    url: str | None = None
+    sender: str | None = None
+    snippet: str | None = None
+    internal_date: str | None = None
+    thread_id: str | None = None
+
+
 class EvidencePreviewResponse(BaseModel):
     side: Literal["before", "after"]
     content_type: str
     truncated: bool
     filename: str
+    provider: str | None = None
+    structured_kind: Literal["ics_event", "gmail_event", "generic"] = "generic"
+    structured_items: list[EvidencePreviewStructuredItem] = Field(default_factory=list)
     event_count: int
     events: list[EvidencePreviewEvent]
     preview_text: str | None = None

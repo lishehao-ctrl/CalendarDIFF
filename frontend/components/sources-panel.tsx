@@ -80,13 +80,13 @@ function SourceInventoryCard({
           <div className="flex flex-wrap items-center gap-3">
             <h4 className="text-lg font-semibold">{formatSourceTitle(source)}</h4>
             <Badge tone={source.is_active ? "active" : "default"}>{source.provider}</Badge>
-            {!archived ? <Badge tone={syncTone(syncLabel)}>{formatStatusLabel(syncLabel, "Idle")}</Badge> : null}
+            {source.is_active ? <Badge tone={syncTone(syncLabel)}>{formatStatusLabel(syncLabel, "Idle")}</Badge> : null}
             {isGmail && source.oauth_connection_status ? (
               <Badge tone={source.oauth_connection_status === "connected" ? "approved" : "pending"}>
                 {formatStatusLabel(source.oauth_connection_status)}
               </Badge>
             ) : null}
-            {archived ? <Badge tone="info">Archived</Badge> : null}
+            {!source.is_active ? <Badge tone="info">Archived</Badge> : null}
           </div>
           <p className="text-sm text-[#596270]">{formatSourceSubtitle(source)}</p>
           {isGmail && source.oauth_account_email ? (
@@ -108,7 +108,7 @@ function SourceInventoryCard({
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {!archived ? (
+          {source.is_active ? (
             <>
               <Button onClick={() => onSync?.(source.source_id)}>
                 <RefreshCw className="mr-2 h-4 w-4" />
@@ -162,8 +162,8 @@ export function SourcesPanel() {
   const [banner, setBanner] = useState<Banner>(null);
   const oauthQueryHandled = useRef(false);
 
-  const activeSources = useMemo(() => active.data || [], [active.data]);
-  const archivedSources = useMemo(() => archived.data || [], [archived.data]);
+  const activeSources = useMemo(() => (active.data || []).filter((source) => source.is_active), [active.data]);
+  const archivedSources = useMemo(() => (archived.data || []).filter((source) => !source.is_active), [archived.data]);
   const erroredCount = activeSources.filter((source) => Boolean(source.last_error_message)).length;
 
   const refreshAll = useCallback(async () => {

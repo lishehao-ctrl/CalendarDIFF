@@ -202,3 +202,31 @@ def test_onboarding_status_reports_structured_source_health(input_client, db_ses
         "affected_source_id": source.id,
         "affected_provider": "ics",
     }
+
+
+def test_archived_listing_excludes_active_sources(input_client, db_session, authenticate_client) -> None:
+    user = _create_registered_user(db_session, notify_email="mixed-sources@example.com")
+    archived_ics = _create_ics_source(db_session, user=user, url="https://example.com/mixed-ics.ics")
+    active_gmail = create_input_source(
+        db_session,
+        user=user,
+        payload=InputSourceCreateRequest(
+            source_kind="email",
+            provider="gmail",
+            display_name="Workspace Gmail",
+            config={"label_id": "INBOX"},
+            secrets={},
+        ),
+    )
+    authenticate_client(input_client, user=user)
+
+    delete_response = input_client.delete(f"/sources/{archived_ics.id}", headers={"X-API-Key": "test-api-key"})
+    assert delete_response.status_code == 200
+
+    active_response = input_client.get("/sources", headers={"X-API-Key": "test-api-key"})
+    assert active_response.status_code == 200
+    assert [row["source_id"] for row in active_response.json()] == [active_gmail.id]
+
+    archived_response = input_client.get("/sources?status=archived", headers={"X-API-Key": "test-api-key"})
+    assert archived_response.status_code == 200
+    assert [row["source_id"] for row in archived_response.json()] == [archived_ics.id]

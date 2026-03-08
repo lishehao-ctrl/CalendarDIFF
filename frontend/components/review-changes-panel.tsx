@@ -29,6 +29,8 @@ type LoadedEvidence = {
   summaryFallback: string;
 };
 
+type StructuredEvidenceItem = EvidencePreviewResponse["structured_items"][number];
+
 function ChangeSummarySourceCard({
   title,
   emptyLabel,
@@ -59,30 +61,97 @@ function ReviewInboxError({ message }: { message: string }) {
   return <ErrorState message={message} actionLabel={showSourcesCta ? "Open Sources" : undefined} actionHref={showSourcesCta ? "/sources" : undefined} />;
 }
 
+function EvidenceField({ label, value, truncate = false }: { label: string; value?: string | null; truncate?: boolean }) {
+  if (!value) {
+    return null;
+  }
+  return (
+    <p className={truncate ? "truncate" : undefined}>
+      <span className="text-[#6d7885]">{label}:</span> {value}
+    </p>
+  );
+}
+
+function renderFallbackStructuredItems(evidence: LoadedEvidence): StructuredEvidenceItem[] {
+  return (evidence.payload.events || []).map((event) => ({
+    uid: event.uid,
+    title: event.summary,
+    start_at: event.dtstart,
+    end_at: event.dtend,
+    location: event.location,
+    description: event.description,
+    url: event.url,
+  }));
+}
+
 function EvidenceSummary({ evidence }: { evidence: LoadedEvidence }) {
-  const events = evidence.payload.events || [];
-  if (events.length === 0) {
+  const structuredItems = evidence.payload.structured_items?.length
+    ? evidence.payload.structured_items
+    : renderFallbackStructuredItems(evidence);
+
+  if (structuredItems.length === 0) {
     return <p className="text-sm text-[#596270]">Structured preview unavailable. Switch to Raw to inspect the original evidence.</p>;
+  }
+
+  if (evidence.payload.structured_kind === "gmail_event") {
+    return (
+      <div className="space-y-3">
+        {structuredItems.map((item, index) => (
+          <div key={`${item.uid || "gmail"}-${index}`} className="rounded-[1.15rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-ink">{item.title || "Untitled event"}</p>
+                  {item.course_label ? <Badge tone="info">{item.course_label}</Badge> : null}
+                </div>
+                {item.uid ? <p className="mt-1 text-xs text-[#6d7885]">UID: {item.uid}</p> : null}
+              </div>
+              <Badge tone="approved">Email-backed</Badge>
+            </div>
+            <div className="mt-4 grid gap-2 md:grid-cols-2">
+              <p>Due: {formatDateTime(item.start_at, "N/A")}</p>
+              <p>Ends: {formatDateTime(item.end_at, "N/A")}</p>
+              <EvidenceField label="Sender" value={item.sender} />
+              <p>Received: {formatDateTime(item.internal_date, "Unknown")}</p>
+              <EvidenceField label="Thread" value={item.thread_id} />
+            </div>
+            {item.snippet ? (
+              <div className="mt-4 rounded-[1rem] border border-line/70 bg-white/80 p-3">
+                <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Mail summary</p>
+                <p className="mt-2 whitespace-pre-wrap leading-6 text-[#596270]">{item.snippet}</p>
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    );
   }
 
   return (
     <div className="space-y-3">
-      {events.map((event, index) => (
-        <div key={`${event.uid || "event"}-${index}`} className="rounded-[1.15rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
+      {structuredItems.map((item, index) => (
+        <div key={`${item.uid || "event"}-${index}`} className="rounded-[1.15rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="font-medium text-ink">{event.summary || "Untitled event"}</p>
-              {event.uid ? <p className="mt-1 text-xs text-[#6d7885]">UID: {event.uid}</p> : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-medium text-ink">{item.title || "Untitled event"}</p>
+                {item.course_label ? <Badge tone="info">{item.course_label}</Badge> : null}
+              </div>
+              {item.uid ? <p className="mt-1 text-xs text-[#6d7885]">UID: {item.uid}</p> : null}
             </div>
             <Badge tone="info">Event {index + 1}</Badge>
           </div>
           <div className="mt-4 grid gap-2 md:grid-cols-2">
-            <p>Start: {formatDateTime(event.dtstart, "N/A")}</p>
-            <p>End: {formatDateTime(event.dtend, "N/A")}</p>
-            {event.location ? <p>Location: {event.location}</p> : null}
-            {event.url ? <p className="truncate">Link: {event.url}</p> : null}
+            <p>Start: {formatDateTime(item.start_at, "N/A")}</p>
+            <p>End: {formatDateTime(item.end_at, "N/A")}</p>
+            <EvidenceField label="Location" value={item.location} />
+            {item.url ? (
+              <p className="truncate">
+                <span className="text-[#6d7885]">Link:</span> <a className="text-cobalt underline-offset-4 hover:underline" href={item.url} target="_blank" rel="noreferrer">{item.url}</a>
+              </p>
+            ) : null}
           </div>
-          {event.description ? <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-[#596270]">{event.description}</p> : null}
+          {item.description ? <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-[#596270]">{item.description}</p> : null}
         </div>
       ))}
     </div>
@@ -163,6 +232,9 @@ export function ReviewChangesPanel() {
           content_type: "text/plain",
           truncated: false,
           filename: `change-${change.id}-${side}.txt`,
+          provider: null,
+          structured_kind: "generic",
+          structured_items: [],
           event_count: 0,
           events: [],
           preview_text: message,

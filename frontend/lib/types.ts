@@ -105,11 +105,29 @@ export type EvidencePreviewEvent = {
   url?: string | null;
 };
 
+export type EvidencePreviewStructuredItem = {
+  uid?: string | null;
+  title?: string | null;
+  course_label?: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  location?: string | null;
+  description?: string | null;
+  url?: string | null;
+  sender?: string | null;
+  snippet?: string | null;
+  internal_date?: string | null;
+  thread_id?: string | null;
+};
+
 export type EvidencePreviewResponse = {
   side: "before" | "after";
   content_type: string;
   truncated: boolean;
   filename: string;
+  provider?: string | null;
+  structured_kind?: "ics_event" | "gmail_event" | "generic";
+  structured_items: EvidencePreviewStructuredItem[];
   event_count: number;
   events: EvidencePreviewEvent[];
   preview_text?: string | null;
