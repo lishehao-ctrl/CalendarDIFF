@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any, Literal
 
+from icalendar import Calendar
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
@@ -46,13 +47,14 @@ def preview_review_change_evidence(
 
     truncated = len(content_bytes) > PREVIEW_MAX_BYTES
     preview_text = build_evidence_preview_text(content_bytes)
+    events = build_evidence_preview_events(content_bytes)
     return {
         "side": side,
         "content_type": "text/calendar",
         "truncated": truncated,
         "filename": f"change-{row.id}-{side}.ics",
-        "event_count": 0,
-        "events": [],
+        "event_count": len(events),
+        "events": events,
         "preview_text": preview_text,
     }
 
@@ -110,6 +112,45 @@ def resolve_change_evidence_file(
 def build_evidence_preview_text(content_bytes: bytes) -> str:
     preview_bytes = content_bytes[:PREVIEW_MAX_BYTES]
     return preview_bytes.decode("utf-8", errors="replace")
+
+
+def build_evidence_preview_events(content_bytes: bytes) -> list[dict[str, str | None]]:
+    try:
+        calendar = Calendar.from_ical(content_bytes)
+    except Exception:
+        return []
+
+    events: list[dict[str, str | None]] = []
+    for component in calendar.walk():
+        if getattr(component, "name", "") != "VEVENT":
+            continue
+        events.append(
+            {
+                "uid": _normalize_text(component.get("UID")),
+                "summary": _normalize_text(component.get("SUMMARY")),
+                "dtstart": _normalize_ical_value(component.get("DTSTART")),
+                "dtend": _normalize_ical_value(component.get("DTEND")),
+                "location": _normalize_text(component.get("LOCATION")),
+                "description": _normalize_text(component.get("DESCRIPTION")),
+                "url": _normalize_text(component.get("URL")),
+            }
+        )
+    return events
+
+
+def _normalize_text(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _normalize_ical_value(value: object) -> str | None:
+    if value is None:
+        return None
+    candidate = value.dt if hasattr(value, "dt") else value
+    text = str(candidate).strip()
+    return text or None
 
 
 def resolve_evidence_file_path(raw_path: str) -> Path:

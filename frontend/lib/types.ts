@@ -95,6 +95,26 @@ export type ReviewChange = {
   } | null;
 };
 
+export type EvidencePreviewEvent = {
+  uid?: string | null;
+  summary?: string | null;
+  dtstart?: string | null;
+  dtend?: string | null;
+  location?: string | null;
+  description?: string | null;
+  url?: string | null;
+};
+
+export type EvidencePreviewResponse = {
+  side: "before" | "after";
+  content_type: string;
+  truncated: boolean;
+  filename: string;
+  event_count: number;
+  events: EvidencePreviewEvent[];
+  preview_text?: string | null;
+};
+
 export type ReviewBatchDecisionResult = {
   id: number;
   ok: boolean;

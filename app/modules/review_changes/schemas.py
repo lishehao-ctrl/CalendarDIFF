@@ -112,6 +112,7 @@ class EvidencePreviewEvent(BaseModel):
     dtend: str | None
     location: str | None
     description: str | None
+    url: str | None = None
 
 
 class EvidencePreviewResponse(BaseModel):

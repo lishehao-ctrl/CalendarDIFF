@@ -17,6 +17,11 @@ type Banner = {
   text: string;
 } | null;
 
+function LinkReviewError({ message }: { message: string }) {
+  const showSourcesCta = message.includes("Connect at least one active source in Sources");
+  return <ErrorState message={message} actionLabel={showSourcesCta ? "Open Sources" : undefined} actionHref={showSourcesCta ? "/sources" : undefined} />;
+}
+
 const blankRelink = {
   source_id: "",
   external_event_id: "",
@@ -175,7 +180,7 @@ export function LinkReviewPanel() {
     return <LoadingState label="link review" />;
   }
   if (summary.error || candidates.error || links.error || alerts.error || blocks.error) {
-    return <ErrorState message={summary.error || candidates.error || links.error || alerts.error || blocks.error || "Unknown error"} />;
+    return <LinkReviewError message={summary.error || candidates.error || links.error || alerts.error || blocks.error || "Unknown error"} />;
   }
 
   return (

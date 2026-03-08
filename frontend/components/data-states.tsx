@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 export function LoadingState({ label }: { label: string }) {
   return (
@@ -16,11 +18,26 @@ export function LoadingState({ label }: { label: string }) {
   );
 }
 
-export function ErrorState({ message }: { message: string }) {
+export function ErrorState({
+  message,
+  actionLabel,
+  actionHref,
+}: {
+  message: string;
+  actionLabel?: string;
+  actionHref?: string;
+}) {
   return (
     <Card className="border-[#e9b9ab] bg-[#fff3ef] p-6">
       <p className="text-xs uppercase tracking-[0.18em] text-ember">Request error</p>
       <p className="mt-3 text-sm text-[#7f3d2a]">{message}</p>
+      {actionLabel && actionHref ? (
+        <div className="mt-4">
+          <Button asChild size="sm" variant="ghost">
+            <Link href={actionHref}>{actionLabel}</Link>
+          </Button>
+        </div>
+      ) : null}
     </Card>
   );
 }

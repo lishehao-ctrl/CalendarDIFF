@@ -130,6 +130,9 @@ def test_review_change_after_preview_reads_saved_ics_evidence(client, db_session
     assert preview_response.status_code == 200
     preview_payload = preview_response.json()
     assert preview_payload["preview_text"] is not None
+    assert preview_payload["event_count"] == 1
+    assert preview_payload["events"][0]["summary"] == "Quiz 1"
+    assert preview_payload["events"][0]["uid"] == "evt-preview-after"
     assert "BEGIN:VCALENDAR" in preview_payload["preview_text"]
     assert "SUMMARY:Quiz 1" in preview_payload["preview_text"]
     assert "DTSTART:20260310T180000Z" in preview_payload["preview_text"]

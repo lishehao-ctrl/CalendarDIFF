@@ -4,6 +4,7 @@ import type {
   LinkBlock,
   LinkCandidate,
   LinkRow,
+  EvidencePreviewResponse,
   ReviewBatchDecisionResponse,
   ReviewChange,
   ReviewEditApplyResponse,
@@ -36,7 +37,7 @@ export async function batchDecideReviewChanges(payload: { ids: number[]; decisio
 }
 
 export async function previewReviewChangeEvidence(changeId: number, side: "before" | "after") {
-  return apiGet<{ preview_text?: string; filename?: string; event_count?: number; truncated?: boolean; events?: Array<{ summary?: string | null; dtstart?: string | null; location?: string | null }> }>(`/review/changes/${changeId}/evidence/${side}/preview`);
+  return apiGet<EvidencePreviewResponse>(`/review/changes/${changeId}/evidence/${side}/preview`);
 }
 
 export async function previewReviewEdit(payload: { mode: "proposal" | "canonical"; target: { change_id?: number; event_uid?: string | null }; patch: { due_at: string; title?: string | null; course_label?: string | null }; reason?: string | null }) {
