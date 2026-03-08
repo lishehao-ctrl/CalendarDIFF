@@ -115,6 +115,33 @@ def test_ics_source_patch_updates_url_and_preserves_identity(input_client, db_se
     assert refreshed.display_name == "Canvas ICS"
 
 
+def test_ics_source_archive_moves_row_to_archived_listing(input_client, db_session, authenticate_client) -> None:
+    user = _create_registered_user(db_session, notify_email="canvas-archive@example.com")
+    source = _create_ics_source(db_session, user=user, url="https://example.com/archive.ics")
+    authenticate_client(input_client, user=user)
+
+    delete_response = input_client.delete(f"/sources/{source.id}", headers={"X-API-Key": "test-api-key"})
+    assert delete_response.status_code == 200
+
+    active_response = input_client.get("/sources", headers={"X-API-Key": "test-api-key"})
+    assert active_response.status_code == 200
+    assert active_response.json() == []
+
+    archived_response = input_client.get("/sources?status=archived", headers={"X-API-Key": "test-api-key"})
+    assert archived_response.status_code == 200
+    payload = archived_response.json()
+    assert len(payload) == 1
+    assert payload[0]["source_id"] == source.id
+
+    reactivate_response = input_client.patch(
+        f"/sources/{source.id}",
+        headers={"X-API-Key": "test-api-key"},
+        json={"is_active": True},
+    )
+    assert reactivate_response.status_code == 200
+    assert reactivate_response.json()["is_active"] is True
+
+
 def test_ics_source_singleton_is_scoped_per_user(input_client, db_session, authenticate_client) -> None:
     user_a = _create_registered_user(db_session, notify_email="canvas-a@example.com")
     user_b = _create_registered_user(db_session, notify_email="canvas-b@example.com")

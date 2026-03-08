@@ -2,19 +2,20 @@
 
 ## Goal
 
-Run backend as 5 microservices plus PostgreSQL + Redis:
+Run backend as a public gateway plus 5 internal services, PostgreSQL, and Redis:
 
-1. input-service
-2. ingest-service
-3. llm-service
-4. review-service
-5. notification-service
-6. postgres
-7. redis
+1. public-service
+2. input-service
+3. ingest-service
+4. llm-service
+5. review-service
+6. notification-service
+7. postgres
+8. redis
 
 ## Current Runtime Notes
 
-1. local launcher flow uses `3000 / 8200 / 8201 / 8202 / 8204 / 8205`
+1. local launcher flow uses `3000 / 8200 / 8201 / 8202 / 8203 / 8204 / 8205`
 2. compose host exposure remains a separate compatibility path and may expose different host ports
 3. public dashboard traffic is session-based and enters through the frontend, not by anonymously calling backend APIs
 4. input-service owns source lifecycle, OAuth session/callback, onboarding, and user profile APIs
@@ -83,10 +84,11 @@ This path starts frontend plus all 5 services, applies migrations, and uses the 
 ```bash
 docker compose up -d postgres redis
 python -m alembic upgrade head
+SERVICE_NAME=public RUN_MIGRATIONS=false PORT=8200 ./scripts/start_service.sh
 SERVICE_NAME=input RUN_MIGRATIONS=false PORT=8201 ./scripts/start_service.sh
 SERVICE_NAME=ingest RUN_MIGRATIONS=false PORT=8202 ./scripts/start_service.sh
+SERVICE_NAME=review RUN_MIGRATIONS=false PORT=8203 ./scripts/start_service.sh
 SERVICE_NAME=llm RUN_MIGRATIONS=false PORT=8205 ./scripts/start_service.sh
-SERVICE_NAME=review RUN_MIGRATIONS=false PORT=8200 ./scripts/start_service.sh
 SERVICE_NAME=notification RUN_MIGRATIONS=false PORT=8204 ./scripts/start_service.sh
 ```
 
@@ -147,7 +149,7 @@ For local direct-run services:
 1. `INPUT_API_BASE_URL=http://127.0.0.1:8201`
 2. `INGEST_API_BASE_URL=http://127.0.0.1:8202`
 3. `LLM_API_BASE_URL=http://127.0.0.1:8205`
-4. `REVIEW_API_BASE_URL=http://127.0.0.1:8200`
+4. `REVIEW_API_BASE_URL=http://127.0.0.1:8203`
 5. `NOTIFY_API_BASE_URL=http://127.0.0.1:8204`
 
 For compose public host routing:
@@ -160,7 +162,7 @@ For compose public host routing:
 ```bash
 python scripts/smoke_real_sources_three_rounds.py \
   --input-api-base http://127.0.0.1:8201 \
-  --review-api-base http://127.0.0.1:8200 \
+  --review-api-base http://127.0.0.1:8203 \
   --report data/synthetic/ddlchange_160/qa/real_source_smoke_report.json
 ```
 
@@ -169,7 +171,7 @@ Closure pipeline:
 ```bash
 python scripts/smoke_microservice_closure.py \
   --input-api-base http://127.0.0.1:8201 \
-  --review-api-base http://127.0.0.1:8200 \
+  --review-api-base http://127.0.0.1:8203 \
   --ingest-api-base http://127.0.0.1:8202 \
   --notify-api-base http://127.0.0.1:8204 \
   --llm-api-base http://127.0.0.1:8205
@@ -182,7 +184,7 @@ python scripts/ops_slo_check.py \
   --input-base http://127.0.0.1:8201 \
   --ingest-base http://127.0.0.1:8202 \
   --llm-base http://127.0.0.1:8205 \
-  --review-base http://127.0.0.1:8200 \
+  --review-base http://127.0.0.1:8203 \
   --notify-base http://127.0.0.1:8204 \
   --ops-token "${INTERNAL_SERVICE_TOKEN_OPS}" \
   --json

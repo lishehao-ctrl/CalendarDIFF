@@ -4,28 +4,15 @@ function normalizeBaseUrl(value: string | undefined) {
   return value?.trim().replace(/\/$/, "") || "";
 }
 
-function resolveBaseUrl(targetPath: string) {
-  const fallback = normalizeBaseUrl(process.env.BACKEND_BASE_URL);
-  const inputBase = normalizeBaseUrl(process.env.INPUT_BACKEND_BASE_URL) || fallback;
-  const reviewBase = normalizeBaseUrl(process.env.REVIEW_BACKEND_BASE_URL) || fallback;
-
-  if (targetPath.startsWith("review/")) {
-    return reviewBase;
-  }
-
-  return inputBase;
-}
-
 async function proxy(request: NextRequest, params: { path?: string[] }) {
   const apiKey = process.env.BACKEND_API_KEY?.trim();
+  const baseUrl = normalizeBaseUrl(process.env.BACKEND_BASE_URL);
   const targetPath = (params.path || []).join("/");
-  const baseUrl = resolveBaseUrl(targetPath);
 
   if (!baseUrl || !apiKey) {
     return NextResponse.json(
       {
-        detail:
-          "BACKEND_API_KEY plus either BACKEND_BASE_URL or the per-service INPUT_BACKEND_BASE_URL / REVIEW_BACKEND_BASE_URL values are required"
+        detail: "BACKEND_API_KEY and BACKEND_BASE_URL are required"
       },
       { status: 500 }
     );

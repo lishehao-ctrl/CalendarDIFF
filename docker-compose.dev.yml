@@ -1,20 +1,23 @@
 services:
+  public-service:
+    command: uvicorn services.public_api.main:app --host 0.0.0.0 --port 8000 --reload
   input-service:
+    ports:
+      - "8001:8000"
     command: uvicorn services.input_api.main:app --host 0.0.0.0 --port 8000 --reload
   ingest-service:
-    # dev-only: expose internal ingest service for local debugging
     ports:
       - "8002:8000"
     command: uvicorn services.ingest_api.main:app --host 0.0.0.0 --port 8000 --reload
   review-service:
+    ports:
+      - "8003:8000"
     command: uvicorn services.review_api.main:app --host 0.0.0.0 --port 8000 --reload
   notification-service:
-    # dev-only: expose internal notification service for local debugging
     ports:
       - "8004:8000"
     command: uvicorn services.notification_api.main:app --host 0.0.0.0 --port 8000 --reload
   llm-service:
-    # dev-only: expose internal llm service for local debugging
     ports:
       - "8005:8000"
     command: uvicorn services.llm_api.main:app --host 0.0.0.0 --port 8000 --reload

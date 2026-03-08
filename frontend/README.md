@@ -19,7 +19,7 @@ Current source model:
 
 1. one Canvas ICS link per user
 2. one Gmail OAuth source per user
-3. browser requests always proxy through `app/api/backend/[...path]/route.ts`
+3. browser requests always proxy through `app/api/backend/[...path]/route.ts` to the unified public API
 
 ## Local Env
 
@@ -31,14 +31,8 @@ cp .env.local.example .env.local
 
 Required for the current multi-service backend:
 
-- `INPUT_BACKEND_BASE_URL`
-- `REVIEW_BACKEND_BASE_URL`
-- `BACKEND_API_KEY`
-
-Optional:
-
 - `BACKEND_BASE_URL`
-  Use this only if you expose a single gateway in front of the backend. If set, it becomes the fallback for both input and review requests.
+- `BACKEND_API_KEY`
 
 ## Preferred Startup
 
@@ -52,11 +46,7 @@ Manual frontend-only startup is still available if backend services are already 
 
 ## Proxy Routing
 
-The browser never talks directly to the Python services. All requests go through `app/api/backend/[...path]/route.ts`.
-
-- `/review/*` routes to `REVIEW_BACKEND_BASE_URL`
-- everything else routes to `INPUT_BACKEND_BASE_URL`
-- both can fall back to `BACKEND_BASE_URL` if you run a unified gateway
+The browser never talks directly to the Python services. All requests go through `app/api/backend/[...path]/route.ts`, which proxies to the unified public API defined by `BACKEND_BASE_URL`.
 
 ## Commands
 

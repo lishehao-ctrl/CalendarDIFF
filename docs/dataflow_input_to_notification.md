@@ -15,7 +15,7 @@ Out of scope:
 
 Important bypass rule:
 
-- manual correction (`/review/corrections`) is an audit/canonical bypass path and does **not** trigger `review.pending.created`
+- canonical edit mode (`/review/edits`, `mode=canonical`) is an audit/canonical bypass path and does **not** trigger `review.pending.created`
 
 ## 2) High-Level Flow (Mermaid)
 
@@ -69,7 +69,7 @@ flowchart LR
 | 4 | ingest-connector | fetch result available | Gmail: provider incrementals; ICS: delta parser snapshot | `ingest_jobs(payload parse task)`, retry metadata | none | llm-service |
 | 5 | llm-service | Redis parse task consumed | parse payload (`gmail` / `calendar_delta_v1`) | `ingest_results`, `ingest_jobs`, `sync_requests`, `integration_outbox` | `ingest.result.ready` | review-apply worker |
 | 6 | review-apply worker/service | outbox `ingest.result.ready` available | `ingest_results`, `source_event_observations`, canonical `events`, `changes` | `source_event_observations`, `changes(pending)`, `integration_outbox` | `review.pending.created` | notification-consumer |
-| 7 | review decision APIs | user approve/reject/manual correction | `changes`, `events`, `snapshots` | canonical updates on approve (or manual correction), `changes(reviewed)` | `review.decision.approved/rejected` | audit consumers |
+| 7 | review decision APIs | user approve/reject/batch decision/unified edit | `changes`, `events`, `snapshots` | canonical updates on approve or canonical edit, proposal updates on proposal edit | `review.decision.approved/rejected` | audit consumers |
 | 8 | notification-consumer + digest-worker | outbox `review.pending.created` and due digest slot | `integration_outbox`, `notifications`, digest schedule | `notifications(PENDING->SENT/FAILED)`, `digest_send_log` | email/send side effects | completed |
 
 ## 7) Failure Paths (High-Level)

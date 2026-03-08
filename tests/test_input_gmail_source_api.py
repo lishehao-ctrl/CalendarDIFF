@@ -122,8 +122,20 @@ def test_delete_gmail_source_clears_connection_state(input_client, db_session, a
     assert refreshed.secrets is None
     assert refreshed.cursor is None
 
-    list_response = input_client.get("/sources", headers={"X-API-Key": "test-api-key"})
-    assert list_response.status_code == 200
-    payload = list_response.json()[0]
+    active_list_response = input_client.get("/sources", headers={"X-API-Key": "test-api-key"})
+    assert active_list_response.status_code == 200
+    assert active_list_response.json() == []
+
+    archived_list_response = input_client.get("/sources?status=archived", headers={"X-API-Key": "test-api-key"})
+    assert archived_list_response.status_code == 200
+    payload = archived_list_response.json()[0]
     assert payload["oauth_connection_status"] == "not_connected"
     assert payload["oauth_account_email"] is None
+
+    reactivate_response = input_client.patch(
+        f"/sources/{source.id}",
+        headers={"X-API-Key": "test-api-key"},
+        json={"is_active": True},
+    )
+    assert reactivate_response.status_code == 200
+    assert reactivate_response.json()["is_active"] is True

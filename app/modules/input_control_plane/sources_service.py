@@ -23,14 +23,15 @@ from app.modules.input_control_plane.provider_sources import (
 from app.modules.input_control_plane.schemas import InputSourceCreateRequest, InputSourcePatchRequest
 
 
-def list_input_sources(db: Session, *, user_id: int) -> list[InputSource]:
-    return list(
-        db.scalars(
-            select(InputSource)
-            .where(InputSource.user_id == user_id)
-            .order_by(InputSource.created_at.desc(), InputSource.id.desc())
-        ).all()
-    )
+def list_input_sources(db: Session, *, user_id: int, status: str = "active") -> list[InputSource]:
+    stmt = select(InputSource).where(InputSource.user_id == user_id)
+    normalized_status = status.strip().lower() if isinstance(status, str) else "active"
+    if normalized_status == "active":
+        stmt = stmt.where(InputSource.is_active.is_(True))
+    elif normalized_status == "archived":
+        stmt = stmt.where(InputSource.is_active.is_(False))
+    stmt = stmt.order_by(InputSource.updated_at.desc(), InputSource.id.desc())
+    return list(db.scalars(stmt).all())
 
 
 def get_input_source(db: Session, *, user_id: int, source_id: int) -> InputSource | None:

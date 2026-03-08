@@ -113,9 +113,10 @@ def test_manual_correction_preview_uses_date_only_as_local_2359(client, db_sessi
     db_session.commit()
 
     response = client.post(
-        "/review/corrections/preview",
+        "/review/edits/preview",
         headers=_headers(client, auth_headers, user),
         json={
+            "mode": "canonical",
             "target": {"change_id": target_change.id, "event_uid": None},
             "patch": {
                 "due_at": "2026-03-01",
@@ -170,9 +171,10 @@ def test_manual_correction_apply_updates_canonical_and_rejects_pending(client, d
     db_session.commit()
 
     response = client.post(
-        "/review/corrections",
+        "/review/edits",
         headers=_headers(client, auth_headers, user),
         json={
+            "mode": "canonical",
             "target": {"change_id": None, "event_uid": event_uid},
             "patch": {
                 "due_at": "2026-03-05T23:59:00Z",
@@ -250,9 +252,10 @@ def test_manual_correction_apply_can_create_canonical_event_from_pending(client,
     db_session.commit()
 
     response = client.post(
-        "/review/corrections",
+        "/review/edits",
         headers=_headers(client, auth_headers, user),
         json={
+            "mode": "canonical",
             "target": {"change_id": None, "event_uid": event_uid},
             "patch": {
                 "due_at": "2026-03-10",
@@ -298,9 +301,10 @@ def test_manual_correction_apply_idempotent_when_candidate_matches_canonical(cli
 
     before_count = db_session.scalar(select(func.count(Change.id))) or 0
     response = client.post(
-        "/review/corrections",
+        "/review/edits",
         headers=_headers(client, auth_headers, user),
         json={
+            "mode": "canonical",
             "target": {"change_id": None, "event_uid": event_uid},
             "patch": {
                 "due_at": "2026-03-12T23:59:00Z",
@@ -346,9 +350,10 @@ def test_manual_correction_rejects_mismatched_target(client, db_session, auth_he
     db_session.commit()
 
     response = client.post(
-        "/review/corrections/preview",
+        "/review/edits/preview",
         headers=_headers(client, auth_headers, user),
         json={
+            "mode": "canonical",
             "target": {"change_id": change.id, "event_uid": "mismatch-uid"},
             "patch": {"due_at": "2026-03-15", "title": "HW5", "course_label": "CSE11"},
             "reason": "target mismatch",

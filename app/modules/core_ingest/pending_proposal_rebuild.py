@@ -34,6 +34,8 @@ class PendingProposalDecision:
     after_json: dict | None = None
     delta_seconds: int | None = None
     proposal_sources_json: list[dict] = field(default_factory=list)
+    before_snapshot_payload: dict | None = None
+    after_snapshot_payload: dict | None = None
     reject_note: str | None = None
 
 
@@ -44,6 +46,7 @@ def rebuild_pending_change_proposals(
     canonical_input: Input,
     affected_merge_keys: set[str],
     applied_at: datetime,
+    previous_observation_payloads: dict[str, dict] | None = None,
 ) -> tuple[int, set[str]]:
     created_changes: list[Change] = []
 
@@ -68,6 +71,9 @@ def rebuild_pending_change_proposals(
             merge_key=merge_key,
             observations=observations,
             existing_event=existing_event,
+            previous_observation_payload=previous_observation_payloads.get(merge_key)
+            if isinstance(previous_observation_payloads, dict)
+            else None,
         )
         new_change = apply_pending_proposal_decision(
             db=db,
@@ -104,6 +110,7 @@ def compute_pending_proposal_decision(
     merge_key: str,
     observations: Sequence[SourceEventObservation],
     existing_event: Event | None,
+    previous_observation_payload: dict | None = None,
 ) -> PendingProposalDecision:
     primary = choose_primary_observation(
         [
@@ -133,6 +140,8 @@ def compute_pending_proposal_decision(
             after_json=None,
             delta_seconds=None,
             proposal_sources_json=[],
+            before_snapshot_payload=previous_observation_payload,
+            after_snapshot_payload=None,
         )
 
     primary_payload_raw = primary.get("event_payload")
@@ -151,6 +160,8 @@ def compute_pending_proposal_decision(
             after_json=candidate_after,
             delta_seconds=None,
             proposal_sources_json=proposal_sources,
+            before_snapshot_payload=None,
+            after_snapshot_payload=primary_payload,
         )
 
     before_json = event_row_to_json(existing_event)
@@ -169,6 +180,8 @@ def compute_pending_proposal_decision(
         after_json=candidate_after,
         delta_seconds=safe_delta_seconds(before_json=before_json, after_json=candidate_after),
         proposal_sources_json=proposal_sources,
+        before_snapshot_payload=previous_observation_payload,
+        after_snapshot_payload=primary_payload,
     )
 
 
@@ -204,6 +217,8 @@ def apply_pending_proposal_decision(
         proposal_merge_key=decision.event_uid,
         proposal_sources_json=decision.proposal_sources_json,
         detected_at=applied_at,
+        before_snapshot_payload=decision.before_snapshot_payload,
+        after_snapshot_payload=decision.after_snapshot_payload,
     )
 
 

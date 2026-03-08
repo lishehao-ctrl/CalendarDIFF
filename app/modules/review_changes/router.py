@@ -10,31 +10,34 @@ from app.db.session import get_db
 from app.modules.common.deps import get_onboarded_user_or_409
 from app.modules.review_changes.schemas import (
     EvidencePreviewResponse,
-    ManualCorrectionApplyResponse,
-    ManualCorrectionPreviewResponse,
-    ManualCorrectionRequest,
+    ReviewBatchDecisionRequest,
+    ReviewBatchDecisionResponse,
+    ReviewEditApplyResponse,
+    ReviewEditPreviewResponse,
+    ReviewEditRequest,
     ReviewChangeItemResponse,
-    ReviewSourceRef,
     ReviewChangeViewRequest,
     ReviewDecisionRequest,
     ReviewDecisionResponse,
 )
 from app.modules.review_changes.change_decision_service import (
     ReviewChangeNotFoundError,
+    batch_decide_review_changes,
     decide_review_change,
     mark_review_change_viewed,
 )
-from app.modules.review_changes.change_listing_service import list_review_changes
+from app.modules.review_changes.change_listing_service import get_review_change, list_review_changes
+from app.modules.review_changes.edit_service import (
+    ReviewEditInvalidStateError,
+    ReviewEditNotFoundError,
+    ReviewEditValidationError,
+    apply_review_edit,
+    preview_review_edit,
+)
 from app.modules.review_changes.evidence_preview_service import (
     ReviewChangeEvidenceNotFoundError,
     ReviewChangeEvidenceReadError,
     preview_review_change_evidence,
-)
-from app.modules.review_changes.manual_correction_service import (
-    ManualCorrectionNotFoundError,
-    ManualCorrectionValidationError,
-    apply_manual_correction,
-    preview_manual_correction,
 )
 
 router = APIRouter(
@@ -71,6 +74,18 @@ def get_review_changes(
     return [ReviewChangeItemResponse(**row) for row in rows]
 
 
+@router.get("/changes/{change_id}", response_model=ReviewChangeItemResponse)
+def get_review_change_item(
+    change_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> ReviewChangeItemResponse:
+    row = get_review_change(db, user_id=user.id, change_id=change_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review change not found")
+    return ReviewChangeItemResponse(**row)
+
+
 @router.patch("/changes/{change_id}/views", response_model=ReviewChangeItemResponse)
 def patch_review_change_view(
     change_id: int,
@@ -88,47 +103,26 @@ def patch_review_change_view(
         )
     except ReviewChangeNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    refreshed = get_review_change(db, user_id=user.id, change_id=row.id)
+    if refreshed is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review change not found")
+    return ReviewChangeItemResponse(**refreshed)
 
-    sources_raw = row.proposal_sources_json if isinstance(row.proposal_sources_json, list) else []
-    sources: list[ReviewSourceRef] = []
-    for item in sources_raw:
-        if not isinstance(item, dict):
-            continue
-        source_id_value = item.get("source_id")
-        if not isinstance(source_id_value, int):
-            continue
-        confidence_value = item.get("confidence")
-        confidence = float(confidence_value) if isinstance(confidence_value, (int, float)) else None
-        sources.append(
-            ReviewSourceRef(
-                source_id=source_id_value,
-                source_kind=item.get("source_kind") if isinstance(item.get("source_kind"), str) else None,
-                provider=item.get("provider") if isinstance(item.get("provider"), str) else None,
-                external_event_id=item.get("external_event_id") if isinstance(item.get("external_event_id"), str) else None,
-                confidence=confidence,
-            )
-        )
-    source_id = None
-    for source_ref in sources:
-        source_id = source_ref.source_id
-        break
 
-    return ReviewChangeItemResponse(
-        id=row.id,
-        event_uid=row.event_uid,
-        change_type=row.change_type.value,
-        detected_at=row.detected_at,
-        review_status=row.review_status.value,
-        before_json=row.before_json,
-        after_json=row.after_json,
-        proposal_merge_key=row.proposal_merge_key,
-        proposal_sources=sources,
-        source_id=source_id,
-        viewed_at=row.viewed_at,
-        viewed_note=row.viewed_note,
-        reviewed_at=row.reviewed_at,
-        review_note=row.review_note,
+@router.post("/changes/batch/decisions", response_model=ReviewBatchDecisionResponse)
+def post_review_batch_decisions(
+    payload: ReviewBatchDecisionRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> ReviewBatchDecisionResponse:
+    result = batch_decide_review_changes(
+        db=db,
+        user_id=user.id,
+        decision=payload.decision,
+        ids=payload.ids,
+        note=payload.note,
     )
+    return ReviewBatchDecisionResponse(**result)
 
 
 @router.post("/changes/{change_id}/decisions", response_model=ReviewDecisionResponse)
@@ -181,16 +175,17 @@ def get_review_change_evidence_preview(
     return EvidencePreviewResponse(**preview)
 
 
-@router.post("/corrections/preview", response_model=ManualCorrectionPreviewResponse)
-def post_manual_correction_preview(
-    payload: ManualCorrectionRequest,
+@router.post("/edits/preview", response_model=ReviewEditPreviewResponse)
+def post_review_edit_preview(
+    payload: ReviewEditRequest,
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
-) -> ManualCorrectionPreviewResponse:
+) -> ReviewEditPreviewResponse:
     try:
-        preview = preview_manual_correction(
+        preview = preview_review_edit(
             db=db,
             user_id=user.id,
+            mode=payload.mode,
             change_id=payload.target.change_id,
             event_uid=payload.target.event_uid,
             due_at=payload.patch.due_at,
@@ -198,23 +193,26 @@ def post_manual_correction_preview(
             course_label=payload.patch.course_label,
             reason=payload.reason,
         )
-    except ManualCorrectionNotFoundError as exc:
+    except ReviewEditNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except ManualCorrectionValidationError as exc:
+    except ReviewEditInvalidStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ReviewEditValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return ManualCorrectionPreviewResponse(**preview)
+    return ReviewEditPreviewResponse(**preview)
 
 
-@router.post("/corrections", response_model=ManualCorrectionApplyResponse)
-def post_manual_correction_apply(
-    payload: ManualCorrectionRequest,
+@router.post("/edits", response_model=ReviewEditApplyResponse)
+def post_review_edit_apply(
+    payload: ReviewEditRequest,
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
-) -> ManualCorrectionApplyResponse:
+) -> ReviewEditApplyResponse:
     try:
-        result = apply_manual_correction(
+        result = apply_review_edit(
             db=db,
             user_id=user.id,
+            mode=payload.mode,
             change_id=payload.target.change_id,
             event_uid=payload.target.event_uid,
             due_at=payload.patch.due_at,
@@ -222,8 +220,10 @@ def post_manual_correction_apply(
             course_label=payload.patch.course_label,
             reason=payload.reason,
         )
-    except ManualCorrectionNotFoundError as exc:
+    except ReviewEditNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except ManualCorrectionValidationError as exc:
+    except ReviewEditInvalidStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ReviewEditValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return ManualCorrectionApplyResponse(**result)
+    return ReviewEditApplyResponse(**result)

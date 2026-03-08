@@ -1,6 +1,6 @@
 # CalendarDIFF
 
-CalendarDIFF runs as 5 services with shared PostgreSQL + Redis and event-driven domain boundaries.
+CalendarDIFF now exposes a unified public service for user-facing traffic while keeping internal services for background/runtime work over shared PostgreSQL + Redis.
 
 Core flow:
 
@@ -19,15 +19,16 @@ Core flow:
 13. enqueue and send digest notifications
 14. allow manual due correction when parsed result is wrong
 
-## Runtime Topology (5 Services + PostgreSQL + Redis)
+## Runtime Topology (Public Gateway + 5 Services + PostgreSQL + Redis)
 
-1. `input-service` (`services.input_api.main:app`)
-2. `ingest-service` (`services.ingest_api.main:app`)
-3. `llm-service` (`services.llm_api.main:app`)
-4. `review-service` (`services.review_api.main:app`)
-5. `notification-service` (`services.notification_api.main:app`)
-6. `postgres`
-7. `redis`
+1. `public-service` (`services.public_api.main:app`)
+2. `input-service` (`services.input_api.main:app`)
+3. `ingest-service` (`services.ingest_api.main:app`)
+4. `llm-service` (`services.llm_api.main:app`)
+5. `review-service` (`services.review_api.main:app`)
+6. `notification-service` (`services.notification_api.main:app`)
+7. `postgres`
+8. `redis`
 
 ## Quick Start
 
@@ -57,7 +58,7 @@ This local launcher will:
 
 1. start `postgres` and `redis` via `docker compose`
 2. apply schema with `python -m alembic upgrade head`
-3. start `frontend`, `input-service`, `ingest-service`, `llm-service`, `review-service`, and `notification-service`
+3. start `frontend`, `public-service`, `input-service`, `ingest-service`, `llm-service`, `review-service`, and `notification-service`
 4. write pid/log files under `output/dev-stack/`
 5. keep PostgreSQL and Redis running unless you explicitly stop them with `scripts/dev_stack.sh down --infra`
 6. support `scripts/dev_stack.sh reset` to stop the app layer, reset the configured PostgreSQL database to migration head, and restart the full local stack
@@ -82,12 +83,13 @@ If you want to run services one by one instead of using the local launcher:
 ```bash
 docker compose up -d postgres redis
 python -m alembic upgrade head
+SERVICE_NAME=public RUN_MIGRATIONS=false PORT=8200 ./scripts/start_service.sh
 SERVICE_NAME=input RUN_MIGRATIONS=false PORT=8201 ./scripts/start_service.sh
 SERVICE_NAME=ingest RUN_MIGRATIONS=false PORT=8202 ./scripts/start_service.sh
+SERVICE_NAME=review RUN_MIGRATIONS=false PORT=8203 ./scripts/start_service.sh
 SERVICE_NAME=llm RUN_MIGRATIONS=false PORT=8205 ./scripts/start_service.sh
-SERVICE_NAME=review RUN_MIGRATIONS=false PORT=8200 ./scripts/start_service.sh
 SERVICE_NAME=notification RUN_MIGRATIONS=false PORT=8204 ./scripts/start_service.sh
-cd frontend && INPUT_BACKEND_BASE_URL=http://127.0.0.1:8201 REVIEW_BACKEND_BASE_URL=http://127.0.0.1:8200 BACKEND_API_KEY="$APP_API_KEY" npm run dev -- --hostname 127.0.0.1 --port 3000
+cd frontend && BACKEND_BASE_URL=http://127.0.0.1:8200 BACKEND_API_KEY="$APP_API_KEY" npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
 ## Docker Compose
@@ -110,8 +112,7 @@ Compose includes:
 
 Default host-exposed ports:
 
-1. `input-service` on `localhost:8001`
-2. `review-service` on `localhost:8000`
+1. `public-service` on `localhost:8000`
 
 For the preferred local launcher, use `scripts/dev_stack.sh up` and the `820x` port set instead.
 
@@ -194,13 +195,10 @@ NOTIFY_SINK_MODE=smtp
 NOTIFY_JSONL_PATH=data/smoke/notify_sink.jsonl
 ```
 
-Optional per-service base URLs (useful when services run on different ports):
+Unified public API base URL (frontend / user-facing integration):
 
 ```env
-INPUT_API_BASE_URL=http://localhost:8201
-REVIEW_API_BASE_URL=http://localhost:8200
-INGEST_API_BASE_URL=http://localhost:8202
-NOTIFY_API_BASE_URL=http://localhost:8204
+BACKEND_BASE_URL=http://localhost:8200
 ```
 
 ## Internal Ops Auth
@@ -226,11 +224,12 @@ ENABLE_NOTIFICATIONS=false
 ## Health Checks
 
 ```bash
+curl -s http://localhost:8200/health
 curl -s http://localhost:8201/health
 curl -s http://localhost:8202/health
-curl -s http://localhost:8205/health
-curl -s http://localhost:8200/health
+curl -s http://localhost:8203/health
 curl -s http://localhost:8204/health
+curl -s http://localhost:8205/health
 ```
 
 ## Real Source Smoke (3 Rounds)
@@ -238,7 +237,7 @@ curl -s http://localhost:8204/health
 ```bash
 python scripts/smoke_real_sources_three_rounds.py \
   --input-api-base http://127.0.0.1:8201 \
-  --review-api-base http://127.0.0.1:8200 \
+  --review-api-base http://127.0.0.1:8203 \
   --report data/synthetic/ddlchange_160/qa/real_source_smoke_report.json
 ```
 
@@ -251,7 +250,7 @@ NOTIFY_SINK_MODE=jsonl \
 NOTIFY_JSONL_PATH=data/smoke/notify_sink.jsonl \
 python scripts/smoke_semester_demo.py \
   --input-api-base http://127.0.0.1:8201 \
-  --review-api-base http://127.0.0.1:8200 \
+  --review-api-base http://127.0.0.1:8203 \
   --ingest-api-base http://127.0.0.1:8202 \
   --notify-api-base http://127.0.0.1:8204 \
   --llm-api-base http://127.0.0.1:8205 \
@@ -281,7 +280,7 @@ Full closure check:
 ```bash
 python scripts/smoke_microservice_closure.py \
   --input-api-base http://127.0.0.1:8201 \
-  --review-api-base http://127.0.0.1:8200 \
+  --review-api-base http://127.0.0.1:8203 \
   --ingest-api-base http://127.0.0.1:8202 \
   --notify-api-base http://127.0.0.1:8204 \
   --llm-api-base http://127.0.0.1:8205
@@ -293,7 +292,7 @@ SLO check:
 python scripts/ops_slo_check.py \
   --input-base http://127.0.0.1:8201 \
   --ingest-base http://127.0.0.1:8202 \
-  --review-base http://127.0.0.1:8200 \
+  --review-base http://127.0.0.1:8203 \
   --notify-base http://127.0.0.1:8204 \
   --llm-base http://127.0.0.1:8205 \
   --ops-token "${INTERNAL_SERVICE_TOKEN_OPS}" \

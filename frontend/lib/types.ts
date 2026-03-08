@@ -95,6 +95,58 @@ export type ReviewChange = {
   } | null;
 };
 
+export type ReviewBatchDecisionResult = {
+  id: number;
+  ok: boolean;
+  review_status: "pending" | "approved" | "rejected" | null;
+  idempotent: boolean;
+  reviewed_at: string | null;
+  review_note: string | null;
+  error_code: "not_found" | "invalid_state" | null;
+  error_detail: string | null;
+};
+
+export type ReviewBatchDecisionResponse = {
+  decision: "approve" | "reject";
+  total_requested: number;
+  succeeded: number;
+  failed: number;
+  results: ReviewBatchDecisionResult[];
+};
+
+export type ReviewEditMode = "proposal" | "canonical";
+
+export type ReviewEditEventPayload = {
+  uid: string;
+  title: string;
+  course_label: string;
+  start_at_utc: string;
+  end_at_utc: string;
+};
+
+export type ReviewEditPreviewResponse = {
+  mode: ReviewEditMode;
+  event_uid: string;
+  change_id: number | null;
+  proposal_change_type: "created" | "due_changed" | null;
+  base: ReviewEditEventPayload;
+  candidate_after: ReviewEditEventPayload;
+  delta_seconds: number | null;
+  will_reject_pending_change_ids: number[];
+  idempotent: boolean;
+};
+
+export type ReviewEditApplyResponse = {
+  mode: ReviewEditMode;
+  applied: boolean;
+  idempotent: boolean;
+  event_uid: string;
+  edited_change_id: number | null;
+  correction_change_id: number | null;
+  rejected_pending_change_ids: number[];
+  event: ReviewEditEventPayload;
+};
+
 export type LinkCandidate = {
   id: number;
   source_id: number;

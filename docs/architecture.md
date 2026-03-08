@@ -2,17 +2,18 @@
 
 ## 1) Runtime Topology
 
-Current target runtime is 5 service APIs + PostgreSQL + Redis:
+Current target runtime is a unified public gateway + 5 service APIs + PostgreSQL + Redis:
 
-1. `input-service` (`services.input_api.main:app`)
-2. `ingest-service` (`services.ingest_api.main:app`)
-3. `llm-service` (`services.llm_api.main:app`)
-4. `review-service` (`services.review_api.main:app`)
-5. `notification-service` (`services.notification_api.main:app`)
-6. `postgres`
-7. `redis`
+1. `public-service` (`services.public_api.main:app`)
+2. `input-service` (`services.input_api.main:app`)
+3. `ingest-service` (`services.ingest_api.main:app`)
+4. `llm-service` (`services.llm_api.main:app`)
+5. `review-service` (`services.review_api.main:app`)
+6. `notification-service` (`services.notification_api.main:app`)
+7. `postgres`
+8. `redis`
 
-Each service runs as an independent process and owns a bounded domain.
+The public-service is the only user-facing gateway. Internal services continue to run as independent processes and own bounded domains.
 
 ## 2) Service Responsibilities
 
@@ -110,9 +111,9 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 1. ingestion only creates pending proposals
 2. `approve` mutates canonical `events`
 3. `reject` keeps canonical state unchanged
-4. manual correction (`/review/corrections`) mutates canonical `events` directly
-5. manual correction auto-rejects conflicting pending changes for the same `event_uid`
-6. manual correction writes `review.decision.approved` audit event with `decision_origin=manual_correction`
+4. unified edits (`/review/edits`) support both proposal edits and direct canonical edits
+5. canonical edit mode auto-rejects conflicting pending changes for the same `event_uid`
+6. canonical edit mode continues to write `review.decision.approved` audit events with `decision_origin=manual_correction`
 
 ## 6) LLM Runtime Placement
 

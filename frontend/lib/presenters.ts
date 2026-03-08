@@ -83,6 +83,28 @@ export function sourceDescriptor(source: {
   source_kind?: string | null;
   source_id: number;
 }) {
-  const label = source.provider || source.source_kind || "source";
-  return `${label}#${source.source_id}`;
+  const provider = typeof source.provider === "string" ? source.provider.trim().toLowerCase() : "";
+  if (provider === "ics") {
+    return "Canvas ICS";
+  }
+  if (provider === "gmail") {
+    return "Gmail";
+  }
+  if (provider) {
+    return formatStatusLabel(provider);
+  }
+
+  const sourceKind = typeof source.source_kind === "string" ? source.source_kind.trim() : "";
+  if (sourceKind) {
+    return formatStatusLabel(sourceKind);
+  }
+
+  return `Source #${source.source_id}`;
+}
+
+export function sourceKindDescriptor(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+  return `${formatStatusLabel(value)} source`;
 }

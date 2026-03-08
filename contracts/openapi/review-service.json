@@ -1390,181 +1390,120 @@
         "title": "LinkRelinkResponse",
         "type": "object"
       },
-      "ManualCorrectionApplyResponse": {
+      "ReviewBatchDecisionItemResult": {
         "properties": {
-          "applied": {
-            "title": "Applied",
-            "type": "boolean"
-          },
-          "correction_change_id": {
+          "error_code": {
             "anyOf": [
               {
-                "type": "integer"
+                "enum": [
+                  "not_found",
+                  "invalid_state"
+                ],
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Correction Change Id"
+            "title": "Error Code"
           },
-          "event": {
-            "$ref": "#/components/schemas/ManualCorrectionEventPayload"
+          "error_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Detail"
           },
-          "event_uid": {
-            "title": "Event Uid",
-            "type": "string"
+          "id": {
+            "title": "Id",
+            "type": "integer"
           },
           "idempotent": {
             "title": "Idempotent",
             "type": "boolean"
           },
-          "rejected_pending_change_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "title": "Rejected Pending Change Ids",
-            "type": "array"
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "review_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "approved",
+                  "rejected"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Status"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
           }
         },
         "required": [
-          "applied",
+          "id",
+          "ok",
+          "review_status",
           "idempotent",
-          "correction_change_id",
-          "event_uid",
-          "rejected_pending_change_ids",
-          "event"
+          "reviewed_at",
+          "review_note",
+          "error_code",
+          "error_detail"
         ],
-        "title": "ManualCorrectionApplyResponse",
+        "title": "ReviewBatchDecisionItemResult",
         "type": "object"
       },
-      "ManualCorrectionEventPayload": {
-        "properties": {
-          "course_label": {
-            "title": "Course Label",
-            "type": "string"
-          },
-          "end_at_utc": {
-            "format": "date-time",
-            "title": "End At Utc",
-            "type": "string"
-          },
-          "start_at_utc": {
-            "format": "date-time",
-            "title": "Start At Utc",
-            "type": "string"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "uid": {
-            "title": "Uid",
-            "type": "string"
-          }
-        },
-        "required": [
-          "uid",
-          "title",
-          "course_label",
-          "start_at_utc",
-          "end_at_utc"
-        ],
-        "title": "ManualCorrectionEventPayload",
-        "type": "object"
-      },
-      "ManualCorrectionPatchRequest": {
+      "ReviewBatchDecisionRequest": {
         "additionalProperties": false,
         "properties": {
-          "course_label": {
-            "anyOf": [
-              {
-                "maxLength": 64,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+          "decision": {
+            "enum": [
+              "approve",
+              "reject"
             ],
-            "title": "Course Label"
-          },
-          "due_at": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Due At",
+            "title": "Decision",
             "type": "string"
           },
-          "title": {
-            "anyOf": [
-              {
-                "maxLength": 512,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
-          }
-        },
-        "required": [
-          "due_at"
-        ],
-        "title": "ManualCorrectionPatchRequest",
-        "type": "object"
-      },
-      "ManualCorrectionPreviewResponse": {
-        "properties": {
-          "base": {
-            "$ref": "#/components/schemas/ManualCorrectionEventPayload"
-          },
-          "candidate_after": {
-            "$ref": "#/components/schemas/ManualCorrectionEventPayload"
-          },
-          "delta_seconds": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Delta Seconds"
-          },
-          "event_uid": {
-            "title": "Event Uid",
-            "type": "string"
-          },
-          "idempotent": {
-            "title": "Idempotent",
-            "type": "boolean"
-          },
-          "will_reject_pending_change_ids": {
+          "ids": {
             "items": {
               "type": "integer"
             },
-            "title": "Will Reject Pending Change Ids",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Ids",
             "type": "array"
-          }
-        },
-        "required": [
-          "event_uid",
-          "base",
-          "candidate_after",
-          "delta_seconds",
-          "will_reject_pending_change_ids",
-          "idempotent"
-        ],
-        "title": "ManualCorrectionPreviewResponse",
-        "type": "object"
-      },
-      "ManualCorrectionRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "patch": {
-            "$ref": "#/components/schemas/ManualCorrectionPatchRequest"
           },
-          "reason": {
+          "note": {
             "anyOf": [
               {
                 "maxLength": 512,
@@ -1574,48 +1513,54 @@
                 "type": "null"
               }
             ],
-            "title": "Reason"
-          },
-          "target": {
-            "$ref": "#/components/schemas/ManualCorrectionTargetRequest"
+            "title": "Note"
           }
         },
         "required": [
-          "target",
-          "patch"
+          "ids",
+          "decision"
         ],
-        "title": "ManualCorrectionRequest",
+        "title": "ReviewBatchDecisionRequest",
         "type": "object"
       },
-      "ManualCorrectionTargetRequest": {
-        "additionalProperties": false,
+      "ReviewBatchDecisionResponse": {
         "properties": {
-          "change_id": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
+          "decision": {
+            "enum": [
+              "approve",
+              "reject"
             ],
-            "title": "Change Id"
+            "title": "Decision",
+            "type": "string"
           },
-          "event_uid": {
-            "anyOf": [
-              {
-                "maxLength": 255,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Event Uid"
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewBatchDecisionItemResult"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "succeeded": {
+            "title": "Succeeded",
+            "type": "integer"
+          },
+          "total_requested": {
+            "title": "Total Requested",
+            "type": "integer"
           }
         },
-        "title": "ManualCorrectionTargetRequest",
+        "required": [
+          "decision",
+          "total_requested",
+          "succeeded",
+          "failed",
+          "results"
+        ],
+        "title": "ReviewBatchDecisionResponse",
         "type": "object"
       },
       "ReviewChangeItemResponse": {
@@ -1938,6 +1883,297 @@
           "idempotent"
         ],
         "title": "ReviewDecisionResponse",
+        "type": "object"
+      },
+      "ReviewEditApplyResponse": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "correction_change_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correction Change Id"
+          },
+          "edited_change_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited Change Id"
+          },
+          "event": {
+            "$ref": "#/components/schemas/ReviewEditEventPayload"
+          },
+          "event_uid": {
+            "title": "Event Uid",
+            "type": "string"
+          },
+          "idempotent": {
+            "title": "Idempotent",
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "proposal",
+              "canonical"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "rejected_pending_change_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Rejected Pending Change Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "applied",
+          "idempotent",
+          "event_uid",
+          "rejected_pending_change_ids",
+          "event"
+        ],
+        "title": "ReviewEditApplyResponse",
+        "type": "object"
+      },
+      "ReviewEditEventPayload": {
+        "properties": {
+          "course_label": {
+            "title": "Course Label",
+            "type": "string"
+          },
+          "end_at_utc": {
+            "format": "date-time",
+            "title": "End At Utc",
+            "type": "string"
+          },
+          "start_at_utc": {
+            "format": "date-time",
+            "title": "Start At Utc",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "uid": {
+            "title": "Uid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uid",
+          "title",
+          "course_label",
+          "start_at_utc",
+          "end_at_utc"
+        ],
+        "title": "ReviewEditEventPayload",
+        "type": "object"
+      },
+      "ReviewEditPatchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "course_label": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Label"
+          },
+          "due_at": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Due At",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "due_at"
+        ],
+        "title": "ReviewEditPatchRequest",
+        "type": "object"
+      },
+      "ReviewEditPreviewResponse": {
+        "properties": {
+          "base": {
+            "$ref": "#/components/schemas/ReviewEditEventPayload"
+          },
+          "candidate_after": {
+            "$ref": "#/components/schemas/ReviewEditEventPayload"
+          },
+          "change_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Id"
+          },
+          "delta_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Seconds"
+          },
+          "event_uid": {
+            "title": "Event Uid",
+            "type": "string"
+          },
+          "idempotent": {
+            "title": "Idempotent",
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "proposal",
+              "canonical"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "proposal_change_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "created",
+                  "due_changed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Change Type"
+          },
+          "will_reject_pending_change_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Will Reject Pending Change Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "event_uid",
+          "base",
+          "candidate_after",
+          "delta_seconds",
+          "will_reject_pending_change_ids",
+          "idempotent"
+        ],
+        "title": "ReviewEditPreviewResponse",
+        "type": "object"
+      },
+      "ReviewEditRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "proposal",
+              "canonical"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "patch": {
+            "$ref": "#/components/schemas/ReviewEditPatchRequest"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "target": {
+            "$ref": "#/components/schemas/ReviewEditTargetRequest"
+          }
+        },
+        "required": [
+          "mode",
+          "target",
+          "patch"
+        ],
+        "title": "ReviewEditRequest",
+        "type": "object"
+      },
+      "ReviewEditTargetRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "change_id": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Id"
+          },
+          "event_uid": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Uid"
+          }
+        },
+        "title": "ReviewEditTargetRequest",
         "type": "object"
       },
       "ReviewItemsSummaryResponse": {
@@ -2432,6 +2668,123 @@
         ]
       }
     },
+    "/review/changes/batch/decisions": {
+      "post": {
+        "operationId": "post_review_batch_decisions_review_changes_batch_decisions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewBatchDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewBatchDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Review Batch Decisions",
+        "tags": [
+          "review-items"
+        ]
+      }
+    },
+    "/review/changes/{change_id}": {
+      "get": {
+        "operationId": "get_review_change_item_review_changes__change_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "title": "Change Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewChangeItemResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Review Change Item",
+        "tags": [
+          "review-items"
+        ]
+      }
+    },
     "/review/changes/{change_id}/decisions": {
       "post": {
         "operationId": "post_review_decision_review_changes__change_id__decisions_post",
@@ -2639,9 +2992,9 @@
         ]
       }
     },
-    "/review/corrections": {
+    "/review/edits": {
       "post": {
-        "operationId": "post_manual_correction_apply_review_corrections_post",
+        "operationId": "post_review_edit_apply_review_edits_post",
         "parameters": [
           {
             "in": "header",
@@ -2664,7 +3017,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ManualCorrectionRequest"
+                "$ref": "#/components/schemas/ReviewEditRequest"
               }
             }
           },
@@ -2675,7 +3028,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ManualCorrectionApplyResponse"
+                  "$ref": "#/components/schemas/ReviewEditApplyResponse"
                 }
               }
             },
@@ -2692,15 +3045,15 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Post Manual Correction Apply",
+        "summary": "Post Review Edit Apply",
         "tags": [
           "review-items"
         ]
       }
     },
-    "/review/corrections/preview": {
+    "/review/edits/preview": {
       "post": {
-        "operationId": "post_manual_correction_preview_review_corrections_preview_post",
+        "operationId": "post_review_edit_preview_review_edits_preview_post",
         "parameters": [
           {
             "in": "header",
@@ -2723,7 +3076,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ManualCorrectionRequest"
+                "$ref": "#/components/schemas/ReviewEditRequest"
               }
             }
           },
@@ -2734,7 +3087,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ManualCorrectionPreviewResponse"
+                  "$ref": "#/components/schemas/ReviewEditPreviewResponse"
                 }
               }
             },
@@ -2751,7 +3104,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Post Manual Correction Preview",
+        "summary": "Post Review Edit Preview",
         "tags": [
           "review-items"
         ]

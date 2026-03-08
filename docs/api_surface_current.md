@@ -6,19 +6,24 @@ This document captures the active HTTP APIs after the microservice split with sh
 
 Direct-run local defaults:
 
-1. input-service: `http://localhost:8201`
-2. ingest-service: `http://localhost:8202`
-3. llm-service: `http://localhost:8205`
-4. review-service: `http://localhost:8200`
-5. notification-service: `http://localhost:8204`
+1. public-service: `http://localhost:8200`
+2. input-service: `http://localhost:8201`
+3. ingest-service: `http://localhost:8202`
+4. review-service: `http://localhost:8203`
+5. llm-service: `http://localhost:8205`
+6. notification-service: `http://localhost:8204`
 
 Default compose exposure:
 
-1. external: input-service + review-service
-2. internal-only: ingest-service + llm-service + notification-service
-3. compose public host ports remain `8001 -> input-service` and `8000 -> review-service`
+1. external: public-service
+2. internal-only: input-service + review-service + ingest-service + llm-service + notification-service
+3. compose public host port remains `8000 -> public-service`
 
-## input-service (public)
+## public-service (public gateway)
+
+Public gateway currently aggregates user-facing auth, onboarding, sources, review changes, and link review APIs into one contract for the frontend.
+
+## input-service (internal/public-compatible)
 
 ### Workspace
 
@@ -116,29 +121,30 @@ Runtime responsibilities:
 4. `PATCH /review/changes/{change_id}/views`
 5. `POST /review/changes/{change_id}/decisions`
 6. `GET /review/changes/{change_id}/evidence/{side}/preview`
-7. `POST /review/corrections/preview`
-8. `POST /review/corrections`
-9. `GET /review/link-candidates`
-10. `POST /review/link-candidates/{id}/decisions`
-11. `POST /review/link-candidates/batch/decisions`
-12. `GET /review/link-candidates/blocks`
-13. `DELETE /review/link-candidates/blocks/{block_id}`
-14. `GET /review/links`
-15. `DELETE /review/links/{link_id}`
-16. `POST /review/links/relink`
-17. `GET /review/link-alerts`
-18. `POST /review/link-alerts/{alert_id}/dismiss`
-19. `POST /review/link-alerts/{alert_id}/mark-safe`
-20. `POST /review/link-alerts/batch/decisions`
-21. `POST /internal/review/ingest-results/applications`
-22. `GET /internal/review/ingest-results/{request_id}`
-23. `GET /internal/metrics`
+7. `POST /review/changes/batch/decisions`
+8. `POST /review/edits/preview`
+9. `POST /review/edits`
+10. `GET /review/link-candidates`
+11. `POST /review/link-candidates/{id}/decisions`
+12. `POST /review/link-candidates/batch/decisions`
+13. `GET /review/link-candidates/blocks`
+14. `DELETE /review/link-candidates/blocks/{block_id}`
+15. `GET /review/links`
+16. `DELETE /review/links/{link_id}`
+17. `POST /review/links/relink`
+18. `GET /review/link-alerts`
+19. `POST /review/link-alerts/{alert_id}/dismiss`
+20. `POST /review/link-alerts/{alert_id}/mark-safe`
+21. `POST /review/link-alerts/batch/decisions`
+22. `POST /internal/review/ingest-results/applications`
+23. `GET /internal/review/ingest-results/{request_id}`
+24. `GET /internal/metrics`
 
 Notes:
 
 1. review-service consumes `ingest.result.ready` and emits `review.pending.created`
 2. approve mutates canonical events; reject does not
-3. manual correction mutates canonical events directly and writes an approved audit change
+3. unified edits split proposal edits (`mode=proposal`) from direct canonical edits (`mode=canonical`)
 4. link-candidate and link-alert flows are separate governance queues from canonical pending review
 5. `GET /review/summary` returns pending counts for `changes`, `link-candidates`, and `link-alerts`
 

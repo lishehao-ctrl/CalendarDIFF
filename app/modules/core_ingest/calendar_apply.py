@@ -31,6 +31,7 @@ def apply_calendar_observations(
     records: list[dict],
     applied_at: datetime,
     request_id: str,
+    previous_observation_payloads: dict[str, dict] | None = None,
 ) -> set[str]:
     affected_entity_uids: set[str] = set()
     seen_external_ids: set[str] = set()
@@ -58,6 +59,18 @@ def apply_calendar_observations(
             external_event_id = resolve_calendar_external_event_id(payload=payload)
             if external_event_id is None:
                 continue
+            existing_row = db.scalar(
+                select(SourceEventObservation).where(
+                    SourceEventObservation.source_id == source.id,
+                    SourceEventObservation.external_event_id == external_event_id,
+                )
+            )
+            if (
+                existing_row is not None
+                and isinstance(previous_observation_payloads, dict)
+                and isinstance(existing_row.event_payload, dict)
+            ):
+                previous_observation_payloads.setdefault(existing_row.merge_key, dict(existing_row.event_payload))
             affected_entity_uids.update(
                 deactivate_observation(
                     db=db,
@@ -80,6 +93,18 @@ def apply_calendar_observations(
             payload=payload,
             external_event_id=external_event_id,
         )
+        existing_row = db.scalar(
+            select(SourceEventObservation).where(
+                SourceEventObservation.source_id == source.id,
+                SourceEventObservation.external_event_id == external_event_id,
+            )
+        )
+        if (
+            existing_row is not None
+            and isinstance(previous_observation_payloads, dict)
+            and isinstance(existing_row.event_payload, dict)
+        ):
+            previous_observation_payloads.setdefault(existing_row.merge_key, dict(existing_row.event_payload))
         course_parse = extract_enrichment_course_parse(payload=payload)
         event_parts = extract_enrichment_event_parts(payload=payload)
         link_signals = extract_link_signals(payload=payload, source_canonical=source_canonical)
@@ -129,6 +154,9 @@ def apply_calendar_observations(
                 "payload_schema_version": "obs_v3",
             },
         }
+        raw_ics_component_b64 = payload.get("raw_ics_component_b64")
+        if isinstance(raw_ics_component_b64, str) and raw_ics_component_b64:
+            observation_payload["raw_ics_component_b64"] = raw_ics_component_b64
         seen_external_ids.add(external_event_id)
         affected_entity_uids.update(
             upsert_observation(
@@ -154,6 +182,8 @@ def apply_calendar_observations(
     for row in active_rows:
         if row.external_event_id in seen_external_ids:
             continue
+        if isinstance(previous_observation_payloads, dict) and isinstance(row.event_payload, dict):
+            previous_observation_payloads.setdefault(row.merge_key, dict(row.event_payload))
         row.is_active = False
         row.observed_at = applied_at
         row.last_request_id = request_id

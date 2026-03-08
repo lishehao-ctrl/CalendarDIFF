@@ -53,6 +53,7 @@ def apply_records(
         return 0
 
     canonical_input = ensure_canonical_input_for_user(db=db, user_id=source.user_id)
+    previous_observation_payloads: dict[str, dict] | None = {} if source.source_kind == SourceKind.CALENDAR else None
 
     if source.source_kind == SourceKind.CALENDAR:
         affected_merge_keys = apply_calendar_observations(
@@ -61,6 +62,7 @@ def apply_records(
             records=records,
             applied_at=applied_at,
             request_id=request_id,
+            previous_observation_payloads=previous_observation_payloads,
         )
     elif source.source_kind == SourceKind.EMAIL:
         affected_merge_keys = apply_gmail_observations(
@@ -84,6 +86,7 @@ def apply_records(
         canonical_input=canonical_input,
         affected_merge_keys=affected_merge_keys,
         applied_at=applied_at,
+        previous_observation_payloads=previous_observation_payloads,
     )
     emit_link_alert_resolve_entities_requested(
         db=db,

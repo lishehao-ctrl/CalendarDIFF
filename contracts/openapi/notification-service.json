@@ -14,6 +14,56 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "NotificationFlushRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "batch": {
+            "anyOf": [
+              {
+                "maximum": 99.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch"
+          },
+          "force_due": {
+            "default": true,
+            "title": "Force Due",
+            "type": "boolean"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "semester": {
+            "anyOf": [
+              {
+                "maximum": 9.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semester"
+          }
+        },
+        "title": "NotificationFlushRequest",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -149,6 +199,98 @@
         "summary": "Get Notify Metrics",
         "tags": [
           "internal-notify-metrics"
+        ]
+      }
+    },
+    "/internal/notifications/flush": {
+      "post": {
+        "operationId": "flush_notifications_internal_notifications_flush_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Service-Name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Service-Name"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Service-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Service-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationFlushRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "title": "Response Flush Notifications Internal Notifications Flush Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Flush Notifications",
+        "tags": [
+          "internal-notify-ops"
         ]
       }
     },

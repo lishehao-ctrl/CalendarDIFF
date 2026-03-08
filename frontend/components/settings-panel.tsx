@@ -2,43 +2,34 @@
 
 import { useEffect, useState } from "react";
 import { Clock3, Mail, ShieldCheck } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
-import { backendFetch } from "@/lib/backend";
+import { getCurrentUser, updateCurrentUser } from "@/lib/api/users";
+import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime } from "@/lib/presenters";
 import type { UserProfile } from "@/lib/types";
-import { useResource } from "@/lib/use-resource";
-
-type Banner = {
-  tone: "info" | "error";
-  text: string;
-} | null;
 
 export function SettingsPanel() {
-  const { data, loading, error, refresh } = useResource<UserProfile>("/users/me");
-  const [form, setForm] = useState({ timezone_name: "UTC" });
+  const { data, loading, error, refresh } = useApiResource<UserProfile>(() => getCurrentUser(), []);
+  const [form, setForm] = useState({ timezone_name: "" });
   const [saving, setSaving] = useState(false);
-  const [banner, setBanner] = useState<Banner>(null);
+  const [banner, setBanner] = useState<{ tone: "info" | "error"; text: string } | null>(null);
 
   useEffect(() => {
-    if (data) {
-      setForm({
-        timezone_name: data.timezone_name || "UTC"
-      });
+    if (!data) {
+      return;
     }
+    setForm({ timezone_name: data.timezone_name || "" });
   }, [data]);
 
   async function save() {
     setSaving(true);
     setBanner(null);
     try {
-      await backendFetch<UserProfile>("/users/me", {
-        method: "PATCH",
-        body: JSON.stringify(form)
-      });
-      setBanner({ tone: "info", text: "Workspace settings saved." });
+      await updateCurrentUser({ timezone_name: form.timezone_name });
+      setBanner({ tone: "info", text: "Settings saved." });
       await refresh();
     } catch (err) {
       setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to save settings" });

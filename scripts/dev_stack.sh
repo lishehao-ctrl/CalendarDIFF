@@ -7,8 +7,8 @@ ENV_FILE="$ROOT_DIR/.env"
 LOG_DIR="$ROOT_DIR/output/dev-stack"
 TAIL_LINES="${DEV_STACK_TAIL_LINES:-80}"
 
-SERVICES=(frontend input review ingest notification llm)
-BACKEND_SERVICES=(input review ingest notification llm)
+SERVICES=(frontend public input review ingest notification llm)
+BACKEND_SERVICES=(public input review ingest notification llm)
 
 usage() {
   cat <<'USAGE'
@@ -17,7 +17,7 @@ Usage:
   scripts/dev_stack.sh down [--infra]
   scripts/dev_stack.sh reset
   scripts/dev_stack.sh status
-  scripts/dev_stack.sh logs [frontend|input|review|ingest|notification|llm|all]
+  scripts/dev_stack.sh logs [frontend|public|input|review|ingest|notification|llm|all]
 USAGE
 }
 
@@ -29,9 +29,10 @@ die() {
 service_port() {
   case "$1" in
     frontend) echo 3000 ;;
-    review) echo 8200 ;;
+    public) echo 8200 ;;
     input) echo 8201 ;;
     ingest) echo 8202 ;;
+    review) echo 8203 ;;
     notification) echo 8204 ;;
     llm) echo 8205 ;;
     postgres) echo 5432 ;;
@@ -259,7 +260,7 @@ start_frontend() {
   fi
 
   : > "$log_file"
-  launch_detached "$FRONTEND_DIR" "$pid_file" "$log_file" env INPUT_BACKEND_BASE_URL="http://127.0.0.1:8201" REVIEW_BACKEND_BASE_URL="http://127.0.0.1:8200" BACKEND_API_KEY="$APP_API_KEY" WATCHPACK_POLLING=true CHOKIDAR_USEPOLLING=1 npm run dev -- --hostname 127.0.0.1 --port 3000
+  launch_detached "$FRONTEND_DIR" "$pid_file" "$log_file" env BACKEND_BASE_URL="http://127.0.0.1:8200" BACKEND_API_KEY="$APP_API_KEY" WATCHPACK_POLLING=true CHOKIDAR_USEPOLLING=1 npm run dev -- --hostname 127.0.0.1 --port 3000
 
   wait_for_http "$service" 120
   listener="$(listening_pid "$port")"
@@ -369,7 +370,7 @@ show_logs() {
   fi
 
   case "$target" in
-    frontend|input|review|ingest|notification|llm)
+    frontend|public|input|review|ingest|notification|llm)
       ;;
     *)
       die "invalid logs target '$target'"
@@ -396,8 +397,9 @@ start_all() {
   start_frontend
   printf '\nStack is ready.\n'
   printf 'Frontend:     http://127.0.0.1:3000\n'
-  printf 'Review API:   http://127.0.0.1:8200/health\n'
+  printf 'Public API:   http://127.0.0.1:8200/health\n'
   printf 'Input API:    http://127.0.0.1:8201/health\n'
+  printf 'Review API:   http://127.0.0.1:8203/health\n'
   printf 'Ingest API:   http://127.0.0.1:8202/health\n'
   printf 'Notify API:   http://127.0.0.1:8204/health\n'
   printf 'LLM API:      http://127.0.0.1:8205/health\n'
@@ -434,8 +436,9 @@ reset_all() {
   start_frontend
   printf '\nStack has been reset and restarted.\n'
   printf 'Frontend:     http://127.0.0.1:3000\n'
-  printf 'Review API:   http://127.0.0.1:8200/health\n'
+  printf 'Public API:   http://127.0.0.1:8200/health\n'
   printf 'Input API:    http://127.0.0.1:8201/health\n'
+  printf 'Review API:   http://127.0.0.1:8203/health\n'
   printf 'Ingest API:   http://127.0.0.1:8202/health\n'
   printf 'Notify API:   http://127.0.0.1:8204/health\n'
   printf 'LLM API:      http://127.0.0.1:8205/health\n'
@@ -471,7 +474,7 @@ main() {
       elif [ "$#" -eq 2 ]; then
         show_logs "$2"
       else
-        die "usage: scripts/dev_stack.sh logs [frontend|input|review|ingest|notification|llm|all]"
+        die "usage: scripts/dev_stack.sh logs [frontend|public|input|review|ingest|notification|llm|all]"
       fi
       ;;
     ""|-h|--help|help)

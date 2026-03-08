@@ -1,16 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarSync, Mailbox, RefreshCw, Trash2 } from "lucide-react";
+import { ArchiveRestore, BellDot, CalendarSync, ChevronRight, Mailbox, RefreshCw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
-import { backendFetch } from "@/lib/backend";
+import { createSyncRequest, deleteSource as deleteSourceRequest, getSyncRequest, listSources, updateSource } from "@/lib/api/sources";
+import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
 import type { SourceRow, SyncStatus } from "@/lib/types";
-import { useResource } from "@/lib/use-resource";
 
 const oauthQueryKeys = ["oauth_provider", "oauth_status", "source_id", "request_id", "message"] as const;
 
@@ -41,23 +41,134 @@ function formatSourceSubtitle(source: SourceRow) {
   return `${source.source_kind} source · key \`${source.source_key}\``;
 }
 
+function sourceSetupHref(provider: string) {
+  if (provider === "ics") {
+    return "/sources/connect/canvas-ics";
+  }
+  if (provider === "gmail") {
+    return "/sources/connect/gmail";
+  }
+  return "/sources";
+}
+
+function SourceInventoryCard({
+  source,
+  syncLabel,
+  busyDelete,
+  busyReactivate,
+  onSync,
+  onDelete,
+  onReactivate,
+  archived = false,
+}: {
+  source: SourceRow;
+  syncLabel?: string;
+  busyDelete: number | null;
+  busyReactivate: number | null;
+  onSync?: (sourceId: number) => void;
+  onDelete: (sourceId: number, provider: string) => void;
+  onReactivate?: (sourceId: number) => void;
+  archived?: boolean;
+}) {
+  const isGmail = source.provider === "gmail";
+  const isCanvasIcs = source.provider === "ics";
+
+  return (
+    <Card className={archived ? "bg-white/40 p-5" : "overflow-hidden p-5"}>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <h4 className="text-lg font-semibold">{formatSourceTitle(source)}</h4>
+            <Badge tone={source.is_active ? "active" : "default"}>{source.provider}</Badge>
+            {!archived ? <Badge tone={syncTone(syncLabel)}>{formatStatusLabel(syncLabel, "Idle")}</Badge> : null}
+            {isGmail && source.oauth_connection_status ? (
+              <Badge tone={source.oauth_connection_status === "connected" ? "approved" : "pending"}>
+                {formatStatusLabel(source.oauth_connection_status)}
+              </Badge>
+            ) : null}
+            {archived ? <Badge tone="info">Archived</Badge> : null}
+          </div>
+          <p className="text-sm text-[#596270]">{formatSourceSubtitle(source)}</p>
+          {isGmail && source.oauth_account_email ? (
+            <p className="text-sm text-[#314051]">Connected Gmail account: {source.oauth_account_email}</p>
+          ) : null}
+          {isCanvasIcs ? (
+            <p className="text-sm text-[#314051]">Canvas ICS is the single student calendar link attached to this workspace.</p>
+          ) : null}
+          <div className="grid gap-2 text-sm text-[#314051] md:grid-cols-2">
+            <p>Last polled: {formatDateTime(source.last_polled_at, "Never")}</p>
+            <p>Next poll: {formatDateTime(source.next_poll_at, "Not scheduled")}</p>
+            <p>Poll interval: {Math.round(source.poll_interval_seconds / 60)} min</p>
+            <p>Status: {source.is_active ? "Active" : "Archived"}</p>
+          </div>
+          {source.last_error_message ? (
+            <div className="rounded-[1.15rem] border border-[#efc4b5] bg-[#fff3ef] px-4 py-3 text-sm text-[#7f3d2a]">
+              {source.last_error_message}
+            </div>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {!archived ? (
+            <>
+              <Button onClick={() => onSync?.(source.source_id)}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Sync now
+              </Button>
+              <Button asChild variant="ghost">
+                <Link href={sourceSetupHref(source.provider)}>
+                  Manage
+                  <ChevronRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => onDelete(source.source_id, source.provider)}
+                disabled={busyDelete === source.source_id}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {busyDelete === source.source_id ? "Archiving..." : isGmail ? "Disconnect mailbox" : isCanvasIcs ? "Archive link" : "Archive source"}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                onClick={() => onReactivate?.(source.source_id)}
+                disabled={busyReactivate === source.source_id}
+              >
+                <ArchiveRestore className="mr-2 h-4 w-4" />
+                {busyReactivate === source.source_id ? "Reactivating..." : "Reactivate"}
+              </Button>
+              <Button asChild variant="ghost">
+                <Link href={sourceSetupHref(source.provider)}>
+                  Manage
+                  <ChevronRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export function SourcesPanel() {
-  const { data, loading, error, refresh } = useResource<SourceRow[]>("/sources");
-  const [canvasIcsUrl, setCanvasIcsUrl] = useState("");
+  const active = useApiResource<SourceRow[]>(() => listSources({ status: "active" }), []);
+  const archived = useApiResource<SourceRow[]>(() => listSources({ status: "archived" }), []);
+  const [activeSection, setActiveSection] = useState<"inventory" | "catalog" | "archived">("inventory");
   const [syncState, setSyncState] = useState<Record<number, string>>({});
-  const [submitting, setSubmitting] = useState(false);
   const [busyDelete, setBusyDelete] = useState<number | null>(null);
-  const [gmailConnecting, setGmailConnecting] = useState(false);
+  const [busyReactivate, setBusyReactivate] = useState<number | null>(null);
   const [banner, setBanner] = useState<Banner>(null);
   const oauthQueryHandled = useRef(false);
 
-  const sources = useMemo(() => data || [], [data]);
-  const activeCount = sources.filter((source) => source.is_active).length;
-  const erroredCount = sources.filter((source) => Boolean(source.last_error_message)).length;
-  const gmailSource = useMemo(() => sources.find((source) => source.provider === "gmail") || null, [sources]);
-  const canvasIcsSource = useMemo(() => sources.find((source) => source.provider === "ics") || null, [sources]);
-  const gmailConnected = gmailSource?.oauth_connection_status === "connected";
-  const canvasIcsConnected = Boolean(canvasIcsSource?.is_active);
+  const activeSources = useMemo(() => active.data || [], [active.data]);
+  const archivedSources = useMemo(() => archived.data || [], [archived.data]);
+  const erroredCount = activeSources.filter((source) => Boolean(source.last_error_message)).length;
+
+  const refreshAll = useCallback(async () => {
+    await Promise.all([active.refresh(), archived.refresh()]);
+  }, [active, archived]);
 
   const pollSyncRequest = useCallback(async (
     sourceId: number,
@@ -66,7 +177,7 @@ export function SourcesPanel() {
   ) => {
     setSyncState((prev) => ({ ...prev, [sourceId]: "queued" }));
     for (let attempt = 0; attempt < 15; attempt += 1) {
-      const status = await backendFetch<SyncStatus>(`/sync-requests/${requestId}`);
+      const status = await getSyncRequest(requestId);
       const normalized = status.status.toLowerCase();
       setSyncState((prev) => ({ ...prev, [sourceId]: normalized }));
       if (status.status === "SUCCEEDED" || status.status === "FAILED") {
@@ -81,8 +192,8 @@ export function SourcesPanel() {
       }
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    await refresh();
-  }, [refresh]);
+    await refreshAll();
+  }, [refreshAll]);
 
   useEffect(() => {
     if (oauthQueryHandled.current) {
@@ -112,109 +223,19 @@ export function SourcesPanel() {
     }
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 
-    void refresh();
+    void refreshAll();
     if (status === "success" && requestId && sourceId) {
       void pollSyncRequest(sourceId, requestId, {
         successMessage: "Gmail initial sync succeeded.",
         failurePrefix: "Gmail initial sync failed"
       });
     }
-  }, [pollSyncRequest, refresh]);
-
-  async function createOrUpdateCanvasIcsSource() {
-    const normalizedUrl = canvasIcsUrl.trim();
-    if (!normalizedUrl) {
-      return;
-    }
-
-    setSubmitting(true);
-    setBanner(null);
-    try {
-      const existing = canvasIcsSource || await findExistingSource("ics");
-      if (existing) {
-        await backendFetch<SourceRow>(`/sources/${existing.source_id}`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            is_active: true,
-            secrets: { url: normalizedUrl }
-          })
-        });
-        setBanner({ tone: "info", text: "Canvas ICS link updated for this workspace." });
-      } else {
-        try {
-          await backendFetch<SourceRow>("/sources", {
-            method: "POST",
-            body: JSON.stringify({
-              source_kind: "calendar",
-              provider: "ics",
-              config: {},
-              secrets: { url: normalizedUrl }
-            })
-          });
-          setBanner({ tone: "info", text: "Canvas ICS link connected. You can trigger a manual sync immediately." });
-        } catch (err) {
-          const recovered = await findExistingSource("ics");
-          if (!recovered) {
-            throw err;
-          }
-          await backendFetch<SourceRow>(`/sources/${recovered.source_id}`, {
-            method: "PATCH",
-            body: JSON.stringify({
-              is_active: true,
-              secrets: { url: normalizedUrl }
-            })
-          });
-          setBanner({ tone: "info", text: "Canvas ICS link updated for this workspace." });
-        }
-      }
-      setCanvasIcsUrl("");
-      await refresh();
-    } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to save Canvas ICS link" });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function deleteSource(sourceId: number, provider: string) {
-    const confirmed = window.confirm(
-      provider === "gmail"
-        ? "Disconnect this Gmail source from the workspace?"
-        : provider === "ics"
-          ? "Remove this Canvas ICS link from the workspace?"
-          : "Delete this source from the workspace?"
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    setBusyDelete(sourceId);
-    setBanner(null);
-    try {
-      await backendFetch(`/sources/${sourceId}`, { method: "DELETE" });
-      setBanner({
-        tone: "info",
-        text: provider === "gmail"
-          ? "Gmail source disconnected."
-          : provider === "ics"
-            ? "Canvas ICS link removed."
-            : `Source #${sourceId} deleted.`
-      });
-      await refresh();
-    } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to delete source" });
-    } finally {
-      setBusyDelete(null);
-    }
-  }
+  }, [pollSyncRequest, refreshAll]);
 
   async function triggerSync(sourceId: number) {
     setBanner(null);
     try {
-      const created = await backendFetch<{ request_id: string }>(`/sources/${sourceId}/sync-requests`, {
-        method: "POST",
-        body: JSON.stringify({ metadata: { kind: "ui_manual_sync" } })
-      });
+      const created = await createSyncRequest(sourceId, { metadata: { kind: "ui_manual_sync" } });
       await pollSyncRequest(sourceId, created.request_id);
     } catch (err) {
       const text = err instanceof Error ? err.message : "Sync failed";
@@ -223,81 +244,74 @@ export function SourcesPanel() {
     }
   }
 
-  async function connectGmail() {
-    setGmailConnecting(true);
+  async function archiveSource(sourceId: number, provider: string) {
+    const confirmed = window.confirm(
+      provider === "gmail"
+        ? "Disconnect this Gmail mailbox and move it to Archived Sources?"
+        : provider === "ics"
+          ? "Archive this Canvas ICS link?"
+          : "Archive this source?"
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setBusyDelete(sourceId);
     setBanner(null);
     try {
-      const source = await createOrReuseGmailSource();
-      const session = await backendFetch<{ authorization_url: string }>(`/sources/${source.source_id}/oauth-sessions`, {
-        method: "POST",
-        body: JSON.stringify({ provider: "gmail" })
+      await deleteSourceRequest(sourceId);
+      setBanner({
+        tone: "info",
+        text: provider === "gmail" ? "Mailbox disconnected and archived." : provider === "ics" ? "Canvas ICS link archived." : "Source archived."
       });
-      window.location.assign(session.authorization_url);
+      await refreshAll();
     } catch (err) {
-      setGmailConnecting(false);
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to start Gmail OAuth" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to archive source" });
+    } finally {
+      setBusyDelete(null);
     }
   }
 
-  async function createOrReuseGmailSource(): Promise<SourceRow> {
-    if (gmailSource) {
-      return gmailSource;
-    }
-
+  async function reactivateSource(sourceId: number) {
+    setBusyReactivate(sourceId);
+    setBanner(null);
     try {
-      const created = await backendFetch<SourceRow>("/sources", {
-        method: "POST",
-        body: JSON.stringify({
-          source_kind: "email",
-          provider: "gmail",
-          display_name: "Gmail Inbox",
-          config: { label_id: "INBOX" },
-          secrets: {}
-        })
-      });
-      await refresh();
-      return created;
+      await updateSource(sourceId, { is_active: true });
+      setBanner({ tone: "info", text: `Source #${sourceId} reactivated.` });
+      await refreshAll();
     } catch (err) {
-      const existing = await findExistingSource("gmail");
-      if (existing) {
-        return existing;
-      }
-      throw err;
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to reactivate source" });
+    } finally {
+      setBusyReactivate(null);
     }
   }
 
-  async function findExistingSource(provider: string): Promise<SourceRow | null> {
-    const latestSources = await backendFetch<SourceRow[]>("/sources");
-    const existing = latestSources.find((source) => source.provider === provider) || null;
-    await refresh();
-    return existing;
-  }
-
-  if (loading) return <LoadingState label="sources" />;
-  if (error) return <ErrorState message={error} />;
+  if (active.loading || archived.loading) return <LoadingState label="sources" />;
+  if (active.error) return <ErrorState message={active.error} />;
+  if (archived.error) return <ErrorState message={archived.error} />;
 
   return (
     <div className="space-y-5">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card className="p-5">
           <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Connected sources</p>
-          <p className="mt-3 text-3xl font-semibold">{sources.length}</p>
-          <p className="mt-2 text-sm text-[#596270]">Total source records attached to the current user.</p>
+          <p className="mt-3 text-3xl font-semibold">{activeSources.length}</p>
+          <p className="mt-2 text-sm text-[#596270]">Currently active sources in this workspace.</p>
         </Card>
         <Card className="p-5">
-          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Active sources</p>
-          <p className="mt-3 text-3xl font-semibold">{activeCount}</p>
-          <p className="mt-2 text-sm text-[#596270]">Sources that can accept manual or worker-driven sync requests.</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Archived sources</p>
+          <p className="mt-3 text-3xl font-semibold">{archivedSources.length}</p>
+          <p className="mt-2 text-sm text-[#596270]">Disconnected or archived sources that can still be restored.</p>
         </Card>
         <Card className="p-5">
           <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Errored sources</p>
           <p className="mt-3 text-3xl font-semibold">{erroredCount}</p>
-          <p className="mt-2 text-sm text-[#596270]">Sources with a recorded connector or validation failure.</p>
+          <p className="mt-2 text-sm text-[#596270]">Connected sources with a recorded connector or validation error.</p>
         </Card>
         <Card className="p-5">
-          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Gmail connection</p>
-          <p className="mt-3 text-3xl font-semibold">{gmailConnected ? "Live" : "Ready"}</p>
-          <p className="mt-2 text-sm text-[#596270]">Single Gmail account, default label `INBOX`, browser-based Google OAuth.</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Add source</p>
+          <p className="mt-3 text-3xl font-semibold">2</p>
+          <p className="mt-2 text-sm text-[#596270]">Current catalog entries available for this workspace.</p>
         </Card>
       </div>
 
@@ -307,156 +321,127 @@ export function SourcesPanel() {
         </Card>
       ) : null}
 
-      <div className="grid gap-5 xl:grid-cols-[1.18fr_0.82fr]">
-        <Card className="p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Live inventory</p>
-              <h3 className="mt-3 text-2xl font-semibold">Connected sources</h3>
-              <p className="mt-2 text-sm leading-6 text-[#596270]">
-                Canvas ICS and Gmail are both visible here. Gmail is a single OAuth-backed mailbox, while Canvas ICS is the student calendar subscription for this workspace.
-              </p>
-            </div>
-            <Badge tone="approved">API-backed</Badge>
+      <Card className="p-6 md:p-7">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Sources workspace</p>
+            <h3 className="mt-3 text-2xl font-semibold">Manage connections</h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[#596270]">
+              Switch between live inventory, the add-source catalog, and archived connections without scrolling through every section at once.
+            </p>
           </div>
+          <Badge tone="info">Workspace</Badge>
+        </div>
 
+        <div className="mt-5 inline-flex flex-wrap gap-2 rounded-full border border-line/80 bg-white/60 p-2">
+          <Button size="sm" variant={activeSection === "inventory" ? "primary" : "ghost"} onClick={() => setActiveSection("inventory")}>
+            Live inventory ({activeSources.length})
+          </Button>
+          <Button size="sm" variant={activeSection === "catalog" ? "primary" : "ghost"} onClick={() => setActiveSection("catalog")}>
+            Source catalog (2)
+          </Button>
+          <Button size="sm" variant={activeSection === "archived" ? "primary" : "ghost"} onClick={() => setActiveSection("archived")}>
+            Recover previous connections ({archivedSources.length})
+          </Button>
+        </div>
+
+        {activeSection === "inventory" ? (
           <div className="mt-5 space-y-4">
-            {sources.length === 0 ? (
-              <EmptyState title="No sources yet" description="Connect your Canvas ICS link or Gmail to open the intake loop." />
+            {activeSources.length === 0 ? (
+              <EmptyState title="No connected sources" description="Use Source Catalog to connect Canvas ICS or Gmail." />
             ) : (
-              sources.map((source) => {
-                const syncLabel = syncState[source.source_id];
-                const isGmail = source.provider === "gmail";
-                const isCanvasIcs = source.provider === "ics";
-                return (
-                  <Card key={source.source_id} className="overflow-hidden p-5">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div className="space-y-3">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <h4 className="text-lg font-semibold">{formatSourceTitle(source)}</h4>
-                          <Badge tone={source.is_active ? "active" : "default"}>{source.provider}</Badge>
-                          <Badge tone={syncTone(syncLabel)}>{formatStatusLabel(syncLabel, "Idle")}</Badge>
-                          {isGmail && source.oauth_connection_status ? (
-                            <Badge tone={source.oauth_connection_status === "connected" ? "approved" : "pending"}>
-                              {formatStatusLabel(source.oauth_connection_status)}
-                            </Badge>
-                          ) : null}
-                        </div>
-                        <p className="text-sm text-[#596270]">{formatSourceSubtitle(source)}</p>
-                        {isGmail && source.oauth_account_email ? (
-                          <p className="text-sm text-[#314051]">Connected Gmail account: {source.oauth_account_email}</p>
-                        ) : null}
-                        {isCanvasIcs ? (
-                          <p className="text-sm text-[#314051]">Canvas ICS is the single student calendar link attached to this workspace.</p>
-                        ) : null}
-                        <div className="grid gap-2 text-sm text-[#314051] md:grid-cols-2">
-                          <p>Last polled: {formatDateTime(source.last_polled_at, "Never")}</p>
-                          <p>Next poll: {formatDateTime(source.next_poll_at, "Not scheduled")}</p>
-                          <p>Poll interval: {Math.round(source.poll_interval_seconds / 60)} min</p>
-                          <p>Status: {source.is_active ? "Active" : "Inactive"}</p>
-                        </div>
-                        {source.last_error_message ? (
-                          <div className="rounded-[1.15rem] border border-[#efc4b5] bg-[#fff3ef] px-4 py-3 text-sm text-[#7f3d2a]">
-                            {source.last_error_message}
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button onClick={() => void triggerSync(source.source_id)}>
-                          <RefreshCw className="mr-2 h-4 w-4" />
-                          Sync now
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onClick={() => void deleteSource(source.source_id, source.provider)}
-                          disabled={busyDelete === source.source_id}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          {busyDelete === source.source_id ? "Removing..." : isGmail ? "Disconnect" : isCanvasIcs ? "Remove link" : "Delete"}
-                        </Button>
-                      </div>
-                    </div>
-                  </Card>
-                );
-              })
+              activeSources.map((source) => (
+                <SourceInventoryCard
+                  key={source.source_id}
+                  source={source}
+                  syncLabel={syncState[source.source_id]}
+                  busyDelete={busyDelete}
+                  busyReactivate={busyReactivate}
+                  onSync={triggerSync}
+                  onDelete={archiveSource}
+                />
+              ))
             )}
           </div>
-        </Card>
+        ) : null}
 
-        <div className="space-y-5">
-          <Card className="p-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(31,94,255,0.1)] text-cobalt">
-                <CalendarSync className="h-5 w-5" />
+        {activeSection === "catalog" ? (
+          <div className="mt-5 grid gap-4 lg:grid-cols-3">
+            <Card className="bg-white/60 p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(31,94,255,0.1)] text-cobalt">
+                  <CalendarSync className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Canvas ICS</p>
+                  <h4 className="mt-2 text-lg font-semibold text-ink">Student calendar feed</h4>
+                  <p className="mt-2 text-sm leading-6 text-[#596270]">Open the dedicated setup flow to connect, update, or reconnect your Canvas subscription URL.</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Canvas ICS</p>
-                <h3 className="mt-1 text-xl font-semibold">{canvasIcsSource ? "Update Canvas ICS link" : "Connect Canvas ICS"}</h3>
-              </div>
-            </div>
-            <p className="mt-4 text-sm leading-6 text-[#596270]">
-              A single Canvas ICS link represents the student calendar subscription for this workspace. Saving a new URL replaces the existing Canvas ICS link instead of creating another source.
-            </p>
-            <div className="mt-5 rounded-[1.25rem] border border-line bg-white/55 p-4 text-sm text-[#314051]">
-              <p>Status: {canvasIcsConnected ? "Connected" : "Not connected"}</p>
-              <p className="mt-2">Source: {canvasIcsSource ? `#${canvasIcsSource.source_id}` : "Will be created on first save"}</p>
-              <p className="mt-2">Kind: Student calendar feed</p>
-            </div>
-            <div className="mt-5 space-y-4">
-              <div>
-                <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="canvas-ics-url">
-                  Canvas ICS URL
-                </label>
-                <Input
-                  id="canvas-ics-url"
-                  placeholder="https://canvas.example.edu/feeds/calendars/user_12345.ics"
-                  value={canvasIcsUrl}
-                  onChange={(event) => setCanvasIcsUrl(event.target.value)}
-                />
-              </div>
-              <Button className="w-full" disabled={submitting || !canvasIcsUrl.trim()} onClick={() => void createOrUpdateCanvasIcsSource()}>
-                {submitting ? "Saving Canvas ICS..." : canvasIcsSource ? "Update Canvas ICS link" : "Connect Canvas ICS"}
-              </Button>
-            </div>
-          </Card>
-
-          <Card className="p-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(215,90,45,0.12)] text-ember">
-                <Mailbox className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Gmail source</p>
-                <h3 className="mt-1 text-xl font-semibold">Connect Gmail</h3>
-              </div>
-            </div>
-            <p className="mt-4 text-sm leading-6 text-[#596270]">
-              Browser-based Google OAuth creates or reuses a single Gmail source for this workspace. Canvas ICS remains a separate student calendar input.
-            </p>
-            <div className="mt-5 rounded-[1.25rem] border border-line bg-white/55 p-4 text-sm text-[#314051]">
-              <p>Status: {gmailConnected ? "Connected" : "Not connected"}</p>
-              <p className="mt-2">Source: {gmailSource ? `#${gmailSource.source_id}` : "Will be created on first connect"}</p>
-              <p className="mt-2">Label: INBOX</p>
-              {gmailSource?.oauth_account_email ? <p className="mt-2">Account: {gmailSource.oauth_account_email}</p> : null}
-            </div>
-            <div className="mt-5 flex flex-wrap gap-3">
-              <Button className="flex-1" onClick={() => void connectGmail()} disabled={gmailConnecting}>
-                {gmailConnecting ? "Redirecting to Google..." : gmailConnected ? "Reconnect Gmail" : "Connect Gmail"}
-              </Button>
-              {gmailSource ? (
-                <Button
-                  className="flex-1"
-                  variant="ghost"
-                  onClick={() => void deleteSource(gmailSource.source_id, gmailSource.provider)}
-                  disabled={busyDelete === gmailSource.source_id}
-                >
-                  {busyDelete === gmailSource.source_id ? "Disconnecting..." : "Disconnect Gmail"}
+              <div className="mt-5">
+                <Button asChild>
+                  <Link href="/sources/connect/canvas-ics">
+                    Open Canvas setup
+                    <ChevronRight className="ml-2 h-4 w-4" />
+                  </Link>
                 </Button>
-              ) : null}
-            </div>
-          </Card>
-        </div>
-      </div>
+              </div>
+            </Card>
+            <Card className="bg-white/60 p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(215,90,45,0.12)] text-ember">
+                  <Mailbox className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Gmail</p>
+                  <h4 className="mt-2 text-lg font-semibold text-ink">OAuth mailbox</h4>
+                  <p className="mt-2 text-sm leading-6 text-[#596270]">Open the Gmail setup flow to connect, reconnect, or disconnect the single mailbox used by this workspace.</p>
+                </div>
+              </div>
+              <div className="mt-5">
+                <Button asChild>
+                  <Link href="/sources/connect/gmail">
+                    Open Gmail setup
+                    <ChevronRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
+            </Card>
+            <Card className="bg-white/60 p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(20,32,44,0.08)] text-ink">
+                  <BellDot className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">More soon</p>
+                  <h4 className="mt-2 text-lg font-semibold text-ink">Additional sources</h4>
+                  <p className="mt-2 text-sm leading-6 text-[#596270]">This catalog is designed to scale as more source types are added in future iterations.</p>
+                </div>
+              </div>
+            </Card>
+          </div>
+        ) : null}
+
+        {activeSection === "archived" ? (
+          <div className="mt-5 space-y-4">
+            {archivedSources.length === 0 ? (
+              <EmptyState title="No archived sources" description="Archived sources will appear here after you disconnect or archive them." />
+            ) : (
+              archivedSources.map((source) => (
+                <SourceInventoryCard
+                  key={source.source_id}
+                  source={source}
+                  busyDelete={busyDelete}
+                  busyReactivate={busyReactivate}
+                  onDelete={archiveSource}
+                  onReactivate={reactivateSource}
+                  archived
+                />
+              ))
+            )}
+          </div>
+        ) : null}
+      </Card>
     </div>
   );
 }

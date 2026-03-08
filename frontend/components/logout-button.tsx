@@ -3,17 +3,17 @@
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { backendFetch } from "@/lib/backend";
+import { logout } from "@/lib/api/auth";
 import { useState } from "react";
 
 export function LogoutButton() {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
 
-  async function logout() {
+  async function runLogout() {
     setSubmitting(true);
     try {
-      await backendFetch("/auth/logout", { method: "POST" });
+      await logout();
       router.replace("/login");
       router.refresh();
     } finally {
@@ -22,7 +22,7 @@ export function LogoutButton() {
   }
 
   return (
-    <Button variant="ghost" onClick={() => void logout()} disabled={submitting}>
+    <Button variant="ghost" className="w-full justify-start rounded-[1.25rem] border border-line/80 bg-white/55 px-4" disabled={submitting} onClick={() => void runLogout()}>
       <LogOut className="mr-2 h-4 w-4" />
       {submitting ? "Signing out..." : "Logout"}
     </Button>

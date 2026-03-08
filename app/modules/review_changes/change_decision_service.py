@@ -15,6 +15,7 @@ from app.modules.review_changes.change_event_codec import (
     parse_iso_datetime,
     safe_delta_seconds,
 )
+from app.modules.review_links.common import dedupe_ids_preserve_order, normalize_review_note
 
 
 class ReviewChangeNotFoundError(RuntimeError):
@@ -110,6 +111,64 @@ def decide_review_change(
     return row, False
 
 
+def batch_decide_review_changes(
+    db: Session,
+    *,
+    user_id: int,
+    decision: str,
+    ids: list[int],
+    note: str | None,
+) -> dict:
+    normalized_note = normalize_review_note(note)
+    deduped_ids = dedupe_ids_preserve_order(ids)
+    results: list[dict] = []
+    succeeded = 0
+
+    for change_id in deduped_ids:
+        try:
+            row, idempotent = decide_review_change(
+                db=db,
+                user_id=user_id,
+                change_id=change_id,
+                decision=decision,
+                note=normalized_note,
+            )
+            results.append(
+                {
+                    "id": change_id,
+                    "ok": True,
+                    "review_status": row.review_status.value,
+                    "idempotent": idempotent,
+                    "reviewed_at": row.reviewed_at,
+                    "review_note": row.review_note,
+                    "error_code": None,
+                    "error_detail": None,
+                }
+            )
+            succeeded += 1
+        except ReviewChangeNotFoundError:
+            results.append(
+                {
+                    "id": change_id,
+                    "ok": False,
+                    "review_status": None,
+                    "idempotent": False,
+                    "reviewed_at": None,
+                    "review_note": None,
+                    "error_code": "not_found",
+                    "error_detail": "Review change not found",
+                }
+            )
+
+    return {
+        "decision": decision,
+        "total_requested": len(deduped_ids),
+        "succeeded": succeeded,
+        "failed": len(deduped_ids) - succeeded,
+        "results": results,
+    }
+
+
 def apply_change_to_canonical_event(*, db: Session, change: Change) -> None:
     existing = db.scalar(
         select(Event).where(
@@ -153,6 +212,7 @@ def apply_change_to_canonical_event(*, db: Session, change: Change) -> None:
 __all__ = [
     "ReviewChangeNotFoundError",
     "apply_change_to_canonical_event",
+    "batch_decide_review_changes",
     "decide_review_change",
     "event_json_equivalent",
     "event_row_to_json",

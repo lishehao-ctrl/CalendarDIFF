@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.review import Change, ChangeType, ReviewStatus
+from app.modules.core_ingest.evidence_snapshots import materialize_change_snapshot
 
 
 def pending_change_same(
@@ -40,6 +41,8 @@ def upsert_pending_change(
     proposal_merge_key: str,
     proposal_sources_json: list[dict],
     detected_at: datetime,
+    before_snapshot_payload: dict | None = None,
+    after_snapshot_payload: dict | None = None,
 ) -> Change | None:
     existing_pending = db.scalar(
         select(Change)
@@ -53,6 +56,20 @@ def upsert_pending_change(
     )
 
     if existing_pending is None:
+        before_snapshot_id = materialize_change_snapshot(
+            db=db,
+            input_id=input_id,
+            event_payload=before_snapshot_payload,
+            fallback_json=before_json,
+            retrieved_at=detected_at,
+        )
+        after_snapshot_id = materialize_change_snapshot(
+            db=db,
+            input_id=input_id,
+            event_payload=after_snapshot_payload,
+            fallback_json=after_json,
+            retrieved_at=detected_at,
+        )
         change = Change(
             input_id=input_id,
             event_uid=event_uid,
@@ -69,8 +86,8 @@ def upsert_pending_change(
             reviewed_by_user_id=None,
             proposal_merge_key=proposal_merge_key,
             proposal_sources_json=proposal_sources_json,
-            before_snapshot_id=None,
-            after_snapshot_id=None,
+            before_snapshot_id=before_snapshot_id,
+            after_snapshot_id=after_snapshot_id,
             evidence_keys=None,
         )
         db.add(change)
@@ -86,7 +103,32 @@ def upsert_pending_change(
         proposal_merge_key=proposal_merge_key,
         proposal_sources_json=proposal_sources_json,
     ):
+        _backfill_snapshot_ids(
+            db=db,
+            row=existing_pending,
+            input_id=input_id,
+            before_snapshot_payload=before_snapshot_payload,
+            before_json=before_json,
+            after_snapshot_payload=after_snapshot_payload,
+            after_json=after_json,
+            detected_at=detected_at,
+        )
         return None
+
+    before_snapshot_id = materialize_change_snapshot(
+        db=db,
+        input_id=input_id,
+        event_payload=before_snapshot_payload,
+        fallback_json=before_json,
+        retrieved_at=detected_at,
+    )
+    after_snapshot_id = materialize_change_snapshot(
+        db=db,
+        input_id=input_id,
+        event_payload=after_snapshot_payload,
+        fallback_json=after_json,
+        retrieved_at=detected_at,
+    )
 
     existing_pending.change_type = change_type
     existing_pending.detected_at = detected_at
@@ -101,10 +143,39 @@ def upsert_pending_change(
     existing_pending.reviewed_by_user_id = None
     existing_pending.proposal_merge_key = proposal_merge_key
     existing_pending.proposal_sources_json = proposal_sources_json
-    existing_pending.before_snapshot_id = None
-    existing_pending.after_snapshot_id = None
+    existing_pending.before_snapshot_id = before_snapshot_id
+    existing_pending.after_snapshot_id = after_snapshot_id
     existing_pending.evidence_keys = None
     return None
+
+
+def _backfill_snapshot_ids(
+    *,
+    db: Session,
+    row: Change,
+    input_id: int,
+    before_snapshot_payload: dict | None,
+    before_json: dict | None,
+    after_snapshot_payload: dict | None,
+    after_json: dict | None,
+    detected_at: datetime,
+) -> None:
+    if row.before_snapshot_id is None:
+        row.before_snapshot_id = materialize_change_snapshot(
+            db=db,
+            input_id=input_id,
+            event_payload=before_snapshot_payload,
+            fallback_json=before_json,
+            retrieved_at=detected_at,
+        )
+    if row.after_snapshot_id is None:
+        row.after_snapshot_id = materialize_change_snapshot(
+            db=db,
+            input_id=input_id,
+            event_payload=after_snapshot_payload,
+            fallback_json=after_json,
+            retrieved_at=detected_at,
+        )
 
 
 def resolve_pending_change_as_rejected(

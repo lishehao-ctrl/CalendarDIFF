@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.logging import sanitize_log_message
@@ -55,10 +55,14 @@ def create_source(
 
 @router.get("/sources", response_model=list[InputSourceResponse])
 def list_sources(
+    status_filter: str = Query(default="active", alias="status"),
     db: Session = Depends(get_db),
     user: User = Depends(get_authenticated_user_or_401),
 ) -> list[InputSourceResponse]:
-    rows = list_input_sources(db, user_id=user.id)
+    normalized_status = status_filter.strip().lower() if isinstance(status_filter, str) else "active"
+    if normalized_status not in {"active", "archived", "all"}:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="status must be one of: active, archived, all")
+    rows = list_input_sources(db, user_id=user.id, status=normalized_status)
     return [InputSourceResponse.model_validate(serialize_source(row)) for row in rows]
 
 

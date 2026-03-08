@@ -128,7 +128,11 @@ def resolve_evidence_file_path(raw_path: str) -> Path:
     if path_obj.is_absolute():
         resolved = path_obj.resolve()
     else:
-        resolved = (base_dir / path_obj).resolve()
+        configured_parts = configured_base.parts
+        if configured_parts and path_obj.parts[: len(configured_parts)] == configured_parts:
+            resolved = (Path.cwd() / path_obj).resolve()
+        else:
+            resolved = (base_dir / path_obj).resolve()
 
     if not is_relative_to(resolved, base_dir):
         raise EvidencePathError("evidence path escaped base directory")

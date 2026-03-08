@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, BellDot, CheckCircle2, Link2, Sparkles } from "lucide-react";
+import { ArrowRight, BellDot, Link2, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { SummaryGrid } from "@/components/summary-grid";
-import { useResource } from "@/lib/use-resource";
+import { getOnboardingStatus } from "@/lib/api/onboarding";
+import { getReviewSummary } from "@/lib/api/review";
+import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
 import type { OnboardingStatus, ReviewSummary, SourceHealth } from "@/lib/types";
 
@@ -73,8 +75,8 @@ function fallbackSourceHealth(stage: string): SourceHealth {
 }
 
 export default function OverviewPage() {
-  const onboarding = useResource<OnboardingStatus>("/onboarding/status");
-  const summary = useResource<ReviewSummary>("/review/summary");
+  const onboarding = useApiResource<OnboardingStatus>(() => getOnboardingStatus(), []);
+  const summary = useApiResource<ReviewSummary>(() => getReviewSummary(), []);
 
   if (onboarding.loading || summary.loading) {
     return <LoadingState label="overview" />;
@@ -134,76 +136,53 @@ export default function OverviewPage() {
         <div className="relative mt-6 flex flex-wrap gap-3">
           <Link href={stage === "ready" ? "/review/changes" : "/sources"}>
             <Button>
-              {stage === "ready" ? "Open review inbox" : "Connect a source"}
+              {stage === "ready" ? "Open review inbox" : "Connect first source"}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </Link>
-          <Link href="/sources">
-            <Button variant="ghost">Open sources</Button>
+          <Link href="/review/links">
+            <Button variant="ghost">Inspect link review</Button>
           </Link>
         </div>
       </Card>
-
       <SummaryGrid items={summaryItems} />
-
-      <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+      <div className="grid gap-5 xl:grid-cols-[1fr_0.92fr]">
         <Card className="p-6 md:p-7">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(47,143,91,0.12)] text-moss">
-                <CheckCircle2 className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Current status</p>
-                <h2 className="mt-1 text-2xl font-semibold">Workspace readiness</h2>
-              </div>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Source health</p>
+              <h2 className="mt-3 text-2xl font-semibold">Operational readiness</h2>
+              <p className="mt-2 text-sm leading-6 text-[#596270]">
+                Source connectivity and queue shape determine whether moderation stays quiet or turns into a cleanup sprint.
+              </p>
             </div>
             <Badge tone={sourceHealthTone(sourceHealth.status)}>{formatStatusLabel(sourceHealth.status)}</Badge>
           </div>
-          <div className="mt-5 rounded-[1.2rem] border border-line/80 bg-white/60 p-5">
-            <p className="text-sm font-medium text-[#314051]">{onboarding.data.message || "Your workspace is ready for source intake and review work."}</p>
-            <div className="mt-4 grid gap-3 text-sm text-[#596270] md:grid-cols-2">
-              <p>Registered user id: {onboarding.data.registered_user_id ?? "Unavailable"}</p>
-              <p>First active source: {onboarding.data.first_source_id ?? "Not connected"}</p>
-              <p>Stage: {formatStatusLabel(stage)}</p>
-              <p>Source health: {formatStatusLabel(sourceHealth.status)}</p>
-            </div>
-          </div>
-          <div className="mt-4 rounded-[1.2rem] border border-line/80 bg-white/60 p-5 text-sm text-[#596270]">
-            <p className="font-medium text-[#314051]">{sourceHealth.message}</p>
-            {sourceHealth.affected_provider || sourceHealth.affected_source_id ? (
-              <p className="mt-3">
-                Affected source: {sourceHealth.affected_provider || "source"}
-                {sourceHealth.affected_source_id ? ` #${sourceHealth.affected_source_id}` : ""}
-              </p>
-            ) : null}
+          <div className="mt-5 rounded-[1.2rem] border border-line/80 bg-white/60 p-5 text-sm text-[#314051]">
+            <p>{sourceHealth.message}</p>
+            {sourceHealth.affected_provider ? <p className="mt-3 text-[#596270]">Affected provider: {formatStatusLabel(sourceHealth.affected_provider)}</p> : null}
+            {sourceHealth.affected_source_id ? <p className="mt-1 text-[#596270]">Source #{sourceHealth.affected_source_id}</p> : null}
           </div>
         </Card>
-
-        <div className="grid gap-5 md:grid-cols-3 xl:grid-cols-1">
-          {actionCards.map(({ href, eyebrow, title, description, icon: Icon }) => (
-            <Card key={href} className="p-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(20,32,44,0.08)] text-ink">
-                  <Icon className="h-5 w-5" />
+        <Card className="p-6 md:p-7">
+          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Primary actions</p>
+          <div className="mt-4 grid gap-3">
+            {actionCards.map(({ href, eyebrow, title, description, icon: Icon }) => (
+              <Link key={href} href={href} className="rounded-[1.25rem] border border-line/80 bg-white/60 p-4 transition hover:-translate-y-0.5 hover:bg-white">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(31,94,255,0.1)] text-cobalt">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{eyebrow}</p>
+                    <p className="mt-2 font-medium text-ink">{title}</p>
+                    <p className="mt-2 text-sm leading-6 text-[#596270]">{description}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">{eyebrow}</p>
-                  <h2 className="mt-1 text-xl font-semibold">{title}</h2>
-                </div>
-              </div>
-              <p className="mt-4 text-sm leading-6 text-[#596270]">{description}</p>
-              <div className="mt-5">
-                <Link href={href}>
-                  <Button variant="ghost" className="px-0 text-cobalt hover:bg-transparent hover:text-[#184fd9]">
-                    Open panel
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
-              </div>
-            </Card>
-          ))}
-        </div>
+              </Link>
+            ))}
+          </div>
+        </Card>
       </div>
     </div>
   );

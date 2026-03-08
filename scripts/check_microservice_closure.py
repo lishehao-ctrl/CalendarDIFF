@@ -73,6 +73,7 @@ def main() -> int:
     # 4) OpenAPI snapshots must exist.
     snapshot_dir = PROJECT_ROOT / "contracts" / "openapi"
     expected_snapshots = [
+        snapshot_dir / "public-service.json",
         snapshot_dir / "input-service.json",
         snapshot_dir / "ingest-service.json",
         snapshot_dir / "review-service.json",

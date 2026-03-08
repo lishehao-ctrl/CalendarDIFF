@@ -10,6 +10,7 @@ SourceKindLiteral = Literal["calendar", "email", "task", "exam", "announcement"]
 TriggerTypeLiteral = Literal["manual", "scheduler", "webhook"]
 SyncRequestStatusLiteral = Literal["PENDING", "QUEUED", "RUNNING", "SUCCEEDED", "FAILED"]
 OAuthConnectionStatusLiteral = Literal["connected", "not_connected"]
+SourceListStatusLiteral = Literal["active", "archived", "all"]
 
 
 class InputSourceCreateRequest(BaseModel):

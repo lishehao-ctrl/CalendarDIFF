@@ -22,16 +22,16 @@ function normalizeBaseUrl(value: string | undefined) {
 }
 
 export async function getServerSession(): Promise<ServerSession | null> {
-  const inputBase = normalizeBaseUrl(process.env.INPUT_BACKEND_BASE_URL) || normalizeBaseUrl(process.env.BACKEND_BASE_URL);
+  const backendBase = normalizeBaseUrl(process.env.BACKEND_BASE_URL);
   const apiKey = process.env.BACKEND_API_KEY?.trim();
   const cookieStore = cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
-  if (!inputBase || !apiKey || !sessionCookie) {
+  if (!backendBase || !apiKey || !sessionCookie) {
     return null;
   }
 
-  const response = await fetch(`${inputBase}/auth/session`, {
+  const response = await fetch(`${backendBase}/auth/session`, {
     headers: {
       "X-API-Key": apiKey,
       Cookie: `${SESSION_COOKIE_NAME}=${sessionCookie}`,

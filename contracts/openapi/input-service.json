@@ -1,6 +1,133 @@
 {
   "components": {
     "schemas": {
+      "AuthLoginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "notify_email": {
+            "maxLength": 255,
+            "minLength": 3,
+            "title": "Notify Email",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "notify_email",
+          "password"
+        ],
+        "title": "AuthLoginRequest",
+        "type": "object"
+      },
+      "AuthLogoutResponse": {
+        "properties": {
+          "logged_out": {
+            "title": "Logged Out",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "logged_out"
+        ],
+        "title": "AuthLogoutResponse",
+        "type": "object"
+      },
+      "AuthRegisterRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "notify_email": {
+            "maxLength": 255,
+            "minLength": 3,
+            "title": "Notify Email",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "notify_email",
+          "password"
+        ],
+        "title": "AuthRegisterRequest",
+        "type": "object"
+      },
+      "AuthSessionResponse": {
+        "properties": {
+          "authenticated": {
+            "const": true,
+            "default": true,
+            "title": "Authenticated",
+            "type": "boolean"
+          },
+          "user": {
+            "$ref": "#/components/schemas/AuthSessionUserResponse"
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "title": "AuthSessionResponse",
+        "type": "object"
+      },
+      "AuthSessionUserResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "first_source_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Source Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "notify_email": {
+            "title": "Notify Email",
+            "type": "string"
+          },
+          "onboarding_stage": {
+            "enum": [
+              "needs_source_connection",
+              "ready"
+            ],
+            "title": "Onboarding Stage",
+            "type": "string"
+          },
+          "timezone_name": {
+            "title": "Timezone Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "notify_email",
+          "timezone_name",
+          "created_at",
+          "onboarding_stage",
+          "first_source_id"
+        ],
+        "title": "AuthSessionUserResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -223,6 +350,32 @@
             ],
             "title": "Next Poll At"
           },
+          "oauth_account_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oauth Account Email"
+          },
+          "oauth_connection_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "connected",
+                  "not_connected"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oauth Connection Status"
+          },
           "poll_interval_seconds": {
             "title": "Poll Interval Seconds",
             "type": "integer"
@@ -393,17 +546,6 @@
             ],
             "title": "First Source Id"
           },
-          "last_error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Error"
-          },
           "message": {
             "title": "Message",
             "type": "string"
@@ -418,6 +560,16 @@
               }
             ],
             "title": "Registered User Id"
+          },
+          "source_health": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceHealthSummaryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "stage": {
             "enum": [
@@ -434,6 +586,51 @@
           "message"
         ],
         "title": "OnboardingStatusResponse",
+        "type": "object"
+      },
+      "SourceHealthSummaryResponse": {
+        "properties": {
+          "affected_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affected Provider"
+          },
+          "affected_source_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affected Source Id"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "healthy",
+              "attention",
+              "disconnected"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "SourceHealthSummaryResponse",
         "type": "object"
       },
       "SyncRequestCreateRequest": {
@@ -821,6 +1018,222 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/auth/login": {
+      "post": {
+        "operationId": "login_auth_auth_login_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login Auth",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "logout_auth_auth_logout_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthLogoutResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Logout Auth",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "operationId": "register_auth_auth_register_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthRegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Auth",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/session": {
+      "get": {
+        "operationId": "get_auth_session_auth_session_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Auth Session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "health_health_get",
@@ -1023,6 +1436,16 @@
       "get": {
         "operationId": "list_sources_sources_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "active",
+              "title": "Status",
+              "type": "string"
+            }
+          },
           {
             "in": "header",
             "name": "X-API-Key",

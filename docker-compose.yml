@@ -24,6 +24,25 @@ services:
       timeout: 3s
       retries: 20
 
+  public-service:
+    build: .
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
+      APP_BASE_URL: http://localhost:8000
+      SERVICE_NAME: public
+      RUN_MIGRATIONS: "true"
+      PORT: "8000"
+    volumes:
+      - ./:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: /app/scripts/start_service.sh
+    ports:
+      - "8000:8000"
+
   input-service:
     build: .
     env_file:
@@ -40,8 +59,6 @@ services:
       postgres:
         condition: service_healthy
     command: /app/scripts/start_service.sh
-    ports:
-      - "8001:8000"
 
   ingest-service:
     build: .
@@ -73,18 +90,13 @@ services:
       SERVICE_NAME: review
       RUN_MIGRATIONS: "true"
       PORT: "8000"
-      INPUT_API_BASE_URL: http://localhost:8001
       REVIEW_API_BASE_URL: http://localhost:8000
-      INGEST_API_BASE_URL: ""
-      NOTIFY_API_BASE_URL: ""
     volumes:
       - ./:/app
     depends_on:
       postgres:
         condition: service_healthy
     command: /app/scripts/start_service.sh
-    ports:
-      - "8000:8000"
 
   notification-service:
     build: .
@@ -96,6 +108,7 @@ services:
       SERVICE_NAME: notification
       RUN_MIGRATIONS: "true"
       PORT: "8000"
+      REVIEW_API_BASE_URL: http://public-service:8000
     volumes:
       - ./:/app
     depends_on:

@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
-import { backendFetch } from "@/lib/backend";
+import { batchDecideLinkAlerts, batchDecideLinkCandidates, decideLinkAlert, decideLinkCandidate, deleteLinkBlock, deleteReviewLink, getReviewSummary, listLinkAlerts, listLinkBlocks, listLinkCandidates, listReviewLinks, relinkObservation } from "@/lib/api/review";
 import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
 import type { LinkAlert, LinkBlock, LinkCandidate, LinkRow, ReviewSummary } from "@/lib/types";
-import { useResource } from "@/lib/use-resource";
+import { useApiResource } from "@/lib/use-api-resource";
 
 type Banner = {
   tone: "info" | "error";
@@ -25,11 +25,11 @@ const blankRelink = {
 };
 
 export function LinkReviewPanel() {
-  const summary = useResource<ReviewSummary>("/review/summary");
-  const candidates = useResource<LinkCandidate[]>("/review/link-candidates?status=pending&limit=50");
-  const links = useResource<LinkRow[]>("/review/links?limit=50");
-  const alerts = useResource<LinkAlert[]>("/review/link-alerts?status=pending&limit=50");
-  const blocks = useResource<LinkBlock[]>("/review/link-candidates/blocks?limit=50");
+  const summary = useApiResource<ReviewSummary>(() => getReviewSummary(), []);
+  const candidates = useApiResource<LinkCandidate[]>(() => listLinkCandidates({ status: "pending", limit: 50 }), []);
+  const links = useApiResource<LinkRow[]>(() => listReviewLinks({ limit: 50 }), []);
+  const alerts = useApiResource<LinkAlert[]>(() => listLinkAlerts({ status: "pending", limit: 50 }), []);
+  const blocks = useApiResource<LinkBlock[]>(() => listLinkBlocks({ limit: 50 }), []);
 
   const [busy, setBusy] = useState<string | null>(null);
   const [banner, setBanner] = useState<Banner>(null);
@@ -52,10 +52,7 @@ export function LinkReviewPanel() {
     setBusy(`candidate:${id}`);
     setBanner(null);
     try {
-      await backendFetch(`/review/link-candidates/${id}/decisions`, {
-        method: "POST",
-        body: JSON.stringify({ decision, note: `ui_${decision}` })
-      });
+      await decideLinkCandidate(id, { decision, note: `ui_${decision}` });
       setBanner({ tone: "info", text: `Candidate #${id} ${decision}d.` });
       await refreshAll();
     } catch (err) {
@@ -72,10 +69,7 @@ export function LinkReviewPanel() {
     setBusy(`candidate-batch:${decision}`);
     setBanner(null);
     try {
-      await backendFetch("/review/link-candidates/batch/decisions", {
-        method: "POST",
-        body: JSON.stringify({ ids: candidateIds, decision, note: `ui_batch_${decision}` })
-      });
+      await batchDecideLinkCandidates({ ids: candidateIds, decision, note: `ui_batch_${decision}` });
       setBanner({ tone: "info", text: `Applied ${decision} to ${candidateIds.length} visible candidates.` });
       await refreshAll();
     } catch (err) {
@@ -89,10 +83,7 @@ export function LinkReviewPanel() {
     setBusy(`alert:${id}`);
     setBanner(null);
     try {
-      await backendFetch(`/review/link-alerts/${id}/${action}`, {
-        method: "POST",
-        body: JSON.stringify({ note: `ui_${action}` })
-      });
+      await decideLinkAlert(id, action, { note: `ui_${action}` });
       setBanner({ tone: "info", text: `Alert #${id} ${action.replace("-", " ")} complete.` });
       await refreshAll();
     } catch (err) {
@@ -109,10 +100,7 @@ export function LinkReviewPanel() {
     setBusy(`alert-batch:${decision}`);
     setBanner(null);
     try {
-      await backendFetch("/review/link-alerts/batch/decisions", {
-        method: "POST",
-        body: JSON.stringify({ ids: alertIds, decision, note: `ui_batch_${decision}` })
-      });
+      await batchDecideLinkAlerts({ ids: alertIds, decision, note: `ui_batch_${decision}` });
       setBanner({ tone: "info", text: `Applied ${decision} to ${alertIds.length} visible alerts.` });
       await refreshAll();
     } catch (err) {
@@ -126,7 +114,7 @@ export function LinkReviewPanel() {
     setBusy(`link:${id}`);
     setBanner(null);
     try {
-      await backendFetch(`/review/links/${id}?block=true&note=ui_unlink`, { method: "DELETE" });
+      await deleteReviewLink(id, { block: true, note: "ui_unlink" });
       setBanner({ tone: "info", text: `Link #${id} removed and blocked for re-link safety.` });
       await refreshAll();
     } catch (err) {
@@ -140,7 +128,7 @@ export function LinkReviewPanel() {
     setBusy(`block:${blockId}`);
     setBanner(null);
     try {
-      await backendFetch(`/review/link-candidates/blocks/${blockId}`, { method: "DELETE" });
+      await deleteLinkBlock(blockId);
       setBanner({ tone: "info", text: `Block #${blockId} removed.` });
       await refreshAll();
     } catch (err) {
@@ -166,15 +154,12 @@ export function LinkReviewPanel() {
     setBusy("relink");
     setBanner(null);
     try {
-      await backendFetch("/review/links/relink", {
-        method: "POST",
-        body: JSON.stringify({
-          source_id: Number(relinkForm.source_id),
-          external_event_id: relinkForm.external_event_id,
-          entity_uid: relinkForm.entity_uid,
-          clear_block: true,
-          note: relinkForm.note || null
-        })
+      await relinkObservation({
+        source_id: Number(relinkForm.source_id),
+        external_event_id: relinkForm.external_event_id,
+        entity_uid: relinkForm.entity_uid,
+        clear_block: true,
+        note: relinkForm.note || null
       });
       setBanner({ tone: "info", text: `Relinked ${relinkForm.external_event_id} to ${relinkForm.entity_uid}.` });
       setRelinkForm(blankRelink);

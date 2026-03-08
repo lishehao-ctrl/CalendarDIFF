@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { backendFetch } from "@/lib/backend";
+import { login, register } from "@/lib/api/auth";
 
 export function LoginPageClient({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
@@ -21,15 +21,13 @@ export function LoginPageClient({ mode }: { mode: "login" | "register" }) {
     setError(null);
     try {
       if (mode === "register" && password !== confirmPassword) {
-        throw new Error("Passwords do not match")
+        throw new Error("Passwords do not match");
       }
-      await backendFetch(`/auth/${mode}`, {
-        method: "POST",
-        body: JSON.stringify({
-          notify_email: notifyEmail,
-          password,
-        }),
-      });
+      if (mode === "login") {
+        await login({ notify_email: notifyEmail, password });
+      } else {
+        await register({ notify_email: notifyEmail, password });
+      }
       router.replace("/");
       router.refresh();
     } catch (err) {

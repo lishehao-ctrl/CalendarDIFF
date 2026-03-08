@@ -9,6 +9,7 @@ from services.ingest_api.main import app as ingest_app
 from services.input_api.main import app as input_app
 from services.llm_api.main import app as llm_app
 from services.notification_api.main import app as notification_app
+from services.public_api.main import app as public_app
 from services.review_api.main import app as review_app
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +29,7 @@ def _load_snapshot(name: str) -> str:
 def test_openapi_contract_snapshots(db_engine) -> None:
     del db_engine
     app_map = {
+        "public-service": public_app,
         "input-service": input_app,
         "ingest-service": ingest_app,
         "review-service": review_app,
