@@ -260,7 +260,7 @@ start_frontend() {
   fi
 
   : > "$log_file"
-  launch_detached "$FRONTEND_DIR" "$pid_file" "$log_file" env BACKEND_BASE_URL="http://127.0.0.1:8200" BACKEND_API_KEY="$APP_API_KEY" WATCHPACK_POLLING=true CHOKIDAR_USEPOLLING=1 npm run dev -- --hostname 127.0.0.1 --port 3000
+  launch_detached "$FRONTEND_DIR" "$pid_file" "$log_file" env BACKEND_BASE_URL="http://127.0.0.1:8200" BACKEND_API_KEY="$APP_API_KEY" NEXT_DIST_DIR=.next-dev WATCHPACK_POLLING=true CHOKIDAR_USEPOLLING=1 npm run dev -- --hostname 127.0.0.1 --port 3000
 
   wait_for_http "$service" 120
   listener="$(listening_pid "$port")"

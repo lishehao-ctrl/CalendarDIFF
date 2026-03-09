@@ -89,7 +89,7 @@ SERVICE_NAME=ingest RUN_MIGRATIONS=false PORT=8202 ./scripts/start_service.sh
 SERVICE_NAME=review RUN_MIGRATIONS=false PORT=8203 ./scripts/start_service.sh
 SERVICE_NAME=llm RUN_MIGRATIONS=false PORT=8205 ./scripts/start_service.sh
 SERVICE_NAME=notification RUN_MIGRATIONS=false PORT=8204 ./scripts/start_service.sh
-cd frontend && BACKEND_BASE_URL=http://127.0.0.1:8200 BACKEND_API_KEY="$APP_API_KEY" npm run dev -- --hostname 127.0.0.1 --port 3000
+cd frontend && BACKEND_BASE_URL=http://127.0.0.1:8200 BACKEND_API_KEY="$APP_API_KEY" NEXT_DIST_DIR=.next-dev npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
 ## Docker Compose

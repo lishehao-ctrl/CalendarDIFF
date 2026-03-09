@@ -52,8 +52,8 @@ The browser never talks directly to the Python services. All requests go through
 
 ```bash
 npm install
-npm run dev
+NEXT_DIST_DIR=.next-dev npm run dev
 npm run typecheck
 npm run lint
-npm run build
+NEXT_DIST_DIR=.next-prod npm run build
 ```

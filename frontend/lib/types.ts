@@ -254,6 +254,20 @@ export type LinkAlert = {
   } | null;
 };
 
+export type WorkItemKindMapping = {
+  id: number;
+  name: string;
+  aliases: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type WorkItemKindMappingStatus = {
+  state: string;
+  last_rebuilt_at: string | null;
+  last_error: string | null;
+};
+
 export type UserProfile = {
   id: number;
   email: string | null;

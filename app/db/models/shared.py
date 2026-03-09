@@ -33,11 +33,15 @@ class User(Base):
     timezone_name: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC", server_default="UTC")
     calendar_delay_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=120, server_default="120")
     onboarding_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    work_item_mappings_state: Mapped[str] = mapped_column(String(32), nullable=False, default="idle", server_default="idle")
+    work_item_mappings_last_rebuilt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    work_item_mappings_last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
+    work_item_kind_mappings: Mapped[list["UserWorkItemKindMapping"]] = relationship("UserWorkItemKindMapping", back_populates="user", cascade="all, delete-orphan")
     inputs: Mapped[list["Input"]] = relationship("Input", back_populates="user")
     input_sources: Mapped[list["InputSource"]] = relationship("InputSource", back_populates="user", cascade="all, delete-orphan")
     event_entities: Mapped[list["EventEntity"]] = relationship("EventEntity", back_populates="user", cascade="all, delete-orphan")
@@ -62,6 +66,26 @@ class User(Base):
     )
     digest_send_logs: Mapped[list["DigestSendLog"]] = relationship("DigestSendLog", back_populates="user", cascade="all, delete-orphan")
     sessions: Mapped[list["UserSession"]] = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
+
+
+class UserWorkItemKindMapping(Base):
+    __tablename__ = "user_work_item_kind_mappings"
+    __table_args__ = (
+        UniqueConstraint("user_id", "normalized_name", name="uq_user_work_item_kind_mappings_user_normalized_name"),
+        Index("ix_user_work_item_kind_mappings_user_updated", "user_id", "updated_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    aliases_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    user: Mapped[User] = relationship("User", back_populates="work_item_kind_mappings")
 
 
 class UserSession(Base):

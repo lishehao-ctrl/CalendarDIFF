@@ -45,3 +45,31 @@ class UserUpdateRequest(BaseModel):
         if not stripped:
             raise ValueError("timezone_name must not be blank")
         return stripped
+
+
+class WorkItemKindMappingResponse(BaseModel):
+    id: int
+    name: str
+    aliases: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkItemKindMappingCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    aliases: list[str] = Field(default_factory=list, max_length=64)
+
+    model_config = {"extra": "forbid"}
+
+
+class WorkItemKindMappingUpdateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    aliases: list[str] = Field(default_factory=list, max_length=64)
+
+    model_config = {"extra": "forbid"}
+
+
+class WorkItemKindMappingStatusResponse(BaseModel):
+    state: str
+    last_rebuilt_at: datetime | None
+    last_error: str | None

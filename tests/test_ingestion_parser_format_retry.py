@@ -79,6 +79,12 @@ def test_gmail_parser_retries_validation_error_then_succeeds(monkeypatch: pytest
                             "confidence": 0.8,
                             "evidence": "CSE 8A WI26",
                         },
+                        "work_item_parse": {
+                            "raw_kind_label": "Homework",
+                            "ordinal": 1,
+                            "confidence": 0.9,
+                            "evidence": "Homework due",
+                        },
                         "event_parts": {
                             "type": "deadline",
                             "index": 1,
@@ -139,6 +145,12 @@ def test_calendar_parser_retries_validation_error_then_succeeds(monkeypatch: pyt
                         "confidence": 0.9,
                         "evidence": "CSE 8A",
                     },
+                    "work_item_parse": {
+                        "raw_kind_label": "Lab",
+                        "ordinal": 1,
+                        "confidence": 0.8,
+                        "evidence": "Lab",
+                    },
                     "event_parts": {
                         "type": "lecture",
                         "index": 1,
@@ -164,6 +176,12 @@ def test_calendar_parser_retries_validation_error_then_succeeds(monkeypatch: pyt
                     "year2": None,
                     "confidence": 0.9,
                     "evidence": "CSE 8A",
+                },
+                "work_item_parse": {
+                    "raw_kind_label": "Lab",
+                    "ordinal": 1,
+                    "confidence": 0.8,
+                    "evidence": "Lab",
                 },
                 "event_parts": {
                     "type": "lecture",

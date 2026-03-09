@@ -70,6 +70,12 @@ def validate_calendar_payload_v3(*, payload: dict[str, Any], record_index: int) 
     )
     _require_dict(
         enrichment,
+        key="work_item_parse",
+        record_index=record_index,
+        record_type="calendar.event.extracted",
+    )
+    _require_dict(
+        enrichment,
         key="event_parts",
         record_index=record_index,
         record_type="calendar.event.extracted",
@@ -129,6 +135,12 @@ def validate_gmail_payload_v3(*, payload: dict[str, Any], record_index: int) -> 
     _require_dict(
         enrichment,
         key="course_parse",
+        record_index=record_index,
+        record_type="gmail.message.extracted",
+    )
+    _require_dict(
+        enrichment,
+        key="work_item_parse",
         record_index=record_index,
         record_type="gmail.message.extracted",
     )

@@ -102,7 +102,7 @@ def _canonical_input_id(db_session, *, user_id: int) -> int:
     return row.id
 
 
-def test_apply_gmail_records_create_candidates_and_pending_change(db_session) -> None:
+def test_apply_gmail_records_create_pending_change_from_kind_mapping(db_session) -> None:
     source = _create_gmail_source(db_session)
     records = [
         {
@@ -170,7 +170,7 @@ def test_apply_gmail_records_create_candidates_and_pending_change(db_session) ->
     )
 
     applied = apply_ingest_result_idempotent(db_session, request_id="gmail-req-1")
-    assert applied["changes_created"] == 0
+    assert applied["changes_created"] == 1
     assert applied["idempotent_replay"] is False
     assert (
         db_session.scalar(
@@ -186,7 +186,7 @@ def test_apply_gmail_records_create_candidates_and_pending_change(db_session) ->
     pending_count = db_session.scalar(
         select(func.count(Change.id)).where(Change.input_id == canonical_input_id, Change.review_status == ReviewStatus.PENDING)
     )
-    assert int(pending_count or 0) == 0
+    assert int(pending_count or 0) == 1
 
     candidate = db_session.scalar(
         select(EventLinkCandidate).where(
@@ -196,9 +196,7 @@ def test_apply_gmail_records_create_candidates_and_pending_change(db_session) ->
             EventLinkCandidate.status == EventLinkCandidateStatus.PENDING,
         )
     )
-    assert candidate is not None
-    assert isinstance(candidate.score_breakdown_json, dict)
-    assert candidate.score_breakdown_json.get("rule_reason") == "no_rule_match"
+    assert candidate is None
 
 
 def test_apply_gmail_records_with_subject_alias_still_processes(db_session) -> None:
@@ -239,7 +237,13 @@ def test_apply_gmail_records_with_subject_alias_still_processes(db_session) -> N
     )
 
     applied = apply_ingest_result_idempotent(db_session, request_id="gmail-req-alias")
-    assert applied["changes_created"] == 0
+    assert applied["changes_created"] == 1
+
+    canonical_input_id = _canonical_input_id(db_session, user_id=source.user_id)
+    pending_count = db_session.scalar(
+        select(func.count(Change.id)).where(Change.input_id == canonical_input_id, Change.review_status == ReviewStatus.PENDING)
+    )
+    assert int(pending_count or 0) == 1
 
     candidate = db_session.scalar(
         select(EventLinkCandidate).where(
@@ -249,5 +253,4 @@ def test_apply_gmail_records_with_subject_alias_still_processes(db_session) -> N
             EventLinkCandidate.status == EventLinkCandidateStatus.PENDING,
         )
     )
-    assert candidate is not None
-    assert isinstance(candidate.score_breakdown_json, dict)
+    assert candidate is None

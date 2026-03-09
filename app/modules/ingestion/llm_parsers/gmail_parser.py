@@ -128,6 +128,7 @@ def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -
         due_iso = due_at.isoformat() if due_at is not None else None
         end_iso = (due_at + timedelta(hours=1)).isoformat() if due_at is not None else None
         course_parse = message.course_parse.model_dump()
+        work_item_parse = message.work_item_parse.model_dump()
         event_parts = message.event_parts.model_dump()
         link_signals = message.link_signals.model_dump()
         confidence = float(message.time_anchor_confidence)
@@ -149,6 +150,7 @@ def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -
                     },
                     "enrichment": {
                         "course_parse": course_parse,
+                        "work_item_parse": work_item_parse,
                         "event_parts": event_parts,
                         "link_signals": link_signals,
                         "payload_schema_version": "obs_v3",

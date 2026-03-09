@@ -64,6 +64,7 @@ def parse_calendar_content(*, db: Session, content: bytes, context: ParserContex
             "source_canonical": canonical,
             "enrichment": {
                 "course_parse": enrichment["course_parse"],
+                "work_item_parse": enrichment["work_item_parse"],
                 "event_parts": enrichment["event_parts"],
                 "link_signals": enrichment["link_signals"],
                 "payload_schema_version": "obs_v3",
@@ -111,6 +112,7 @@ def parse_course_parse_text(
             "Return JSON with schema: "
             '{"course_parse":{"dept":string|null,"number":number|null,"suffix":string|null,"quarter":"WI"|"SP"|"SU"|"FA"|null,'
             '"year2":number|null,"confidence":number,"evidence":string},'
+            '"work_item_parse":{"raw_kind_label":string|null,"ordinal":number|null,"confidence":number,"evidence":string},'
             '"event_parts":{"type":"exam"|"deadline"|"quiz"|"project"|"lecture"|"other"|null,'
             '"index":number|null,"qualifier":string|null,"confidence":number,"evidence":string},'
             '"link_signals":{"keywords":["exam"|"midterm"|"final"],"exam_sequence":number|null,'
@@ -145,6 +147,7 @@ def parse_course_parse_text(
             parsed = EventEnrichmentResponse.model_validate(invoke_result.json_object)
             return {
                 "course_parse": parsed.course_parse.model_dump(),
+                "work_item_parse": parsed.work_item_parse.model_dump(),
                 "event_parts": parsed.event_parts.model_dump(),
                 "link_signals": parsed.link_signals.model_dump(),
             }, invoke_result.model

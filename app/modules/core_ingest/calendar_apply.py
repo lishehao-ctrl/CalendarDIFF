@@ -10,15 +10,16 @@ from app.db.models.input import InputSource, SourceKind
 from app.db.models.review import SourceEventObservation
 from app.modules.core_ingest.canonical_coercion import coerce_calendar_payload, coerce_text
 from app.modules.core_ingest.entity_profile import get_or_create_event_entity, update_event_entity_course_profile
-from app.modules.core_ingest.merge_engine import build_merge_key
 from app.modules.core_ingest.observation_store import deactivate_observation, upsert_observation
 from app.modules.core_ingest.payload_contracts import PayloadContractError, validate_calendar_payload_v3
 from app.modules.core_ingest.payload_extractors import (
     extract_enrichment_course_parse,
     extract_enrichment_event_parts,
+    extract_enrichment_work_item_parse,
     extract_link_signals,
     extract_source_canonical_from_calendar_payload,
 )
+from app.modules.core_ingest.work_item_kind_resolution import build_source_scoped_entity_uid, resolve_kind_resolution
 from app.modules.ingestion.ics_delta import external_event_id_from_component_key
 
 logger = logging.getLogger(__name__)
@@ -106,19 +107,19 @@ def apply_calendar_observations(
         ):
             previous_observation_payloads.setdefault(existing_row.merge_key, dict(existing_row.event_payload))
         course_parse = extract_enrichment_course_parse(payload=payload)
+        work_item_parse = extract_enrichment_work_item_parse(payload=payload)
         event_parts = extract_enrichment_event_parts(payload=payload)
         link_signals = extract_link_signals(payload=payload, source_canonical=source_canonical)
-        confidence = float(course_parse.get("confidence") or event_parts.get("confidence") or 0.0)
-        event_type = coerce_text(event_parts.get("type")) or "other"
-        entity_uid = build_merge_key(
-            course_label=None,
-            title=None,
-            start_at=None,
-            end_at=None,
-            event_type=None,
+        confidence = float(course_parse.get("confidence") or work_item_parse.get("confidence") or event_parts.get("confidence") or 0.0)
+        kind_resolution = resolve_kind_resolution(
+            db,
+            user_id=source.user_id,
+            course_parse=course_parse,
+            work_item_parse=work_item_parse,
             source_kind=SourceKind.CALENDAR.value,
             external_event_id=external_event_id,
         )
+        entity_uid = str(kind_resolution.get("entity_uid") or build_source_scoped_entity_uid(source_kind=SourceKind.CALENDAR.value, external_event_id=external_event_id))
         entity = get_or_create_event_entity(db=db, user_id=source.user_id, entity_uid=entity_uid)
         course_label = update_event_entity_course_profile(
             entity=entity,
@@ -145,10 +146,11 @@ def apply_calendar_observations(
             "end_at_utc": end_iso,
             "confidence": confidence,
             "raw_confidence": confidence,
-            "event_type": event_type,
+            "kind_resolution": kind_resolution,
             "source_canonical": source_canonical,
             "enrichment": {
                 "course_parse": course_parse,
+                "work_item_parse": work_item_parse,
                 "event_parts": event_parts,
                 "link_signals": link_signals,
                 "payload_schema_version": "obs_v3",

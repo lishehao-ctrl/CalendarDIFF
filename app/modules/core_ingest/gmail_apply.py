@@ -6,28 +6,24 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource, SourceKind
-from app.db.models.review import EventLinkCandidateReason, EventLinkOrigin
-from app.modules.core_ingest.canonical_coercion import coerce_text, parse_optional_iso_datetime
-from app.modules.core_ingest.constants import ACTIONABLE_EVENT_TYPES
+from app.db.models.review import EventLinkOrigin
+from app.modules.core_ingest.canonical_coercion import parse_optional_iso_datetime
 from app.modules.core_ingest.entity_profile import get_or_create_event_entity, update_event_entity_course_profile
 from app.modules.core_ingest.linking_engine import (
-    LinkDecision,
     find_existing_entity_link,
-    link_gmail_observation_to_entity,
     resolve_pending_link_candidates_for_pair,
     upsert_event_entity_link,
-    upsert_link_candidate,
-    with_candidate_evidence,
 )
-from app.modules.core_ingest.merge_engine import build_merge_key
 from app.modules.core_ingest.observation_store import deactivate_observation, upsert_observation
 from app.modules.core_ingest.payload_contracts import PayloadContractError, validate_gmail_payload_v3
 from app.modules.core_ingest.payload_extractors import (
     extract_enrichment_course_parse,
     extract_enrichment_event_parts,
+    extract_enrichment_work_item_parse,
     extract_link_signals,
     extract_source_canonical_from_gmail_payload,
 )
+from app.modules.core_ingest.work_item_kind_resolution import build_source_scoped_entity_uid, resolve_kind_resolution
 
 logger = logging.getLogger(__name__)
 
@@ -58,14 +54,9 @@ def apply_gmail_observations(
         if not isinstance(message_id, str) or not message_id.strip():
             continue
         external_event_id = message_id.strip()
-
-        event_parts = extract_enrichment_event_parts(payload=payload)
-        event_type = coerce_text(event_parts.get("type"))
         source_canonical = extract_source_canonical_from_gmail_payload(payload=payload)
         due_at = parse_optional_iso_datetime(source_canonical.get("source_dtstart_utc"))
-        is_actionable_type = event_type in ACTIONABLE_EVENT_TYPES
-
-        if not is_actionable_type:
+        if due_at is None:
             affected_entity_uids.update(
                 deactivate_observation(
                     db=db,
@@ -78,89 +69,42 @@ def apply_gmail_observations(
             continue
 
         course_parse = extract_enrichment_course_parse(payload=payload)
+        work_item_parse = extract_enrichment_work_item_parse(payload=payload)
         event_parts = extract_enrichment_event_parts(payload=payload)
         link_signals = extract_link_signals(
             payload=payload,
             source_canonical=source_canonical,
         )
-        confidence = float(course_parse.get("confidence") or 0.0)
-        if due_at is None:
-            link_decision = link_gmail_observation_to_entity(
-                db=db,
-                source=source,
-                external_event_id=external_event_id,
-                course_parse=course_parse,
-                event_parts=event_parts,
-                time_anchor_confidence=float(source_canonical.get("time_anchor_confidence") or confidence),
-                signals=link_signals,
-            )
-            if link_decision.status == "candidate":
-                upsert_link_candidate(
-                    db=db,
-                    user_id=source.user_id,
-                    source_id=source.id,
-                    external_event_id=external_event_id,
-                    proposed_entity_uid=link_decision.candidate_entity_uid,
-                    score=link_decision.score,
-                    score_breakdown=with_candidate_evidence(
-                        score_breakdown=link_decision.score_breakdown,
-                        signals=link_signals,
-                    ),
-                    reason_code=link_decision.reason_code or EventLinkCandidateReason.NO_TIME_ANCHOR.value,
-                )
-            affected_entity_uids.update(
-                deactivate_observation(
-                    db=db,
-                    source_id=source.id,
-                    external_event_id=external_event_id,
-                    applied_at=applied_at,
-                    request_id=request_id,
-                )
-            )
-            continue
-        default_entity_uid = build_merge_key(
-            course_label=None,
-            title=None,
-            start_at=None,
-            end_at=None,
-            event_type=None,
+        confidence = float(course_parse.get("confidence") or work_item_parse.get("confidence") or 0.0)
+        kind_resolution = resolve_kind_resolution(
+            db,
+            user_id=source.user_id,
+            course_parse=course_parse,
+            work_item_parse=work_item_parse,
             source_kind=SourceKind.EMAIL.value,
             external_event_id=external_event_id,
         )
+
         existing_link = find_existing_entity_link(
             db=db,
             user_id=source.user_id,
             source_id=source.id,
             external_event_id=external_event_id,
         )
-        if existing_link is not None:
-            link_decision = LinkDecision(
-                entity_uid=existing_link.entity_uid,
-                status="linked",
-                score=float(existing_link.link_score or 1.0),
-                candidate_entity_uid=existing_link.entity_uid,
-                reason_code="existing_link",
-                score_breakdown={"existing_link": 1.0},
-            )
-        else:
-            link_decision = link_gmail_observation_to_entity(
-                db=db,
-                source=source,
-                external_event_id=external_event_id,
-                course_parse=course_parse,
-                event_parts=event_parts,
-                time_anchor_confidence=float(source_canonical.get("time_anchor_confidence") or confidence),
-                signals=link_signals,
-            )
+        entity_uid = (
+            existing_link.entity_uid
+            if existing_link is not None and isinstance(existing_link.entity_uid, str)
+            else str(kind_resolution.get("entity_uid") or build_source_scoped_entity_uid(source_kind=SourceKind.EMAIL.value, external_event_id=external_event_id))
+        )
 
-        if link_decision.status == "linked" and link_decision.entity_uid is not None and existing_link is None:
+        if existing_link is None:
             link_row = upsert_event_entity_link(
                 db=db,
                 source=source,
                 external_event_id=external_event_id,
-                entity_uid=link_decision.entity_uid,
+                entity_uid=entity_uid,
                 link_origin=EventLinkOrigin.AUTO,
-                link_score=link_decision.score,
+                link_score=1.0 if kind_resolution.get("status") == "resolved" else 0.2,
                 signals_json=link_signals,
             )
             resolve_pending_link_candidates_for_pair(
@@ -168,58 +112,27 @@ def apply_gmail_observations(
                 user_id=source.user_id,
                 source_id=source.id,
                 external_event_id=external_event_id,
-                note="auto_link_resolved",
+                note="semantic_link_resolved",
             )
-            if auto_link_contexts is not None:
+            if auto_link_contexts is not None and kind_resolution.get("status") == "resolved":
                 auto_link_contexts.append(
                     {
                         "user_id": source.user_id,
                         "source_id": source.id,
                         "external_event_id": external_event_id,
-                        "entity_uid": link_decision.entity_uid,
+                        "entity_uid": entity_uid,
                         "link_row": link_row,
                         "evidence_snapshot": {
                             "request_id": request_id,
                             "source_id": source.id,
                             "external_event_id": external_event_id,
-                            "entity_uid": link_decision.entity_uid,
-                            "link_reason_code": link_decision.reason_code,
-                            "rule_evidence": link_decision.score_breakdown,
-                            "incoming_signals": with_candidate_evidence(
-                                score_breakdown={},
-                                signals=link_signals,
-                            ).get("incoming_signals"),
-                            "source_time_anchor_confidence": source_canonical.get("time_anchor_confidence"),
+                            "entity_uid": entity_uid,
+                            "kind_resolution": kind_resolution,
                             "source_dtstart_utc": source_canonical.get("source_dtstart_utc"),
                         },
                     }
                 )
-        elif link_decision.status == "candidate":
-            upsert_link_candidate(
-                db=db,
-                user_id=source.user_id,
-                source_id=source.id,
-                external_event_id=external_event_id,
-                proposed_entity_uid=link_decision.candidate_entity_uid,
-                score=link_decision.score,
-                score_breakdown=with_candidate_evidence(
-                    score_breakdown=link_decision.score_breakdown,
-                    signals=link_signals,
-                ),
-                reason_code=link_decision.reason_code or EventLinkCandidateReason.SCORE_BAND.value,
-            )
-            affected_entity_uids.update(
-                deactivate_observation(
-                    db=db,
-                    source_id=source.id,
-                    external_event_id=external_event_id,
-                    applied_at=applied_at,
-                    request_id=request_id,
-                )
-            )
-            continue
 
-        entity_uid = link_decision.entity_uid or default_entity_uid
         entity = get_or_create_event_entity(db=db, user_id=source.user_id, entity_uid=entity_uid)
         course_label = update_event_entity_course_profile(
             entity=entity,
@@ -227,25 +140,13 @@ def apply_gmail_observations(
             course_parse=course_parse,
             source_title=source_canonical.get("source_title"),
         )
-        enrichment = {
-            "course_parse": course_parse,
-            "link_signals": link_signals,
-            "link": {
-                "status": link_decision.status,
-                "score": round(float(link_decision.score), 4),
-                "candidate_entity_uid": link_decision.candidate_entity_uid,
-                "reason_code": link_decision.reason_code,
-                "score_breakdown": link_decision.score_breakdown,
-            },
-        }
         logger.debug(
-            "core_ingest.merge.gmail request_id=%s source_id=%s entity_uid=%s external_event_id=%s link_status=%s link_score=%.3f",
+            "core_ingest.merge.gmail request_id=%s source_id=%s entity_uid=%s external_event_id=%s resolution=%s",
             request_id,
             source.id,
             entity_uid,
             external_event_id,
-            link_decision.status,
-            float(link_decision.score),
+            kind_resolution.get("status"),
         )
 
         observation_payload = {
@@ -256,10 +157,16 @@ def apply_gmail_observations(
             "end_at_utc": str(source_canonical.get("source_dtend_utc") or (due_at + timedelta(hours=1)).isoformat()),
             "confidence": confidence,
             "raw_confidence": confidence,
-            "event_type": event_type,
             "message_id": external_event_id,
+            "kind_resolution": kind_resolution,
             "source_canonical": source_canonical,
-            "enrichment": enrichment,
+            "enrichment": {
+                "course_parse": course_parse,
+                "work_item_parse": work_item_parse,
+                "event_parts": event_parts,
+                "link_signals": link_signals,
+                "payload_schema_version": "obs_v3",
+            },
         }
 
         affected_entity_uids.update(

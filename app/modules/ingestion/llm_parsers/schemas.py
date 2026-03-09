@@ -52,6 +52,32 @@ class CourseParseResponse(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+class WorkItemParse(BaseModel):
+    raw_kind_label: str | None = Field(default=None, max_length=128)
+    ordinal: int | None = Field(default=None, ge=1, le=999)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    evidence: str = Field(default="", max_length=120)
+
+    model_config = {"extra": "forbid"}
+
+    @field_validator("raw_kind_label", mode="before")
+    @classmethod
+    def _normalize_raw_kind_label(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+    @field_validator("evidence", mode="before")
+    @classmethod
+    def _normalize_evidence(cls, value: object) -> object:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()[:120]
+        return ""
+
+
 class LinkSignals(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     exam_sequence: int | None = Field(default=None, ge=1, le=20)
@@ -127,6 +153,7 @@ class EventParts(BaseModel):
 
 class EventEnrichmentResponse(BaseModel):
     course_parse: CourseParse
+    work_item_parse: WorkItemParse
     event_parts: EventParts
     link_signals: LinkSignals
 
@@ -138,6 +165,7 @@ class GmailExtractedMessage(BaseModel):
     due_at: str | None = Field(default=None, max_length=128)
     time_anchor_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     course_parse: CourseParse
+    work_item_parse: WorkItemParse
     event_parts: EventParts
     link_signals: LinkSignals
 

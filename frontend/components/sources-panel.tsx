@@ -164,7 +164,8 @@ export function SourcesPanel() {
 
   const activeSources = useMemo(() => (active.data || []).filter((source) => source.is_active), [active.data]);
   const archivedSources = useMemo(() => (archived.data || []).filter((source) => !source.is_active), [archived.data]);
-  const erroredCount = activeSources.filter((source) => Boolean(source.last_error_message)).length;
+  const activeProviders = useMemo(() => new Set(activeSources.map((source) => source.provider)), [activeSources]);
+  const unboundCatalogCount = useMemo(() => ["ics", "gmail"].filter((provider) => !activeProviders.has(provider)).length, [activeProviders]);
 
   const refreshAll = useCallback(async () => {
     await Promise.all([active.refresh(), archived.refresh()]);
@@ -292,30 +293,8 @@ export function SourcesPanel() {
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card className="p-5">
-          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Connected sources</p>
-          <p className="mt-3 text-3xl font-semibold">{activeSources.length}</p>
-          <p className="mt-2 text-sm text-[#596270]">Currently active sources in this workspace.</p>
-        </Card>
-        <Card className="p-5">
-          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Archived sources</p>
-          <p className="mt-3 text-3xl font-semibold">{archivedSources.length}</p>
-          <p className="mt-2 text-sm text-[#596270]">Disconnected or archived sources that can still be restored.</p>
-        </Card>
-        <Card className="p-5">
-          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Errored sources</p>
-          <p className="mt-3 text-3xl font-semibold">{erroredCount}</p>
-          <p className="mt-2 text-sm text-[#596270]">Connected sources with a recorded connector or validation error.</p>
-        </Card>
-        <Card className="p-5">
-          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Add source</p>
-          <p className="mt-3 text-3xl font-semibold">2</p>
-          <p className="mt-2 text-sm text-[#596270]">Current catalog entries available for this workspace.</p>
-        </Card>
-      </div>
-
       {banner ? (
+
         <Card className={banner.tone === "error" ? "border-[#efc4b5] bg-[#fff3ef] p-4" : "border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] p-4"}>
           <p className="text-sm text-[#314051]">{banner.text}</p>
         </Card>
@@ -338,7 +317,7 @@ export function SourcesPanel() {
             Live inventory ({activeSources.length})
           </Button>
           <Button size="sm" variant={activeSection === "catalog" ? "primary" : "ghost"} onClick={() => setActiveSection("catalog")}>
-            Source catalog (2)
+            Source catalog ({unboundCatalogCount})
           </Button>
           <Button size="sm" variant={activeSection === "archived" ? "primary" : "ghost"} onClick={() => setActiveSection("archived")}>
             Recover previous connections ({archivedSources.length})
