@@ -37,24 +37,19 @@ class SmokeFailure(RuntimeError):
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run three-round real-source smoke (fake ICS + fake Gmail + online LLM).")
     parser.add_argument(
-        "--input-api-base",
+        "--public-api-base",
         required=True,
-        help="Input-service API base URL.",
+        help="Public-service API base URL.",
     )
     parser.add_argument(
-        "--review-api-base",
-        required=True,
-        help="Review-service API base URL.",
-    )
-    parser.add_argument(
-        "--ingest-api-base",
+        "--ingest-internal-base",
         default=None,
-        help="Optional ingest-service API base URL for health probe.",
+        help="Optional ingest-service internal API base URL for health probe.",
     )
     parser.add_argument(
-        "--notify-api-base",
+        "--notify-internal-base",
         default=None,
-        help="Optional notification-service API base URL for health probe.",
+        help="Optional notification-service internal API base URL for health probe.",
     )
     parser.add_argument("--api-key", default=os.getenv("APP_API_KEY", ""), help="API key. Defaults to APP_API_KEY.")
     parser.add_argument(
@@ -275,10 +270,9 @@ def main() -> int:
         "run_id": run_id,
         "started_at": started_at,
         "finished_at": None,
-        "input_api_base": args.input_api_base,
-        "review_api_base": args.review_api_base,
-        "ingest_api_base": args.ingest_api_base,
-        "notify_api_base": args.notify_api_base,
+        "public_api_base": args.public_api_base,
+        "ingest_internal_base": args.ingest_internal_base,
+        "notify_internal_base": args.notify_internal_base,
         "llm_model": None,
         "llm_base_url_hash": None,
         "merge_gate_mode": "strict_same_topic",
@@ -303,6 +297,7 @@ def main() -> int:
     }
 
     fake_process: subprocess.Popen[str] | None = None
+    public_client: httpx.Client | None = None
     fake_client: httpx.Client | None = None
     created_source_ids: list[int] = []
 
@@ -315,30 +310,25 @@ def main() -> int:
             raise SmokeFailure("missing api key: pass --api-key or set APP_API_KEY")
 
         api_headers = {"X-API-Key": args.api_key}
-        input_api_base = args.input_api_base.rstrip("/")
-        review_api_base = args.review_api_base.rstrip("/")
+        public_api_base = args.public_api_base.rstrip("/")
         shared_cookies = httpx.Cookies()
-        input_client = httpx.Client(base_url=input_api_base, headers=api_headers, cookies=shared_cookies)
-        review_client = httpx.Client(base_url=review_api_base, headers=api_headers, cookies=shared_cookies)
+        public_client = httpx.Client(base_url=public_api_base, headers=api_headers, cookies=shared_cookies)
+        input_client = public_client
+        review_client = public_client
         try:
-            input_health = input_client.get("/health", timeout=8.0)
-            review_health = review_client.get("/health", timeout=8.0)
-            if input_health.status_code != 200:
+            public_health = public_client.get("/health", timeout=8.0)
+            if public_health.status_code != 200:
                 raise SmokeFailure(
-                    f"input health check failed status={input_health.status_code} body={input_health.text[:400]}"
+                    f"public health check failed status={public_health.status_code} body={public_health.text[:400]}"
                 )
-            if review_health.status_code != 200:
-                raise SmokeFailure(
-                    f"review health check failed status={review_health.status_code} body={review_health.text[:400]}"
-                )
-            if args.ingest_api_base:
-                ingest_health = httpx.get(f"{args.ingest_api_base.rstrip('/')}/health", timeout=8.0)
+            if args.ingest_internal_base:
+                ingest_health = httpx.get(f"{args.ingest_internal_base.rstrip('/')}/health", timeout=8.0)
                 if ingest_health.status_code != 200:
                     raise SmokeFailure(
                         f"ingest health check failed status={ingest_health.status_code} body={ingest_health.text[:400]}"
                     )
-            if args.notify_api_base:
-                notify_health = httpx.get(f"{args.notify_api_base.rstrip('/')}/health", timeout=8.0)
+            if args.notify_internal_base:
+                notify_health = httpx.get(f"{args.notify_internal_base.rstrip('/')}/health", timeout=8.0)
                 if notify_health.status_code != 200:
                     raise SmokeFailure(
                         f"notify health check failed status={notify_health.status_code} body={notify_health.text[:400]}"
@@ -664,7 +654,7 @@ def main() -> int:
         if args.cleanup_sources and created_source_ids:
             try:
                 headers = {"X-API-Key": args.api_key} if args.api_key else {}
-                cleanup_base = args.input_api_base.rstrip("/")
+                cleanup_base = args.public_api_base.rstrip("/")
                 with httpx.Client(base_url=cleanup_base, headers=headers) as cleanup_client:
                     for source_id in created_source_ids:
                         cleanup_client.delete(f"/sources/{source_id}", timeout=8.0)

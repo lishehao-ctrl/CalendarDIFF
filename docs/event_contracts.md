@@ -74,8 +74,8 @@ Consumers: optional observability/audit services
     "review_status": "approved",
     "reviewed_by_user_id": 1,
     "reviewed_at": "2026-03-02T12:34:56+00:00",
-    "decision_origin": "review_api|manual_correction",
-    "correction_change_id": 901,
+    "decision_origin": "review_api|canonical_edit",
+    "canonical_edit_change_id": 901,
     "rejected_pending_change_ids": [887, 888]
   }
 }

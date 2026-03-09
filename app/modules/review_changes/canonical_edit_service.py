@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.modules.review_changes.manual_correction_apply_txn import execute_manual_correction_apply_txn
-from app.modules.review_changes.manual_correction_errors import (
-    ManualCorrectionNotFoundError,
-    ManualCorrectionValidationError,
+from app.modules.review_changes.canonical_edit_apply_txn import execute_canonical_edit_apply_txn
+from app.modules.review_changes.canonical_edit_errors import (
+    CanonicalEditNotFoundError,
+    CanonicalEditValidationError,
 )
-from app.modules.review_changes.manual_correction_preview_flow import build_manual_correction_preview
+from app.modules.review_changes.canonical_edit_preview_flow import build_canonical_edit_preview
 
 
-def preview_manual_correction(
+def preview_canonical_edit(
     db: Session,
     *,
     user_id: int,
@@ -21,7 +21,7 @@ def preview_manual_correction(
     course_label: str | None,
     reason: str | None,
 ) -> dict:
-    return build_manual_correction_preview(
+    return build_canonical_edit_preview(
         db=db,
         user_id=user_id,
         change_id=change_id,
@@ -33,7 +33,7 @@ def preview_manual_correction(
     )
 
 
-def apply_manual_correction(
+def apply_canonical_edit(
     db: Session,
     *,
     user_id: int,
@@ -44,7 +44,7 @@ def apply_manual_correction(
     course_label: str | None,
     reason: str | None,
 ) -> dict:
-    return execute_manual_correction_apply_txn(
+    return execute_canonical_edit_apply_txn(
         db=db,
         user_id=user_id,
         change_id=change_id,
@@ -57,8 +57,8 @@ def apply_manual_correction(
 
 
 __all__ = [
-    "ManualCorrectionNotFoundError",
-    "ManualCorrectionValidationError",
-    "apply_manual_correction",
-    "preview_manual_correction",
+    "CanonicalEditNotFoundError",
+    "CanonicalEditValidationError",
+    "apply_canonical_edit",
+    "preview_canonical_edit",
 ]

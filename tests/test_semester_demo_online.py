@@ -33,13 +33,12 @@ def test_semester_demo_online(tmp_path: Path) -> None:
     if not app_api_key or not ops_token or not notification_jsonl:
         pytest.skip("APP_API_KEY, INTERNAL_SERVICE_TOKEN_OPS, and SEMESTER_DEMO_NOTIFICATION_JSONL are required")
 
-    input_api_base = os.getenv("SEMESTER_DEMO_INPUT_API_BASE", "http://127.0.0.1:8201").rstrip("/")
-    review_api_base = os.getenv("SEMESTER_DEMO_REVIEW_API_BASE", "http://127.0.0.1:8200").rstrip("/")
-    ingest_api_base = os.getenv("SEMESTER_DEMO_INGEST_API_BASE", "http://127.0.0.1:8202").rstrip("/")
-    notify_api_base = os.getenv("SEMESTER_DEMO_NOTIFY_API_BASE", "http://127.0.0.1:8204").rstrip("/")
-    llm_api_base = os.getenv("SEMESTER_DEMO_LLM_API_BASE", "http://127.0.0.1:8205").rstrip("/")
+    public_api_base = os.getenv("SEMESTER_DEMO_PUBLIC_API_BASE", "http://127.0.0.1:8200").rstrip("/")
+    ingest_internal_base = os.getenv("SEMESTER_DEMO_INGEST_INTERNAL_BASE", "http://127.0.0.1:8202").rstrip("/")
+    notify_internal_base = os.getenv("SEMESTER_DEMO_NOTIFY_INTERNAL_BASE", "http://127.0.0.1:8204").rstrip("/")
+    llm_internal_base = os.getenv("SEMESTER_DEMO_LLM_INTERNAL_BASE", "http://127.0.0.1:8205").rstrip("/")
 
-    for base_url in (input_api_base, review_api_base, ingest_api_base, notify_api_base, llm_api_base):
+    for base_url in (public_api_base, ingest_internal_base, notify_internal_base, llm_internal_base):
         try:
             response = httpx.get(f"{base_url}/health", timeout=3.0)
         except Exception as exc:
@@ -55,16 +54,14 @@ def test_semester_demo_online(tmp_path: Path) -> None:
     cmd = [
         sys.executable,
         "scripts/smoke_semester_demo.py",
-        "--input-api-base",
-        input_api_base,
-        "--review-api-base",
-        review_api_base,
-        "--ingest-api-base",
-        ingest_api_base,
-        "--notify-api-base",
-        notify_api_base,
-        "--llm-api-base",
-        llm_api_base,
+        "--public-api-base",
+        public_api_base,
+        "--ingest-internal-base",
+        ingest_internal_base,
+        "--notify-internal-base",
+        notify_internal_base,
+        "--llm-internal-base",
+        llm_internal_base,
         "--api-key",
         app_api_key,
         "--ops-token",

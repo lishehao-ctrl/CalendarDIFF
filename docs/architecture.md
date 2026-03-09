@@ -5,10 +5,10 @@
 Current target runtime is a unified public gateway + 5 service APIs + PostgreSQL + Redis:
 
 1. `public-service` (`services.public_api.main:app`)
-2. `input-service` (`services.input_api.main:app`)
+2. `input-service` (`services.input_api.main:app`, internal metrics/runtime only)
 3. `ingest-service` (`services.ingest_api.main:app`)
 4. `llm-service` (`services.llm_api.main:app`)
-5. `review-service` (`services.review_api.main:app`)
+5. `review-service` (`services.review_api.main:app`, internal apply/runtime only)
 6. `notification-service` (`services.notification_api.main:app`)
 7. `postgres`
 8. `redis`
@@ -113,7 +113,7 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 3. `reject` keeps canonical state unchanged
 4. unified edits (`/review/edits`) support both proposal edits and direct canonical edits
 5. canonical edit mode auto-rejects conflicting pending changes for the same `event_uid`
-6. canonical edit mode continues to write `review.decision.approved` audit events with `decision_origin=manual_correction`
+6. canonical edit mode continues to write `review.decision.approved` audit events with `decision_origin=canonical_edit`
 
 ## 6) LLM Runtime Placement
 
@@ -187,13 +187,13 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 2. `change_decision_service.py`: viewed/approve/reject state machine + canonical apply
 3. `evidence_preview_service.py`: evidence path resolution and preview
 4. `change_event_codec.py`: shared event payload parse/serialize/equivalence helpers
-5. `manual_correction_service.py`: orchestration only (`preview_manual_correction`, `apply_manual_correction`)
-6. `manual_correction_preview_flow.py`: preview response assembly and idempotent preview checks
-7. `manual_correction_apply_txn.py`: manual correction apply transaction body (lock/update/change/audit)
-8. `manual_correction_target.py`: target event resolution + user/canonical input loading
-9. `manual_correction_snapshot.py`: base snapshot and pending change reads
-10. `manual_correction_builder.py`: patch build + timezone/datetime normalization
-11. `manual_correction_audit.py`: conflicting pending rejection + audit outbox write
+5. `canonical_edit_service.py`: orchestration only (`preview_canonical_edit`, `apply_canonical_edit`)
+6. `canonical_edit_preview_flow.py`: preview response assembly and idempotent preview checks
+7. `canonical_edit_apply_txn.py`: canonical edit apply transaction body (lock/update/change/audit)
+8. `canonical_edit_target.py`: target event resolution + user/canonical input loading
+9. `canonical_edit_snapshot.py`: base snapshot and pending change reads
+10. `canonical_edit_builder.py`: patch build + timezone/datetime normalization
+11. `canonical_edit_audit.py`: conflicting pending rejection + audit outbox write
 12. `change_common.py`: cross-cutting lightweight helpers only
 
 ### review_links

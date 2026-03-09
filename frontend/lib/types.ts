@@ -180,7 +180,7 @@ export type ReviewEditApplyResponse = {
   idempotent: boolean;
   event_uid: string;
   edited_change_id: number | null;
-  correction_change_id: number | null;
+  canonical_edit_change_id: number | null;
   rejected_pending_change_ids: number[];
   event: ReviewEditEventPayload;
 };

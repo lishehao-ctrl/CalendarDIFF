@@ -24,7 +24,7 @@ def test_review_change_services_do_not_import_router_or_legacy_service() -> None
         "app/modules/review_changes/change_listing_service.py",
         "app/modules/review_changes/change_decision_service.py",
         "app/modules/review_changes/evidence_preview_service.py",
-        "app/modules/review_changes/manual_correction_service.py",
+        "app/modules/review_changes/canonical_edit_service.py",
     ]
     forbidden_tokens = [
         "app.modules.review_changes.router",

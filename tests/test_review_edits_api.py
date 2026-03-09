@@ -143,29 +143,3 @@ def test_review_edit_proposal_rejects_removed_change(client, db_session, auth_he
         },
     )
     assert response.status_code == 409
-
-
-
-def test_legacy_corrections_routes_are_removed(client, db_session, auth_headers) -> None:
-    user, _ = _create_user_and_input(db_session)
-    headers = auth_headers(client, user=user)
-    preview_response = client.post(
-        "/review/corrections/preview",
-        headers=headers,
-        json={
-            "target": {"change_id": 1},
-            "patch": {"due_at": "2026-03-08"},
-            "reason": "legacy",
-        },
-    )
-    apply_response = client.post(
-        "/review/corrections",
-        headers=headers,
-        json={
-            "target": {"change_id": 1},
-            "patch": {"due_at": "2026-03-08"},
-            "reason": "legacy",
-        },
-    )
-    assert preview_response.status_code == 404
-    assert apply_response.status_code == 404

@@ -8,10 +8,10 @@ from sqlalchemy.orm import Session
 from app.db.models.review import Change, ChangeType, Input, ReviewStatus
 from app.modules.core_ingest.evidence_snapshots import materialize_change_snapshot
 from app.modules.review_changes.change_event_codec import event_json_equivalent, parse_after_json, safe_delta_seconds
-from app.modules.review_changes.manual_correction_builder import build_candidate_after, manual_payload_from_event_json
-from app.modules.review_changes.manual_correction_errors import ManualCorrectionNotFoundError, ManualCorrectionValidationError
-from app.modules.review_changes.manual_correction_service import apply_manual_correction, preview_manual_correction
-from app.modules.review_changes.manual_correction_target import load_user_or_raise
+from app.modules.review_changes.canonical_edit_builder import build_candidate_after, edit_payload_from_event_json
+from app.modules.review_changes.canonical_edit_errors import CanonicalEditNotFoundError, CanonicalEditValidationError
+from app.modules.review_changes.canonical_edit_service import apply_canonical_edit, preview_canonical_edit
+from app.modules.review_changes.canonical_edit_target import load_user_or_raise
 
 
 class ReviewEditNotFoundError(RuntimeError):
@@ -49,7 +49,7 @@ def preview_review_edit(
         )
     if mode == "canonical":
         try:
-            payload = preview_manual_correction(
+            payload = preview_canonical_edit(
                 db=db,
                 user_id=user_id,
                 change_id=change_id,
@@ -59,9 +59,9 @@ def preview_review_edit(
                 course_label=course_label,
                 reason=reason,
             )
-        except ManualCorrectionNotFoundError as exc:
+        except CanonicalEditNotFoundError as exc:
             raise ReviewEditNotFoundError(str(exc)) from exc
-        except ManualCorrectionValidationError as exc:
+        except CanonicalEditValidationError as exc:
             raise ReviewEditValidationError(str(exc)) from exc
         return {
             "mode": "canonical",
@@ -100,7 +100,7 @@ def apply_review_edit(
         )
     if mode == "canonical":
         try:
-            payload = apply_manual_correction(
+            payload = apply_canonical_edit(
                 db=db,
                 user_id=user_id,
                 change_id=change_id,
@@ -110,9 +110,9 @@ def apply_review_edit(
                 course_label=course_label,
                 reason=reason,
             )
-        except ManualCorrectionNotFoundError as exc:
+        except CanonicalEditNotFoundError as exc:
             raise ReviewEditNotFoundError(str(exc)) from exc
-        except ManualCorrectionValidationError as exc:
+        except CanonicalEditValidationError as exc:
             raise ReviewEditValidationError(str(exc)) from exc
         return {
             "mode": "canonical",
@@ -120,7 +120,7 @@ def apply_review_edit(
             "idempotent": payload["idempotent"],
             "event_uid": payload["event_uid"],
             "edited_change_id": None,
-            "correction_change_id": payload["correction_change_id"],
+            "canonical_edit_change_id": payload["canonical_edit_change_id"],
             "rejected_pending_change_ids": payload["rejected_pending_change_ids"],
             "event": payload["event"],
         }
@@ -152,8 +152,8 @@ def _preview_proposal_edit(
         "event_uid": row.event_uid,
         "change_id": row.id,
         "proposal_change_type": row.change_type.value,
-        "base": manual_payload_from_event_json(base_snapshot),
-        "candidate_after": manual_payload_from_event_json(candidate_after),
+        "base": edit_payload_from_event_json(base_snapshot),
+        "candidate_after": edit_payload_from_event_json(candidate_after),
         "delta_seconds": _proposal_delta_seconds(row=row, candidate_after=candidate_after),
         "will_reject_pending_change_ids": [],
         "idempotent": event_json_equivalent(base_snapshot, candidate_after),
@@ -202,9 +202,9 @@ def _apply_proposal_edit(
         "idempotent": idempotent,
         "event_uid": row.event_uid,
         "edited_change_id": row.id,
-        "correction_change_id": None,
+        "canonical_edit_change_id": None,
         "rejected_pending_change_ids": [],
-        "event": manual_payload_from_event_json(candidate_after),
+        "event": edit_payload_from_event_json(candidate_after),
     }
 
 

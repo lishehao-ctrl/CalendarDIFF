@@ -141,9 +141,9 @@ def db_session(db_session_factory: sessionmaker[Session]) -> Generator[Session, 
 def client(configure_test_environment: None) -> Generator[TestClient, None, None]:
     get_settings.cache_clear()
     reset_engine()
-    from services.review_api.main import app as review_api_app
+    from services.public_api.main import app as public_api_app
 
-    with TestClient(review_api_app) as test_client:
+    with TestClient(public_api_app) as test_client:
         yield test_client
     get_settings.cache_clear()
     reset_engine()
@@ -153,9 +153,9 @@ def client(configure_test_environment: None) -> Generator[TestClient, None, None
 def input_client(configure_test_environment: None) -> Generator[TestClient, None, None]:
     get_settings.cache_clear()
     reset_engine()
-    from services.input_api.main import app as input_api_app
+    from services.public_api.main import app as public_api_app
 
-    with TestClient(input_api_app) as test_client:
+    with TestClient(public_api_app) as test_client:
         yield test_client
     get_settings.cache_clear()
     reset_engine()

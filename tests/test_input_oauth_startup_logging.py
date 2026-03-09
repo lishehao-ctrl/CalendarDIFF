@@ -4,10 +4,10 @@ from app.core.config import get_settings
 from app.core.oauth_config import build_oauth_runtime_config, log_input_oauth_startup
 
 
-def test_input_oauth_startup_logs_redirect_and_callback_routes(configure_test_environment: None, monkeypatch) -> None:
+def test_public_oauth_startup_logs_redirect_and_callback_routes(configure_test_environment: None, monkeypatch) -> None:
     del configure_test_environment
     get_settings.cache_clear()
-    from services.input_api.main import app
+    from services.public_api.main import app
 
     messages: list[str] = []
 

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.review import Change, Event, ReviewStatus
 from app.modules.review_changes.change_event_codec import event_row_to_json, parse_after_json
-from app.modules.review_changes.manual_correction_errors import ManualCorrectionNotFoundError
+from app.modules.review_changes.canonical_edit_errors import CanonicalEditNotFoundError
 
 
 def load_base_snapshot(
@@ -47,7 +47,7 @@ def load_base_snapshot(
                 "start_at_utc": parsed["start_at_utc"].isoformat(),
                 "end_at_utc": parsed["end_at_utc"].isoformat(),
             }, None
-    raise ManualCorrectionNotFoundError("target event not found in canonical or pending proposals")
+    raise CanonicalEditNotFoundError("target event not found in canonical or pending proposals")
 
 
 def list_pending_change_ids(*, db: Session, canonical_input_id: int, event_uid: str) -> list[int]:

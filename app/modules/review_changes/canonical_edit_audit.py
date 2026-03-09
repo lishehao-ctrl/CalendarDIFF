@@ -17,7 +17,7 @@ def reject_conflicting_pending_changes(
     event_uid: str,
     reviewed_at: datetime,
     reviewed_by_user_id: int,
-    correction_change_id: int,
+    canonical_edit_change_id: int,
 ) -> list[int]:
     pending_rows = db.scalars(
         select(Change)
@@ -30,18 +30,18 @@ def reject_conflicting_pending_changes(
     ).all()
     rejected_ids: list[int] = []
     for row in pending_rows:
-        if row.id == correction_change_id:
+        if row.id == canonical_edit_change_id:
             continue
         row.review_status = ReviewStatus.REJECTED
         row.reviewed_at = reviewed_at
-        row.review_note = f"superseded_by_manual_correction:{correction_change_id}"
+        row.review_note = f"superseded_by_canonical_edit:{canonical_edit_change_id}"
         row.reviewed_by_user_id = reviewed_by_user_id
         rejected_ids.append(int(row.id))
     rejected_ids.sort()
     return rejected_ids
 
 
-def emit_manual_correction_audit_event(
+def emit_canonical_edit_audit_event(
     *,
     db: Session,
     change_id: int,
@@ -60,8 +60,8 @@ def emit_manual_correction_audit_event(
             "review_status": ReviewStatus.APPROVED.value,
             "reviewed_by_user_id": reviewed_by_user_id,
             "reviewed_at": reviewed_at.isoformat(),
-            "decision_origin": "manual_correction",
-            "correction_change_id": change_id,
+            "decision_origin": "canonical_edit",
+            "canonical_edit_change_id": change_id,
             "rejected_pending_change_ids": list(rejected_pending_change_ids),
         },
     )
@@ -79,6 +79,6 @@ def emit_manual_correction_audit_event(
 
 
 __all__ = [
-    "emit_manual_correction_audit_event",
+    "emit_canonical_edit_audit_event",
     "reject_conflicting_pending_changes",
 ]

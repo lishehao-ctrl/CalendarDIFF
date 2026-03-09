@@ -28,7 +28,7 @@ flowchart LR
     E -->|"review.pending.created"| F["notification-consumer\nenqueue notifications"]
     F --> G["digest-worker\nsend digest + digest_send_log"]
     E -.->|"review.decision.approved/rejected (audit)"| H["audit stream\nnon-notification trigger"]
-    I["manual correction\nreview bypass"] -.->|"review.decision.approved\n(decision_origin=manual_correction)"| H
+    I["canonical edit\nreview bypass"] -.->|"review.decision.approved\n(decision_origin=canonical_edit)"| H
 ```
 
 ## 3) Node Notes
@@ -98,4 +98,4 @@ Use these files as implementation anchors when building detailed dataflow tables
 
 - Keep main chain order as: `sync.requested -> ingest.result.ready -> review.pending.created`.
 - Treat `review.decision.*` as an audit stream, not a notification trigger chain.
-- Keep manual correction explicitly marked as bypass behavior relative to pending-created notifications.
+- Keep canonical edit explicitly marked as bypass behavior relative to pending-created notifications.

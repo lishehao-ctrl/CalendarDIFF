@@ -146,23 +146,22 @@ X-Service-Token: <INTERNAL_SERVICE_TOKEN_OPS>
 
 For local direct-run services:
 
-1. `INPUT_API_BASE_URL=http://127.0.0.1:8201`
-2. `INGEST_API_BASE_URL=http://127.0.0.1:8202`
-3. `LLM_API_BASE_URL=http://127.0.0.1:8205`
-4. `REVIEW_API_BASE_URL=http://127.0.0.1:8203`
-5. `NOTIFY_API_BASE_URL=http://127.0.0.1:8204`
+1. `PUBLIC_API_BASE_URL=http://127.0.0.1:8200`
+2. `INPUT_SERVICE_BASE_URL=http://127.0.0.1:8201`
+3. `INGEST_SERVICE_BASE_URL=http://127.0.0.1:8202`
+4. `REVIEW_SERVICE_BASE_URL=http://127.0.0.1:8203`
+5. `NOTIFY_SERVICE_BASE_URL=http://127.0.0.1:8204`
+6. `LLM_SERVICE_BASE_URL=http://127.0.0.1:8205`
 
 For compose public host routing:
 
-1. `INPUT_API_BASE_URL=http://127.0.0.1:8001`
-2. `REVIEW_API_BASE_URL=http://127.0.0.1:8000`
+1. `PUBLIC_API_BASE_URL=http://127.0.0.1:8000`
 
 ## E2E Smoke
 
 ```bash
 python scripts/smoke_real_sources_three_rounds.py \
-  --input-api-base http://127.0.0.1:8201 \
-  --review-api-base http://127.0.0.1:8203 \
+  --public-api-base http://127.0.0.1:8200 \
   --report data/synthetic/ddlchange_160/qa/real_source_smoke_report.json
 ```
 
@@ -170,22 +169,23 @@ Closure pipeline:
 
 ```bash
 python scripts/smoke_microservice_closure.py \
-  --input-api-base http://127.0.0.1:8201 \
-  --review-api-base http://127.0.0.1:8203 \
-  --ingest-api-base http://127.0.0.1:8202 \
-  --notify-api-base http://127.0.0.1:8204 \
-  --llm-api-base http://127.0.0.1:8205
+  --public-api-base http://127.0.0.1:8200 \
+  --input-internal-base http://127.0.0.1:8201 \
+  --review-internal-base http://127.0.0.1:8203 \
+  --ingest-internal-base http://127.0.0.1:8202 \
+  --notify-internal-base http://127.0.0.1:8204 \
+  --llm-internal-base http://127.0.0.1:8205
 ```
 
 SLO check:
 
 ```bash
 python scripts/ops_slo_check.py \
-  --input-base http://127.0.0.1:8201 \
-  --ingest-base http://127.0.0.1:8202 \
-  --llm-base http://127.0.0.1:8205 \
-  --review-base http://127.0.0.1:8203 \
-  --notify-base http://127.0.0.1:8204 \
+  --input-internal-base http://127.0.0.1:8201 \
+  --ingest-internal-base http://127.0.0.1:8202 \
+  --llm-internal-base http://127.0.0.1:8205 \
+  --review-internal-base http://127.0.0.1:8203 \
+  --notify-internal-base http://127.0.0.1:8204 \
   --ops-token "${INTERNAL_SERVICE_TOKEN_OPS}" \
   --json
 ```

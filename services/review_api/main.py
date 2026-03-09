@@ -8,9 +8,7 @@ from app.modules.core_ingest.router import router as core_ingest_router
 from app.modules.core_ingest.worker import run_core_apply_tick
 from app.modules.health.router import router as health_router
 from app.modules.review_changes.metrics_router import router as review_metrics_router
-from app.modules.review_changes.router import router as review_changes_router
 from app.modules.review_links.alerts_event_consumer import run_review_link_alert_events_tick
-from app.modules.review_links.router import router as review_links_router
 from app.runtime.service_workers import TickResult, build_periodic_worker_task, coerce_int_metric
 from app.service_app import create_service_app
 
@@ -73,11 +71,9 @@ _run_review_apply_worker = build_periodic_worker_task(
 app = create_service_app(
     title="CalendarDIFF Review Service",
     version="0.1.0",
-    public_api=True,
+    public_api=False,
     routers=[
         health_router,
-        review_changes_router,
-        review_links_router,
         core_ingest_router,
         review_metrics_router,
     ],

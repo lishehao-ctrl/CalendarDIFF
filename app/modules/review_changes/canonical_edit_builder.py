@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.modules.review_changes.change_event_codec import parse_iso_datetime
-from app.modules.review_changes.manual_correction_errors import ManualCorrectionValidationError
+from app.modules.review_changes.canonical_edit_errors import CanonicalEditValidationError
 
 
 def build_candidate_after(
@@ -36,13 +36,13 @@ def build_candidate_after(
 def normalize_due_at_with_user_timezone(value: str, *, timezone_name: str) -> datetime:
     raw = value.strip() if isinstance(value, str) else ""
     if not raw:
-        raise ManualCorrectionValidationError("patch.due_at must not be blank")
+        raise CanonicalEditValidationError("patch.due_at must not be blank")
     local_tz = resolve_timezone_name(timezone_name)
     if "T" not in raw:
         try:
             due_date = date.fromisoformat(raw)
         except ValueError as exc:
-            raise ManualCorrectionValidationError("patch.due_at must be valid date or datetime") from exc
+            raise CanonicalEditValidationError("patch.due_at must be valid date or datetime") from exc
         local_due = datetime(
             due_date.year,
             due_date.month,
@@ -58,7 +58,7 @@ def normalize_due_at_with_user_timezone(value: str, *, timezone_name: str) -> da
     try:
         parsed = datetime.fromisoformat(normalized)
     except ValueError as exc:
-        raise ManualCorrectionValidationError("patch.due_at must be valid date or datetime") from exc
+        raise CanonicalEditValidationError("patch.due_at must be valid date or datetime") from exc
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=local_tz)
     return parsed.astimezone(timezone.utc)
@@ -83,20 +83,20 @@ def coalesce_patch_text(value: str | None, *, fallback: str, max_len: int) -> st
     return "Unknown"[:max_len]
 
 
-def manual_payload_from_event_json(payload: dict) -> dict:
+def edit_payload_from_event_json(payload: dict) -> dict:
     start_raw = payload.get("start_at_utc")
     end_raw = payload.get("end_at_utc")
     if not isinstance(start_raw, str) or not isinstance(end_raw, str):
-        raise ManualCorrectionValidationError("event payload missing start/end timestamps")
+        raise CanonicalEditValidationError("event payload missing start/end timestamps")
     start_at = parse_iso_datetime(start_raw)
     end_at = parse_iso_datetime(end_raw)
     if start_at is None or end_at is None:
-        raise ManualCorrectionValidationError("event payload contains invalid timestamps")
+        raise CanonicalEditValidationError("event payload contains invalid timestamps")
     uid = payload.get("uid")
     title = payload.get("title")
     course_label = payload.get("course_label")
     if not isinstance(uid, str) or not uid.strip():
-        raise ManualCorrectionValidationError("event payload missing uid")
+        raise CanonicalEditValidationError("event payload missing uid")
     return {
         "uid": uid.strip(),
         "title": str(title or "Untitled")[:512],
@@ -108,5 +108,5 @@ def manual_payload_from_event_json(payload: dict) -> dict:
 
 __all__ = [
     "build_candidate_after",
-    "manual_payload_from_event_json",
+    "edit_payload_from_event_json",
 ]

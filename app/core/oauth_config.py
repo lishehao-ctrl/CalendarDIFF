@@ -171,9 +171,9 @@ def _assert_callback_routes_do_not_require_public_api_key(routes: Iterable[APIRo
 def _resolve_oauth_public_base_url(settings: Settings) -> str:
     candidates = (
         settings.oauth_public_base_url,
+        settings.public_api_base_url,
         settings.app_base_url,
-        settings.input_api_base_url,
-        "http://localhost:8201",
+        "http://localhost:8200",
     )
     for candidate in candidates:
         if _is_non_empty(candidate):

@@ -22,8 +22,8 @@ def _as_utc(value: str) -> datetime:
 def _create_onboarded_user(db_session, *, timezone_name: str = "UTC") -> User:
     now = datetime.now(timezone.utc)
     user = User(
-        email="manual-correction@example.com",
-        notify_email="manual-correction@example.com",
+        email="canonical-edit@example.com",
+        notify_email="canonical-edit@example.com",
         timezone_name=timezone_name,
         onboarding_completed_at=now,
     )
@@ -33,8 +33,8 @@ def _create_onboarded_user(db_session, *, timezone_name: str = "UTC") -> User:
         user_id=user.id,
         source_kind=SourceKind.CALENDAR,
         provider="ics",
-        source_key=f"manual-correction-source-{user.id}",
-        display_name="Manual Correction Source",
+        source_key=f"canonical-edit-source-{user.id}",
+        display_name="Canonical Edit Source",
         is_active=True,
         poll_interval_seconds=900,
         next_poll_at=now,
@@ -57,7 +57,7 @@ def _create_canonical_input(db_session, *, user_id: int) -> Input:
     return row
 
 
-def test_manual_correction_preview_uses_date_only_as_local_2359(client, db_session, auth_headers) -> None:
+def test_canonical_edit_preview_uses_date_only_as_local_2359(client, db_session, auth_headers) -> None:
     user = _create_onboarded_user(db_session, timezone_name="America/Los_Angeles")
     canonical_input = _create_canonical_input(db_session, user_id=user.id)
     event_uid = "cse8a-hw1-deadline"
@@ -136,7 +136,7 @@ def test_manual_correction_preview_uses_date_only_as_local_2359(client, db_sessi
     assert payload["will_reject_pending_change_ids"] == sorted([target_change.id, extra_pending.id])
 
 
-def test_manual_correction_apply_updates_canonical_and_rejects_pending(client, db_session, auth_headers) -> None:
+def test_canonical_edit_apply_updates_canonical_and_rejects_pending(client, db_session, auth_headers) -> None:
     user = _create_onboarded_user(db_session, timezone_name="UTC")
     canonical_input = _create_canonical_input(db_session, user_id=user.id)
     event_uid = "math20b-hw2-deadline"
@@ -188,7 +188,7 @@ def test_manual_correction_apply_updates_canonical_and_rejects_pending(client, d
     payload = response.json()
     assert payload["applied"] is True
     assert payload["idempotent"] is False
-    assert isinstance(payload["correction_change_id"], int)
+    assert isinstance(payload["canonical_edit_change_id"], int)
     assert payload["rejected_pending_change_ids"] == [pending.id]
 
     db_session.expire_all()
@@ -202,29 +202,29 @@ def test_manual_correction_apply_updates_canonical_and_rejects_pending(client, d
     refreshed_pending = db_session.get(Change, pending.id)
     assert refreshed_pending is not None
     assert refreshed_pending.review_status == ReviewStatus.REJECTED
-    assert refreshed_pending.review_note == f"superseded_by_manual_correction:{payload['correction_change_id']}"
+    assert refreshed_pending.review_note == f"superseded_by_canonical_edit:{payload['canonical_edit_change_id']}"
 
-    correction_row = db_session.get(Change, payload["correction_change_id"])
-    assert correction_row is not None
-    assert correction_row.review_status == ReviewStatus.APPROVED
-    assert correction_row.change_type == ChangeType.DUE_CHANGED
-    assert correction_row.review_note == "manual_correction:course site update"
+    canonical_edit_row = db_session.get(Change, payload["canonical_edit_change_id"])
+    assert canonical_edit_row is not None
+    assert canonical_edit_row.review_status == ReviewStatus.APPROVED
+    assert canonical_edit_row.change_type == ChangeType.DUE_CHANGED
+    assert canonical_edit_row.review_note == "canonical_edit:course site update"
 
     outbox_row = db_session.scalar(
         select(IntegrationOutbox)
         .where(
             IntegrationOutbox.event_type == "review.decision.approved",
-            IntegrationOutbox.aggregate_id == str(payload["correction_change_id"]),
+            IntegrationOutbox.aggregate_id == str(payload["canonical_edit_change_id"]),
         )
         .order_by(IntegrationOutbox.id.desc())
         .limit(1)
     )
     assert outbox_row is not None
     assert isinstance(outbox_row.payload_json, dict)
-    assert outbox_row.payload_json.get("decision_origin") == "manual_correction"
+    assert outbox_row.payload_json.get("decision_origin") == "canonical_edit"
 
 
-def test_manual_correction_apply_can_create_canonical_event_from_pending(client, db_session, auth_headers) -> None:
+def test_canonical_edit_apply_can_create_canonical_event_from_pending(client, db_session, auth_headers) -> None:
     user = _create_onboarded_user(db_session, timezone_name="UTC")
     canonical_input = _create_canonical_input(db_session, user_id=user.id)
     event_uid = "cse100-hw3-deadline"
@@ -276,13 +276,13 @@ def test_manual_correction_apply_can_create_canonical_event_from_pending(client,
     assert event_row.title == "HW3 Deadline (Manual)"
     assert event_row.start_at_utc.isoformat() == "2026-03-10T23:59:00+00:00"
 
-    correction_row = db_session.get(Change, payload["correction_change_id"])
-    assert correction_row is not None
-    assert correction_row.change_type == ChangeType.CREATED
-    assert correction_row.review_status == ReviewStatus.APPROVED
+    canonical_edit_row = db_session.get(Change, payload["canonical_edit_change_id"])
+    assert canonical_edit_row is not None
+    assert canonical_edit_row.change_type == ChangeType.CREATED
+    assert canonical_edit_row.review_status == ReviewStatus.APPROVED
 
 
-def test_manual_correction_apply_idempotent_when_candidate_matches_canonical(client, db_session, auth_headers) -> None:
+def test_canonical_edit_apply_idempotent_when_candidate_matches_canonical(client, db_session, auth_headers) -> None:
     user = _create_onboarded_user(db_session, timezone_name="UTC")
     canonical_input = _create_canonical_input(db_session, user_id=user.id)
     event_uid = "ece45-hw4-deadline"
@@ -317,13 +317,13 @@ def test_manual_correction_apply_idempotent_when_candidate_matches_canonical(cli
     assert response.status_code == 200
     payload = response.json()
     assert payload["idempotent"] is True
-    assert payload["correction_change_id"] is None
+    assert payload["canonical_edit_change_id"] is None
     assert payload["rejected_pending_change_ids"] == []
     after_count = db_session.scalar(select(func.count(Change.id))) or 0
     assert after_count == before_count
 
 
-def test_manual_correction_rejects_mismatched_target(client, db_session, auth_headers) -> None:
+def test_canonical_edit_rejects_mismatched_target(client, db_session, auth_headers) -> None:
     user = _create_onboarded_user(db_session, timezone_name="UTC")
     canonical_input = _create_canonical_input(db_session, user_id=user.id)
     event_uid = "cse11-hw5-deadline"

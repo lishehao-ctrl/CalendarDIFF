@@ -6,10 +6,10 @@ from app.core.config import get_settings
 from app.core.oauth_config import build_oauth_runtime_config
 
 
-def test_input_oauth_routes_follow_runtime_config(configure_test_environment: None) -> None:
+def test_public_oauth_routes_follow_runtime_config(configure_test_environment: None) -> None:
     del configure_test_environment
     get_settings.cache_clear()
-    from services.input_api.main import app
+    from services.public_api.main import app
 
     runtime = build_oauth_runtime_config()
     route_map = {route.path: route for route in app.routes if isinstance(route, APIRoute)}

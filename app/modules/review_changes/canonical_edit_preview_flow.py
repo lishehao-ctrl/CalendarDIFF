@@ -3,12 +3,12 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.modules.review_changes.change_event_codec import event_json_equivalent, safe_delta_seconds
-from app.modules.review_changes.manual_correction_builder import build_candidate_after, manual_payload_from_event_json
-from app.modules.review_changes.manual_correction_snapshot import list_pending_change_ids, load_base_snapshot
-from app.modules.review_changes.manual_correction_target import ensure_canonical_input_for_user, load_user_or_raise, resolve_target_event_uid
+from app.modules.review_changes.canonical_edit_builder import build_candidate_after, edit_payload_from_event_json
+from app.modules.review_changes.canonical_edit_snapshot import list_pending_change_ids, load_base_snapshot
+from app.modules.review_changes.canonical_edit_target import ensure_canonical_input_for_user, load_user_or_raise, resolve_target_event_uid
 
 
-def build_manual_correction_preview(
+def build_canonical_edit_preview(
     db: Session,
     *,
     user_id: int,
@@ -50,12 +50,12 @@ def build_manual_correction_preview(
     delta_seconds = safe_delta_seconds(before_json=base_snapshot, after_json=candidate_after)
     return {
         "event_uid": resolved_event_uid,
-        "base": manual_payload_from_event_json(base_snapshot),
-        "candidate_after": manual_payload_from_event_json(candidate_after),
+        "base": edit_payload_from_event_json(base_snapshot),
+        "candidate_after": edit_payload_from_event_json(candidate_after),
         "delta_seconds": delta_seconds,
         "will_reject_pending_change_ids": will_reject_pending_change_ids,
         "idempotent": idempotent,
     }
 
 
-__all__ = ["build_manual_correction_preview"]
+__all__ = ["build_canonical_edit_preview"]

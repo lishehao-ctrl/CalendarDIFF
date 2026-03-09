@@ -22,10 +22,10 @@ Core flow:
 ## Runtime Topology (Public Gateway + 5 Services + PostgreSQL + Redis)
 
 1. `public-service` (`services.public_api.main:app`)
-2. `input-service` (`services.input_api.main:app`)
+2. `input-service` (`services.input_api.main:app`, internal metrics/runtime only)
 3. `ingest-service` (`services.ingest_api.main:app`)
 4. `llm-service` (`services.llm_api.main:app`)
-5. `review-service` (`services.review_api.main:app`)
+5. `review-service` (`services.review_api.main:app`, internal apply/runtime only)
 6. `notification-service` (`services.notification_api.main:app`)
 7. `postgres`
 8. `redis`
@@ -149,8 +149,8 @@ OAuth runtime config (single source of truth for route/base/redirect/key source)
 
 ```env
 # Priority for OAuth public base URL:
-# OAUTH_PUBLIC_BASE_URL > APP_BASE_URL > INPUT_API_BASE_URL > http://localhost:8201
-OAUTH_PUBLIC_BASE_URL=http://localhost:8201
+# OAUTH_PUBLIC_BASE_URL > PUBLIC_API_BASE_URL > APP_BASE_URL > http://localhost:8200
+OAUTH_PUBLIC_BASE_URL=http://localhost:8200
 OAUTH_ROUTE_PREFIX=
 OAUTH_SESSION_ROUTE_TEMPLATE=/sources/{source_id}/oauth-sessions
 OAUTH_CALLBACK_ROUTE_TEMPLATE=/oauth/callbacks/{provider}
@@ -236,8 +236,7 @@ curl -s http://localhost:8205/health
 
 ```bash
 python scripts/smoke_real_sources_three_rounds.py \
-  --input-api-base http://127.0.0.1:8201 \
-  --review-api-base http://127.0.0.1:8203 \
+  --public-api-base http://127.0.0.1:8200 \
   --report data/synthetic/ddlchange_160/qa/real_source_smoke_report.json
 ```
 
@@ -249,11 +248,10 @@ Use online LLM + local JSONL notification sink. This flow does not require Gmail
 NOTIFY_SINK_MODE=jsonl \
 NOTIFY_JSONL_PATH=data/smoke/notify_sink.jsonl \
 python scripts/smoke_semester_demo.py \
-  --input-api-base http://127.0.0.1:8201 \
-  --review-api-base http://127.0.0.1:8203 \
-  --ingest-api-base http://127.0.0.1:8202 \
-  --notify-api-base http://127.0.0.1:8204 \
-  --llm-api-base http://127.0.0.1:8205 \
+  --public-api-base http://127.0.0.1:8200 \
+  --ingest-internal-base http://127.0.0.1:8202 \
+  --notify-internal-base http://127.0.0.1:8204 \
+  --llm-internal-base http://127.0.0.1:8205 \
   --ops-token "${INTERNAL_SERVICE_TOKEN_OPS}" \
   --notification-jsonl data/smoke/notify_sink.jsonl \
   --report data/synthetic/semester_demo/qa/semester_demo_report.json
@@ -279,22 +277,23 @@ Full closure check:
 
 ```bash
 python scripts/smoke_microservice_closure.py \
-  --input-api-base http://127.0.0.1:8201 \
-  --review-api-base http://127.0.0.1:8203 \
-  --ingest-api-base http://127.0.0.1:8202 \
-  --notify-api-base http://127.0.0.1:8204 \
-  --llm-api-base http://127.0.0.1:8205
+  --public-api-base http://127.0.0.1:8200 \
+  --input-internal-base http://127.0.0.1:8201 \
+  --review-internal-base http://127.0.0.1:8203 \
+  --ingest-internal-base http://127.0.0.1:8202 \
+  --notify-internal-base http://127.0.0.1:8204 \
+  --llm-internal-base http://127.0.0.1:8205
 ```
 
 SLO check:
 
 ```bash
 python scripts/ops_slo_check.py \
-  --input-base http://127.0.0.1:8201 \
-  --ingest-base http://127.0.0.1:8202 \
-  --review-base http://127.0.0.1:8203 \
-  --notify-base http://127.0.0.1:8204 \
-  --llm-base http://127.0.0.1:8205 \
+  --input-internal-base http://127.0.0.1:8201 \
+  --ingest-internal-base http://127.0.0.1:8202 \
+  --review-internal-base http://127.0.0.1:8203 \
+  --notify-internal-base http://127.0.0.1:8204 \
+  --llm-internal-base http://127.0.0.1:8205 \
   --ops-token "${INTERNAL_SERVICE_TOKEN_OPS}" \
   --json
 ```
@@ -328,12 +327,12 @@ Detailed snapshot:
 1. `docs/api_surface_current.md`
 2. `docs/event_contracts.md`
 
-## Manual Due Correction
+## Canonical Edit
 
 When the parser extracts an incorrect due time, review-service supports direct canonical correction APIs:
 
-1. `POST /review/corrections/preview`
-2. `POST /review/corrections`
+1. `POST /review/edits/preview`
+2. `POST /review/edits` (`mode=canonical`)
 
 Behavior:
 
@@ -341,7 +340,7 @@ Behavior:
 2. `patch.due_at` accepts date-only, local datetime, or timezone-aware datetime
 3. date-only is normalized to `23:59` in `users.timezone_name` then converted to UTC
 4. conflicting pending changes for the same `event_uid` are auto-rejected
-5. correction writes an approved audit change and emits `review.decision.approved` with `decision_origin=manual_correction`
+5. canonical edit writes an approved audit change and emits `review.decision.approved` with `decision_origin=canonical_edit`
 
 ## Canonical vs Enrichment (MVP)
 

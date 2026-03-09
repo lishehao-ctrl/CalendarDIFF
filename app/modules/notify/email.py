@@ -6,6 +6,7 @@ from datetime import timedelta
 from email.message import EmailMessage
 
 from app.core.config import get_settings
+from app.core.oauth_config import resolve_frontend_app_base_url
 from app.modules.notify.interface import ChangeDigestItem, Notifier, SendResult
 
 
@@ -47,12 +48,10 @@ def _build_email_body(input_id: int, input_label: str, items: list[ChangeDigestI
     for item in items:
         grouped[item.course_label].append(item)
 
-    if settings.review_api_base_url:
-        base_url = settings.review_api_base_url.rstrip("/")
-    elif settings.app_base_url:
-        base_url = settings.app_base_url.rstrip("/")
-    else:
-        base_url = ""
+    try:
+        base_url = resolve_frontend_app_base_url(settings=settings)
+    except Exception:
+        base_url = settings.app_base_url.rstrip("/") if settings.app_base_url else ""
     link_path = f"/review/changes?review_status=pending&source_id={input_id}"
     link = f"{base_url}{link_path}" if base_url else link_path
 

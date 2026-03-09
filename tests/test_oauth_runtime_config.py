@@ -14,7 +14,7 @@ from app.core.oauth_config import (
 def test_oauth_runtime_defaults_fallback_and_deterministic(monkeypatch) -> None:
     monkeypatch.setenv("OAUTH_PUBLIC_BASE_URL", "")
     monkeypatch.setenv("APP_BASE_URL", "")
-    monkeypatch.setenv("INPUT_API_BASE_URL", "")
+    monkeypatch.setenv("PUBLIC_API_BASE_URL", "")
     monkeypatch.delenv("OAUTH_ROUTE_PREFIX", raising=False)
     monkeypatch.delenv("OAUTH_TOKEN_ENCRYPTION_KEY", raising=False)
     get_settings.cache_clear()
@@ -23,16 +23,16 @@ def test_oauth_runtime_defaults_fallback_and_deterministic(monkeypatch) -> None:
     runtime_b = build_oauth_runtime_config()
 
     assert runtime_a == runtime_b
-    assert runtime_a.public_base_url == "http://localhost:8201"
+    assert runtime_a.public_base_url == "http://localhost:8200"
     assert runtime_a.oauth_session_route_path == "/sources/{source_id}/oauth-sessions"
     assert runtime_a.callback_route_path == "/oauth/callbacks/{provider}"
-    assert runtime_a.gmail_redirect_uri == "http://localhost:8201/oauth/callbacks/gmail"
+    assert runtime_a.gmail_redirect_uri == "http://localhost:8200/oauth/callbacks/gmail"
     assert runtime_a.token_encryption_key_source == "APP_SECRET_KEY"
     get_settings.cache_clear()
 
 
 def test_oauth_runtime_base_url_priority_and_normalization(monkeypatch) -> None:
-    monkeypatch.setenv("INPUT_API_BASE_URL", "http://127.0.0.1:8201/")
+    monkeypatch.setenv("PUBLIC_API_BASE_URL", "http://127.0.0.1:8200/")
     monkeypatch.setenv("APP_BASE_URL", "http://localhost:9000/app/")
     monkeypatch.setenv("OAUTH_PUBLIC_BASE_URL", "https://oauth.example.com/root/")
     get_settings.cache_clear()

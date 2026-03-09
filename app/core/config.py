@@ -81,10 +81,7 @@ class Settings(BaseSettings):
         default=None, validation_alias=AliasChoices("DEFAULT_NOTIFY_EMAIL", "SMTP_TO")
     )
     app_base_url: str | None = None
-    input_api_base_url: str | None = None
-    review_api_base_url: str | None = None
-    ingest_api_base_url: str | None = None
-    notify_api_base_url: str | None = None
+    public_api_base_url: str | None = None
 
     digest_fixed_timezone: str = "America/Los_Angeles"
     digest_fixed_times: str = "09:00,18:00"

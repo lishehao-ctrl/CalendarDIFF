@@ -143,55 +143,6 @@ class EvidencePreviewResponse(BaseModel):
     preview_text: str | None = None
 
 
-class ManualCorrectionTargetRequest(BaseModel):
-    change_id: int | None = Field(default=None, ge=1)
-    event_uid: str | None = Field(default=None, max_length=255)
-
-    model_config = {"extra": "forbid"}
-
-
-class ManualCorrectionPatchRequest(BaseModel):
-    due_at: str = Field(min_length=1, max_length=128)
-    title: str | None = Field(default=None, max_length=512)
-    course_label: str | None = Field(default=None, max_length=64)
-
-    model_config = {"extra": "forbid"}
-
-
-class ManualCorrectionRequest(BaseModel):
-    target: ManualCorrectionTargetRequest
-    patch: ManualCorrectionPatchRequest
-    reason: str | None = Field(default=None, max_length=512)
-
-    model_config = {"extra": "forbid"}
-
-
-class ManualCorrectionEventPayload(BaseModel):
-    uid: str
-    title: str
-    course_label: str
-    start_at_utc: datetime
-    end_at_utc: datetime
-
-
-class ManualCorrectionPreviewResponse(BaseModel):
-    event_uid: str
-    base: ManualCorrectionEventPayload
-    candidate_after: ManualCorrectionEventPayload
-    delta_seconds: int | None
-    will_reject_pending_change_ids: list[int]
-    idempotent: bool
-
-
-class ManualCorrectionApplyResponse(BaseModel):
-    applied: bool
-    idempotent: bool
-    correction_change_id: int | None
-    event_uid: str
-    rejected_pending_change_ids: list[int]
-    event: ManualCorrectionEventPayload
-
-
 class ReviewEditTargetRequest(BaseModel):
     change_id: int | None = Field(default=None, ge=1)
     event_uid: str | None = Field(default=None, max_length=255)
@@ -242,6 +193,6 @@ class ReviewEditApplyResponse(BaseModel):
     idempotent: bool
     event_uid: str
     edited_change_id: int | None = None
-    correction_change_id: int | None = None
+    canonical_edit_change_id: int | None = None
     rejected_pending_change_ids: list[int]
     event: ReviewEditEventPayload

@@ -14,29 +14,29 @@ import httpx
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run minimal microservice SLO checks using internal metrics endpoints.")
     parser.add_argument(
-        "--input-base",
-        default=os.getenv("INPUT_API_BASE_URL", "http://127.0.0.1:8201"),
-        help="Input service base URL.",
+        "--input-internal-base",
+        default=os.getenv("INPUT_SERVICE_BASE_URL", "http://127.0.0.1:8201"),
+        help="Input-service internal base URL.",
     )
     parser.add_argument(
-        "--ingest-base",
-        default=os.getenv("INGEST_API_BASE_URL", "http://127.0.0.1:8202"),
-        help="Ingest service base URL.",
+        "--ingest-internal-base",
+        default=os.getenv("INGEST_SERVICE_BASE_URL", "http://127.0.0.1:8202"),
+        help="Ingest-service internal base URL.",
     )
     parser.add_argument(
-        "--review-base",
-        default=os.getenv("REVIEW_API_BASE_URL", "http://127.0.0.1:8200"),
-        help="Review service base URL.",
+        "--review-internal-base",
+        default=os.getenv("REVIEW_SERVICE_BASE_URL", "http://127.0.0.1:8203"),
+        help="Review-service internal base URL.",
     )
     parser.add_argument(
-        "--notify-base",
-        default=os.getenv("NOTIFY_API_BASE_URL", "http://127.0.0.1:8204"),
-        help="Notification service base URL.",
+        "--notify-internal-base",
+        default=os.getenv("NOTIFY_SERVICE_BASE_URL", "http://127.0.0.1:8204"),
+        help="Notification-service internal base URL.",
     )
     parser.add_argument(
-        "--llm-base",
-        default=os.getenv("LLM_API_BASE_URL", "http://127.0.0.1:8205"),
-        help="LLM service base URL.",
+        "--llm-internal-base",
+        default=os.getenv("LLM_SERVICE_BASE_URL", "http://127.0.0.1:8205"),
+        help="LLM-service internal base URL.",
     )
     parser.add_argument(
         "--ops-token",
@@ -112,11 +112,11 @@ def main() -> int:
     }
 
     try:
-        input_metrics = _fetch_metrics(args.input_base, token=args.ops_token, timeout_seconds=args.timeout_seconds)
-        ingest_metrics = _fetch_metrics(args.ingest_base, token=args.ops_token, timeout_seconds=args.timeout_seconds)
-        review_metrics = _fetch_metrics(args.review_base, token=args.ops_token, timeout_seconds=args.timeout_seconds)
-        notify_metrics = _fetch_metrics(args.notify_base, token=args.ops_token, timeout_seconds=args.timeout_seconds)
-        llm_metrics = _fetch_metrics(args.llm_base, token=args.ops_token, timeout_seconds=args.timeout_seconds)
+        input_metrics = _fetch_metrics(args.input_internal_base, token=args.ops_token, timeout_seconds=args.timeout_seconds)
+        ingest_metrics = _fetch_metrics(args.ingest_internal_base, token=args.ops_token, timeout_seconds=args.timeout_seconds)
+        review_metrics = _fetch_metrics(args.review_internal_base, token=args.ops_token, timeout_seconds=args.timeout_seconds)
+        notify_metrics = _fetch_metrics(args.notify_internal_base, token=args.ops_token, timeout_seconds=args.timeout_seconds)
+        llm_metrics = _fetch_metrics(args.llm_internal_base, token=args.ops_token, timeout_seconds=args.timeout_seconds)
         output["services"] = {
             "input": input_metrics,
             "ingest": ingest_metrics,

@@ -2551,7 +2551,7 @@
             "title": "Applied",
             "type": "boolean"
           },
-          "correction_change_id": {
+          "canonical_edit_change_id": {
             "anyOf": [
               {
                 "type": "integer"
@@ -2560,7 +2560,7 @@
                 "type": "null"
               }
             ],
-            "title": "Correction Change Id"
+            "title": "Canonical Edit Change Id"
           },
           "edited_change_id": {
             "anyOf": [

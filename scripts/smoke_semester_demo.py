@@ -35,11 +35,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run 3-semester high-fidelity ICS/Gmail demo with mixed review decisions and JSONL notify sink."
     )
-    parser.add_argument("--input-api-base", required=True, help="Input-service API base URL.")
-    parser.add_argument("--review-api-base", required=True, help="Review-service API base URL.")
-    parser.add_argument("--ingest-api-base", default=None, help="Optional ingest-service API base URL.")
-    parser.add_argument("--notify-api-base", default=None, help="Notification-service API base URL.")
-    parser.add_argument("--llm-api-base", default=None, help="Optional llm-service API base URL.")
+    parser.add_argument("--public-api-base", required=True, help="Public-service API base URL.")
+    parser.add_argument("--ingest-internal-base", default=None, help="Optional ingest-service internal API base URL.")
+    parser.add_argument("--notify-internal-base", default=None, help="Notification-service internal API base URL.")
+    parser.add_argument("--llm-internal-base", default=None, help="Optional llm-service internal API base URL.")
     parser.add_argument("--api-key", default=os.getenv("APP_API_KEY", ""), help="Public API key.")
     parser.add_argument(
         "--ops-token",
@@ -278,10 +277,9 @@ def main() -> int:
         "llm_mode": "online",
         "llm_model": None,
         "llm_base_url_hash": None,
-        "input_api_base": args.input_api_base,
-        "review_api_base": args.review_api_base,
-        "notify_api_base": args.notify_api_base,
-        "ingest_api_base": args.ingest_api_base,
+        "public_api_base": args.public_api_base,
+        "notify_internal_base": args.notify_internal_base,
+        "ingest_internal_base": args.ingest_internal_base,
         "seed": args.seed,
         "review_policy": args.review_policy,
         "scenario_manifest_path": str(report_path.with_name(f"{run_id}_scenario_manifest.json")),
@@ -305,6 +303,7 @@ def main() -> int:
     }
 
     fake_process: subprocess.Popen[str] | None = None
+    public_client: httpx.Client | None = None
     fake_client: httpx.Client | None = None
     input_client: httpx.Client | None = None
     review_client: httpx.Client | None = None
@@ -319,8 +318,8 @@ def main() -> int:
             raise DemoFailure("missing APP_API_KEY / --api-key")
         if not args.ops_token:
             raise DemoFailure("missing INTERNAL_SERVICE_TOKEN_OPS / --ops-token")
-        if not args.notify_api_base:
-            raise DemoFailure("notify_api_base is required for semester demo notification flush")
+        if not args.notify_internal_base:
+            raise DemoFailure("notify_internal_base is required for semester demo notification flush")
 
         manifest = build_scenario_manifest(
             semesters=args.semesters,
@@ -356,16 +355,17 @@ def main() -> int:
         ]
 
         api_headers = {"X-API-Key": args.api_key}
-        input_client = httpx.Client(base_url=args.input_api_base.rstrip("/"), headers=api_headers)
-        review_client = httpx.Client(base_url=args.review_api_base.rstrip("/"), headers=api_headers)
+        public_client = httpx.Client(base_url=args.public_api_base.rstrip("/"), headers=api_headers)
+        input_client = public_client
+        review_client = public_client
 
         _check_health(input_client, "/health")
         _check_health(review_client, "/health")
-        if args.ingest_api_base:
-            _check_external_health(args.ingest_api_base)
-        _check_external_health(args.notify_api_base)
-        if args.llm_api_base:
-            _check_external_health(args.llm_api_base)
+        if args.ingest_internal_base:
+            _check_external_health(args.ingest_internal_base)
+        _check_external_health(args.notify_internal_base)
+        if args.llm_internal_base:
+            _check_external_health(args.llm_internal_base)
 
         _ensure_authenticated_session(input_client, notify_email=args.notify_email, password=args.auth_password)
         _request_json(input_client, "GET", "/onboarding/status")
@@ -527,7 +527,7 @@ def main() -> int:
             semester_report["review_totals"]["pending"] += len(kept_pending_ids)
 
             flush_payload = _flush_notifications(
-                notify_api_base=args.notify_api_base,
+                notify_internal_base=args.notify_internal_base,
                 ops_token=args.ops_token,
                 run_id=run_id,
                 semester=pointer.semester,
@@ -592,10 +592,8 @@ def main() -> int:
                 except Exception as exc:
                     report["fatal_errors"].append(f"source_cleanup_failed source_id={source_id}: {exc}")
 
-        if input_client is not None:
-            input_client.close()
-        if review_client is not None:
-            review_client.close()
+        if public_client is not None:
+            public_client.close()
         if fake_client is not None:
             fake_client.close()
         if fake_process is not None:
@@ -707,14 +705,14 @@ def _apply_mixed_review_policy(
 
 def _flush_notifications(
     *,
-    notify_api_base: str,
+    notify_internal_base: str,
     ops_token: str,
     run_id: str,
     semester: int,
     batch: int,
 ) -> dict[str, Any]:
     headers = {"X-Service-Name": "ops", "X-Service-Token": ops_token}
-    with httpx.Client(base_url=notify_api_base.rstrip("/"), headers=headers) as client:
+    with httpx.Client(base_url=notify_internal_base.rstrip("/"), headers=headers) as client:
         return _request_json(
             client,
             "POST",

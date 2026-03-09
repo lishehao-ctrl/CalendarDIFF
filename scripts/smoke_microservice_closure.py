@@ -14,13 +14,14 @@ import httpx
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run microservice closure checks: health -> strict smoke -> cleanup -> retention dry-run -> slo check."
+        description="Run microservice closure checks: public health -> internal health -> strict smoke -> cleanup -> retention dry-run -> slo check."
     )
-    parser.add_argument("--input-api-base", default=os.getenv("INPUT_API_BASE_URL", "http://127.0.0.1:8201"))
-    parser.add_argument("--review-api-base", default=os.getenv("REVIEW_API_BASE_URL", "http://127.0.0.1:8200"))
-    parser.add_argument("--ingest-api-base", default=os.getenv("INGEST_API_BASE_URL", "http://127.0.0.1:8202"))
-    parser.add_argument("--notify-api-base", default=os.getenv("NOTIFY_API_BASE_URL", "http://127.0.0.1:8204"))
-    parser.add_argument("--llm-api-base", default=os.getenv("LLM_API_BASE_URL", "http://127.0.0.1:8205"))
+    parser.add_argument("--public-api-base", default=os.getenv("PUBLIC_API_BASE_URL", "http://127.0.0.1:8200"))
+    parser.add_argument("--input-internal-base", default=os.getenv("INPUT_SERVICE_BASE_URL", "http://127.0.0.1:8201"))
+    parser.add_argument("--review-internal-base", default=os.getenv("REVIEW_SERVICE_BASE_URL", "http://127.0.0.1:8203"))
+    parser.add_argument("--ingest-internal-base", default=os.getenv("INGEST_SERVICE_BASE_URL", "http://127.0.0.1:8202"))
+    parser.add_argument("--notify-internal-base", default=os.getenv("NOTIFY_SERVICE_BASE_URL", "http://127.0.0.1:8204"))
+    parser.add_argument("--llm-internal-base", default=os.getenv("LLM_SERVICE_BASE_URL", "http://127.0.0.1:8205"))
     parser.add_argument("--api-key", default=os.getenv("APP_API_KEY", ""))
     parser.add_argument("--ops-token", default=os.getenv("INTERNAL_SERVICE_TOKEN_OPS", ""))
     parser.add_argument(
@@ -73,31 +74,34 @@ def main() -> int:
     result: dict[str, Any] = {"passed": False, "steps": [], "errors": []}
 
     try:
-        _check_health(args.input_api_base, args.timeout_seconds)
-        result["steps"].append({"name": "health_input", "passed": True})
+        _check_health(args.public_api_base, args.timeout_seconds)
+        result["steps"].append({"name": "health_public", "passed": True})
 
-        _check_health(args.review_api_base, args.timeout_seconds)
-        result["steps"].append({"name": "health_review", "passed": True})
+        _check_health(args.input_internal_base, args.timeout_seconds)
+        result["steps"].append({"name": "health_input_internal", "passed": True})
 
-        if args.ingest_api_base:
-            _check_health(args.ingest_api_base, args.timeout_seconds)
-            result["steps"].append({"name": "health_ingest", "passed": True})
-        if args.notify_api_base:
-            _check_health(args.notify_api_base, args.timeout_seconds)
-            result["steps"].append({"name": "health_notify", "passed": True})
-        if args.llm_api_base:
-            _check_health(args.llm_api_base, args.timeout_seconds)
-            result["steps"].append({"name": "health_llm", "passed": True})
+        _check_health(args.review_internal_base, args.timeout_seconds)
+        result["steps"].append({"name": "health_review_internal", "passed": True})
+
+        if args.ingest_internal_base:
+            _check_health(args.ingest_internal_base, args.timeout_seconds)
+            result["steps"].append({"name": "health_ingest_internal", "passed": True})
+        if args.notify_internal_base:
+            _check_health(args.notify_internal_base, args.timeout_seconds)
+            result["steps"].append({"name": "health_notify_internal", "passed": True})
+        if args.llm_internal_base:
+            _check_health(args.llm_internal_base, args.timeout_seconds)
+            result["steps"].append({"name": "health_llm_internal", "passed": True})
 
         if not args.api_key:
             raise RuntimeError("APP_API_KEY (or --api-key) is required")
         if not args.ops_token:
             raise RuntimeError("INTERNAL_SERVICE_TOKEN_OPS (or --ops-token) is required")
-        if not args.llm_api_base:
-            raise RuntimeError("LLM_API_BASE_URL (or --llm-api-base) is required")
+        if not args.llm_internal_base:
+            raise RuntimeError("LLM_SERVICE_BASE_URL (or --llm-internal-base) is required")
 
         llm_metrics_pre = _check_internal_metrics(
-            args.llm_api_base,
+            args.llm_internal_base,
             ops_token=args.ops_token,
             timeout_seconds=args.timeout_seconds,
         )
@@ -112,19 +116,17 @@ def main() -> int:
         smoke_cmd = [
             sys.executable,
             "scripts/smoke_real_sources_three_rounds.py",
-            "--input-api-base",
-            args.input_api_base,
-            "--review-api-base",
-            args.review_api_base,
+            "--public-api-base",
+            args.public_api_base,
             "--api-key",
             args.api_key,
             "--report",
             args.report,
         ]
-        if args.ingest_api_base:
-            smoke_cmd += ["--ingest-api-base", args.ingest_api_base]
-        if args.notify_api_base:
-            smoke_cmd += ["--notify-api-base", args.notify_api_base]
+        if args.ingest_internal_base:
+            smoke_cmd += ["--ingest-internal-base", args.ingest_internal_base]
+        if args.notify_internal_base:
+            smoke_cmd += ["--notify-internal-base", args.notify_internal_base]
 
         smoke = _run(smoke_cmd)
         if smoke.returncode != 0:
@@ -159,16 +161,16 @@ def main() -> int:
             [
                 sys.executable,
                 "scripts/ops_slo_check.py",
-                "--input-base",
-                args.input_api_base,
-                "--ingest-base",
-                args.ingest_api_base,
-                "--review-base",
-                args.review_api_base,
-                "--notify-base",
-                args.notify_api_base,
-                "--llm-base",
-                args.llm_api_base,
+                "--input-internal-base",
+                args.input_internal_base,
+                "--ingest-internal-base",
+                args.ingest_internal_base,
+                "--review-internal-base",
+                args.review_internal_base,
+                "--notify-internal-base",
+                args.notify_internal_base,
+                "--llm-internal-base",
+                args.llm_internal_base,
                 "--ops-token",
                 args.ops_token,
                 "--json",
@@ -179,7 +181,7 @@ def main() -> int:
         result["steps"].append({"name": "slo_check", "passed": True, "detail": slo.stdout.strip()[:300]})
 
         llm_metrics_post = _check_internal_metrics(
-            args.llm_api_base,
+            args.llm_internal_base,
             ops_token=args.ops_token,
             timeout_seconds=args.timeout_seconds,
         )
