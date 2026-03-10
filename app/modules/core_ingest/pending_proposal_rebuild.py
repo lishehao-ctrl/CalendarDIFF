@@ -57,7 +57,7 @@ def rebuild_pending_change_proposals(
                     SourceEventObservation.user_id == source.user_id,
                     SourceEventObservation.merge_key == merge_key,
                     SourceEventObservation.is_active.is_(True),
-                )
+                ).order_by(SourceEventObservation.observed_at.asc(), SourceEventObservation.id.asc())
             ).all()
         )
         existing_event = db.scalar(
@@ -118,6 +118,7 @@ def compute_pending_proposal_decision(
                 "source_kind": row.source_kind.value,
                 "event_payload": row.event_payload,
                 "observed_at": row.observed_at,
+                "observation_id": int(row.id),
             }
             for row in observations
         ]

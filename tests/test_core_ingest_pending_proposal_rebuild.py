@@ -50,6 +50,7 @@ def _add_observation(
     start_at: datetime,
     end_at: datetime,
     title: str = "Exam",
+    course_label: str = "CSE 100",
 ) -> SourceEventObservation:
     row = SourceEventObservation(
         user_id=source.user_id,
@@ -64,7 +65,7 @@ def _add_observation(
                 "source_dtend_utc": end_at.isoformat(),
                 "source_title": title,
             },
-            "course_label": "CSE 100",
+            "course_label": course_label,
             "confidence": 0.95,
         },
         event_hash="h" * 64,
@@ -85,11 +86,12 @@ def _add_event(
     start_at: datetime,
     end_at: datetime,
     title: str = "Exam",
+    course_label: str = "CSE 100",
 ) -> Event:
     row = Event(
         input_id=canonical_input.id,
         uid=uid,
-        course_label="CSE 100",
+        course_label=course_label,
         title=title,
         start_at_utc=start_at,
         end_at_utc=end_at,
@@ -299,3 +301,51 @@ def test_rebuild_rejects_pending_when_payload_matches_canonical_event(db_session
     assert row is not None
     assert row.review_status == ReviewStatus.REJECTED
     assert row.review_note == "proposal_already_matches_canonical"
+
+
+def test_rebuild_creates_pending_when_only_course_label_changes(db_session) -> None:
+    source, canonical_input = _seed_source_and_canonical_input(db_session)
+    start_at = datetime(2026, 3, 5, 10, 0, tzinfo=timezone.utc)
+    _add_event(
+        db_session,
+        canonical_input=canonical_input,
+        uid="merge-course-change",
+        start_at=start_at,
+        end_at=start_at + timedelta(hours=1),
+        title="Same Event",
+        course_label="CSE 100",
+    )
+    _add_observation(
+        db_session,
+        source=source,
+        merge_key="merge-course-change",
+        external_event_id="obs-course-change-1",
+        start_at=start_at,
+        end_at=start_at + timedelta(hours=1),
+        title="Same Event",
+        course_label="CSE 101",
+    )
+    db_session.commit()
+
+    created_count, pending_event_uids = rebuild_pending_change_proposals(
+        db=db_session,
+        source=source,
+        canonical_input=canonical_input,
+        affected_merge_keys={"merge-course-change"},
+        applied_at=datetime.now(timezone.utc),
+    )
+    db_session.commit()
+
+    assert created_count == 1
+    assert pending_event_uids == {"merge-course-change"}
+    row = db_session.scalar(
+        select(Change).where(
+            Change.input_id == canonical_input.id,
+            Change.event_uid == "merge-course-change",
+            Change.review_status == ReviewStatus.PENDING,
+        )
+    )
+    assert row is not None
+    assert row.change_type == ChangeType.DUE_CHANGED
+    assert isinstance(row.after_json, dict)
+    assert row.after_json.get("course_label") == "CSE 101"

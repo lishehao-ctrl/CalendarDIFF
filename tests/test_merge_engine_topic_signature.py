@@ -79,3 +79,21 @@ def test_choose_primary_observation_prefers_newer_observation() -> None:
     }
     chosen = choose_primary_observation([older, newer])
     assert chosen is newer
+
+
+def test_choose_primary_observation_prefers_higher_id_on_exact_tie() -> None:
+    timestamp = datetime(2026, 3, 11, 21, 0, tzinfo=timezone.utc)
+    first = {
+        "source_kind": "calendar",
+        "observed_at": timestamp,
+        "observation_id": 10,
+        "event_payload": {"confidence": 0.9, "title": "first"},
+    }
+    second = {
+        "source_kind": "calendar",
+        "observed_at": timestamp,
+        "observation_id": 11,
+        "event_payload": {"confidence": 0.9, "title": "second"},
+    }
+    chosen = choose_primary_observation([first, second])
+    assert chosen is second

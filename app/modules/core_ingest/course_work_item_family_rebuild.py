@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.ingestion import ConnectorResultStatus
 from app.db.models.input import InputSource, SourceKind
-from app.db.models.review import Change, Event, EventEntity, EventEntityLink, EventLinkAlert, EventLinkBlock, EventLinkCandidate, Input, InputType, SourceEventObservation
+from app.db.models.review import Change, Event, EventEntity, EventEntityLink, EventLinkAlert, EventLinkBlock, EventLinkCandidate, Input, InputType, ReviewStatus, SourceEventObservation
 from app.db.models.shared import User
 from app.modules.core_ingest.apply_orchestrator import apply_records, ensure_canonical_input_for_user
 from app.modules.core_ingest.entity_profile import course_display_name, entity_best_display_name
@@ -160,13 +160,14 @@ def _clear_course_derived_state(
             entity_uids_to_remove.add(row.uid)
             db.delete(row)
 
-    pending_changes = list(
+    change_rows = list(
         db.scalars(select(Change).where(Change.input_id == canonical_input.id)).all()
     )
-    for row in pending_changes:
+    for row in change_rows:
         if row.event_uid in entity_uids_to_remove or _change_matches_course(row, normalized_course_key):
             entity_uids_to_remove.add(row.event_uid)
-            db.delete(row)
+            if row.review_status == ReviewStatus.PENDING:
+                db.delete(row)
 
     entity_links = list(
         db.scalars(select(EventEntityLink).where(EventEntityLink.user_id == user_id)).all()

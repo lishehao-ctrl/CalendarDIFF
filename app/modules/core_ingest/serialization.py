@@ -73,6 +73,7 @@ def event_row_to_json(event: Event) -> dict:
 def event_json_equivalent(before_json: dict, after_json: dict) -> bool:
     return (
         str(before_json.get("title") or "") == str(after_json.get("title") or "")
+        and str(before_json.get("course_label") or "") == str(after_json.get("course_label") or "")
         and str(before_json.get("start_at_utc") or "") == str(after_json.get("start_at_utc") or "")
         and str(before_json.get("end_at_utc") or "") == str(after_json.get("end_at_utc") or "")
     )

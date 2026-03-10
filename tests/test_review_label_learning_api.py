@@ -224,3 +224,63 @@ def test_label_learning_apply_rejects_missing_family_id(client, db_session, auth
     )
     assert response.status_code == 422
     assert "family_id is required" in response.json()["detail"]
+
+
+def test_label_learning_rebuild_preserves_reviewed_history_for_target_course(client, db_session, auth_headers) -> None:
+    user, source, canonical = _create_user_with_calendar_source(db_session)
+    target_family = create_course_work_item_family(db_session, user_id=user.id, course_key="CSE 100 WI26", canonical_label="Homework", aliases=["homework"])
+    target_change = _seed_pending_change(
+        db_session,
+        user=user,
+        source=source,
+        canonical=canonical,
+        raw_label="PSET",
+        title="PSET 1",
+        ordinal=1,
+        course_key="CSE 100 WI26",
+        course_parse=build_course_parse(dept="CSE", number=100, quarter="WI", year2=26, confidence=0.95, evidence="CSE 100 WI26"),
+        external_event_id="evt-target-history",
+    )
+    reviewed_change = Change(
+        input_id=canonical.id,
+        event_uid="history-target-course",
+        change_type=ChangeType.DUE_CHANGED,
+        detected_at=datetime.now(timezone.utc),
+        before_json={
+            "uid": "history-target-course",
+            "title": "Homework 0",
+            "course_label": "CSE 100 WI26",
+            "start_at_utc": datetime(2026, 3, 10, 23, 59, tzinfo=timezone.utc).isoformat(),
+            "end_at_utc": datetime(2026, 3, 11, 0, 59, tzinfo=timezone.utc).isoformat(),
+        },
+        after_json={
+            "uid": "history-target-course",
+            "title": "Homework 0",
+            "course_label": "CSE 100 WI26",
+            "start_at_utc": datetime(2026, 3, 11, 23, 59, tzinfo=timezone.utc).isoformat(),
+            "end_at_utc": datetime(2026, 3, 12, 0, 59, tzinfo=timezone.utc).isoformat(),
+        },
+        delta_seconds=86400,
+        review_status=ReviewStatus.APPROVED,
+        reviewed_at=datetime.now(timezone.utc),
+        review_note="keep-history",
+        reviewed_by_user_id=user.id,
+        proposal_merge_key="history-target-course",
+        proposal_sources_json=[],
+    )
+    db_session.add(reviewed_change)
+    db_session.commit()
+    db_session.refresh(reviewed_change)
+
+    headers = auth_headers(client, user=user)
+    apply = client.post(
+        f"/review/changes/{target_change.id}/label-learning",
+        headers=headers,
+        json={"mode": "add_alias", "family_id": target_family.id},
+    )
+    assert apply.status_code == 200
+
+    reviewed_after = db_session.scalar(select(Change).where(Change.id == reviewed_change.id))
+    assert reviewed_after is not None
+    assert reviewed_after.review_status == ReviewStatus.APPROVED
+    assert reviewed_after.review_note == "keep-history"
