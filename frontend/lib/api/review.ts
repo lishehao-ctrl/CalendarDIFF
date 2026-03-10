@@ -10,6 +10,8 @@ import type {
   ReviewEditApplyResponse,
   ReviewEditPreviewResponse,
   ReviewSummary,
+  LabelLearningApplyResponse,
+  LabelLearningPreview,
 } from "@/lib/types";
 
 export async function getReviewSummary() {
@@ -91,4 +93,13 @@ export async function listLinkBlocks(params: { limit?: number; offset?: number; 
 
 export async function deleteLinkBlock(blockId: number) {
   return apiDelete(`/review/link-candidates/blocks/${blockId}`);
+}
+
+
+export async function previewLabelLearning(changeId: number) {
+  return apiPost<LabelLearningPreview>(`/review/changes/${changeId}/label-learning/preview`);
+}
+
+export async function applyLabelLearning(changeId: number, payload: { mode: "add_alias" | "create_family"; family_id?: number | null; canonical_label?: string | null }) {
+  return apiPost<LabelLearningApplyResponse>(`/review/changes/${changeId}/label-learning`, payload);
 }

@@ -201,21 +201,21 @@ def normalize_course_parse(raw: object) -> dict:
 def normalize_work_item_parse(raw: object) -> dict:
     if not isinstance(raw, dict):
         return {
-            "raw_kind_label": None,
+            "raw_label": None,
             "ordinal": None,
             "confidence": 0.0,
             "evidence": "",
         }
-    raw_kind_label = raw.get("raw_kind_label")
+    raw_label_value = raw.get("raw_label") if isinstance(raw.get("raw_label"), str) else raw.get("raw_kind_label")
     ordinal = raw.get("ordinal") if isinstance(raw.get("ordinal"), int) and int(raw.get("ordinal")) > 0 else None
     confidence = raw.get("confidence")
     evidence = raw.get("evidence")
-    normalized_label = raw_kind_label.strip()[:128] if isinstance(raw_kind_label, str) and raw_kind_label.strip() else None
+    normalized_label = raw_label_value.strip()[:128] if isinstance(raw_label_value, str) and raw_label_value.strip() else None
     normalized_confidence = float(confidence) if isinstance(confidence, (int, float)) else 0.0
     normalized_confidence = max(0.0, min(1.0, normalized_confidence))
     normalized_evidence = evidence.strip()[:120] if isinstance(evidence, str) else ""
     return {
-        "raw_kind_label": normalized_label,
+        "raw_label": normalized_label,
         "ordinal": ordinal,
         "confidence": normalized_confidence,
         "evidence": normalized_evidence,

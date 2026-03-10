@@ -254,15 +254,16 @@ export type LinkAlert = {
   } | null;
 };
 
-export type WorkItemKindMapping = {
+export type CourseWorkItemFamily = {
   id: number;
-  name: string;
+  course_key: string;
+  canonical_label: string;
   aliases: string[];
   created_at: string;
   updated_at: string;
 };
 
-export type WorkItemKindMappingStatus = {
+export type CourseWorkItemFamilyStatus = {
   state: string;
   last_rebuilt_at: string | null;
   last_error: string | null;
@@ -275,4 +276,32 @@ export type UserProfile = {
   timezone_name: string;
   calendar_delay_seconds: number;
   created_at?: string;
+};
+
+
+export type LabelLearningFamilyOption = {
+  id: number;
+  course_key: string;
+  canonical_label: string;
+  aliases: string[];
+};
+
+export type LabelLearningPreview = {
+  change_id: number;
+  course_key: string | null;
+  raw_label: string | null;
+  ordinal: number | null;
+  status: "resolved" | "unresolved";
+  resolved_family_id?: number | null;
+  resolved_canonical_label?: string | null;
+  families: LabelLearningFamilyOption[];
+};
+
+export type LabelLearningApplyResponse = {
+  applied: boolean;
+  course_key: string | null;
+  raw_label: string | null;
+  family_id: number | null;
+  canonical_label: string | null;
+  approved_change_id: number | null;
 };

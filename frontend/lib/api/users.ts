@@ -1,5 +1,5 @@
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api/client";
-import type { UserProfile, WorkItemKindMapping, WorkItemKindMappingStatus } from "@/lib/types";
+import { apiDelete, apiGet, apiPatch, apiPost, buildQuery } from "@/lib/api/client";
+import type { CourseWorkItemFamily, CourseWorkItemFamilyStatus, UserProfile } from "@/lib/types";
 
 export async function getCurrentUser() {
   return apiGet<UserProfile>("/users/me");
@@ -9,23 +9,26 @@ export async function updateCurrentUser(payload: { timezone_name?: string | null
   return apiPatch<UserProfile>("/users/me", payload);
 }
 
-
-export async function listWorkItemKindMappings() {
-  return apiGet<WorkItemKindMapping[]>("/users/me/work-item-kind-mappings");
+export async function listCourseWorkItemFamilies(params?: { course_key?: string | null }) {
+  return apiGet<CourseWorkItemFamily[]>(`/users/me/course-work-item-families${buildQuery({ course_key: params?.course_key })}`);
 }
 
-export async function createWorkItemKindMapping(payload: { name: string; aliases: string[] }) {
-  return apiPost<WorkItemKindMapping>("/users/me/work-item-kind-mappings", payload);
+export async function createCourseWorkItemFamily(payload: { course_key: string; canonical_label: string; aliases: string[] }) {
+  return apiPost<CourseWorkItemFamily>("/users/me/course-work-item-families", payload);
 }
 
-export async function updateWorkItemKindMapping(mappingId: number, payload: { name: string; aliases: string[] }) {
-  return apiPatch<WorkItemKindMapping>(`/users/me/work-item-kind-mappings/${mappingId}`, payload);
+export async function updateCourseWorkItemFamily(familyId: number, payload: { course_key: string; canonical_label: string; aliases: string[] }) {
+  return apiPatch<CourseWorkItemFamily>(`/users/me/course-work-item-families/${familyId}`, payload);
 }
 
-export async function deleteWorkItemKindMapping(mappingId: number) {
-  return apiDelete<{ deleted: boolean }>(`/users/me/work-item-kind-mappings/${mappingId}`);
+export async function deleteCourseWorkItemFamily(familyId: number) {
+  return apiDelete<{ deleted: boolean }>(`/users/me/course-work-item-families/${familyId}`);
 }
 
-export async function getWorkItemKindMappingStatus() {
-  return apiGet<WorkItemKindMappingStatus>("/users/me/work-item-kind-mappings/status");
+export async function getCourseWorkItemFamilyStatus(courseKey?: string | null) {
+  return apiGet<CourseWorkItemFamilyStatus>(`/users/me/course-work-item-families/status${buildQuery({ course_key: courseKey })}`);
+}
+
+export async function listKnownCourseKeys() {
+  return apiGet<{ courses: string[] }>("/users/me/course-work-item-families/courses");
 }

@@ -9,9 +9,9 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { batchDecideReviewChanges, decideReviewChange, listReviewChanges, markReviewChangeViewed, previewReviewChangeEvidence } from "@/lib/api/review";
+import { applyLabelLearning, batchDecideReviewChanges, decideReviewChange, listReviewChanges, markReviewChangeViewed, previewLabelLearning, previewReviewChangeEvidence } from "@/lib/api/review";
 import { extractEventSubtitle, formatDateTime, formatStatusLabel, sourceDescriptor, sourceKindDescriptor, summarizeChange } from "@/lib/presenters";
-import type { EvidencePreviewResponse, ReviewBatchDecisionResponse, ReviewChange } from "@/lib/types";
+import type { EvidencePreviewResponse, LabelLearningPreview, ReviewBatchDecisionResponse, ReviewChange } from "@/lib/types";
 import { useApiResource } from "@/lib/use-api-resource";
 
 const statusOptions = ["pending", "approved", "rejected"] as const;
@@ -181,6 +181,11 @@ export function ReviewChangesPanel() {
   const [currentEvidenceSide, setCurrentEvidenceSide] = useState<"before" | "after">("after");
   const [decisionBusy, setDecisionBusy] = useState<"approve" | "reject" | null>(null);
   const [batchBusy, setBatchBusy] = useState<"approve" | "reject" | null>(null);
+  const [labelLearning, setLabelLearning] = useState<LabelLearningPreview | null>(null);
+  const [labelLearningBusy, setLabelLearningBusy] = useState<"preview" | "apply" | null>(null);
+  const [labelLearningError, setLabelLearningError] = useState<string | null>(null);
+  const [labelLearningReloadNonce, setLabelLearningReloadNonce] = useState(0);
+  const [newFamilyLabel, setNewFamilyLabel] = useState("");
   const [banner, setBanner] = useState<Banner>(null);
   const drawerSide = useResponsiveSheetSide();
 
@@ -253,6 +258,42 @@ export function ReviewChangesPanel() {
     }
     void openEvidence(selected, currentEvidenceSide);
   }, [openEvidence, selected, currentEvidenceSide]);
+
+  useEffect(() => {
+    if (!selected || selected.review_status !== "pending") {
+      setLabelLearning(null);
+      setLabelLearningBusy(null);
+      setLabelLearningError(null);
+      setNewFamilyLabel("");
+      return;
+    }
+
+    let cancelled = false;
+    setLabelLearningBusy("preview");
+    setLabelLearning(null);
+    setLabelLearningError(null);
+
+    void previewLabelLearning(selected.id)
+      .then((payload) => {
+        if (cancelled) return;
+        setLabelLearning(payload);
+        setNewFamilyLabel(payload.raw_label || "");
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setLabelLearning(null);
+        setLabelLearningError(err instanceof Error ? err.message : "Unable to load label learning context.");
+        setNewFamilyLabel("");
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLabelLearningBusy((current) => (current === "preview" ? null : current));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [labelLearningReloadNonce, selected]);
 
   async function decide(decision: "approve" | "reject") {
     if (!selected) return;
@@ -565,6 +606,86 @@ export function ReviewChangesPanel() {
                       {decisionBusy === "reject" ? "Rejecting..." : "Reject"}
                     </Button>
                   </div>
+                  {selected.review_status === "pending" && labelLearningBusy === "preview" ? (
+                    <div className="mt-4 rounded-[1.1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#596270]">
+                      <p className="font-medium text-ink">Label learning</p>
+                      <p className="mt-2 leading-6">Loading course label context…</p>
+                    </div>
+                  ) : null}
+
+                  {selected.review_status === "pending" && labelLearningError ? (
+                    <div className="mt-4 rounded-[1.1rem] border border-[#efc4b5] bg-[#fff3ef] p-4 text-sm text-[#7f3d2a]">
+                      <p className="font-medium text-ink">Label learning</p>
+                      <p className="mt-2 leading-6">{labelLearningError}</p>
+                      <div className="mt-3">
+                        <Button size="sm" variant="ghost" onClick={() => setLabelLearningReloadNonce((current) => current + 1)}>
+                          Retry learning context
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {selected.review_status === "pending" && labelLearning ? (
+                    <div className="mt-4 rounded-[1.1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#596270]">
+                      <p className="font-medium text-ink">Label learning</p>
+                      <p className="mt-2 leading-6">Course: {labelLearning.course_key || 'Unknown'} · Raw label: {labelLearning.raw_label || 'Unknown'} · Ordinal: {labelLearning.ordinal ?? 'N/A'}</p>
+                      {labelLearning.status === 'resolved' ? (
+                        <p className="mt-2 text-[#314051]">Already resolved to {labelLearning.resolved_canonical_label || 'existing family'}.</p>
+                      ) : (
+                        <>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {labelLearning.families.map((family) => (
+                              <Button
+                                key={family.id}
+                                size="sm"
+                                variant="ghost"
+                                disabled={labelLearningBusy === 'apply'}
+                                onClick={() => {
+                                  setLabelLearningBusy('apply');
+                                  setLabelLearningError(null);
+                                  void applyLabelLearning(selected.id, { mode: 'add_alias', family_id: family.id })
+                                    .then(async () => {
+                                      setBanner({ tone: 'info', text: `Learned ${labelLearning.raw_label || 'label'} as ${family.canonical_label}.` });
+                                      await refresh();
+                                    })
+                                    .catch((err) => setBanner({ tone: 'error', text: err instanceof Error ? err.message : 'Unable to learn alias' }))
+                                    .finally(() => setLabelLearningBusy(null));
+                                }}
+                              >
+                                Learn as {family.canonical_label}
+                              </Button>
+                            ))}
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-3">
+                            <input
+                              className="h-10 rounded-2xl border border-line bg-white/80 px-4 text-sm text-ink outline-none transition placeholder:text-[#7d8794] focus:border-cobalt focus:bg-white"
+                              value={newFamilyLabel}
+                              onChange={(event) => setNewFamilyLabel(event.target.value)}
+                              placeholder="New family label"
+                            />
+                            <Button
+                              size="sm"
+                              disabled={labelLearningBusy === 'apply' || !newFamilyLabel.trim()}
+                              onClick={() => {
+                                setLabelLearningBusy('apply');
+                                setLabelLearningError(null);
+                                void applyLabelLearning(selected.id, { mode: 'create_family', canonical_label: newFamilyLabel.trim() })
+                                  .then(async () => {
+                                    setBanner({ tone: 'info', text: `Created family ${newFamilyLabel.trim()} and learned this label.` });
+                                    await refresh();
+                                  })
+                                  .catch((err) => setBanner({ tone: 'error', text: err instanceof Error ? err.message : 'Unable to create family' }))
+                                  .finally(() => setLabelLearningBusy(null));
+                              }}
+                            >
+                              Create family & learn
+                            </Button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : null}
+
                   {selected.review_status === "pending" && selected.change_type !== "removed" ? (
                     <div className="mt-4 rounded-[1.1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#596270]">
                       <p className="font-medium text-ink">Advanced path</p>

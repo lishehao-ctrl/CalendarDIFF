@@ -19,7 +19,7 @@ from app.modules.core_ingest.payload_extractors import (
     extract_link_signals,
     extract_source_canonical_from_calendar_payload,
 )
-from app.modules.core_ingest.work_item_kind_resolution import build_source_scoped_entity_uid, resolve_kind_resolution
+from app.modules.core_ingest.course_work_item_family_resolution import build_source_scoped_entity_uid, resolve_kind_resolution
 from app.modules.ingestion.ics_delta import external_event_id_from_component_key
 
 logger = logging.getLogger(__name__)

@@ -200,6 +200,165 @@
         "title": "ChangeSummarySide",
         "type": "object"
       },
+      "CourseWorkItemFamilyCoursesResponse": {
+        "properties": {
+          "courses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Courses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "courses"
+        ],
+        "title": "CourseWorkItemFamilyCoursesResponse",
+        "type": "object"
+      },
+      "CourseWorkItemFamilyCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Aliases",
+            "type": "array"
+          },
+          "canonical_label": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Canonical Label",
+            "type": "string"
+          },
+          "course_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Course Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course_key",
+          "canonical_label"
+        ],
+        "title": "CourseWorkItemFamilyCreateRequest",
+        "type": "object"
+      },
+      "CourseWorkItemFamilyResponse": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "canonical_label": {
+            "title": "Canonical Label",
+            "type": "string"
+          },
+          "course_key": {
+            "title": "Course Key",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "course_key",
+          "canonical_label",
+          "aliases",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CourseWorkItemFamilyResponse",
+        "type": "object"
+      },
+      "CourseWorkItemFamilyStatusResponse": {
+        "properties": {
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_rebuilt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Rebuilt At"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "last_rebuilt_at",
+          "last_error"
+        ],
+        "title": "CourseWorkItemFamilyStatusResponse",
+        "type": "object"
+      },
+      "CourseWorkItemFamilyUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Aliases",
+            "type": "array"
+          },
+          "canonical_label": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Canonical Label",
+            "type": "string"
+          },
+          "course_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Course Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course_key",
+          "canonical_label"
+        ],
+        "title": "CourseWorkItemFamilyUpdateRequest",
+        "type": "object"
+      },
       "EvidencePreviewEvent": {
         "properties": {
           "description": {
@@ -816,6 +975,239 @@
           "config"
         ],
         "title": "InputSourceResponse",
+        "type": "object"
+      },
+      "LabelLearningApplyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "canonical_label": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Label"
+          },
+          "family_id": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Id"
+          },
+          "mode": {
+            "enum": [
+              "add_alias",
+              "create_family"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "LabelLearningApplyRequest",
+        "type": "object"
+      },
+      "LabelLearningApplyResponse": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "approved_change_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved Change Id"
+          },
+          "canonical_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Label"
+          },
+          "course_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Key"
+          },
+          "family_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Id"
+          },
+          "raw_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Label"
+          }
+        },
+        "required": [
+          "applied",
+          "course_key",
+          "raw_label",
+          "family_id",
+          "canonical_label"
+        ],
+        "title": "LabelLearningApplyResponse",
+        "type": "object"
+      },
+      "LabelLearningFamilyOption": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "canonical_label": {
+            "title": "Canonical Label",
+            "type": "string"
+          },
+          "course_key": {
+            "title": "Course Key",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "course_key",
+          "canonical_label",
+          "aliases"
+        ],
+        "title": "LabelLearningFamilyOption",
+        "type": "object"
+      },
+      "LabelLearningPreviewResponse": {
+        "properties": {
+          "change_id": {
+            "title": "Change Id",
+            "type": "integer"
+          },
+          "course_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Key"
+          },
+          "families": {
+            "items": {
+              "$ref": "#/components/schemas/LabelLearningFamilyOption"
+            },
+            "title": "Families",
+            "type": "array"
+          },
+          "ordinal": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordinal"
+          },
+          "raw_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Label"
+          },
+          "resolved_canonical_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Canonical Label"
+          },
+          "resolved_family_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Family Id"
+          },
+          "status": {
+            "enum": [
+              "resolved",
+              "unresolved"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "change_id",
+          "course_key",
+          "raw_label",
+          "ordinal",
+          "status",
+          "families"
+        ],
+        "title": "LabelLearningPreviewResponse",
         "type": "object"
       },
       "LinkAlertBatchDecisionItemResult": {
@@ -3343,130 +3735,6 @@
         ],
         "title": "WebhookEnqueueResponse",
         "type": "object"
-      },
-      "WorkItemKindMappingCreateRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "aliases": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 64,
-            "title": "Aliases",
-            "type": "array"
-          },
-          "name": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "title": "WorkItemKindMappingCreateRequest",
-        "type": "object"
-      },
-      "WorkItemKindMappingResponse": {
-        "properties": {
-          "aliases": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Aliases",
-            "type": "array"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "aliases",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "WorkItemKindMappingResponse",
-        "type": "object"
-      },
-      "WorkItemKindMappingStatusResponse": {
-        "properties": {
-          "last_error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Error"
-          },
-          "last_rebuilt_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Rebuilt At"
-          },
-          "state": {
-            "title": "State",
-            "type": "string"
-          }
-        },
-        "required": [
-          "state",
-          "last_rebuilt_at",
-          "last_error"
-        ],
-        "title": "WorkItemKindMappingStatusResponse",
-        "type": "object"
-      },
-      "WorkItemKindMappingUpdateRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "aliases": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 64,
-            "title": "Aliases",
-            "type": "array"
-          },
-          "name": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "title": "WorkItemKindMappingUpdateRequest",
-        "type": "object"
       }
     }
   },
@@ -4177,6 +4445,132 @@
           }
         },
         "summary": "Get Review Change Evidence Preview",
+        "tags": [
+          "review-items"
+        ]
+      }
+    },
+    "/review/changes/{change_id}/label-learning": {
+      "post": {
+        "operationId": "post_label_learning_apply_review_changes__change_id__label_learning_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "title": "Change Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelLearningApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabelLearningApplyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Label Learning Apply",
+        "tags": [
+          "review-items"
+        ]
+      }
+    },
+    "/review/changes/{change_id}/label-learning/preview": {
+      "post": {
+        "operationId": "post_label_learning_preview_review_changes__change_id__label_learning_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "title": "Change Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabelLearningPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Label Learning Preview",
         "tags": [
           "review-items"
         ]
@@ -5980,10 +6374,26 @@
         ]
       }
     },
-    "/users/me/work-item-kind-mappings": {
+    "/users/me/course-work-item-families": {
       "get": {
-        "operationId": "get_work_item_kind_mappings_users_me_work_item_kind_mappings_get",
+        "operationId": "get_course_families_users_me_course_work_item_families_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "course_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Key"
+            }
+          },
           {
             "in": "header",
             "name": "X-API-Key",
@@ -6007,9 +6417,9 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/WorkItemKindMappingResponse"
+                    "$ref": "#/components/schemas/CourseWorkItemFamilyResponse"
                   },
-                  "title": "Response Get Work Item Kind Mappings Users Me Work Item Kind Mappings Get",
+                  "title": "Response Get Course Families Users Me Course Work Item Families Get",
                   "type": "array"
                 }
               }
@@ -6027,13 +6437,13 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Work Item Kind Mappings",
+        "summary": "Get Course Families",
         "tags": [
           "users"
         ]
       },
       "post": {
-        "operationId": "post_work_item_kind_mapping_users_me_work_item_kind_mappings_post",
+        "operationId": "post_course_family_users_me_course_work_item_families_post",
         "parameters": [
           {
             "in": "header",
@@ -6056,7 +6466,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/WorkItemKindMappingCreateRequest"
+                "$ref": "#/components/schemas/CourseWorkItemFamilyCreateRequest"
               }
             }
           },
@@ -6067,7 +6477,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkItemKindMappingResponse"
+                  "$ref": "#/components/schemas/CourseWorkItemFamilyResponse"
                 }
               }
             },
@@ -6084,15 +6494,15 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Post Work Item Kind Mapping",
+        "summary": "Post Course Family",
         "tags": [
           "users"
         ]
       }
     },
-    "/users/me/work-item-kind-mappings/status": {
+    "/users/me/course-work-item-families/courses": {
       "get": {
-        "operationId": "get_work_item_kind_mapping_status_users_me_work_item_kind_mappings_status_get",
+        "operationId": "get_course_family_courses_users_me_course_work_item_families_courses_get",
         "parameters": [
           {
             "in": "header",
@@ -6116,7 +6526,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkItemKindMappingStatusResponse"
+                  "$ref": "#/components/schemas/CourseWorkItemFamilyCoursesResponse"
                 }
               }
             },
@@ -6133,22 +6543,87 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Work Item Kind Mapping Status",
+        "summary": "Get Course Family Courses",
         "tags": [
           "users"
         ]
       }
     },
-    "/users/me/work-item-kind-mappings/{mapping_id}": {
+    "/users/me/course-work-item-families/status": {
+      "get": {
+        "operationId": "get_course_family_status_users_me_course_work_item_families_status_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "course_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseWorkItemFamilyStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Course Family Status",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/users/me/course-work-item-families/{family_id}": {
       "delete": {
-        "operationId": "remove_work_item_kind_mapping_users_me_work_item_kind_mappings__mapping_id__delete",
+        "operationId": "delete_course_family_users_me_course_work_item_families__family_id__delete",
         "parameters": [
           {
             "in": "path",
-            "name": "mapping_id",
+            "name": "family_id",
             "required": true,
             "schema": {
-              "title": "Mapping Id",
+              "title": "Family Id",
               "type": "integer"
             }
           },
@@ -6177,7 +6652,7 @@
                   "additionalProperties": {
                     "type": "boolean"
                   },
-                  "title": "Response Remove Work Item Kind Mapping Users Me Work Item Kind Mappings  Mapping Id  Delete",
+                  "title": "Response Delete Course Family Users Me Course Work Item Families  Family Id  Delete",
                   "type": "object"
                 }
               }
@@ -6195,20 +6670,20 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Remove Work Item Kind Mapping",
+        "summary": "Delete Course Family",
         "tags": [
           "users"
         ]
       },
       "patch": {
-        "operationId": "patch_work_item_kind_mapping_users_me_work_item_kind_mappings__mapping_id__patch",
+        "operationId": "patch_course_family_users_me_course_work_item_families__family_id__patch",
         "parameters": [
           {
             "in": "path",
-            "name": "mapping_id",
+            "name": "family_id",
             "required": true,
             "schema": {
-              "title": "Mapping Id",
+              "title": "Family Id",
               "type": "integer"
             }
           },
@@ -6233,7 +6708,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/WorkItemKindMappingUpdateRequest"
+                "$ref": "#/components/schemas/CourseWorkItemFamilyUpdateRequest"
               }
             }
           },
@@ -6244,7 +6719,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkItemKindMappingResponse"
+                  "$ref": "#/components/schemas/CourseWorkItemFamilyResponse"
                 }
               }
             },
@@ -6261,7 +6736,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Patch Work Item Kind Mapping",
+        "summary": "Patch Course Family",
         "tags": [
           "users"
         ]

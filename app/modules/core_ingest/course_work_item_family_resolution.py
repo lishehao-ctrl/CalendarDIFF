@@ -6,23 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.modules.core_ingest.entity_profile import course_display_name
 from app.modules.core_ingest.merge_engine import build_merge_key
-from app.modules.users.work_item_kind_mappings_service import normalize_work_item_kind_token, resolve_work_item_kind_mapping
-
-
-def normalize_work_item_parse(raw: object) -> dict:
-    if not isinstance(raw, dict):
-        return {"raw_kind_label": None, "ordinal": None, "confidence": 0.0, "evidence": ""}
-    raw_kind_label = raw.get("raw_kind_label")
-    ordinal = raw.get("ordinal") if isinstance(raw.get("ordinal"), int) and int(raw.get("ordinal")) > 0 else None
-    confidence = float(raw.get("confidence")) if isinstance(raw.get("confidence"), (int, float)) else 0.0
-    confidence = max(0.0, min(1.0, confidence))
-    evidence = raw.get("evidence") if isinstance(raw.get("evidence"), str) else ""
-    return {
-        "raw_kind_label": raw_kind_label.strip()[:128] if isinstance(raw_kind_label, str) and raw_kind_label.strip() else None,
-        "ordinal": ordinal,
-        "confidence": confidence,
-        "evidence": evidence.strip()[:120],
-    }
+from app.modules.core_ingest.payload_extractors import normalize_work_item_parse
+from app.modules.users.course_work_item_families_service import normalize_course_key, resolve_course_work_item_family
 
 
 def resolve_kind_resolution(
@@ -37,26 +22,29 @@ def resolve_kind_resolution(
     del source_kind
     del external_event_id
     target_course = course_display_name(course_parse=course_parse) if isinstance(course_parse, dict) else None
-    resolution = resolve_work_item_kind_mapping(db, user_id=user_id, raw_kind_label=work_item_parse.get("raw_kind_label"))
+    raw_label = work_item_parse.get("raw_label") if isinstance(work_item_parse, dict) else None
+    resolution = resolve_course_work_item_family(db, user_id=user_id, course_key=target_course, raw_label=raw_label)
     ordinal = work_item_parse.get("ordinal") if isinstance(work_item_parse.get("ordinal"), int) else None
     if not target_course or resolution.get("status") != "resolved" or ordinal is None:
         return {
             "status": "unresolved",
-            "mapping_id": resolution.get("mapping_id"),
-            "name": resolution.get("name"),
+            "family_id": resolution.get("family_id"),
+            "canonical_label": resolution.get("canonical_label"),
             "matched_alias": resolution.get("matched_alias"),
-            "target_course": target_course,
+            "course_key": target_course,
+            "raw_label": raw_label,
             "ordinal": ordinal,
             "entity_uid": None,
         }
-    mapping_id = int(resolution["mapping_id"])
-    entity_uid = build_semantic_entity_uid(target_course=target_course, mapping_id=mapping_id, ordinal=ordinal)
+    family_id = int(resolution["family_id"])
+    entity_uid = build_semantic_entity_uid(course_key=target_course, family_id=family_id, ordinal=ordinal)
     return {
         "status": "resolved",
-        "mapping_id": mapping_id,
-        "name": resolution.get("name"),
+        "family_id": family_id,
+        "canonical_label": resolution.get("canonical_label"),
         "matched_alias": resolution.get("matched_alias"),
-        "target_course": target_course,
+        "course_key": target_course,
+        "raw_label": raw_label,
         "ordinal": ordinal,
         "entity_uid": entity_uid,
     }
@@ -74,15 +62,15 @@ def build_source_scoped_entity_uid(*, source_kind: str, external_event_id: str) 
     )
 
 
-def build_semantic_entity_uid(*, target_course: str, mapping_id: int, ordinal: int) -> str:
+def build_semantic_entity_uid(*, course_key: str, family_id: int, ordinal: int) -> str:
     canonical = "|".join([
-        normalize_work_item_kind_token(target_course),
-        str(int(mapping_id)),
+        normalize_course_key(course_key),
+        str(int(family_id)),
         str(int(ordinal)),
-        "work_item_v1",
+        "course_family_v1",
     ])
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:32]
-    return f"wki_{digest}"
+    return f"clf_{digest}"
 
 
 __all__ = [

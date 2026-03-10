@@ -46,30 +46,36 @@ class UserUpdateRequest(BaseModel):
             raise ValueError("timezone_name must not be blank")
         return stripped
 
-
-class WorkItemKindMappingResponse(BaseModel):
+class CourseWorkItemFamilyResponse(BaseModel):
     id: int
-    name: str
+    course_key: str
+    canonical_label: str
     aliases: list[str]
     created_at: datetime
     updated_at: datetime
 
 
-class WorkItemKindMappingCreateRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=128)
+class CourseWorkItemFamilyCreateRequest(BaseModel):
+    course_key: str = Field(min_length=1, max_length=128)
+    canonical_label: str = Field(min_length=1, max_length=128)
     aliases: list[str] = Field(default_factory=list, max_length=64)
 
     model_config = {"extra": "forbid"}
 
 
-class WorkItemKindMappingUpdateRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=128)
+class CourseWorkItemFamilyUpdateRequest(BaseModel):
+    course_key: str = Field(min_length=1, max_length=128)
+    canonical_label: str = Field(min_length=1, max_length=128)
     aliases: list[str] = Field(default_factory=list, max_length=64)
 
     model_config = {"extra": "forbid"}
 
 
-class WorkItemKindMappingStatusResponse(BaseModel):
+class CourseWorkItemFamilyStatusResponse(BaseModel):
     state: str
     last_rebuilt_at: datetime | None
     last_error: str | None
+
+
+class CourseWorkItemFamilyCoursesResponse(BaseModel):
+    courses: list[str]

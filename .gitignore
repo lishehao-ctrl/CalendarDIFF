@@ -32,3 +32,5 @@ frontend/tsconfig.typecheck.tsbuildinfo
 output/.DS_Store
 output/frontend-logs/
 .cache/
+frontend/.next-dev/
+frontend/.next-prod/

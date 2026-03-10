@@ -1,31 +1,32 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.security import require_public_api_key
 from app.db.models.shared import User
 from app.db.session import get_db
 from app.modules.auth.deps import get_authenticated_user_or_401
-from app.modules.core_ingest.work_item_kind_rebuild import rebuild_user_work_item_state
+from app.modules.core_ingest.course_work_item_family_rebuild import rebuild_user_work_item_state
+from app.modules.users.course_work_item_families_service import (
+    CourseWorkItemFamilyValidationError,
+    create_course_work_item_family,
+    delete_course_work_item_family,
+    get_course_work_item_family,
+    list_course_work_item_families,
+    list_known_course_keys,
+    update_course_work_item_family,
+)
 from app.modules.users.schemas import (
+    CourseWorkItemFamilyCoursesResponse,
+    CourseWorkItemFamilyCreateRequest,
+    CourseWorkItemFamilyResponse,
+    CourseWorkItemFamilyStatusResponse,
+    CourseWorkItemFamilyUpdateRequest,
     UserResponse,
     UserUpdateRequest,
-    WorkItemKindMappingCreateRequest,
-    WorkItemKindMappingResponse,
-    WorkItemKindMappingStatusResponse,
-    WorkItemKindMappingUpdateRequest,
 )
 from app.modules.users.service import update_current_user
-from app.modules.users.work_item_kind_mappings_service import (
-    WorkItemKindMappingNotFoundError,
-    WorkItemKindMappingValidationError,
-    create_user_work_item_kind_mapping,
-    delete_user_work_item_kind_mapping,
-    ensure_default_work_item_kind_mappings,
-    get_user_work_item_kind_mapping,
-    list_user_work_item_kind_mappings,
-)
 
 router = APIRouter(prefix="/users", tags=["users"], dependencies=[Depends(require_public_api_key)])
 
@@ -43,7 +44,6 @@ def patch_user(
 ) -> UserResponse:
     if "notify_email" in payload.model_fields_set and payload.notify_email is None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="notify_email cannot be cleared")
-
     try:
         updated = update_current_user(
             db,
@@ -58,74 +58,97 @@ def patch_user(
     return _to_user_response(updated)
 
 
-@router.get("/me/work-item-kind-mappings", response_model=list[WorkItemKindMappingResponse])
-def get_work_item_kind_mappings(
+@router.get("/me/course-work-item-families", response_model=list[CourseWorkItemFamilyResponse])
+def get_course_families(
+    course_key: str | None = Query(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_authenticated_user_or_401),
-) -> list[WorkItemKindMappingResponse]:
-    ensure_default_work_item_kind_mappings(db, user_id=user.id)
-    rows = list_user_work_item_kind_mappings(db, user_id=user.id)
-    return [_to_work_item_kind_mapping_response(row) for row in rows]
+) -> list[CourseWorkItemFamilyResponse]:
+    rows = list_course_work_item_families(db, user_id=user.id, course_key=course_key)
+    return [_to_course_family_response(row) for row in rows]
 
 
-@router.post("/me/work-item-kind-mappings", response_model=WorkItemKindMappingResponse, status_code=status.HTTP_201_CREATED)
-def post_work_item_kind_mapping(
-    payload: WorkItemKindMappingCreateRequest,
+@router.get("/me/course-work-item-families/courses", response_model=CourseWorkItemFamilyCoursesResponse)
+def get_course_family_courses(
     db: Session = Depends(get_db),
     user: User = Depends(get_authenticated_user_or_401),
-) -> WorkItemKindMappingResponse:
+) -> CourseWorkItemFamilyCoursesResponse:
+    return CourseWorkItemFamilyCoursesResponse(courses=list_known_course_keys(db, user_id=user.id))
+
+
+@router.post("/me/course-work-item-families", response_model=CourseWorkItemFamilyResponse, status_code=status.HTTP_201_CREATED)
+def post_course_family(
+    payload: CourseWorkItemFamilyCreateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
+) -> CourseWorkItemFamilyResponse:
     try:
-        row = create_user_work_item_kind_mapping(db, user_id=user.id, name=payload.name, aliases=payload.aliases)
+        row = create_course_work_item_family(
+            db,
+            user_id=user.id,
+            course_key=payload.course_key,
+            canonical_label=payload.canonical_label,
+            aliases=payload.aliases,
+        )
         db.refresh(user)
-        rebuild_user_work_item_state(db, user=user)
-    except WorkItemKindMappingValidationError as exc:
+        rebuild_user_work_item_state(db, user=user, course_key=payload.course_key)
+    except CourseWorkItemFamilyValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return _to_work_item_kind_mapping_response(row)
+    return _to_course_family_response(row)
 
 
-@router.patch("/me/work-item-kind-mappings/{mapping_id}", response_model=WorkItemKindMappingResponse)
-def patch_work_item_kind_mapping(
-    mapping_id: int,
-    payload: WorkItemKindMappingUpdateRequest,
+@router.patch("/me/course-work-item-families/{family_id}", response_model=CourseWorkItemFamilyResponse)
+def patch_course_family(
+    family_id: int,
+    payload: CourseWorkItemFamilyUpdateRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_authenticated_user_or_401),
-) -> WorkItemKindMappingResponse:
-    mapping = get_user_work_item_kind_mapping(db, user_id=user.id, mapping_id=mapping_id)
-    if mapping is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="work item kind mapping not found")
+) -> CourseWorkItemFamilyResponse:
+    family = get_course_work_item_family(db, user_id=user.id, family_id=family_id)
+    if family is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course work item family not found")
+    previous_course_key = family.course_key
     try:
-        from app.modules.users.work_item_kind_mappings_service import update_user_work_item_kind_mapping
-        row = update_user_work_item_kind_mapping(db, mapping=mapping, name=payload.name, aliases=payload.aliases)
+        row = update_course_work_item_family(
+            db,
+            family=family,
+            course_key=payload.course_key,
+            canonical_label=payload.canonical_label,
+            aliases=payload.aliases,
+        )
         db.refresh(user)
-        rebuild_user_work_item_state(db, user=user)
-    except WorkItemKindMappingValidationError as exc:
+        if previous_course_key.strip() != payload.course_key.strip():
+            rebuild_user_work_item_state(db, user=user, course_key=previous_course_key)
+        rebuild_user_work_item_state(db, user=user, course_key=payload.course_key)
+    except CourseWorkItemFamilyValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return _to_work_item_kind_mapping_response(row)
+    return _to_course_family_response(row)
 
 
-@router.delete("/me/work-item-kind-mappings/{mapping_id}", status_code=status.HTTP_200_OK)
-def remove_work_item_kind_mapping(
-    mapping_id: int,
+@router.delete("/me/course-work-item-families/{family_id}", status_code=status.HTTP_200_OK)
+def delete_course_family(
+    family_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_authenticated_user_or_401),
 ) -> dict[str, bool]:
-    mapping = get_user_work_item_kind_mapping(db, user_id=user.id, mapping_id=mapping_id)
-    if mapping is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="work item kind mapping not found")
-    delete_user_work_item_kind_mapping(db, mapping=mapping)
+    family = get_course_work_item_family(db, user_id=user.id, family_id=family_id)
+    if family is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course work item family not found")
+    delete_course_work_item_family(db, family=family)
     db.refresh(user)
-    rebuild_user_work_item_state(db, user=user)
+    rebuild_user_work_item_state(db, user=user, course_key=family.course_key)
     return {"deleted": True}
 
 
-@router.get("/me/work-item-kind-mappings/status", response_model=WorkItemKindMappingStatusResponse)
-def get_work_item_kind_mapping_status(
+@router.get("/me/course-work-item-families/status", response_model=CourseWorkItemFamilyStatusResponse)
+def get_course_family_status(
+    course_key: str | None = Query(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_authenticated_user_or_401),
-) -> WorkItemKindMappingStatusResponse:
-    ensure_default_work_item_kind_mappings(db, user_id=user.id)
+) -> CourseWorkItemFamilyStatusResponse:
+    del course_key
     db.refresh(user)
-    return WorkItemKindMappingStatusResponse(
+    return CourseWorkItemFamilyStatusResponse(
         state=user.work_item_mappings_state,
         last_rebuilt_at=user.work_item_mappings_last_rebuilt_at,
         last_error=user.work_item_mappings_last_error,
@@ -143,11 +166,12 @@ def _to_user_response(user: User) -> UserResponse:
     )
 
 
-def _to_work_item_kind_mapping_response(row) -> WorkItemKindMappingResponse:
+def _to_course_family_response(row) -> CourseWorkItemFamilyResponse:
     aliases = row.aliases_json if isinstance(row.aliases_json, list) else []
-    return WorkItemKindMappingResponse(
+    return CourseWorkItemFamilyResponse(
         id=row.id,
-        name=row.name,
+        course_key=row.course_key,
+        canonical_label=row.canonical_label,
         aliases=[alias for alias in aliases if isinstance(alias, str)],
         created_at=row.created_at,
         updated_at=row.updated_at,

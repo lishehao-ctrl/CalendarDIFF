@@ -10,6 +10,9 @@ from app.db.session import get_db
 from app.modules.common.deps import get_onboarded_user_or_409
 from app.modules.review_changes.schemas import (
     EvidencePreviewResponse,
+    LabelLearningApplyRequest,
+    LabelLearningApplyResponse,
+    LabelLearningPreviewResponse,
     ReviewBatchDecisionRequest,
     ReviewBatchDecisionResponse,
     ReviewEditApplyResponse,
@@ -39,6 +42,13 @@ from app.modules.review_changes.evidence_preview_service import (
     ReviewChangeEvidenceReadError,
     preview_review_change_evidence,
 )
+from app.modules.review_changes.label_learning_service import (
+    LabelLearningNotFoundError,
+    LabelLearningValidationError,
+    apply_label_learning,
+    preview_label_learning,
+)
+from app.modules.users.course_work_item_families_service import CourseWorkItemFamilyValidationError
 
 router = APIRouter(
     prefix="/review",
@@ -200,6 +210,50 @@ def post_review_edit_preview(
     except ReviewEditValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return ReviewEditPreviewResponse(**preview)
+
+
+@router.post("/changes/{change_id}/label-learning/preview", response_model=LabelLearningPreviewResponse)
+def post_label_learning_preview(
+    change_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> LabelLearningPreviewResponse:
+    try:
+        payload = preview_label_learning(db, user_id=user.id, change_id=change_id)
+    except ReviewChangeNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except LabelLearningNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except LabelLearningValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return LabelLearningPreviewResponse.model_validate(payload)
+
+
+@router.post("/changes/{change_id}/label-learning", response_model=LabelLearningApplyResponse)
+def post_label_learning_apply(
+    change_id: int,
+    payload: LabelLearningApplyRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> LabelLearningApplyResponse:
+    try:
+        result = apply_label_learning(
+            db,
+            user_id=user.id,
+            change_id=change_id,
+            mode=payload.mode,
+            family_id=payload.family_id,
+            canonical_label=payload.canonical_label,
+        )
+    except ReviewChangeNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except LabelLearningNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except LabelLearningValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except CourseWorkItemFamilyValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return LabelLearningApplyResponse.model_validate(result)
 
 
 @router.post("/edits", response_model=ReviewEditApplyResponse)

@@ -77,7 +77,7 @@ Use the launcher when you want the active development topology:
 scripts/dev_stack.sh up
 ```
 
-This path starts frontend plus all 5 services, applies migrations, and uses the current local dev port set.
+This path starts the frontend, `public-service`, and the 5 internal services, applies migrations, and uses the current local dev port set.
 
 ## Manual Local Startup
 
@@ -110,9 +110,10 @@ Expected services:
 
 Compose exposure model:
 
-1. public host ports remain `8001 -> input-service` and `8000 -> review-service`
-2. `ingest-service`, `llm-service`, and `notification-service` remain internal-only in default compose
-3. use `docker-compose.dev.yml` for dev-only ingest/llm/notification host port mappings
+1. `public-service` is exposed on `localhost:8000`
+2. `input-service`, `review-service`, `ingest-service`, `llm-service`, and `notification-service` remain internal-only in default compose
+3. the frontend is not part of default compose yet; run it separately or use the local launcher when you need the full browser app
+4. use `docker-compose.dev.yml` for dev-only internal service host port mappings
 
 ## Health Checks
 

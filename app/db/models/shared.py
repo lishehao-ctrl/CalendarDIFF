@@ -41,8 +41,8 @@ class User(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
-    work_item_kind_mappings: Mapped[list["UserWorkItemKindMapping"]] = relationship("UserWorkItemKindMapping", back_populates="user", cascade="all, delete-orphan")
-    inputs: Mapped[list["Input"]] = relationship("Input", back_populates="user")
+    course_work_item_families: Mapped[list["CourseWorkItemLabelFamily"]] = relationship("CourseWorkItemLabelFamily", back_populates="user", cascade="all, delete-orphan")
+    inputs: Mapped[list["Input"]] = relationship("Input", back_populates="user", cascade="all, delete-orphan")
     input_sources: Mapped[list["InputSource"]] = relationship("InputSource", back_populates="user", cascade="all, delete-orphan")
     event_entities: Mapped[list["EventEntity"]] = relationship("EventEntity", back_populates="user", cascade="all, delete-orphan")
     event_entity_links: Mapped[list["EventEntityLink"]] = relationship("EventEntityLink", back_populates="user", cascade="all, delete-orphan")
@@ -68,24 +68,26 @@ class User(Base):
     sessions: Mapped[list["UserSession"]] = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
 
 
-class UserWorkItemKindMapping(Base):
-    __tablename__ = "user_work_item_kind_mappings"
+class CourseWorkItemLabelFamily(Base):
+    __tablename__ = "course_work_item_label_families"
     __table_args__ = (
-        UniqueConstraint("user_id", "normalized_name", name="uq_user_work_item_kind_mappings_user_normalized_name"),
-        Index("ix_user_work_item_kind_mappings_user_updated", "user_id", "updated_at"),
+        UniqueConstraint("user_id", "normalized_course_key", "normalized_canonical_label", name="uq_course_work_item_families_user_course_label"),
+        Index("ix_course_work_item_families_user_course_updated", "user_id", "normalized_course_key", "updated_at"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    name: Mapped[str] = mapped_column(String(128), nullable=False)
-    normalized_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    course_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    normalized_course_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    canonical_label: Mapped[str] = mapped_column(String(128), nullable=False)
+    normalized_canonical_label: Mapped[str] = mapped_column(String(128), nullable=False)
     aliases_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
-    user: Mapped[User] = relationship("User", back_populates="work_item_kind_mappings")
+    user: Mapped[User] = relationship("User", back_populates="course_work_item_families")
 
 
 class UserSession(Base):

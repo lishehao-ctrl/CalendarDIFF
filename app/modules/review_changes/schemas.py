@@ -196,3 +196,38 @@ class ReviewEditApplyResponse(BaseModel):
     canonical_edit_change_id: int | None = None
     rejected_pending_change_ids: list[int]
     event: ReviewEditEventPayload
+
+
+class LabelLearningFamilyOption(BaseModel):
+    id: int
+    course_key: str
+    canonical_label: str
+    aliases: list[str]
+
+
+class LabelLearningPreviewResponse(BaseModel):
+    change_id: int
+    course_key: str | None
+    raw_label: str | None
+    ordinal: int | None
+    status: Literal["resolved", "unresolved"]
+    resolved_family_id: int | None = None
+    resolved_canonical_label: str | None = None
+    families: list[LabelLearningFamilyOption]
+
+
+class LabelLearningApplyRequest(BaseModel):
+    mode: Literal["add_alias", "create_family"]
+    family_id: int | None = Field(default=None, ge=1)
+    canonical_label: str | None = Field(default=None, max_length=128)
+
+    model_config = {"extra": "forbid"}
+
+
+class LabelLearningApplyResponse(BaseModel):
+    applied: bool
+    course_key: str | None
+    raw_label: str | None
+    family_id: int | None
+    canonical_label: str | None
+    approved_change_id: int | None = None

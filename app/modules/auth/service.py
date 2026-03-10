@@ -49,9 +49,6 @@ def register_user(db: Session, *, notify_email: str, password: str) -> User:
     db.add(user)
     db.commit()
     db.refresh(user)
-    from app.modules.users.work_item_kind_mappings_service import ensure_default_work_item_kind_mappings
-    ensure_default_work_item_kind_mappings(db, user_id=user.id)
-    db.refresh(user)
     return user
 
 

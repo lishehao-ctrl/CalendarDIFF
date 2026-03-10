@@ -9,6 +9,7 @@ from app.db.models.input import IngestTriggerType, InputSource, InputSourceConfi
 from app.db.models.review import Change, Input, InputType, ReviewStatus
 from app.db.models.shared import User
 from app.modules.core_ingest.apply_service import apply_ingest_result_idempotent
+from app.modules.users.course_work_item_families_service import create_course_work_item_family
 from tests.support.payload_builders import build_calendar_payload, build_course_parse, build_event_parts, build_gmail_payload, build_link_signals, build_work_item_parse
 
 
@@ -18,26 +19,8 @@ def _create_sources(db_session) -> tuple[User, InputSource, InputSource]:
     db_session.add(user)
     db_session.flush()
 
-    calendar_source = InputSource(
-        user_id=user.id,
-        source_kind=SourceKind.CALENDAR,
-        provider="ics",
-        source_key="canvas_ics",
-        display_name="Canvas ICS",
-        is_active=True,
-        poll_interval_seconds=900,
-        next_poll_at=now,
-    )
-    gmail_source = InputSource(
-        user_id=user.id,
-        source_kind=SourceKind.EMAIL,
-        provider="gmail",
-        source_key="gmail-kind-source",
-        display_name="Gmail Kind Source",
-        is_active=True,
-        poll_interval_seconds=900,
-        next_poll_at=now,
-    )
+    calendar_source = InputSource(user_id=user.id, source_kind=SourceKind.CALENDAR, provider="ics", source_key="canvas_ics", display_name="Canvas ICS", is_active=True, poll_interval_seconds=900, next_poll_at=now)
+    gmail_source = InputSource(user_id=user.id, source_kind=SourceKind.EMAIL, provider="gmail", source_key="gmail-kind-source", display_name="Gmail Kind Source", is_active=True, poll_interval_seconds=900, next_poll_at=now)
     db_session.add_all([calendar_source, gmail_source])
     db_session.flush()
     db_session.add(InputSourceConfig(source_id=calendar_source.id, schema_version=1, config_json={}))
@@ -54,34 +37,14 @@ def _create_sources(db_session) -> tuple[User, InputSource, InputSource]:
 
 
 def _seed_result(db_session, *, source: InputSource, request_id: str, records: list[dict]) -> None:
-    db_session.add(
-        SyncRequest(
-            request_id=request_id,
-            source_id=source.id,
-            trigger_type=IngestTriggerType.MANUAL,
-            status=SyncRequestStatus.RUNNING,
-            idempotency_key=f"idemp:{request_id}",
-            metadata_json={"kind": "test"},
-        )
-    )
-    db_session.add(
-        IngestResult(
-            request_id=request_id,
-            source_id=source.id,
-            provider=source.provider,
-            status=ConnectorResultStatus.CHANGED,
-            cursor_patch={},
-            records=records,
-            fetched_at=datetime.now(timezone.utc),
-            error_code=None,
-            error_message=None,
-        )
-    )
+    db_session.add(SyncRequest(request_id=request_id, source_id=source.id, trigger_type=IngestTriggerType.MANUAL, status=SyncRequestStatus.RUNNING, idempotency_key=f"idemp:{request_id}", metadata_json={"kind": "test"}))
+    db_session.add(IngestResult(request_id=request_id, source_id=source.id, provider=source.provider, status=ConnectorResultStatus.CHANGED, cursor_patch={}, records=records, fetched_at=datetime.now(timezone.utc), error_code=None, error_message=None))
     db_session.commit()
 
 
-def test_homework_and_hw_merge_under_same_mapping(db_session) -> None:
+def test_homework_and_hw_merge_under_same_course_family(db_session) -> None:
     user, calendar_source, gmail_source = _create_sources(db_session)
+    create_course_work_item_family(db_session, user_id=user.id, course_key="CSE 8A", canonical_label="Homework", aliases=["hw", "homework"])
     due = datetime(2026, 3, 10, 23, 59, tzinfo=timezone.utc)
     calendar_records = [{
         "record_type": "calendar.event.extracted",
@@ -122,8 +85,10 @@ def test_homework_and_hw_merge_under_same_mapping(db_session) -> None:
     assert {row["source_id"] for row in proposal_sources} == {calendar_source.id, gmail_source.id}
 
 
-def test_hw_and_pa_do_not_merge_when_mappings_differ(db_session) -> None:
+def test_hw_and_pa_do_not_merge_when_course_families_differ(db_session) -> None:
     user, calendar_source, gmail_source = _create_sources(db_session)
+    create_course_work_item_family(db_session, user_id=user.id, course_key="CSE 8A", canonical_label="Homework", aliases=["hw", "homework"])
+    create_course_work_item_family(db_session, user_id=user.id, course_key="CSE 8A", canonical_label="Programming Assignment", aliases=["pa"])
     due = datetime(2026, 3, 10, 23, 59, tzinfo=timezone.utc)
     calendar_records = [{
         "record_type": "calendar.event.extracted",
