@@ -1,0 +1,17 @@
+.git
+.gitignore
+.venv
+.pytest_cache
+.mypy_cache
+.playwright
+.playwright-cli
+.cache
+output
+evidence
+data
+reports
+frontend/node_modules
+frontend/.next
+frontend/.next-dev
+frontend/.next-prod
+frontend/.env.local

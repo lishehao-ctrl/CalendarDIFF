@@ -104,19 +104,22 @@ Compose includes:
 
 1. `postgres`
 2. `redis`
-3. `input-service`
-4. `ingest-service`
-5. `llm-service`
-6. `review-service`
-7. `notification-service`
+3. `public-service`
+4. `input-service`
+5. `ingest-service`
+6. `llm-service`
+7. `review-service`
+8. `notification-service`
+9. `frontend`
 
 Default host-exposed ports:
 
-1. `public-service` on `localhost:8000`
+1. `frontend` on `localhost:3000`
+2. `public-service` on `localhost:8000`
 
 For the preferred local launcher, use `scripts/dev_stack.sh up` and the `820x` port set instead.
 
-`ingest-service`, `llm-service`, and `notification-service` are internal-only in default compose. Use `docker-compose.dev.yml` for dev-only port exposure.
+`input-service`, `review-service`, `ingest-service`, `llm-service`, and `notification-service` are internal-only in default compose. Use `docker-compose.dev.yml` for dev-only internal port exposure.
 
 ## Core Environment Variables
 

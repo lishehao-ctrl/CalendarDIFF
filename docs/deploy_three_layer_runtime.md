@@ -102,17 +102,19 @@ Expected services:
 
 1. `postgres`
 2. `redis`
-3. `input-service`
-4. `ingest-service`
-5. `llm-service`
-6. `review-service`
-7. `notification-service`
+3. `public-service`
+4. `input-service`
+5. `ingest-service`
+6. `llm-service`
+7. `review-service`
+8. `notification-service`
+9. `frontend`
 
 Compose exposure model:
 
-1. `public-service` is exposed on `localhost:8000`
-2. `input-service`, `review-service`, `ingest-service`, `llm-service`, and `notification-service` remain internal-only in default compose
-3. the frontend is not part of default compose yet; run it separately or use the local launcher when you need the full browser app
+1. `frontend` is exposed on `localhost:3000`
+2. `public-service` is exposed on `localhost:8000`
+3. `input-service`, `review-service`, `ingest-service`, `llm-service`, and `notification-service` remain internal-only in default compose
 4. use `docker-compose.dev.yml` for dev-only internal service host port mappings
 
 ## Health Checks
@@ -130,7 +132,7 @@ curl -s http://localhost:8204/health
 Compose public path:
 
 ```bash
-curl -s http://localhost:8001/health
+curl -s http://localhost:3000/login
 curl -s http://localhost:8000/health
 ```
 

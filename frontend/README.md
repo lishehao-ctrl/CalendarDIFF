@@ -42,6 +42,12 @@ Use the repo launcher for the active local stack:
 scripts/dev_stack.sh up
 ```
 
+For a fully containerized app, run from the repo root:
+
+```bash
+docker compose up --build
+```
+
 Manual frontend-only startup is still available if backend services are already running.
 
 ## Proxy Routing

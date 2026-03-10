@@ -135,5 +135,17 @@ services:
         condition: service_healthy
     command: /app/scripts/start_service.sh
 
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      BACKEND_BASE_URL: http://public-service:8000
+      BACKEND_API_KEY: ${APP_API_KEY}
+    depends_on:
+      public-service:
+        condition: service_started
+    ports:
+      - "3000:3000"
+
 volumes:
   pgdata:

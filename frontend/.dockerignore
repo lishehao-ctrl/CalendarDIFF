@@ -1,0 +1,8 @@
+.env.local
+.next
+.next-dev
+.next-prod
+node_modules
+npm-debug.log*
+tsconfig.tsbuildinfo
+tsconfig.typecheck.tsbuildinfo
