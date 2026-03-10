@@ -51,7 +51,7 @@ services:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
       APP_BASE_URL: http://localhost:8000
       SERVICE_NAME: input
-      RUN_MIGRATIONS: "true"
+      RUN_MIGRATIONS: "false"
       PORT: "8000"
     volumes:
       - ./:/app
@@ -69,7 +69,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       INGESTION_TICK_SECONDS: "2"
       SERVICE_NAME: ingest
-      RUN_MIGRATIONS: "true"
+      RUN_MIGRATIONS: "false"
       PORT: "8000"
     volumes:
       - ./:/app
@@ -88,7 +88,7 @@ services:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
       REVIEW_APPLY_TICK_SECONDS: "2"
       SERVICE_NAME: review
-      RUN_MIGRATIONS: "true"
+      RUN_MIGRATIONS: "false"
       PORT: "8000"
       REVIEW_API_BASE_URL: http://localhost:8000
     volumes:
@@ -106,7 +106,7 @@ services:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
       NOTIFICATION_TICK_SECONDS: "30"
       SERVICE_NAME: notification
-      RUN_MIGRATIONS: "true"
+      RUN_MIGRATIONS: "false"
       PORT: "8000"
       REVIEW_API_BASE_URL: http://public-service:8000
     volumes:
@@ -124,7 +124,7 @@ services:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
       REDIS_URL: redis://redis:6379/0
       SERVICE_NAME: llm
-      RUN_MIGRATIONS: "true"
+      RUN_MIGRATIONS: "false"
       PORT: "8000"
     volumes:
       - ./:/app
