@@ -20,6 +20,18 @@ Run backend as a public gateway plus 5 internal services, PostgreSQL, and Redis:
 3. public dashboard traffic is session-based and enters through the frontend, not by anonymously calling backend APIs
 4. input-service owns source lifecycle, OAuth session/callback, onboarding, and user profile APIs
 
+## Nginx Live Routing
+
+Before editing live host Nginx for CalendarDIFF, read `docs/nginx_live_routing_architecture.md`.
+
+CalendarDIFF live routing assumes:
+
+1. `cal.shehao.app` is the only domain owned by this app on the host
+2. frontend page traffic terminates at `127.0.0.1:3000`
+3. OAuth callbacks and `/health` terminate at `127.0.0.1:8000`
+4. shared websocket upgrade helpers live in `conf.d`, not inside an unrelated site file
+5. CalendarDIFF should not depend on a mixed-purpose `default` site block
+
 ## Prerequisites
 
 1. `.env` configured with DB and app secrets

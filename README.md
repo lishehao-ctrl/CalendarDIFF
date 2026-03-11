@@ -36,6 +36,7 @@ Current implementation guides:
 
 - `docs/frontend_console_release_acceptance.md`
 - `docs/deploy_three_layer_runtime.md`
+- `docs/nginx_live_routing_architecture.md`
 
 1. Create environment and install dependencies:
 
