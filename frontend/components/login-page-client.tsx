@@ -89,16 +89,23 @@ export function LoginPageClient({ mode }: { mode: "login" | "register" }) {
                 {submitting ? (mode === "login" ? "Signing in..." : "Creating account...") : (mode === "login" ? "Sign in" : "Create account")}
               </Button>
             </div>
-            <div className="mt-6 text-sm text-[#596270]">
-              {mode === "login" ? (
-                <>
-                  Need an account? <Link className="font-medium text-cobalt" href="/register">Register</Link>
-                </>
-              ) : (
-                <>
-                  Already registered? <Link className="font-medium text-cobalt" href="/login">Sign in</Link>
-                </>
-              )}
+            <div className="mt-6 space-y-3 text-sm text-[#596270]">
+              <div>
+                {mode === "login" ? (
+                  <>
+                    Need an account? <Link className="font-medium text-cobalt" href="/register">Register</Link>
+                  </>
+                ) : (
+                  <>
+                    Already registered? <Link className="font-medium text-cobalt" href="/login">Sign in</Link>
+                  </>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-3 text-xs uppercase tracking-[0.14em] text-[#6d7885]">
+                <Link className="font-medium text-[#425061] transition hover:text-cobalt" href="/privacy">Privacy policy</Link>
+                <span aria-hidden="true">•</span>
+                <Link className="font-medium text-[#425061] transition hover:text-cobalt" href="/terms">Terms of service</Link>
+              </div>
             </div>
           </Card>
         </div>
