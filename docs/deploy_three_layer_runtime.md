@@ -56,13 +56,15 @@ REDIS_URL=redis://localhost:6379/0
 PUBLIC_WEB_ORIGINS=http://localhost:8200,http://127.0.0.1:8200
 ```
 
-LLM config (ingest-service):
+LLM config (ingest-service / llm-service):
 
 ```env
 INGESTION_LLM_MODEL=...
 INGESTION_LLM_BASE_URL=...
 INGESTION_LLM_API_KEY=...
 ```
+
+Default compose treats those three variables as required and fails fast during `docker compose config/up` if any are blank.
 
 Worker tuning:
 

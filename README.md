@@ -151,6 +151,8 @@ INGESTION_LLM_BASE_URL=
 INGESTION_LLM_API_KEY=
 ```
 
+Under `docker compose`, `INGESTION_LLM_MODEL`, `INGESTION_LLM_BASE_URL`, and `INGESTION_LLM_API_KEY` are required and compose will fail fast if any are blank. `APP_LLM_OPENAI_MODEL` remains an optional fallback for scripts/tests that resolve the model name only.
+
 OAuth runtime config (single source of truth for route/base/redirect/key source):
 
 ```env
