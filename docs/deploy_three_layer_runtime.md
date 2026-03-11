@@ -81,6 +81,15 @@ GMAIL_OAUTH_TOKEN_URL=http://127.0.0.1:8765/oauth2/token
 GMAIL_OAUTH_AUTHORIZE_URL=http://127.0.0.1:8765/oauth2/auth
 ```
 
+For real Gmail OAuth under Docker Compose, also set:
+
+```env
+HOST_SECRETS_DIR=/absolute/path/outside-repo
+GMAIL_OAUTH_CLIENT_SECRETS_FILE=/absolute/path/outside-repo/google_client_secret.json
+```
+
+Default compose mounts `HOST_SECRETS_DIR` read-only into `public-service` and `ingest-service` at the same absolute path. Keep the client secrets file under that directory, outside the repository, and run `chmod 600` on the file.
+
 ## Preferred Local Startup
 
 Use the launcher when you want the active development topology:
@@ -127,7 +136,8 @@ Compose exposure model:
 1. `frontend` is exposed on `localhost:3000`
 2. `public-service` is exposed on `localhost:8000`
 3. `input-service`, `review-service`, `ingest-service`, `llm-service`, and `notification-service` remain internal-only in default compose
-4. use `docker-compose.dev.yml` for dev-only internal service host port mappings
+4. when Gmail OAuth is enabled, `public-service` and `ingest-service` mount `HOST_SECRETS_DIR` read-only so both services can read the same Google client secrets file
+5. use `docker-compose.dev.yml` for dev-only internal service host port mappings
 
 ## Health Checks
 

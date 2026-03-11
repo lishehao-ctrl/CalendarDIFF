@@ -122,6 +122,8 @@ For the preferred local launcher, use `scripts/dev_stack.sh up` and the `820x` p
 
 `input-service`, `review-service`, `ingest-service`, `llm-service`, and `notification-service` are internal-only in default compose. Use `docker-compose.dev.yml` for dev-only internal port exposure.
 
+If you enable Gmail OAuth under compose, set `HOST_SECRETS_DIR` to the parent directory of `GMAIL_OAUTH_CLIENT_SECRETS_FILE`. Default compose mounts that directory read-only into `public-service` and `ingest-service` at the same absolute path so both the OAuth callback flow and Gmail ingestion can read the same file.
+
 ## Core Environment Variables
 
 Required:
@@ -162,6 +164,8 @@ OAUTH_CALLBACK_REQUIRE_API_KEY=false
 OAUTH_STATE_TTL_MINUTES=10
 # Optional override; falls back to APP_SECRET_KEY.
 OAUTH_TOKEN_ENCRYPTION_KEY=
+HOST_SECRETS_DIR=/tmp/calendardiff-secrets
+GMAIL_OAUTH_CLIENT_SECRETS_FILE=/tmp/calendardiff-secrets/google_client_secret.json
 GMAIL_OAUTH_SCOPE=https://www.googleapis.com/auth/gmail.readonly
 GMAIL_OAUTH_ACCESS_TYPE=offline
 GMAIL_OAUTH_PROMPT=consent

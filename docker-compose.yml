@@ -36,6 +36,7 @@ services:
       PORT: "8000"
     volumes:
       - ./:/app
+      - ${HOST_SECRETS_DIR:-/tmp/calendardiff-secrets}:${HOST_SECRETS_DIR:-/tmp/calendardiff-secrets}:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,6 +74,7 @@ services:
       PORT: "8000"
     volumes:
       - ./:/app
+      - ${HOST_SECRETS_DIR:-/tmp/calendardiff-secrets}:${HOST_SECRETS_DIR:-/tmp/calendardiff-secrets}:ro
     depends_on:
       postgres:
         condition: service_healthy
