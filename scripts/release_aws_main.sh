@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+AWS_USER="${AWS_USER:-ubuntu}"
+AWS_HOST="${AWS_HOST:-3.236.46.145}"
+AWS_SSH_KEY="${AWS_SSH_KEY:-$HOME/.ssh/aws-main.pem}"
+AWS_APP_DIR="${AWS_APP_DIR:-/home/ubuntu/apps/CalendarDIFF}"
+REMOTE_GIT_URL="${REMOTE_GIT_URL:-git@github.com:lishehao/CalendarDIFF.git}"
+DOMAIN="${DOMAIN:-cal.shehao.app}"
+
+cd "$ROOT_DIR"
+
+if [[ -n "$(git status --short)" ]]; then
+  echo "Working tree is not clean. Commit or stash changes before release." >&2
+  exit 1
+fi
+
+LOCAL_HEAD="$(git rev-parse --short HEAD)"
+echo "Pushing $LOCAL_HEAD to origin main..."
+git push origin main
+
+echo "Syncing AWS checkout on $AWS_USER@$AWS_HOST..."
+ssh -i "$AWS_SSH_KEY" -o StrictHostKeyChecking=accept-new "$AWS_USER@$AWS_HOST" bash -s -- "$AWS_APP_DIR" "$REMOTE_GIT_URL" <<'REMOTE_SYNC'
+set -euo pipefail
+APP_DIR="$1"
+REMOTE_GIT_URL="$2"
+cd "$APP_DIR"
+git remote set-url origin "$REMOTE_GIT_URL"
+git fetch origin --prune
+git reset --hard origin/main
+printf 'REMOTE_HEAD=%s\n' "$(git rev-parse --short HEAD)"
+REMOTE_SYNC
+
+echo "Verifying remote runtime..."
+ssh -i "$AWS_SSH_KEY" -o StrictHostKeyChecking=accept-new "$AWS_USER@$AWS_HOST" bash -s -- "$AWS_APP_DIR" "$DOMAIN" <<'REMOTE_VERIFY'
+set -euo pipefail
+APP_DIR="$1"
+DOMAIN="$2"
+cd "$APP_DIR"
+sudo nginx -t >/tmp/nginx-check.out 2>&1
+cat /tmp/nginx-check.out
+docker compose ps
+echo HEALTH
+curl -sS "https://$DOMAIN/health"
+echo
+echo LOGIN
+curl -I -sS "https://$DOMAIN/login" | head -n 12
+REMOTE_VERIFY

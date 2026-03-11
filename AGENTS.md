@@ -24,3 +24,8 @@
 - Before coding: propose a short plan (files + steps).
 - After changes: run (in order) typecheck, lint, build.
 - Keep diffs minimal and readable.
+
+## Project deployment workflow
+- For tasks involving GitHub remotes, AWS release/sync, live `.env`, Gmail OAuth deployment, or host nginx changes, read `skills/aws-release/SKILL.md` before making changes.
+- Prefer `scripts/release_aws_main.sh` for the normal push -> AWS sync -> verify workflow.
+- If a host-only fix is applied on AWS, mirror the intended architecture back into repo docs before ending the task.
