@@ -237,29 +237,17 @@ def _load_learning_context(*, db: Session, user_id: int, change: Change) -> dict
     if observation is None:
         raise LabelLearningNotFoundError("supporting observation not found")
     payload = observation.event_payload if isinstance(observation.event_payload, dict) else {}
-    enrichment = payload.get("enrichment") if isinstance(payload.get("enrichment"), dict) else {}
-    course_parse = enrichment.get("course_parse") if isinstance(enrichment.get("course_parse"), dict) else {}
-    semantic_event = payload.get("semantic_event") if isinstance(payload.get("semantic_event"), dict) else {}
-    semantic_draft = payload.get("semantic_event_draft") if isinstance(payload.get("semantic_event_draft"), dict) else {}
-    semantic_like = semantic_event or semantic_draft
-    course_display = course_display_name(semantic_event=semantic_like) or course_display_name(course_parse=course_parse)
-    course_dept = (
-        semantic_like.get("course_dept") if isinstance(semantic_like.get("course_dept"), str) else course_parse.get("dept") if isinstance(course_parse.get("dept"), str) else None
-    )
-    course_number = (
-        semantic_like.get("course_number") if isinstance(semantic_like.get("course_number"), int) else course_parse.get("number") if isinstance(course_parse.get("number"), int) else None
-    )
-    course_suffix = (
-        semantic_like.get("course_suffix") if isinstance(semantic_like.get("course_suffix"), str) else course_parse.get("suffix") if isinstance(course_parse.get("suffix"), str) else None
-    )
-    course_quarter = (
-        semantic_like.get("course_quarter") if isinstance(semantic_like.get("course_quarter"), str) else course_parse.get("quarter") if isinstance(course_parse.get("quarter"), str) else None
-    )
-    course_year2 = (
-        semantic_like.get("course_year2") if isinstance(semantic_like.get("course_year2"), int) else course_parse.get("year2") if isinstance(course_parse.get("year2"), int) else None
-    )
-    raw_label = semantic_like.get("raw_type") if isinstance(semantic_like.get("raw_type"), str) else None
-    ordinal = semantic_like.get("ordinal") if isinstance(semantic_like.get("ordinal"), int) else None
+    semantic_event = payload.get("semantic_event") if isinstance(payload.get("semantic_event"), dict) else None
+    if semantic_event is None:
+        raise LabelLearningValidationError("supporting observation missing semantic_event")
+    course_display = course_display_name(semantic_event=semantic_event)
+    course_dept = semantic_event.get("course_dept") if isinstance(semantic_event.get("course_dept"), str) else None
+    course_number = semantic_event.get("course_number") if isinstance(semantic_event.get("course_number"), int) else None
+    course_suffix = semantic_event.get("course_suffix") if isinstance(semantic_event.get("course_suffix"), str) else None
+    course_quarter = semantic_event.get("course_quarter") if isinstance(semantic_event.get("course_quarter"), str) else None
+    course_year2 = semantic_event.get("course_year2") if isinstance(semantic_event.get("course_year2"), int) else None
+    raw_label = semantic_event.get("raw_type") if isinstance(semantic_event.get("raw_type"), str) else None
+    ordinal = semantic_event.get("ordinal") if isinstance(semantic_event.get("ordinal"), int) else None
     resolution = resolve_course_work_item_family(
         db,
         user_id=user_id,

@@ -79,45 +79,19 @@ def extract_source_facts_from_gmail_payload(*, payload: dict) -> dict:
 
 def extract_semantic_event_draft(*, payload: dict, source_facts: dict | None = None) -> dict:
     raw = payload.get("semantic_event_draft")
-    if isinstance(raw, dict):
-        draft = SemanticEventDraft.model_validate(
-            normalize_semantic_event(
-                raw,
-                fallback_due_raw=source_facts.get("source_dtstart_utc") if isinstance(source_facts, dict) else None,
-            )
-        )
-        return draft.model_dump(mode="json")
-    enrichment = payload.get("enrichment") if isinstance(payload.get("enrichment"), dict) else {}
-    course_parse = enrichment.get("course_parse") if isinstance(enrichment.get("course_parse"), dict) else {}
-    semantic_parse = enrichment.get("semantic_parse") if isinstance(enrichment.get("semantic_parse"), dict) else {}
-    if not course_parse and not semantic_parse:
+    if not isinstance(raw, dict):
         raise RuntimeError("core_ingest_payload_invalid: payload missing semantic_event_draft")
-    merged = {
-        "course_dept": course_parse.get("dept"),
-        "course_number": course_parse.get("number"),
-        "course_suffix": course_parse.get("suffix"),
-        "course_quarter": course_parse.get("quarter"),
-        "course_year2": course_parse.get("year2"),
-        "raw_type": semantic_parse.get("raw_type"),
-        "event_name": semantic_parse.get("event_name"),
-        "ordinal": semantic_parse.get("ordinal"),
-        "due_date": semantic_parse.get("due_date"),
-        "due_time": semantic_parse.get("due_time"),
-        "time_precision": semantic_parse.get("time_precision"),
-        "confidence": semantic_parse.get("confidence") if isinstance(semantic_parse.get("confidence"), (int, float)) else course_parse.get("confidence"),
-        "evidence": semantic_parse.get("evidence") if isinstance(semantic_parse.get("evidence"), str) and semantic_parse.get("evidence") else course_parse.get("evidence"),
-    }
     draft = SemanticEventDraft.model_validate(
         normalize_semantic_event(
-            merged,
+            raw,
             fallback_due_raw=source_facts.get("source_dtstart_utc") if isinstance(source_facts, dict) else None,
         )
     )
     return draft.model_dump(mode="json")
 
 
-def extract_enrichment_course_parse(*, payload: dict) -> dict:
-    draft = extract_semantic_event_draft(payload=payload)
+def extract_course_parse(*, payload: dict, source_facts: dict | None = None) -> dict:
+    draft = extract_semantic_event_draft(payload=payload, source_facts=source_facts)
     return {
         "dept": draft.get("course_dept"),
         "number": draft.get("course_number"),
@@ -129,15 +103,10 @@ def extract_enrichment_course_parse(*, payload: dict) -> dict:
     }
 
 
-def extract_enrichment_semantic_parse(*, payload: dict) -> dict:
-    return extract_semantic_event_draft(payload=payload)
-
-
 def extract_link_signals(*, payload: dict, source_facts: dict) -> dict:
-    raw_signals = payload.get("link_signals") if isinstance(payload.get("link_signals"), dict) else {}
-    if not raw_signals:
-        enrichment = payload.get("enrichment") if isinstance(payload.get("enrichment"), dict) else {}
-        raw_signals = enrichment.get("link_signals") if isinstance(enrichment.get("link_signals"), dict) else {}
+    raw_signals = payload.get("link_signals")
+    if not isinstance(raw_signals, dict):
+        raise RuntimeError("core_ingest_payload_invalid: payload missing link_signals")
     normalized = LinkSignals.model_validate(
         {
             "keywords": raw_signals.get("keywords"),
@@ -181,8 +150,7 @@ def coerce_exam_sequence(value: object) -> int | None:
 __all__ = [
     "coerce_exam_sequence",
     "empty_course_parse",
-    "extract_enrichment_course_parse",
-    "extract_enrichment_semantic_parse",
+    "extract_course_parse",
     "extract_link_signals",
     "extract_semantic_event_draft",
     "extract_source_facts_from_calendar_payload",

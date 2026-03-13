@@ -258,18 +258,7 @@ def _course_parse_from_payload(payload: object) -> dict:
             "quarter": semantic_event.get("course_quarter"),
             "year2": semantic_event.get("course_year2"),
         }
-    semantic_draft = payload.get("semantic_event_draft")
-    if isinstance(semantic_draft, dict):
-        return {
-            "dept": semantic_draft.get("course_dept"),
-            "number": semantic_draft.get("course_number"),
-            "suffix": semantic_draft.get("course_suffix"),
-            "quarter": semantic_draft.get("course_quarter"),
-            "year2": semantic_draft.get("course_year2"),
-        }
-    enrichment = payload.get("enrichment") if isinstance(payload.get("enrichment"), dict) else {}
-    course_parse = enrichment.get("course_parse")
-    return course_parse if isinstance(course_parse, dict) else {}
+    return {}
 
 
 def _semantic_parse_from_payload(payload: object) -> dict:
@@ -278,12 +267,7 @@ def _semantic_parse_from_payload(payload: object) -> dict:
     semantic_event = payload.get("semantic_event")
     if isinstance(semantic_event, dict):
         return semantic_event
-    semantic_draft = payload.get("semantic_event_draft")
-    if isinstance(semantic_draft, dict):
-        return semantic_draft
-    enrichment = payload.get("enrichment") if isinstance(payload.get("enrichment"), dict) else {}
-    semantic_parse = enrichment.get("semantic_parse")
-    return semantic_parse if isinstance(semantic_parse, dict) else {}
+    return {}
 
 
 def _coerce_text(value: object) -> str | None:

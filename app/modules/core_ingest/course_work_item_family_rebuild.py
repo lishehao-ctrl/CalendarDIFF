@@ -176,9 +176,8 @@ def _rebuild_payload_from_observation(*, source_kind: SourceKind, external_event
 def _normalize_observation_course_key(payload: object) -> str:
     raw = payload if isinstance(payload, dict) else {}
     semantic_event = raw.get("semantic_event") if isinstance(raw.get("semantic_event"), dict) else {}
-    semantic_draft = raw.get("semantic_event_draft") if isinstance(raw.get("semantic_event_draft"), dict) else {}
     return normalized_course_identity_key(
-        **_course_identity_from_display(course_display_name(semantic_event=semantic_event or semantic_draft))
+        **_course_identity_from_display(course_display_name(semantic_event=semantic_event))
     )
 
 

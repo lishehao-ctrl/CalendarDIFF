@@ -9,7 +9,7 @@ from app.modules.sync.types import CanonicalEventInput
 
 
 def coerce_calendar_payload(*, payload: dict) -> CanonicalEventInput:
-    from app.modules.core_ingest.payload_extractors import extract_enrichment_course_parse
+    from app.modules.core_ingest.payload_extractors import extract_course_parse
 
     source_facts_raw = payload.get("source_facts")
     try:
@@ -25,7 +25,7 @@ def coerce_calendar_payload(*, payload: dict) -> CanonicalEventInput:
         raise RuntimeError(f"calendar record uid={uid} missing non-empty source_facts.source_title")
     title = title_raw.strip()
 
-    course_label = course_display_name(course_parse=extract_enrichment_course_parse(payload=payload)) or "Unknown"
+    course_label = course_display_name(course_parse=extract_course_parse(payload=payload, source_facts=source_facts.model_dump(mode="json"))) or "Unknown"
 
     start_value = source_facts.source_dtstart_utc
     end_value = source_facts.source_dtend_utc

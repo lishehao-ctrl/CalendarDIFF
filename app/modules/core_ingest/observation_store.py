@@ -14,9 +14,12 @@ __all__ = [
     "compute_payload_hash",
     "deactivate_observation",
     "normalize_observation_payload",
+    "retire_active_observation_for_unresolved_transition",
     "semantic_payload_for_change_detection",
     "upsert_observation",
 ]
+
+_RUNTIME_OBSERVATION_KEYS = ("source_facts", "semantic_event", "link_signals", "kind_resolution")
 
 
 def upsert_observation(
@@ -76,8 +79,21 @@ def upsert_observation(
 
 def normalize_observation_payload(payload: dict) -> dict:
     if not isinstance(payload, dict):
-        return {}
-    return dict(payload)
+        raise RuntimeError("core_ingest_payload_invalid: observation payload must be object")
+    if "semantic_event_draft" in payload or "enrichment" in payload:
+        raise RuntimeError("core_ingest_payload_invalid: observation payload must use runtime semantic_event envelope")
+
+    normalized: dict[str, object] = {}
+    for key in _RUNTIME_OBSERVATION_KEYS:
+        value = payload.get(key)
+        if not isinstance(value, dict):
+            raise RuntimeError(f"core_ingest_payload_invalid: observation payload missing {key}")
+        normalized[key] = dict(value)
+
+    raw_ics_component_b64 = payload.get("raw_ics_component_b64")
+    if isinstance(raw_ics_component_b64, str) and raw_ics_component_b64:
+        normalized["raw_ics_component_b64"] = raw_ics_component_b64
+    return normalized
 
 
 def semantic_payload_for_change_detection(payload: dict) -> dict:
@@ -107,6 +123,29 @@ def deactivate_observation(
     row.observed_at = applied_at
     row.last_request_id = request_id
     return {row.entity_uid}
+
+
+def retire_active_observation_for_unresolved_transition(
+    *,
+    db: Session,
+    source_id: int,
+    external_event_id: str,
+    applied_at: datetime,
+    request_id: str,
+) -> bool:
+    row = db.scalar(
+        select(SourceEventObservation).where(
+            SourceEventObservation.source_id == source_id,
+            SourceEventObservation.external_event_id == external_event_id,
+            SourceEventObservation.is_active.is_(True),
+        )
+    )
+    if row is None:
+        return False
+    row.is_active = False
+    row.observed_at = applied_at
+    row.last_request_id = request_id
+    return True
 
 
 def compute_payload_hash(payload: dict) -> str:
