@@ -71,30 +71,6 @@ class EventLinkCandidateReason(str, Enum):
     LOW_CONFIDENCE = "low_confidence"
 
 
-class EventLinkAlertRiskLevel(str, Enum):
-    MEDIUM = "medium"
-
-
-class EventLinkAlertReason(str, Enum):
-    AUTO_LINK_WITHOUT_CANONICAL_CHANGE = "auto_link_without_canonical_change"
-
-
-class EventLinkAlertStatus(str, Enum):
-    PENDING = "pending"
-    DISMISSED = "dismissed"
-    MARKED_SAFE = "marked_safe"
-    RESOLVED = "resolved"
-
-
-class EventLinkAlertResolution(str, Enum):
-    DISMISSED_BY_USER = "dismissed_by_user"
-    MARKED_SAFE_BY_USER = "marked_safe_by_user"
-    CANONICAL_PENDING_CREATED = "canonical_pending_created"
-    CANDIDATE_OPENED = "candidate_opened"
-    LINK_REMOVED = "link_removed"
-    LINK_RELINKED = "link_relinked"
-
-
 class EventEntity(Base):
     __tablename__ = "event_entities"
     __table_args__ = (
@@ -238,61 +214,6 @@ class EventLinkBlock(Base):
     source: Mapped["InputSource"] = relationship("InputSource", back_populates="event_link_blocks")
 
 
-class EventLinkAlert(Base):
-    __tablename__ = "event_link_alerts"
-    __table_args__ = (
-        UniqueConstraint(
-            "user_id",
-            "source_id",
-            "external_event_id",
-            "entity_uid",
-            name="uq_event_link_alerts_user_source_external_entity",
-        ),
-        Index("ix_event_link_alerts_user_status_created", "user_id", "status", "created_at"),
-        Index("ix_event_link_alerts_source_external", "source_id", "external_event_id"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), nullable=False)
-    external_event_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    entity_uid: Mapped[str] = mapped_column(String(128), nullable=False)
-    link_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    risk_level: Mapped[EventLinkAlertRiskLevel] = mapped_column(
-        SAEnum(EventLinkAlertRiskLevel, name="event_link_alert_risk_level", native_enum=False),
-        nullable=False,
-        default=EventLinkAlertRiskLevel.MEDIUM,
-        server_default=EventLinkAlertRiskLevel.MEDIUM.value,
-    )
-    reason_code: Mapped[EventLinkAlertReason] = mapped_column(
-        SAEnum(EventLinkAlertReason, name="event_link_alert_reason", native_enum=False),
-        nullable=False,
-        default=EventLinkAlertReason.AUTO_LINK_WITHOUT_CANONICAL_CHANGE,
-        server_default=EventLinkAlertReason.AUTO_LINK_WITHOUT_CANONICAL_CHANGE.value,
-    )
-    status: Mapped[EventLinkAlertStatus] = mapped_column(
-        SAEnum(EventLinkAlertStatus, name="event_link_alert_status", native_enum=False),
-        nullable=False,
-        default=EventLinkAlertStatus.PENDING,
-        server_default=EventLinkAlertStatus.PENDING.value,
-    )
-    resolution_code: Mapped[EventLinkAlertResolution | None] = mapped_column(
-        SAEnum(EventLinkAlertResolution, name="event_link_alert_resolution", native_enum=False),
-        nullable=True,
-    )
-    evidence_snapshot_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
-    reviewed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
-    )
-
-    user: Mapped["User"] = relationship("User", back_populates="event_link_alerts", foreign_keys=[user_id])
-    source: Mapped["InputSource"] = relationship("InputSource", back_populates="event_link_alerts")
-
-
 class Change(Base):
     __tablename__ = "changes"
     __table_args__ = (
@@ -426,11 +347,6 @@ __all__ = [
     "EventEntity",
     "EventEntityLifecycle",
     "EventEntityLink",
-    "EventLinkAlert",
-    "EventLinkAlertReason",
-    "EventLinkAlertResolution",
-    "EventLinkAlertRiskLevel",
-    "EventLinkAlertStatus",
     "EventLinkBlock",
     "EventLinkCandidate",
     "EventLinkCandidateReason",

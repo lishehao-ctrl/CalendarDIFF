@@ -6,8 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource
-from app.db.models.review import EventEntityLink, EventLinkAlertResolution, EventLinkBlock, EventLinkCandidate, EventLinkCandidateReason, EventLinkCandidateStatus, EventLinkOrigin
-from app.modules.core_ingest.link_alert_outbox import emit_link_alert_resolve_pair_requested
+from app.db.models.review import EventEntityLink, EventLinkBlock, EventLinkCandidate, EventLinkCandidateReason, EventLinkCandidateStatus, EventLinkOrigin
 from app.modules.core_ingest.linking_rules import LinkDecision, decide_inventory_link
 
 __all__ = [
@@ -155,14 +154,6 @@ def upsert_link_candidate(
     score_breakdown: dict,
     reason_code: str,
 ) -> EventLinkCandidate:
-    emit_link_alert_resolve_pair_requested(
-        db=db,
-        user_id=user_id,
-        source_id=source_id,
-        external_event_id=external_event_id,
-        resolution_code=EventLinkAlertResolution.CANDIDATE_OPENED,
-        note="candidate_opened",
-    )
     pending_rows = db.scalars(
         select(EventLinkCandidate).where(
             EventLinkCandidate.user_id == user_id,

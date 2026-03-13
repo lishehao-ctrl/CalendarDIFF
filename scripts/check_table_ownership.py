@@ -34,7 +34,6 @@ TABLE_OWNERSHIP: dict[str, str] = {
     "event_entity_links": "review-service",
     "event_link_candidates": "review-service",
     "event_link_blocks": "review-service",
-    "event_link_alerts": "review-service",
     "changes": "review-service",
     "change_source_refs": "review-service",
     "course_work_item_label_families": "review-service",

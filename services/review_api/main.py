@@ -8,7 +8,6 @@ from app.modules.core_ingest.router import router as core_ingest_router
 from app.modules.core_ingest.worker import run_core_apply_tick
 from app.modules.health.router import router as health_router
 from app.modules.review_changes.metrics_router import router as review_metrics_router
-from app.modules.review_links.alerts_event_consumer import run_review_link_alert_events_tick
 from app.runtime.service_workers import TickResult, build_periodic_worker_task, coerce_int_metric
 from app.service_app import create_service_app
 
@@ -19,12 +18,10 @@ session_factory = get_session_factory()
 def _build_tick(worker_id: str):
     def _tick() -> dict[str, object]:
         apply_processed = 0
-        alert_events_processed = 0
         try:
             with session_factory() as db:
                 try:
                     apply_processed = run_core_apply_tick(db)
-                    alert_events_processed = run_review_link_alert_events_tick(db)
                 except Exception as exc:  # pragma: no cover - defensive worker loop
                     db.rollback()
                     logger.error(
@@ -38,7 +35,7 @@ def _build_tick(worker_id: str):
                 worker_id,
                 sanitize_log_message(str(exc)),
             )
-        return {"apply_processed": apply_processed, "alert_events_processed": alert_events_processed}
+        return {"apply_processed": apply_processed}
 
     return _tick
 
@@ -46,11 +43,9 @@ def _build_tick(worker_id: str):
 def _log_success(worker_id: str, result: TickResult, latency_ms: int) -> str:
     payload = result if isinstance(result, dict) else {}
     apply_processed = coerce_int_metric(payload.get("apply_processed"))
-    alert_events_processed = coerce_int_metric(payload.get("alert_events_processed"))
-    return "review apply tick worker_id=%s apply_processed=%s alert_events_processed=%s latency_ms=%s" % (
+    return "review apply tick worker_id=%s apply_processed=%s latency_ms=%s" % (
         worker_id,
         apply_processed,
-        alert_events_processed,
         latency_ms,
     )
 

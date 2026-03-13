@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import require_internal_service_token
 from app.db.models.input import SourceKind
-from app.db.models.review import Change, EventEntityLink, EventLinkAlert, EventLinkAlertResolution, EventLinkAlertStatus, EventLinkBlock, EventLinkCandidate, EventLinkCandidateStatus, EventLinkOrigin, ReviewStatus, SourceEventObservation
+from app.db.models.review import Change, EventEntityLink, EventLinkBlock, EventLinkCandidate, EventLinkCandidateStatus, EventLinkOrigin, ReviewStatus, SourceEventObservation
 from app.db.models.shared import IntegrationOutbox, OutboxStatus
 from app.db.session import get_db
 
@@ -88,58 +88,6 @@ def get_review_metrics(db: Session = Depends(get_db)) -> dict[str, object]:
         )
         or 0
     )
-    link_alert_created_total = int(db.scalar(select(func.count(EventLinkAlert.id))) or 0)
-    link_alert_pending_total = int(
-        db.scalar(
-            select(func.count(EventLinkAlert.id)).where(
-                EventLinkAlert.status == EventLinkAlertStatus.PENDING,
-            )
-        )
-        or 0
-    )
-    link_alert_dismissed_total = int(
-        db.scalar(
-            select(func.count(EventLinkAlert.id)).where(
-                EventLinkAlert.status == EventLinkAlertStatus.DISMISSED,
-            )
-        )
-        or 0
-    )
-    link_alert_marked_safe_total = int(
-        db.scalar(
-            select(func.count(EventLinkAlert.id)).where(
-                EventLinkAlert.status == EventLinkAlertStatus.MARKED_SAFE,
-            )
-        )
-        or 0
-    )
-    link_alert_resolved_total = int(
-        db.scalar(
-            select(func.count(EventLinkAlert.id)).where(
-                EventLinkAlert.status == EventLinkAlertStatus.RESOLVED,
-            )
-        )
-        or 0
-    )
-    resolved_by_resolution_rows = db.execute(
-        select(
-            EventLinkAlert.resolution_code,
-            func.count(EventLinkAlert.id),
-        )
-        .where(EventLinkAlert.status == EventLinkAlertStatus.RESOLVED)
-        .group_by(EventLinkAlert.resolution_code)
-    ).all()
-    link_alert_resolved_by_resolution: dict[str, int] = {
-        resolution.value: 0 for resolution in EventLinkAlertResolution
-    }
-    link_alert_resolved_by_resolution["unknown"] = 0
-    for resolution_code, count_value in resolved_by_resolution_rows:
-        if isinstance(resolution_code, EventLinkAlertResolution):
-            key = resolution_code.value
-        else:
-            key = "unknown"
-        link_alert_resolved_by_resolution[key] = int(count_value or 0)
-
     return {
         "service_name": "review-service",
         "timestamp": now.isoformat(),
@@ -154,11 +102,5 @@ def get_review_metrics(db: Session = Depends(get_db)) -> dict[str, object]:
             "linker_candidate_decision_approve_total": linker_candidate_decision_approve_total,
             "linker_candidate_decision_reject_total": linker_candidate_decision_reject_total,
             "linker_false_link_corrections_total": linker_false_link_corrections_total,
-            "link_alert_created_total": link_alert_created_total,
-            "link_alert_pending_total": link_alert_pending_total,
-            "link_alert_dismissed_total": link_alert_dismissed_total,
-            "link_alert_marked_safe_total": link_alert_marked_safe_total,
-            "link_alert_resolved_total": link_alert_resolved_total,
-            "link_alert_resolved_total_by_resolution": link_alert_resolved_by_resolution,
         },
     }

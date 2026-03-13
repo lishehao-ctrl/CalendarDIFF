@@ -24,7 +24,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.db.models.ingestion import IngestJob, IngestResult
-    from app.db.models.review import EventEntityLink, EventLinkAlert, EventLinkBlock, EventLinkCandidate, SourceEventObservation
+    from app.db.models.review import EventEntityLink, EventLinkBlock, EventLinkCandidate, SourceEventObservation
     from app.db.models.review import IngestApplyLog
     from app.db.models.shared import User
 
@@ -116,11 +116,6 @@ class InputSource(Base):
     )
     event_link_blocks: Mapped[list["EventLinkBlock"]] = relationship(
         "EventLinkBlock",
-        back_populates="source",
-        cascade="all, delete-orphan",
-    )
-    event_link_alerts: Mapped[list["EventLinkAlert"]] = relationship(
-        "EventLinkAlert",
         back_populates="source",
         cascade="all, delete-orphan",
     )

@@ -8,11 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.db.models.ingestion import ConnectorResultStatus, IngestResult
 from app.db.models.input import InputSource, SourceKind, SyncRequest, SyncRequestStatus
-from app.db.models.review import EventLinkAlertResolution, IngestApplyLog
+from app.db.models.review import IngestApplyLog
 from app.modules.core_ingest.calendar_apply import apply_calendar_observations
 from app.modules.core_ingest.gmail_apply import apply_gmail_observations
-from app.modules.core_ingest.link_alert_outbox import emit_link_alert_resolve_entities_requested
-from app.modules.core_ingest.pending_auto_link_alerts import upsert_auto_link_alerts_without_pending
 from app.modules.core_ingest.pending_proposal_rebuild import rebuild_pending_change_proposals
 
 
@@ -25,7 +23,6 @@ def apply_records(
     request_id: str,
 ) -> int:
     records = result.records if isinstance(result.records, list) else []
-    auto_link_contexts: list[dict] = []
 
     if result.status == ConnectorResultStatus.NO_CHANGE and not records:
         return 0
@@ -48,7 +45,6 @@ def apply_records(
             records=records,
             applied_at=applied_at,
             request_id=request_id,
-            auto_link_contexts=auto_link_contexts,
         )
     else:
         return 0
@@ -65,19 +61,6 @@ def apply_records(
         applied_at=applied_at,
         previous_observation_payloads=previous_observation_payloads,
     )
-    emit_link_alert_resolve_entities_requested(
-        db=db,
-        user_id=source.user_id,
-        entity_uids=pending_entity_uids,
-        resolution_code=EventLinkAlertResolution.CANONICAL_PENDING_CREATED,
-        note="canonical_pending_created",
-    )
-    if source.source_kind == SourceKind.EMAIL and auto_link_contexts:
-        upsert_auto_link_alerts_without_pending(
-            db=db,
-            auto_link_contexts=auto_link_contexts,
-            pending_entity_uids=pending_entity_uids,
-        )
     return changes_created
 
 

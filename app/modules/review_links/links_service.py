@@ -6,8 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource
-from app.db.models.review import EventEntityLink, EventLinkAlertResolution, EventLinkBlock, EventLinkCandidate, EventLinkCandidateStatus, EventLinkOrigin
-from app.modules.review_links.alerts_upsert_service import resolve_pending_link_alerts_for_pair
+from app.db.models.review import EventEntityLink, EventLinkBlock, EventLinkCandidate, EventLinkCandidateStatus, EventLinkOrigin
 from app.modules.review_links.candidates_decision_service import LinkCandidateDecisionError
 from app.modules.review_links.common import load_entity_preview
 
@@ -86,14 +85,6 @@ def delete_link(
             created_by_user_id=user_id,
             note=note,
         )
-    resolve_pending_link_alerts_for_pair(
-        db=db,
-        user_id=user_id,
-        source_id=row.source_id,
-        external_event_id=row.external_event_id,
-        resolution_code=EventLinkAlertResolution.LINK_REMOVED,
-        note="link_removed",
-    )
     db.delete(row)
     db.commit()
 
@@ -179,15 +170,6 @@ def relink_observation(
         candidate.reviewed_by_user_id = user_id
         candidate.reviewed_at = now
         candidate.review_note = "manual_relink"
-
-    resolve_pending_link_alerts_for_pair(
-        db=db,
-        user_id=user_id,
-        source_id=source_id,
-        external_event_id=external_event_id,
-        resolution_code=EventLinkAlertResolution.LINK_RELINKED,
-        note="link_relinked",
-    )
     db.commit()
     db.refresh(link_row)
     return link_row, cleared

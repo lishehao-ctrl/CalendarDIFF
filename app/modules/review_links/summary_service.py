@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models.review import Change, EventLinkAlert, EventLinkAlertStatus, EventLinkCandidate, EventLinkCandidateStatus, ReviewStatus
+from app.db.models.review import Change, EventLinkCandidate, EventLinkCandidateStatus, ReviewStatus
 
 
 def get_review_items_summary(
@@ -31,18 +31,8 @@ def get_review_items_summary(
         )
         or 0
     )
-    link_alerts_pending = int(
-        db.scalar(
-            select(func.count(EventLinkAlert.id)).where(
-                EventLinkAlert.user_id == user_id,
-                EventLinkAlert.status == EventLinkAlertStatus.PENDING,
-            )
-        )
-        or 0
-    )
     return {
         "changes_pending": changes_pending,
         "link_candidates_pending": link_candidates_pending,
-        "link_alerts_pending": link_alerts_pending,
         "generated_at": datetime.now(timezone.utc),
     }

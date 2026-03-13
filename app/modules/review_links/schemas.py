@@ -98,50 +98,9 @@ class LinkRelinkResponse(BaseModel):
     cleared_blocks: int
 
 
-class LinkAlertItemResponse(BaseModel):
-    id: int
-    source_id: int
-    external_event_id: str
-    entity_uid: str
-    link_id: int | None
-    status: Literal["pending", "dismissed", "marked_safe", "resolved"]
-    reason_code: Literal["auto_link_without_canonical_change"]
-    resolution_code: Literal[
-        "dismissed_by_user",
-        "marked_safe_by_user",
-        "canonical_pending_created",
-        "candidate_opened",
-        "link_removed",
-        "link_relinked",
-    ] | None = None
-    risk_level: Literal["medium"]
-    evidence_snapshot: dict
-    reviewed_by_user_id: int | None
-    reviewed_at: datetime | None
-    review_note: str | None
-    created_at: datetime
-    updated_at: datetime
-    linked_entity: LinkCandidateEntityPreview | None = None
-
-
-class LinkAlertDecisionRequest(BaseModel):
-    note: str | None = Field(default=None, max_length=512)
-
-    model_config = {"extra": "forbid"}
-
-
-class LinkAlertDecisionResponse(BaseModel):
-    id: int
-    status: Literal["pending", "dismissed", "marked_safe", "resolved"]
-    idempotent: bool
-    reviewed_at: datetime | None
-    review_note: str | None
-
-
 class ReviewItemsSummaryResponse(BaseModel):
     changes_pending: int
     link_candidates_pending: int
-    link_alerts_pending: int
     generated_at: datetime
 
 
@@ -157,29 +116,6 @@ class BatchIdsDecisionBase(BaseModel):
         if any((not isinstance(item, int) or item <= 0) for item in value):
             raise ValueError("ids must contain positive integers")
         return value
-
-
-class LinkAlertBatchDecisionRequest(BatchIdsDecisionBase):
-    decision: Literal["dismiss", "mark_safe"]
-
-
-class LinkAlertBatchDecisionItemResult(BaseModel):
-    id: int
-    ok: bool
-    status: Literal["pending", "dismissed", "marked_safe", "resolved"] | None
-    idempotent: bool
-    reviewed_at: datetime | None
-    review_note: str | None
-    error_code: Literal["not_found"] | None
-    error_detail: str | None
-
-
-class LinkAlertBatchDecisionResponse(BaseModel):
-    decision: Literal["dismiss", "mark_safe"]
-    total_requested: int
-    succeeded: int
-    failed: int
-    results: list[LinkAlertBatchDecisionItemResult]
 
 
 class LinkCandidateBatchDecisionRequest(BatchIdsDecisionBase):

@@ -43,7 +43,6 @@ def apply_gmail_observations(
     records: list[dict],
     applied_at: datetime,
     request_id: str,
-    auto_link_contexts: list[dict] | None = None,
 ) -> set[str]:
     affected_entity_uids: set[str] = set()
 
@@ -112,7 +111,6 @@ def apply_gmail_observations(
             source_id=source.id,
             external_event_id=external_event_id,
         )
-        link_row = None
         should_emit_semantic_proposal = False
         if existing_link is not None and existing_link.link_origin != EventLinkOrigin.AUTO and isinstance(existing_link.entity_uid, str):
             entity_uid = existing_link.entity_uid
@@ -129,7 +127,7 @@ def apply_gmail_observations(
             )
             if link_decision.status == "linked" and isinstance(link_decision.entity_uid, str):
                 entity_uid = link_decision.entity_uid
-                link_row = upsert_event_entity_link(
+                upsert_event_entity_link(
                     db=db,
                     source=source,
                     external_event_id=external_event_id,
@@ -146,29 +144,6 @@ def apply_gmail_observations(
                     external_event_id=external_event_id,
                     note="semantic_link_resolved",
                 )
-                if auto_link_contexts is not None:
-                    auto_link_contexts.append(
-                        {
-                            "user_id": source.user_id,
-                            "source_id": source.id,
-                            "external_event_id": external_event_id,
-                            "entity_uid": entity_uid,
-                            "link_row": link_row,
-                            "evidence_snapshot": {
-                                "request_id": request_id,
-                                "source_id": source.id,
-                                "external_event_id": external_event_id,
-                                "entity_uid": entity_uid,
-                                "kind_resolution": kind_resolution,
-                                "link_decision": {
-                                    "status": link_decision.status,
-                                    "reason_code": link_decision.reason_code,
-                                    "score": link_decision.score,
-                                },
-                                "source_dtstart_utc": source_facts.get("source_dtstart_utc"),
-                            },
-                        }
-                    )
             else:
                 rule_reason = str(link_decision.score_breakdown.get("rule_reason") or "")
                 candidate_can_emit_semantic_proposal = (
