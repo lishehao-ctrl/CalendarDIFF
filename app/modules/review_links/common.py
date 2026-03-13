@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.review import EventEntity, SourceEventObservation
 from app.modules.common.event_display import event_display_dict
-from app.modules.common.family_labels import load_latest_family_labels, resolve_family_label
+from app.modules.common.family_labels import load_latest_family_labels, require_latest_family_label
 from app.modules.common.payload_schemas import SourceFacts
 from app.modules.common.semantic_codec import approved_entity_to_semantic_payload
 
@@ -42,14 +42,15 @@ def load_entity_preview(*, db: Session, user_id: int, entity_uid: str | None) ->
     )
     if entity_row is not None:
         latest_family_labels = load_latest_family_labels(db, user_id=user_id, family_ids=[entity_row.family_id])
+        family_name_override = require_latest_family_label(
+            family_id=entity_row.family_id,
+            latest_family_labels=latest_family_labels,
+            context=f"review_links.entity_preview entity_uid={entity_uid}",
+        )
         event_display = event_display_dict(
             approved_entity_to_semantic_payload(
                 entity_row,
-                family_name_override=resolve_family_label(
-                    family_id=entity_row.family_id,
-                    snapshot_family_name=entity_row.family_name,
-                    latest_family_labels=latest_family_labels,
-                ),
+                family_name_override=family_name_override,
             ),
             strict=False,
         )
@@ -69,7 +70,19 @@ def load_entity_preview(*, db: Session, user_id: int, entity_uid: str | None) ->
     if observation is not None:
         payload = observation.event_payload if isinstance(observation.event_payload, dict) else {}
         semantic_event = payload.get("semantic_event") if isinstance(payload.get("semantic_event"), dict) else None
-        return {"entity_uid": entity_uid, "event_display": event_display_dict(semantic_event, strict=False) if semantic_event is not None else None}
+        if semantic_event is None:
+            return {"entity_uid": entity_uid, "event_display": None}
+        family_id = semantic_event.get("family_id") if isinstance(semantic_event.get("family_id"), int) else None
+        latest_family_labels = load_latest_family_labels(db, user_id=user_id, family_ids=[family_id])
+        family_name_override = require_latest_family_label(
+            family_id=family_id,
+            latest_family_labels=latest_family_labels,
+            context=f"review_links.entity_preview observation entity_uid={entity_uid}",
+        )
+        return {
+            "entity_uid": entity_uid,
+            "event_display": event_display_dict(semantic_event, strict=False, family_name_override=family_name_override),
+        }
     return {"entity_uid": entity_uid, "event_display": None}
 
 

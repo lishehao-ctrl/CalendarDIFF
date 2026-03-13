@@ -271,7 +271,7 @@ export function ReviewChangeEditPageClient({ mode, changeId }: { mode: ReviewEdi
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Current item</p>
               <div className="mt-4 space-y-2 text-sm text-[#314051]">
                 <p>Entity UID: {data.entity_uid}</p>
-                <p>Family: {data.editable_event.family_name || "Unknown"}</p>
+                <p>Family: {data.editable_event.family_name}</p>
                 <p>Course: {formatCourseDisplay(data.editable_event as unknown as Record<string, unknown>)}</p>
               </div>
             </Card>

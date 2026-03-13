@@ -5,11 +5,16 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from app.core.config import get_settings
+from app.db.models.review import Change, ChangeOrigin, ChangeType, ReviewStatus
 from app.modules.common.event_display import EventDisplay
+from app.modules.common.family_labels import FamilyLabelAuthorityError
 from app.modules.notify.interface import ChangeDigestItem
 from app.modules.notify.notifier_factory import build_notifier
 from app.modules.notify.runtime_context import notification_runtime_context
+from app.modules.notify.service import _to_digest_item
 
 
 def _display(course_display: str, family_name: str, ordinal: int | None = None) -> EventDisplay:
@@ -117,3 +122,65 @@ def test_jsonl_notifier_thread_safe_append(monkeypatch, tmp_path: Path) -> None:
     user_ids = {int(row["user_id"]) for row in parsed}
     assert user_ids == set(range(20))
     get_settings.cache_clear()
+
+
+def test_to_digest_item_uses_latest_family_label_authority() -> None:
+    change = Change(
+        user_id=1,
+        entity_uid="ent-notify-1",
+        change_origin=ChangeOrigin.INGEST_PROPOSAL,
+        change_type=ChangeType.DUE_CHANGED,
+        detected_at=datetime.now(timezone.utc),
+        before_semantic_json={
+            "uid": "ent-notify-1",
+            "course_dept": "CSE",
+            "course_number": 100,
+            "family_id": 22,
+            "family_name": "Homework",
+            "event_name": "HW 1",
+            "ordinal": 1,
+            "due_date": "2026-03-10",
+            "time_precision": "date_only",
+        },
+        after_semantic_json={
+            "uid": "ent-notify-1",
+            "course_dept": "CSE",
+            "course_number": 100,
+            "family_id": 22,
+            "family_name": "Homework",
+            "event_name": "HW 1",
+            "ordinal": 1,
+            "due_date": "2026-03-11",
+            "time_precision": "date_only",
+        },
+        review_status=ReviewStatus.PENDING,
+    )
+    item = _to_digest_item(change, latest_family_labels={22: "Problem Set"})
+    assert item.before_display is not None
+    assert item.after_display is not None
+    assert item.before_display.family_name == "Problem Set"
+    assert item.after_display.family_name == "Problem Set"
+
+
+def test_to_digest_item_raises_when_family_authority_missing() -> None:
+    change = Change(
+        user_id=1,
+        entity_uid="ent-notify-2",
+        change_origin=ChangeOrigin.INGEST_PROPOSAL,
+        change_type=ChangeType.CREATED,
+        detected_at=datetime.now(timezone.utc),
+        before_semantic_json=None,
+        after_semantic_json={
+            "uid": "ent-notify-2",
+            "course_dept": "CSE",
+            "course_number": 100,
+            "family_name": "Homework",
+            "event_name": "HW 2",
+            "ordinal": 2,
+            "due_date": "2026-03-12",
+            "time_precision": "date_only",
+        },
+        review_status=ReviewStatus.PENDING,
+    )
+    with pytest.raises(FamilyLabelAuthorityError):
+        _to_digest_item(change, latest_family_labels={})

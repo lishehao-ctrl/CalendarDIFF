@@ -12,6 +12,7 @@ from app.core.logging import sanitize_log_message
 from app.db.models.notify import Notification, NotificationChannel, NotificationStatus
 from app.db.models.review import Change
 from app.db.models.shared import User
+from app.modules.common.family_labels import FamilyLabelAuthorityError, load_latest_family_labels
 from app.modules.notify.notifier_factory import build_notifier
 from app.modules.notify.service import _to_digest_item
 
@@ -76,7 +77,27 @@ def dispatch_pending_notifications(db: Session, *, now: datetime | None = None) 
             failed_notification_count += len(notifications)
             continue
 
-        items = [_to_digest_item(change) for change in changes]
+        family_ids = {
+            family_id
+            for change in changes
+            for family_id in (
+                _payload_family_id(change.before_semantic_json),
+                _payload_family_id(change.after_semantic_json),
+            )
+            if isinstance(family_id, int)
+        }
+        latest_family_labels = load_latest_family_labels(db, user_id=user.id, family_ids=family_ids)
+        try:
+            items = [_to_digest_item(change, latest_family_labels=latest_family_labels) for change in changes]
+        except FamilyLabelAuthorityError as exc:
+            _mark_notifications_failed(
+                notifications,
+                error=sanitize_log_message(f"family_label_authority_error: {exc}"),
+                current=current,
+            )
+            failed_count += 1
+            failed_notification_count += len(notifications)
+            continue
         send_result = notifier.send_changes_digest(
             to_email=to_email,
             review_label=_build_review_label(len(items)),
@@ -143,6 +164,13 @@ def _resolve_recipient(user: User) -> str | None:
         if stripped:
             return stripped
     return None
+
+
+def _payload_family_id(payload: object) -> int | None:
+    if not isinstance(payload, dict):
+        return None
+    family_id = payload.get("family_id")
+    return family_id if isinstance(family_id, int) else None
 
 
 __all__ = [

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.db.models.notify import Notification, NotificationChannel, NotificationStatus
 from app.db.models.review import Change, ChangeSourceRef, ReviewStatus
 from app.modules.common.event_display import event_display_dict, user_facing_event_view
+from app.modules.common.family_labels import load_latest_family_labels, require_latest_family_label
 from app.modules.review_changes.review_projection import build_review_projection_context
 
 
@@ -72,6 +73,16 @@ def _serialize_rows(
 ) -> list[dict]:
     changes = [change for change, _notification in rows]
     projection = build_review_projection_context(db, user_id=user_id, changes=changes)
+    family_ids = {
+        family_id
+        for change in changes
+        for family_id in (
+            _payload_family_id(change.before_semantic_json),
+            _payload_family_id(change.after_semantic_json),
+        )
+        if isinstance(family_id, int)
+    }
+    latest_family_labels = load_latest_family_labels(db, user_id=user_id, family_ids=family_ids)
     output: list[dict] = []
 
     for change, notification in rows:
@@ -84,6 +95,14 @@ def _serialize_rows(
         after_payload = change.after_semantic_json if isinstance(change.after_semantic_json, dict) else None
         notification_state, deliver_after = _read_notification_state(notification, now=now)
         change_summary = projection.change_summary(change).model_dump(mode="json")
+        before_family_name_override = _resolve_family_name_override(
+            payload=before_payload,
+            latest_family_labels=latest_family_labels,
+        )
+        after_family_name_override = _resolve_family_name_override(
+            payload=after_payload,
+            latest_family_labels=latest_family_labels,
+        )
 
         output.append(
             {
@@ -93,10 +112,26 @@ def _serialize_rows(
                 "change_origin": change.change_origin.value,
                 "detected_at": change.detected_at,
                 "review_status": change.review_status.value,
-                "before_display": event_display_dict(before_payload, strict=False) if before_payload is not None else None,
-                "after_display": event_display_dict(after_payload, strict=False) if after_payload is not None else None,
-                "before_event": user_facing_event_view(before_payload, strict=False) if before_payload is not None else None,
-                "after_event": user_facing_event_view(after_payload, strict=False) if after_payload is not None else None,
+                "before_display": (
+                    event_display_dict(before_payload, strict=False, family_name_override=before_family_name_override)
+                    if before_payload is not None
+                    else None
+                ),
+                "after_display": (
+                    event_display_dict(after_payload, strict=False, family_name_override=after_family_name_override)
+                    if after_payload is not None
+                    else None
+                ),
+                "before_event": (
+                    user_facing_event_view(before_payload, strict=False, family_name_override=before_family_name_override)
+                    if before_payload is not None
+                    else None
+                ),
+                "after_event": (
+                    user_facing_event_view(after_payload, strict=False, family_name_override=after_family_name_override)
+                    if after_payload is not None
+                    else None
+                ),
                 "primary_source": primary_source,
                 "proposal_sources": proposal_sources,
                 "viewed_at": change.viewed_at,
@@ -134,6 +169,25 @@ def _read_notification_state(
     if row.status == NotificationStatus.FAILED:
         return "failed", deliver_after
     return None, deliver_after
+
+
+def _payload_family_id(payload: object) -> int | None:
+    if not isinstance(payload, dict):
+        return None
+    family_id = payload.get("family_id")
+    return family_id if isinstance(family_id, int) else None
+
+
+def _resolve_family_name_override(*, payload: dict | None, latest_family_labels: dict[int, str]) -> str | None:
+    if payload is None:
+        return None
+    family_id = _payload_family_id(payload)
+    payload_uid = payload.get("uid") if isinstance(payload.get("uid"), str) and payload.get("uid").strip() else "unknown"
+    return require_latest_family_label(
+        family_id=family_id,
+        latest_family_labels=latest_family_labels,
+        context=f"review_changes.change_listing entity_uid={payload_uid}",
+    )
 
 
 __all__ = [

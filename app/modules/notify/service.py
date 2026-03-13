@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.models.notify import Notification, NotificationChannel, NotificationStatus
 from app.db.models.review import Change
 from app.modules.common.event_display import event_display_from_payload
+from app.modules.common.family_labels import require_latest_family_label
 from app.modules.core_ingest.semantic_event_service import normalize_time_precision, semantic_due_datetime_from_payload
 from app.modules.notify.interface import ChangeDigestItem
 
@@ -80,16 +82,34 @@ def enqueue_notifications_for_changes(
     )
 
 
-def _to_digest_item(change: Change) -> ChangeDigestItem:
+def _to_digest_item(change: Change, *, latest_family_labels: Mapping[int, str]) -> ChangeDigestItem:
     before_payload = change.before_semantic_json if isinstance(change.before_semantic_json, dict) else {}
     after_payload = change.after_semantic_json if isinstance(change.after_semantic_json, dict) else {}
     evidence_path = _read_evidence_path(change)
+    before_family_name = _resolve_family_name_override(
+        before_payload,
+        latest_family_labels=latest_family_labels,
+        context=f"notify.change_id={change.id}:before",
+    )
+    after_family_name = _resolve_family_name_override(
+        after_payload,
+        latest_family_labels=latest_family_labels,
+        context=f"notify.change_id={change.id}:after",
+    )
 
     return ChangeDigestItem(
         entity_uid=change.entity_uid,
         change_type=change.change_type.value,
-        before_display=event_display_from_payload(before_payload, strict=True) if before_payload else None,
-        after_display=event_display_from_payload(after_payload, strict=True) if after_payload else None,
+        before_display=(
+            event_display_from_payload(before_payload, strict=True, family_name_override=before_family_name)
+            if before_payload
+            else None
+        ),
+        after_display=(
+            event_display_from_payload(after_payload, strict=True, family_name_override=after_family_name)
+            if after_payload
+            else None
+        ),
         before_due_at=_read_semantic_due(before_payload),
         after_due_at=_read_semantic_due(after_payload),
         before_time_precision=_read_time_precision(before_payload),
@@ -114,6 +134,28 @@ def _read_time_precision(payload: dict[str, object]) -> str:
 
 def _read_evidence_path(change: Change) -> str | None:
     return None
+
+
+def _payload_family_id(payload: object) -> int | None:
+    if not isinstance(payload, dict):
+        return None
+    family_id = payload.get("family_id")
+    return family_id if isinstance(family_id, int) else None
+
+
+def _resolve_family_name_override(
+    payload: dict[str, object],
+    *,
+    latest_family_labels: Mapping[int, str],
+    context: str,
+) -> str | None:
+    if not payload:
+        return None
+    return require_latest_family_label(
+        family_id=_payload_family_id(payload),
+        latest_family_labels=latest_family_labels,
+        context=context,
+    )
 
 
 def _build_idempotency_key(change_id: int) -> str:

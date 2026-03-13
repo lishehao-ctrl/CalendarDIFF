@@ -118,6 +118,7 @@ class EventEntity(Base):
     course_quarter: Mapped[str | None] = mapped_column(String(4), nullable=True)
     course_year2: Mapped[int | None] = mapped_column(Integer, nullable=True)
     family_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Deprecated audit snapshot only: do not use as default display authority.
     family_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     raw_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
     event_name: Mapped[str | None] = mapped_column(String(512), nullable=True)

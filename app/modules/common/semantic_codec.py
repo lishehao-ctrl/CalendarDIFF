@@ -57,9 +57,7 @@ def semantic_payloads_equivalent(before_payload: object, after_payload: object) 
         return False
     if not semantic_family_equivalent(
         before_family_id=before.family_id,
-        before_family_name=before.family_name,
         after_family_id=after.family_id,
-        after_family_name=after.family_name,
     ):
         return False
     for field in SEMANTIC_COMPARE_FIELDS:
@@ -94,7 +92,7 @@ def approved_entity_to_semantic_payload(
             "course_quarter": entity.course_quarter,
             "course_year2": entity.course_year2,
             "family_id": entity.family_id,
-            "family_name": family_name_override if isinstance(family_name_override, str) and family_name_override.strip() else entity.family_name,
+            "family_name": family_name_override.strip() if isinstance(family_name_override, str) and family_name_override.strip() else None,
             "raw_type": entity.raw_type,
             "event_name": entity.event_name,
             "ordinal": entity.ordinal,

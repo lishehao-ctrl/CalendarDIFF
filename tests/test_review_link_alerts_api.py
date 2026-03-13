@@ -6,7 +6,8 @@ from sqlalchemy import select
 
 from app.db.models.input import InputSource, SourceKind
 from app.db.models.review import EventEntity, EventEntityLink, EventLinkAlert, EventLinkAlertReason, EventLinkAlertResolution, EventLinkAlertRiskLevel, EventLinkAlertStatus, EventLinkOrigin
-from app.db.models.shared import User
+from app.db.models.shared import CourseWorkItemLabelFamily, User
+from app.modules.common.course_identity import normalize_label_token, normalized_course_identity_key
 
 
 def _create_user_and_email_source(db_session) -> tuple[User, InputSource]:
@@ -33,6 +34,47 @@ def _create_user_and_email_source(db_session) -> tuple[User, InputSource]:
     db_session.refresh(user)
     db_session.refresh(source)
     return user, source
+
+
+def _create_family(db_session, *, user_id: int, canonical_label: str = "Homework") -> CourseWorkItemLabelFamily:
+    family = CourseWorkItemLabelFamily(
+        user_id=user_id,
+        course_dept="CSE",
+        course_number=100,
+        course_suffix=None,
+        course_quarter=None,
+        course_year2=None,
+        normalized_course_identity=normalized_course_identity_key(
+            course_dept="CSE",
+            course_number=100,
+            course_suffix=None,
+            course_quarter=None,
+            course_year2=None,
+        ),
+        canonical_label=canonical_label,
+        normalized_canonical_label=normalize_label_token(canonical_label),
+    )
+    db_session.add(family)
+    db_session.flush()
+    return family
+
+
+def _add_entity(db_session, *, user_id: int, entity_uid: str, family_id: int, family_name: str = "Legacy Label") -> None:
+    db_session.add(
+        EventEntity(
+            user_id=user_id,
+            entity_uid=entity_uid,
+            course_dept="CSE",
+            course_number=100,
+            family_id=family_id,
+            family_name=family_name,
+            raw_type="Homework",
+            event_name="Homework 1",
+            ordinal=1,
+            due_date=datetime(2026, 3, 12, tzinfo=timezone.utc).date(),
+            time_precision="date_only",
+        )
+    )
 
 
 def _add_alert(
@@ -66,12 +108,8 @@ def _add_alert(
 
 def test_link_alerts_list_and_decisions(client, db_session, auth_headers) -> None:
     user, source = _create_user_and_email_source(db_session)
-    db_session.add(
-        EventEntity(
-            user_id=user.id,
-            entity_uid="ent_alert_a",
-        )
-    )
+    family = _create_family(db_session, user_id=user.id, canonical_label="Problem Set")
+    _add_entity(db_session, user_id=user.id, entity_uid="ent_alert_a", family_id=family.id, family_name="Homework")
     db_session.flush()
     alert = _add_alert(
         db_session,
@@ -90,6 +128,7 @@ def test_link_alerts_list_and_decisions(client, db_session, auth_headers) -> Non
     assert rows[0]["id"] == alert.id
     assert rows[0]["status"] == "pending"
     assert rows[0]["reason_code"] == "auto_link_without_canonical_change"
+    assert rows[0]["linked_entity"]["event_display"]["family_name"] == "Problem Set"
 
     dismiss = client.post(
         f"/review/link-alerts/{alert.id}/dismiss",
@@ -149,18 +188,9 @@ def test_link_alerts_list_and_decisions(client, db_session, auth_headers) -> Non
 
 def test_link_alert_resolved_by_link_delete_and_relink(client, db_session, auth_headers) -> None:
     user, source = _create_user_and_email_source(db_session)
-    db_session.add(
-        EventEntity(
-            user_id=user.id,
-            entity_uid="ent_alert_a",
-        )
-    )
-    db_session.add(
-        EventEntity(
-            user_id=user.id,
-            entity_uid="ent_alert_b",
-        )
-    )
+    family = _create_family(db_session, user_id=user.id, canonical_label="Homework")
+    _add_entity(db_session, user_id=user.id, entity_uid="ent_alert_a", family_id=family.id)
+    _add_entity(db_session, user_id=user.id, entity_uid="ent_alert_b", family_id=family.id)
     db_session.flush()
 
     link = EventEntityLink(
@@ -249,12 +279,8 @@ def test_link_alert_resolved_by_link_delete_and_relink(client, db_session, auth_
 
 def test_link_alert_batch_dismiss_partial_success(client, db_session, auth_headers) -> None:
     user, source = _create_user_and_email_source(db_session)
-    db_session.add(
-        EventEntity(
-            user_id=user.id,
-            entity_uid="ent_alert_batch",
-        )
-    )
+    family = _create_family(db_session, user_id=user.id, canonical_label="Homework")
+    _add_entity(db_session, user_id=user.id, entity_uid="ent_alert_batch", family_id=family.id)
     db_session.flush()
 
     pending_alert = _add_alert(
@@ -310,12 +336,8 @@ def test_link_alert_batch_dismiss_partial_success(client, db_session, auth_heade
 
 def test_link_alert_batch_mark_safe_success(client, db_session, auth_headers) -> None:
     user, source = _create_user_and_email_source(db_session)
-    db_session.add(
-        EventEntity(
-            user_id=user.id,
-            entity_uid="ent_alert_batch_safe",
-        )
-    )
+    family = _create_family(db_session, user_id=user.id, canonical_label="Homework")
+    _add_entity(db_session, user_id=user.id, entity_uid="ent_alert_batch_safe", family_id=family.id)
     db_session.flush()
 
     first_alert = _add_alert(

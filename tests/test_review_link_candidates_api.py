@@ -6,7 +6,8 @@ from sqlalchemy import select
 
 from app.db.models.input import InputSource, SourceKind
 from app.db.models.review import EventEntity, EventEntityLink, EventLinkBlock, EventLinkCandidate, EventLinkCandidateReason, EventLinkCandidateStatus, EventLinkOrigin
-from app.db.models.shared import User
+from app.db.models.shared import CourseWorkItemLabelFamily, User
+from app.modules.common.course_identity import normalize_label_token, normalized_course_identity_key
 
 
 def _create_user_and_email_source(db_session) -> tuple[User, InputSource]:
@@ -35,14 +36,51 @@ def _create_user_and_email_source(db_session) -> tuple[User, InputSource]:
     return user, source
 
 
-def test_link_candidate_approve_creates_manual_link(client, db_session, auth_headers) -> None:
-    user, source = _create_user_and_email_source(db_session)
+def _create_family(db_session, *, user_id: int, canonical_label: str = "Homework") -> CourseWorkItemLabelFamily:
+    family = CourseWorkItemLabelFamily(
+        user_id=user_id,
+        course_dept="CSE",
+        course_number=100,
+        course_suffix=None,
+        course_quarter=None,
+        course_year2=None,
+        normalized_course_identity=normalized_course_identity_key(
+            course_dept="CSE",
+            course_number=100,
+            course_suffix=None,
+            course_quarter=None,
+            course_year2=None,
+        ),
+        canonical_label=canonical_label,
+        normalized_canonical_label=normalize_label_token(canonical_label),
+    )
+    db_session.add(family)
+    db_session.flush()
+    return family
+
+
+def _add_entity(db_session, *, user_id: int, entity_uid: str, family_id: int, family_name: str = "Legacy Label") -> None:
     db_session.add(
         EventEntity(
-            user_id=user.id,
-            entity_uid="ent_target_a",
+            user_id=user_id,
+            entity_uid=entity_uid,
+            course_dept="CSE",
+            course_number=100,
+            family_id=family_id,
+            family_name=family_name,
+            raw_type="Homework",
+            event_name="Homework 1",
+            ordinal=1,
+            due_date=datetime(2026, 3, 12, tzinfo=timezone.utc).date(),
+            time_precision="date_only",
         )
     )
+
+
+def test_link_candidate_approve_creates_manual_link(client, db_session, auth_headers) -> None:
+    user, source = _create_user_and_email_source(db_session)
+    family = _create_family(db_session, user_id=user.id, canonical_label="Problem Set")
+    _add_entity(db_session, user_id=user.id, entity_uid="ent_target_a", family_id=family.id, family_name="Homework")
     db_session.add(
         EventLinkCandidate(
             user_id=user.id,
@@ -62,6 +100,7 @@ def test_link_candidate_approve_creates_manual_link(client, db_session, auth_hea
     assert response.status_code == 200
     rows = response.json()
     assert len(rows) == 1
+    assert rows[0]["proposed_entity"]["event_display"]["family_name"] == "Problem Set"
     candidate_id = rows[0]["id"]
 
     decide = client.post(
@@ -152,18 +191,9 @@ def test_link_candidate_reject_creates_block_and_unblock(client, db_session, aut
 
 def test_links_api_list_delete_and_relink(client, db_session, auth_headers) -> None:
     user, source = _create_user_and_email_source(db_session)
-    db_session.add(
-        EventEntity(
-            user_id=user.id,
-            entity_uid="ent_target_a",
-        )
-    )
-    db_session.add(
-        EventEntity(
-            user_id=user.id,
-            entity_uid="ent_target_b",
-        )
-    )
+    family = _create_family(db_session, user_id=user.id, canonical_label="Homework")
+    _add_entity(db_session, user_id=user.id, entity_uid="ent_target_a", family_id=family.id)
+    _add_entity(db_session, user_id=user.id, entity_uid="ent_target_b", family_id=family.id)
     db_session.flush()
     db_session.add(
         EventEntityLink(
@@ -226,12 +256,8 @@ def test_links_api_list_delete_and_relink(client, db_session, auth_headers) -> N
 
 def test_link_candidate_batch_approve_partial_success(client, db_session, auth_headers) -> None:
     user, source = _create_user_and_email_source(db_session)
-    db_session.add(
-        EventEntity(
-            user_id=user.id,
-            entity_uid="ent_batch_a",
-        )
-    )
+    family = _create_family(db_session, user_id=user.id, canonical_label="Homework")
+    _add_entity(db_session, user_id=user.id, entity_uid="ent_batch_a", family_id=family.id)
     db_session.flush()
 
     candidate_ok = EventLinkCandidate(

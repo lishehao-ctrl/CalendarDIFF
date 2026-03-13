@@ -334,7 +334,6 @@ def _approved_entity_payload(
         existing_entity,
         family_name_override=resolve_family_label(
             family_id=existing_entity.family_id,
-            snapshot_family_name=existing_entity.family_name,
             latest_family_labels=family_label_cache,
         ),
     )

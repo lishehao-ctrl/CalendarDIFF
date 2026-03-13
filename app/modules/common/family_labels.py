@@ -8,6 +8,10 @@ from sqlalchemy.orm import Session
 from app.db.models.shared import CourseWorkItemLabelFamily
 
 
+class FamilyLabelAuthorityError(RuntimeError):
+    pass
+
+
 def load_latest_family_labels(
     db: Session,
     *,
@@ -34,34 +38,48 @@ def load_latest_family_labels(
 def resolve_family_label(
     *,
     family_id: int | None,
-    snapshot_family_name: str | None,
     latest_family_labels: Mapping[int, str] | None = None,
 ) -> str | None:
     if isinstance(family_id, int) and latest_family_labels is not None:
         latest = latest_family_labels.get(family_id)
         if isinstance(latest, str) and latest.strip():
             return latest.strip()
-    if isinstance(snapshot_family_name, str) and snapshot_family_name.strip():
-        return snapshot_family_name.strip()
     return None
+
+
+def require_latest_family_label(
+    *,
+    family_id: int | None,
+    latest_family_labels: Mapping[int, str] | None,
+    context: str,
+) -> str:
+    if not isinstance(family_id, int) or family_id <= 0:
+        raise FamilyLabelAuthorityError(f"{context}: missing family_id authority")
+    if latest_family_labels is None:
+        raise FamilyLabelAuthorityError(f"{context}: latest family label map missing for family_id={family_id}")
+    resolved = resolve_family_label(
+        family_id=family_id,
+        latest_family_labels=latest_family_labels,
+    )
+    if not isinstance(resolved, str) or not resolved.strip():
+        raise FamilyLabelAuthorityError(
+            f"{context}: unresolved latest canonical_label authority for family_id={family_id}"
+        )
+    return resolved.strip()
 
 
 def semantic_family_equivalent(
     *,
     before_family_id: int | None,
-    before_family_name: str | None,
     after_family_id: int | None,
-    after_family_name: str | None,
 ) -> bool:
-    if isinstance(before_family_id, int) or isinstance(after_family_id, int):
-        return before_family_id == after_family_id
-    before_name = before_family_name.strip().lower() if isinstance(before_family_name, str) and before_family_name.strip() else None
-    after_name = after_family_name.strip().lower() if isinstance(after_family_name, str) and after_family_name.strip() else None
-    return before_name == after_name
+    return before_family_id == after_family_id
 
 
 __all__ = [
+    "FamilyLabelAuthorityError",
     "load_latest_family_labels",
+    "require_latest_family_label",
     "resolve_family_label",
     "semantic_family_equivalent",
 ]

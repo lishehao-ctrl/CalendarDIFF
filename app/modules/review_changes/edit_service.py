@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.review import Change, ChangeType, ReviewStatus
 from app.modules.common.event_display import user_facing_event_view
+from app.modules.common.family_labels import load_latest_family_labels, require_latest_family_label
 from app.modules.core_ingest.review_evidence import freeze_semantic_evidence
 from app.modules.common.semantic_codec import parse_semantic_payload, semantic_delta_seconds, semantic_payloads_equivalent
 from app.modules.review_changes.canonical_edit_builder import build_candidate_after, edit_payload_from_event_json
@@ -59,13 +60,20 @@ def preview_review_edit(
             raise ReviewEditNotFoundError(str(exc)) from exc
         except CanonicalEditValidationError as exc:
             raise ReviewEditValidationError(str(exc)) from exc
+        latest_family_labels = _load_latest_family_labels_for_payloads(db=db, user_id=user_id, payloads=[payload["base"], payload["candidate_after"]])
+        base_family_name = _resolve_family_name_override(payload=payload["base"], latest_family_labels=latest_family_labels)
+        candidate_family_name = _resolve_family_name_override(payload=payload["candidate_after"], latest_family_labels=latest_family_labels)
         return {
             "mode": "canonical",
             "entity_uid": payload["entity_uid"],
             "change_id": change_id,
             "proposal_change_type": None,
-            "base": user_facing_event_view(payload["base"], strict=True),
-            "candidate_after": user_facing_event_view(payload["candidate_after"], strict=True),
+            "base": user_facing_event_view(payload["base"], strict=True, family_name_override=base_family_name),
+            "candidate_after": user_facing_event_view(
+                payload["candidate_after"],
+                strict=True,
+                family_name_override=candidate_family_name,
+            ),
             "delta_seconds": payload["delta_seconds"],
             "will_reject_pending_change_ids": payload["will_reject_pending_change_ids"],
             "idempotent": payload["idempotent"],
@@ -96,13 +104,19 @@ def load_review_edit_context(
     parsed = parse_semantic_payload(row.entity_uid, semantic_payload)
     if parsed is None:
         raise ReviewEditValidationError("change payload is invalid")
+    latest_family_labels = load_latest_family_labels(db, user_id=user_id, family_ids=[parsed.family_id])
+    current_family_name = require_latest_family_label(
+        family_id=parsed.family_id,
+        latest_family_labels=latest_family_labels,
+        context=f"review_changes.edit_context change_id={row.id}",
+    )
     return {
         "change_id": row.id,
         "entity_uid": row.entity_uid,
         "editable_event": {
             "uid": row.entity_uid,
             "family_id": parsed.family_id,
-            "family_name": parsed.family_name,
+            "family_name": current_family_name,
             "course_dept": parsed.course_dept,
             "course_number": parsed.course_number,
             "course_suffix": parsed.course_suffix,
@@ -149,6 +163,8 @@ def apply_review_edit(
             raise ReviewEditNotFoundError(str(exc)) from exc
         except CanonicalEditValidationError as exc:
             raise ReviewEditValidationError(str(exc)) from exc
+        latest_family_labels = _load_latest_family_labels_for_payloads(db=db, user_id=user_id, payloads=[payload["event"]])
+        event_family_name = _resolve_family_name_override(payload=payload["event"], latest_family_labels=latest_family_labels)
         return {
             "mode": "canonical",
             "applied": payload["applied"],
@@ -157,7 +173,7 @@ def apply_review_edit(
             "edited_change_id": None,
             "canonical_edit_change_id": payload["canonical_edit_change_id"],
             "rejected_pending_change_ids": payload["rejected_pending_change_ids"],
-            "event": user_facing_event_view(payload["event"], strict=True),
+            "event": user_facing_event_view(payload["event"], strict=True, family_name_override=event_family_name),
         }
     raise ReviewEditValidationError("mode must be one of: proposal, canonical")
 
@@ -176,13 +192,24 @@ def _preview_proposal_edit(
         base_payload=current_payload,
         patch=patch,
     )
+    latest_family_labels = _load_latest_family_labels_for_payloads(db=db, user_id=user_id, payloads=[current_payload, candidate_after])
+    base_family_name = _resolve_family_name_override(payload=current_payload, latest_family_labels=latest_family_labels)
+    candidate_family_name = _resolve_family_name_override(payload=candidate_after, latest_family_labels=latest_family_labels)
     return {
         "mode": "proposal",
         "entity_uid": row.entity_uid,
         "change_id": row.id,
         "proposal_change_type": row.change_type.value,
-        "base": user_facing_event_view(edit_payload_from_event_json(current_payload), strict=True),
-        "candidate_after": user_facing_event_view(edit_payload_from_event_json(candidate_after), strict=True),
+        "base": user_facing_event_view(
+            edit_payload_from_event_json(current_payload),
+            strict=True,
+            family_name_override=base_family_name,
+        ),
+        "candidate_after": user_facing_event_view(
+            edit_payload_from_event_json(candidate_after),
+            strict=True,
+            family_name_override=candidate_family_name,
+        ),
         "delta_seconds": _proposal_delta_seconds(row=row, candidate_after_payload=candidate_after),
         "will_reject_pending_change_ids": [],
         "idempotent": semantic_payloads_equivalent(current_payload, candidate_after),
@@ -212,6 +239,8 @@ def _apply_proposal_edit(
         row.after_evidence_json = evidence.model_dump(mode="json") if evidence is not None else None
     db.commit()
     db.refresh(row)
+    latest_family_labels = _load_latest_family_labels_for_payloads(db=db, user_id=user_id, payloads=[candidate_after])
+    event_family_name = _resolve_family_name_override(payload=candidate_after, latest_family_labels=latest_family_labels)
     return {
         "mode": "proposal",
         "applied": True,
@@ -220,7 +249,11 @@ def _apply_proposal_edit(
         "edited_change_id": row.id,
         "canonical_edit_change_id": None,
         "rejected_pending_change_ids": [],
-        "event": user_facing_event_view(edit_payload_from_event_json(candidate_after), strict=True),
+        "event": user_facing_event_view(
+            edit_payload_from_event_json(candidate_after),
+            strict=True,
+            family_name_override=event_family_name,
+        ),
     }
 
 
@@ -276,6 +309,39 @@ def _proposal_delta_seconds(*, row: Change, candidate_after_payload: dict) -> in
     if before_payload is None:
         return None
     return semantic_delta_seconds(before_payload=before_payload, after_payload=candidate_after_payload)
+
+
+def _load_latest_family_labels_for_payloads(
+    *,
+    db: Session,
+    user_id: int,
+    payloads: list[dict],
+) -> dict[int, str]:
+    family_ids = {
+        family_id
+        for family_id in (_payload_family_id(payload) for payload in payloads)
+        if isinstance(family_id, int)
+    }
+    return load_latest_family_labels(db, user_id=user_id, family_ids=family_ids)
+
+
+def _payload_family_id(payload: object) -> int | None:
+    if not isinstance(payload, dict):
+        return None
+    family_id = payload.get("family_id")
+    return family_id if isinstance(family_id, int) else None
+
+
+def _resolve_family_name_override(*, payload: dict | None, latest_family_labels: dict[int, str]) -> str | None:
+    if payload is None:
+        return None
+    family_id = _payload_family_id(payload)
+    payload_uid = payload.get("uid") if isinstance(payload.get("uid"), str) and payload.get("uid").strip() else "unknown"
+    return require_latest_family_label(
+        family_id=family_id,
+        latest_family_labels=latest_family_labels,
+        context=f"review_changes.edit_service entity_uid={payload_uid}",
+    )
 
 
 __all__ = [

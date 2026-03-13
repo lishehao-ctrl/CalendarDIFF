@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 
 from app.db.models.input import InputSource, SourceKind
 from app.db.models.review import Change, ChangeOrigin, ChangeSourceRef, ChangeType, ReviewStatus, SourceEventObservation
-from app.db.models.shared import User
+from app.db.models.shared import CourseWorkItemLabelFamily, User
+from app.modules.common.course_identity import normalize_label_token, normalized_course_identity_key
 
 
 def _create_user_and_source(db_session) -> tuple[User, InputSource]:
@@ -33,6 +34,25 @@ def _create_user_and_source(db_session) -> tuple[User, InputSource]:
 
 def test_review_changes_created_exposes_primary_source_summary(client, db_session, auth_headers) -> None:
     user, source = _create_user_and_source(db_session)
+    family = CourseWorkItemLabelFamily(
+        user_id=user.id,
+        course_dept="CSE",
+        course_number=100,
+        course_suffix=None,
+        course_quarter=None,
+        course_year2=None,
+        normalized_course_identity=normalized_course_identity_key(
+            course_dept="CSE",
+            course_number=100,
+            course_suffix=None,
+            course_quarter=None,
+            course_year2=None,
+        ),
+        canonical_label="Exam",
+        normalized_canonical_label=normalize_label_token("Exam"),
+    )
+    db_session.add(family)
+    db_session.flush()
     observed_at = datetime(2026, 3, 7, 8, 15, tzinfo=timezone.utc)
     db_session.add(
         SourceEventObservation(
@@ -42,7 +62,18 @@ def test_review_changes_created_exposes_primary_source_summary(client, db_sessio
             provider=source.provider,
             external_event_id="created-calendar-1",
             entity_uid="ent-created-1",
-            event_payload={"semantic_event": {"uid": "ent-created-1", "course_dept": "CSE", "course_number": 100, "family_name": "Quiz", "event_name": "Quiz 1", "due_date": "2026-03-10", "time_precision": "date_only"}},
+            event_payload={
+                "semantic_event": {
+                    "uid": "ent-created-1",
+                    "course_dept": "CSE",
+                    "course_number": 100,
+                    "family_id": family.id,
+                    "family_name": "Quiz",
+                    "event_name": "Quiz 1",
+                    "due_date": "2026-03-10",
+                    "time_precision": "date_only",
+                }
+            },
             event_hash="1" * 64,
             observed_at=observed_at,
             is_active=True,
@@ -59,6 +90,7 @@ def test_review_changes_created_exposes_primary_source_summary(client, db_sessio
                 "uid": "ent-created-1",
                 "course_dept": "CSE",
                 "course_number": 100,
+                "family_id": family.id,
                 "family_name": "Quiz",
                 "event_name": "Quiz 1",
                 "due_date": "2026-03-10",
@@ -88,3 +120,4 @@ def test_review_changes_created_exposes_primary_source_summary(client, db_sessio
     assert payload["change_summary"]["new"]["source_label"] == "Canvas ICS"
     assert payload["change_summary"]["new"]["source_kind"] == "calendar"
     assert payload["change_summary"]["new"]["source_observed_at"] == "2026-03-07T08:15:00Z"
+    assert payload["after_display"]["family_name"] == "Exam"
