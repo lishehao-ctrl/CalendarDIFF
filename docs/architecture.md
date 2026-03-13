@@ -155,17 +155,14 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
    - `event_entity_links` (auto/manual accepted links)
    - `event_link_candidates` (review queue for deterministic rule misses / low anchor confidence)
    - `event_link_blocks` (permanent rejected pairs)
-   - `event_link_alerts` (medium-risk non-blocking queue for auto-link without canonical pending)
 15. Auto-link rules are deterministic:
    - require `dept+number` and `semantic_event.raw_type`
    - enforce suffix exact-match when inventory for that `dept+number` has any suffix
    - enforce `semantic_event.ordinal` exact-match when inventory for same course+raw_type has multiple ordinals
 16. blocked source/entity pairs are never auto-linked and never re-enter pending candidate flow until unblocked
-17. `event_link_alerts` is auto-resolved when higher-priority governance takes over (`candidate_opened`, `canonical_pending_created`, `link_removed`, `link_relinked`)
-18. review API provides queue aggregation and bulk moderation helpers:
-   - `GET /review/summary` (pending counts for `changes`, `link-candidates`, `link-alerts`)
+17. review API provides queue aggregation and bulk moderation helpers:
+   - `GET /review/summary` (pending counts for `changes`, `link-candidates`)
    - `POST /review/link-candidates/batch/decisions` (`approve`/`reject`, partial success)
-   - `POST /review/link-alerts/batch/decisions` (`dismiss`/`mark_safe`, partial success)
 
 ## 7) Operational Notes
 
@@ -197,8 +194,7 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 10. `pending_proposal_rebuild.py`: pending proposal decision planner + rebuild orchestration
 11. `pending_change_store.py`: pending change upsert/reject templates
 12. `pending_review_outbox.py`: `review.pending.created` outbox emission
-13. `pending_auto_link_alerts.py`: auto-link alert emit for non-pending entities
-14. `time_utils.py`: UTC normalization
+13. `time_utils.py`: UTC normalization
 
 ### review_changes
 
@@ -228,16 +224,11 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 2. `summary_router.py`: `/review/summary` endpoint
 3. `candidates_router.py`: `/review/link-candidates/*` endpoints
 4. `links_router.py`: `/review/links/*` endpoints
-5. `alerts_router.py`: `/review/link-alerts/*` endpoints
-6. `summary_service.py`: pending queue counters
-7. `candidates_query_service.py`: candidates/blocks read side
-8. `candidates_decision_service.py`: approve/reject and block deletion
-9. `links_service.py`: links list/delete/relink
-10. `alerts_upsert_service.py`: alert upsert and auto-resolution helpers
-11. `alerts_query_service.py`: alerts read model assembly
-12. `alerts_decision_service.py`: dismiss/mark-safe and batch decisions
-13. `alerts_errors.py`: alert domain exceptions
-14. `common.py`: shared note normalization, id dedupe, entity/observation preview, batch result builders
+5. `summary_service.py`: pending queue counters
+6. `candidates_query_service.py`: candidates/blocks read side
+7. `candidates_decision_service.py`: approve/reject and block deletion
+8. `links_service.py`: links list/delete/relink
+9. `common.py`: shared note normalization, id dedupe, entity/observation preview, batch result builders
 
 ### llm_runtime
 

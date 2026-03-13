@@ -126,7 +126,7 @@ Parser note:
 1. `semantic_event_draft` must be schema-valid from parser output; invalid/missing objects are treated as parser failures (retry/dead-letter path), not downgraded by local inference.
 2. `link_signals` is required and schema-validated; missing/invalid objects fail parser output.
 3. link-candidate review flow is storage/API-only (`event_link_candidates` + `/review/link-candidates*`) and does not emit outbox notification events.
-4. link-alert flow is storage/API-only (`event_link_alerts` + `/review/link-alerts*`) and does not emit outbox notification events.
+4. accepted links are persisted in `event_entity_links`; uncertain linking decisions are persisted in `event_link_candidates`.
 
 Example (`calendar.event.extracted`):
 

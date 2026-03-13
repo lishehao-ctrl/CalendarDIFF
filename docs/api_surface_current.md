@@ -132,21 +132,17 @@ Runtime responsibilities:
 15. `GET /review/links`
 16. `DELETE /review/links/{link_id}`
 17. `POST /review/links/relink`
-18. `GET /review/link-alerts`
-19. `POST /review/link-alerts/{alert_id}/dismiss`
-20. `POST /review/link-alerts/{alert_id}/mark-safe`
-21. `POST /review/link-alerts/batch/decisions`
-22. `POST /internal/review/ingest-results/applications`
-23. `GET /internal/review/ingest-results/{request_id}`
-24. `GET /internal/metrics`
+18. `POST /internal/review/ingest-results/applications`
+19. `GET /internal/review/ingest-results/{request_id}`
+20. `GET /internal/metrics`
 
 Notes:
 
 1. review-service consumes `ingest.result.ready` and emits `review.pending.created`
 2. approve mutates approved semantic state in `event_entities`; reject does not
 3. unified edits split proposal edits (`mode=proposal`) from direct canonical edits (`mode=canonical`)
-4. link-candidate and link-alert flows are separate governance queues from canonical pending review
-5. `GET /review/summary` returns pending counts for `changes`, `link-candidates`, and `link-alerts`
+4. link governance uses two lanes: accepted links in `event_entity_links`, review-needed links in `event_link_candidates`
+5. `GET /review/summary` returns pending counts for `changes` and `link-candidates`
 
 ## notification-service (internal ops + worker)
 

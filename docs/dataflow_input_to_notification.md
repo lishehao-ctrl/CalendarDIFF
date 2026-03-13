@@ -93,7 +93,6 @@ Use these files as implementation anchors when building detailed dataflow tables
 - `app/modules/llm_runtime/tick_runner.py`
 - `app/modules/core_ingest/worker.py`
 - `app/modules/core_ingest/apply.py`
-- `app/modules/review_links/alerts_event_consumer.py`
 - `app/modules/notify/consumer.py`
 - `app/modules/notify/digest_service.py`
 

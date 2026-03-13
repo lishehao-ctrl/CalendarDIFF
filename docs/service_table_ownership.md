@@ -29,7 +29,6 @@ Rules:
 | event_entity_links | review-service | read | Normalized observation->entity link table (auto/manual) |
 | event_link_candidates | review-service | read | Review queue for deterministic linker rule misses / missing anchors |
 | event_link_blocks | review-service | read | Permanent block list for rejected source->entity bindings |
-| event_link_alerts | review-service | read | Medium-risk non-blocking queue for auto-link without canonical pending |
 | changes | review-service | read | Semantic proposal + review audit lifecycle |
 | change_source_refs | review-service | read | Ordered source refs for each semantic proposal |
 | course_work_item_label_families | review-service | read | Course family canonical labels and alias registry |
