@@ -40,6 +40,7 @@ flowchart LR
 - `review-apply`: writes/updates `source_event_observations`, computes pending `changes`, emits notification trigger event.
   - runtime observation payload is fixed to `source_facts + semantic_event + link_signals + kind_resolution`
   - parser-stage `semantic_event_draft` is normalized immediately and is not a runtime observation field
+  - unresolved ingest records (missing course identity) are isolated to backend unresolved bucket and do not enter review pending flow
 - `notification-consumer`: consumes pending-created events and enqueues `notifications`.
 - `notification-dispatcher`: groups newly due pending review items per user and sends an immediate review email.
 
@@ -70,7 +71,7 @@ flowchart LR
 | 3 | ingest-connector | claimed pending ingest job | `ingest_jobs`, `sync_requests`, source config/secret/cursor | `ingest_jobs(status=CLAIMED/RUNNING payload)`, `input_source_cursors` | none | connector fetch |
 | 4 | ingest-connector | fetch result available | Gmail: provider incrementals; ICS: delta parser snapshot | `ingest_jobs(payload parse task)`, retry metadata | none | llm-service |
 | 5 | llm-service | Redis parse task consumed | parse payload (`gmail` / `calendar_delta`) | `ingest_results`, `ingest_jobs`, `sync_requests`, `integration_outbox` | `ingest.result.ready` | review-apply worker |
-| 6 | review-apply worker/service | outbox `ingest.result.ready` available | `ingest_results`, `source_event_observations`, `event_entities`, `changes` | `source_event_observations`, `changes(pending)`, `integration_outbox` | `review.pending.created` | notification-consumer |
+| 6 | review-apply worker/service | outbox `ingest.result.ready` available | `ingest_results`, `source_event_observations`, `event_entities`, `changes`, `ingest_unresolved_records` | resolvable records: `source_event_observations`, `changes(pending)`, `integration_outbox`; unresolved records: `ingest_unresolved_records` only | `review.pending.created` (resolvable path only) | notification-consumer |
 | 7 | review decision APIs | user approve/reject/batch decision/unified edit | `changes`, `event_entities` | approved entity state updates on approve or canonical edit, proposal updates on proposal edit | `review.decision.approved/rejected` | audit consumers |
 | 8 | notification-consumer + notification-dispatcher | outbox `review.pending.created` and newly due pending notifications | `integration_outbox`, `notifications` | `notifications(PENDING->SENT/FAILED)` | immediate review email side effects | completed |
 
@@ -103,5 +104,6 @@ Use these files as implementation anchors when building detailed dataflow tables
 - Keep canonical edit explicitly marked as bypass behavior relative to pending-created notifications.
 - Keep user-facing family label display aligned to latest label by `family_id`; do not treat frozen snapshot names as display authority.
 - Treat missing `family_id`/family-row label authority as an integrity bug (fail loudly), not a normal display fallback path.
+- Treat missing course identity as unresolved ingest isolation (`ingest_unresolved_records`), not as normal reviewable pending change input.
 - Family lifecycle policy: no normal hard-delete path for family rows; manage via rename/relink workflows.
 - `course_work_item_family_rebuild` is retained as a temporary side path and should be converged to the main runtime contract in follow-up work.

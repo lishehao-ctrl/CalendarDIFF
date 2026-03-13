@@ -63,7 +63,7 @@ Primary write ownership:
 ### review-service
 
 1. consumes `ingest.result.ready`
-2. builds `source_event_observations` and pending `changes`
+2. builds `source_event_observations` and pending `changes` for resolvable records only
 3. approve/reject decision APIs
 4. approved semantic projection (`event_entities`)
 5. read APIs: review-items
@@ -74,6 +74,7 @@ Primary write ownership:
 2. `event_entities`
 3. `changes`
 4. `ingest_apply_log`
+5. `ingest_unresolved_records` (ingest-side unresolved isolation bucket)
 
 ### notification-service
 
@@ -123,6 +124,11 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
    - `DELETE /users/me/course-work-item-families/{family_id}` is intentionally removed; update/relink flows remain the product path
 9. follow-up cleanup scope:
    - `course_work_item_family_rebuild` remains a side path for now and should converge to the main runtime contract in a later pass
+10. unresolved ingest isolation:
+   - missing course identity routes records to `ingest_unresolved_records`
+   - unresolved records do not upsert normal `source_event_observations`
+   - unresolved records do not create pending `changes` and do not emit `review.pending.created`
+   - later resolvable ingests for the same source/external record mark unresolved rows as resolved/superseded
 
 ## 6) LLM Runtime Placement
 

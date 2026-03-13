@@ -95,6 +95,9 @@ Consumers: optional observability/audit services
 6. Family lifecycle policy is non-destructive for normal product flows:
    - family rows are not a normal hard-delete target
    - update/relink flows remain authoritative for user-facing management
+7. Missing course identity handling is ingest-side isolation:
+   - record is persisted in `ingest_unresolved_records`
+   - record is excluded from normal `source_event_observations -> changes -> review.pending.created` path
 
 ## Internal Ingest Record Envelope (Non-Outbox, additive)
 
@@ -112,6 +115,11 @@ Runtime observation envelope (`source_event_observations.event_payload`) is fixe
 2. `semantic_event`
 3. `link_signals`
 4. `kind_resolution`
+
+Unresolved note:
+
+1. If a record cannot resolve course identity, it is stored in `ingest_unresolved_records` and does not upsert `source_event_observations`.
+2. Unresolved records do not create pending `changes` and do not emit `review.pending.created`.
 
 Parser note:
 
