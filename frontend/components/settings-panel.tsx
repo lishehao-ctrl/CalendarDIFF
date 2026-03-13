@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Clock3, Mail, Plus, Tags, Trash2, X } from "lucide-react";
+import { Clock3, Mail, Plus, Tags, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import {
   createCourseWorkItemFamily,
-  deleteCourseWorkItemFamily,
   getCourseWorkItemFamilyStatus,
   getCurrentUser,
   listCourseWorkItemFamilies,
@@ -160,22 +159,6 @@ export function SettingsPanel() {
     }
   }
 
-  async function removeFamily(familyId: number) {
-    const confirmed = window.confirm("Delete this course family and all of its raw types?");
-    if (!confirmed) return;
-    setBusyFamily(familyId);
-    setBanner(null);
-    try {
-      await deleteCourseWorkItemFamily(familyId);
-      setBanner({ tone: "info", text: "Family deleted." });
-      await refreshFamilies();
-    } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to delete family" });
-    } finally {
-      setBusyFamily(null);
-    }
-  }
-
   function addRawType(familyId: number) {
     const rawType = (rawTypeInputs[familyId] || "").trim();
     if (!rawType) return;
@@ -305,7 +288,6 @@ export function SettingsPanel() {
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Button onClick={() => void saveFamily(family.id)} disabled={busyFamily === family.id}>{busyFamily === family.id ? 'Saving...' : 'Save'}</Button>
-                        <Button variant="ghost" onClick={() => void removeFamily(family.id)} disabled={busyFamily === family.id}><Trash2 className="mr-2 h-4 w-4" />Delete</Button>
                       </div>
                     </div>
                   </Card>

@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPatch, apiPost, buildQuery } from "@/lib/api/client";
+import { apiGet, apiPatch, apiPost, buildQuery } from "@/lib/api/client";
 import type { CourseIdentity, CourseWorkItemFamily, CourseWorkItemFamilyStatus, UserProfile } from "@/lib/types";
 
 export async function getCurrentUser() {
@@ -41,10 +41,6 @@ export async function updateCourseWorkItemFamily(familyId: number, payload: {
   raw_types: string[];
 }) {
   return apiPatch<CourseWorkItemFamily>(`/users/me/course-work-item-families/${familyId}`, payload);
-}
-
-export async function deleteCourseWorkItemFamily(familyId: number) {
-  return apiDelete<{ deleted: boolean }>(`/users/me/course-work-item-families/${familyId}`);
 }
 
 export async function getCourseWorkItemFamilyStatus() {

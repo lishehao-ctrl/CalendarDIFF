@@ -204,12 +204,6 @@ def update_course_work_item_family(
     return family
 
 
-def delete_course_work_item_family(db: Session, *, family: CourseWorkItemLabelFamily, commit: bool = True) -> None:
-    db.delete(family)
-    if commit:
-        db.commit()
-
-
 def add_raw_type_to_course_work_item_family(
     db: Session,
     *,
@@ -461,7 +455,6 @@ __all__ = [
     "CourseWorkItemFamilyValidationError",
     "add_raw_type_to_course_work_item_family",
     "create_course_work_item_family",
-    "delete_course_work_item_family",
     "get_course_work_item_family",
     "list_course_work_item_families",
     "list_known_course_identities",

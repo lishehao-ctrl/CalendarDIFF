@@ -12,7 +12,6 @@ from app.modules.core_ingest.course_work_item_family_rebuild import rebuild_user
 from app.modules.users.course_work_item_families_service import (
     CourseWorkItemFamilyValidationError,
     create_course_work_item_family,
-    delete_course_work_item_family,
     get_course_work_item_family,
     list_course_work_item_families,
     list_known_course_identities,
@@ -261,29 +260,6 @@ def patch_course_family(
     except CourseWorkItemFamilyValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return _to_course_family_response(row)
-
-
-@router.delete("/me/course-work-item-families/{family_id}", status_code=status.HTTP_200_OK)
-def delete_course_family(
-    family_id: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_authenticated_user_or_401),
-) -> dict[str, bool]:
-    family = get_course_work_item_family(db, user_id=user.id, family_id=family_id)
-    if family is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course work item family not found")
-    delete_course_work_item_family(db, family=family)
-    db.refresh(user)
-    rebuild_user_work_item_state(
-        db,
-        user=user,
-        course_dept=family.course_dept,
-        course_number=family.course_number,
-        course_suffix=family.course_suffix,
-        course_quarter=family.course_quarter,
-        course_year2=family.course_year2,
-    )
-    return {"deleted": True}
 
 
 @router.get("/me/course-work-item-families/status", response_model=CourseWorkItemFamilyStatusResponse)

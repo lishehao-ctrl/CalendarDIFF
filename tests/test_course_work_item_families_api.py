@@ -69,8 +69,12 @@ def test_course_work_item_family_crud(input_client, db_session, authenticate_cli
         f"/users/me/course-work-item-families/{created['id']}",
         headers={"X-API-Key": "test-api-key"},
     )
-    assert delete_response.status_code == 200
-    assert delete_response.json() == {"deleted": True}
+    assert delete_response.status_code == 405
+    after_delete_attempt = input_client.get("/users/me/course-work-item-families", headers={"X-API-Key": "test-api-key"})
+    assert after_delete_attempt.status_code == 200
+    rows = after_delete_attempt.json()
+    assert len(rows) == 1
+    assert rows[0]["id"] == created["id"]
 
 
 def test_course_work_item_family_rejects_alias_collision(input_client, db_session, authenticate_client) -> None:
