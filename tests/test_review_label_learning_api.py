@@ -67,7 +67,11 @@ def _seed_pending_change(db_session, *, user: User, source: InputSource, raw_lab
                     "source_dtend_utc": "2026-03-13T00:59:00+00:00",
                 },
                 "semantic_event": semantic_event,
-                "enrichment": {"course_parse": {"dept": "CSE", "number": 100, "quarter": "WI", "year2": 26}},
+                "link_signals": {},
+                "kind_resolution": {
+                    "status": "unresolved",
+                    "reason_code": "missing_course_identity",
+                },
             },
             event_hash="2" * 64,
             observed_at=datetime.now(timezone.utc),

@@ -25,7 +25,7 @@ from app.modules.core_ingest.pending_change_store import (
 )
 from app.modules.core_ingest.pending_review_outbox import emit_review_pending_created_event
 from app.modules.core_ingest.review_evidence import freeze_observation_evidence, freeze_semantic_evidence
-from app.modules.common.change_source_refs import primary_source_from_refs
+from app.modules.common.change_source_refs import primary_source_from_refs, require_non_empty_source_refs
 
 
 @dataclass(frozen=True)
@@ -76,6 +76,15 @@ def rebuild_pending_change_proposals(
             existing_entity=existing_entity,
             family_label_cache=family_label_cache,
         )
+        last_known_source_refs = (
+            _load_last_known_source_refs(
+                db=db,
+                user_id=user_id,
+                entity_uid=entity_uid,
+            )
+            if not observations
+            else serialize_source_refs(observations)
+        )
 
         decision = compute_pending_proposal_decision(
             entity_uid=entity_uid,
@@ -85,6 +94,7 @@ def rebuild_pending_change_proposals(
             previous_observation_payload=previous_observation_payloads.get(entity_uid)
             if isinstance(previous_observation_payloads, dict)
             else None,
+            fallback_source_refs=last_known_source_refs,
         )
         new_change = apply_pending_proposal_decision(
             db=db,
@@ -123,6 +133,7 @@ def compute_pending_proposal_decision(
     existing_entity: EventEntity | None,
     existing_entity_payload: ApprovedSemanticPayload | None = None,
     previous_observation_payload: dict | None = None,
+    fallback_source_refs: Sequence[ChangeSourceRefPayload] | None = None,
 ) -> PendingProposalDecision:
     primary = choose_primary_observation(
         [
@@ -145,6 +156,12 @@ def compute_pending_proposal_decision(
 
     if primary is None:
         assert existing_entity_payload is not None
+        source_refs = require_non_empty_source_refs(
+            source_refs=list(fallback_source_refs or []),
+            context=f"removed_proposal entity_uid={entity_uid}",
+        )
+        primary_source_ref = primary_source_from_refs(source_refs)
+        provider = primary_source_ref.get("provider") if isinstance(primary_source_ref, dict) else None
         return PendingProposalDecision(
             mode="upsert",
             entity_uid=entity_uid,
@@ -152,13 +169,13 @@ def compute_pending_proposal_decision(
             before_semantic=existing_entity_payload,
             after_semantic=None,
             delta_seconds=None,
-            source_refs=[],
+            source_refs=source_refs,
             before_evidence=freeze_observation_evidence(
-                provider=None,
+                provider=provider,
                 event_payload=previous_observation_payload,
                 semantic_payload=existing_entity_payload.to_json_dict(),
             )
-            or freeze_semantic_evidence(provider=None, semantic_payload=existing_entity_payload.to_json_dict()),
+            or freeze_semantic_evidence(provider=provider, semantic_payload=existing_entity_payload.to_json_dict()),
             after_evidence=None,
         )
 
@@ -167,7 +184,10 @@ def compute_pending_proposal_decision(
     candidate_after = candidate_after_payload(entity_uid=entity_uid, payload=primary_payload)
     if candidate_after is None:
         return PendingProposalDecision(mode="skip", entity_uid=entity_uid)
-    source_refs = serialize_source_refs(observations)
+    source_refs = require_non_empty_source_refs(
+        source_refs=serialize_source_refs(observations),
+        context=f"proposal entity_uid={entity_uid}",
+    )
     primary_source_ref = primary_source_from_refs(source_refs)
     after_evidence = freeze_observation_evidence(
         provider=primary_source_ref.get("provider") if isinstance(primary_source_ref, dict) else None,
@@ -255,6 +275,25 @@ def apply_pending_proposal_decision(
     )
 
 
+def _load_last_known_source_refs(
+    *,
+    db: Session,
+    user_id: int,
+    entity_uid: str,
+) -> list[ChangeSourceRefPayload]:
+    historical_rows = list(
+        db.scalars(
+            select(SourceEventObservation)
+            .where(
+                SourceEventObservation.user_id == user_id,
+                SourceEventObservation.entity_uid == entity_uid,
+            )
+            .order_by(SourceEventObservation.observed_at.desc(), SourceEventObservation.id.desc())
+        ).all()
+    )
+    return _last_known_source_refs_from_observations(historical_rows)
+
+
 __all__ = [
     "PendingProposalDecision",
     "apply_pending_proposal_decision",
@@ -286,6 +325,32 @@ def serialize_source_refs(observations: Sequence[SourceEventObservation]) -> lis
         ),
         reverse=True,
     )
+    return rows
+
+
+def _last_known_source_refs_from_observations(
+    observations: Sequence[SourceEventObservation],
+) -> list[ChangeSourceRefPayload]:
+    rows: list[ChangeSourceRefPayload] = []
+    seen_pairs: set[tuple[int, str]] = set()
+    for row in observations:
+        source_key = (int(row.source_id), str(row.external_event_id))
+        if source_key in seen_pairs:
+            continue
+        seen_pairs.add(source_key)
+        payload = row.event_payload if isinstance(row.event_payload, dict) else {}
+        semantic_event = payload.get("semantic_event") if isinstance(payload.get("semantic_event"), dict) else {}
+        confidence_raw = semantic_event.get("confidence") if isinstance(semantic_event, dict) else None
+        confidence = float(confidence_raw) if isinstance(confidence_raw, (int, float)) else 0.0
+        rows.append(
+            ChangeSourceRefPayload(
+                source_id=row.source_id,
+                source_kind=row.source_kind.value,
+                provider=row.provider,
+                external_event_id=row.external_event_id,
+                confidence=confidence,
+            )
+        )
     return rows
 
 

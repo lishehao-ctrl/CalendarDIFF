@@ -5,6 +5,10 @@ from app.db.models.review import Change, ChangeSourceRef
 from app.modules.common.payload_schemas import ChangeSourceRefPayload
 
 
+class ChangeSourceRefIntegrityError(RuntimeError):
+    pass
+
+
 def normalize_source_refs(raw_rows: list[dict | ChangeSourceRefPayload]) -> list[ChangeSourceRefPayload]:
     out: list[ChangeSourceRefPayload] = []
     for row in raw_rows:
@@ -20,6 +24,34 @@ def normalize_source_refs(raw_rows: list[dict | ChangeSourceRefPayload]) -> list
     return out
 
 
+def source_refs_from_change(change: Change) -> list[ChangeSourceRefPayload]:
+    return normalize_source_refs(
+        [
+            {
+                "source_id": row.source_id,
+                "source_kind": row.source_kind.value if row.source_kind is not None else None,
+                "provider": row.provider,
+                "external_event_id": row.external_event_id,
+                "confidence": row.confidence,
+            }
+            for row in sorted(change.source_refs, key=lambda item: item.position)
+        ]
+    )
+
+
+def require_non_empty_source_refs(
+    *,
+    source_refs: list[dict | ChangeSourceRefPayload],
+    context: str,
+) -> list[ChangeSourceRefPayload]:
+    normalized = normalize_source_refs(source_refs)
+    if normalized:
+        return normalized
+    raise ChangeSourceRefIntegrityError(
+        f"change_source_refs_integrity_error: source refs missing for {context}"
+    )
+
+
 def primary_source_from_refs(source_refs: list[dict | ChangeSourceRefPayload]) -> dict | None:
     if not source_refs:
         return None
@@ -31,11 +63,11 @@ def primary_source_from_refs(source_refs: list[dict | ChangeSourceRefPayload]) -
 
 def change_source_refs_as_dicts(change: Change) -> list[dict]:
     out: list[dict] = []
-    for row in sorted(change.source_refs, key=lambda item: item.position):
+    for row in source_refs_from_change(change):
         out.append(
             ChangeSourceRefPayload(
                 source_id=row.source_id,
-                source_kind=row.source_kind.value if isinstance(row.source_kind, SourceKind) else None,
+                source_kind=row.source_kind if isinstance(row.source_kind, str) else None,
                 provider=row.provider,
                 external_event_id=row.external_event_id,
                 confidence=row.confidence,
@@ -69,8 +101,11 @@ def replace_change_source_refs(*, change: Change, source_refs: list[dict | Chang
 
 
 __all__ = [
+    "ChangeSourceRefIntegrityError",
     "change_source_refs_as_dicts",
     "normalize_source_refs",
     "primary_source_from_refs",
+    "require_non_empty_source_refs",
     "replace_change_source_refs",
+    "source_refs_from_change",
 ]

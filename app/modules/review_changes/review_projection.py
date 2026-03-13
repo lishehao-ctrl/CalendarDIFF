@@ -7,8 +7,8 @@ from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource
-from app.db.models.review import Change, SourceEventObservation
-from app.modules.common.change_source_refs import normalize_source_refs, primary_source_from_refs
+from app.db.models.review import Change, ChangeOrigin, SourceEventObservation
+from app.modules.common.change_source_refs import source_refs_from_change
 from app.modules.common.payload_schemas import (
     ChangeSourceRefPayload,
     ReviewChangeSummary,
@@ -21,32 +21,33 @@ from app.modules.core_ingest.semantic_event_service import semantic_due_datetime
 class ReviewProjectionContext:
     sources_by_id: dict[int, InputSource]
     observed_at_by_source_ref: dict[tuple[int, str], datetime]
-    observed_at_by_entity_uid: dict[str, datetime]
 
     def proposal_sources(self, change: Change) -> list[ChangeSourceRefPayload]:
-        raw_rows = [
-            {
-                "source_id": row.source_id,
-                "source_kind": row.source_kind.value if row.source_kind is not None else None,
-                "provider": row.provider,
-                "external_event_id": row.external_event_id,
-                "confidence": row.confidence,
-            }
-            for row in sorted(change.source_refs, key=lambda item: item.position)
-        ]
-        return normalize_source_refs(raw_rows)
+        proposal_sources = source_refs_from_change(change)
+        if change.change_origin == ChangeOrigin.INGEST_PROPOSAL and not proposal_sources:
+            raise RuntimeError(
+                "review_projection_integrity_error: ingest proposal missing change_source_refs "
+                f"change_id={change.id} entity_uid={change.entity_uid}"
+            )
+        return proposal_sources
 
     def primary_source(self, change: Change) -> dict | None:
-        return primary_source_from_refs(self.proposal_sources(change))
+        source_ref = self._primary_source_payload(change)
+        return source_ref.to_primary_ref() if source_ref is not None else None
 
     def change_summary(self, change: Change) -> ReviewChangeSummary:
         before_payload = change.before_semantic_json if isinstance(change.before_semantic_json, dict) else None
         after_payload = change.after_semantic_json if isinstance(change.after_semantic_json, dict) else None
-        old_source = self._source_summary_from_evidence(change=change, evidence=change.before_evidence_json)
-        new_source = self._source_summary_from_ref(
-            source_ref=self._primary_source_payload(change),
-            fallback_evidence=change.after_evidence_json,
-            entity_uid=change.entity_uid,
+        primary_source_ref = self._primary_source_payload(change)
+        old_source = (
+            self._source_summary_from_ref(source_ref=primary_source_ref)
+            if before_payload is not None and primary_source_ref is not None
+            else ReviewChangeSummarySide()
+        )
+        new_source = (
+            self._source_summary_from_ref(source_ref=primary_source_ref)
+            if after_payload is not None and primary_source_ref is not None
+            else ReviewChangeSummarySide()
         )
         return ReviewChangeSummary(
             old=ReviewChangeSummarySide(
@@ -70,12 +71,8 @@ class ReviewProjectionContext:
     def _source_summary_from_ref(
         self,
         *,
-        source_ref: ChangeSourceRefPayload | None,
-        fallback_evidence: object,
-        entity_uid: str,
+        source_ref: ChangeSourceRefPayload,
     ) -> ReviewChangeSummarySide:
-        if source_ref is None:
-            return self._source_summary_from_evidence(change=None, evidence=fallback_evidence, entity_uid=entity_uid)
         source = self.sources_by_id.get(source_ref.source_id)
         observed_at = None
         if isinstance(source_ref.external_event_id, str) and source_ref.external_event_id.strip():
@@ -86,49 +83,11 @@ class ReviewProjectionContext:
             source_observed_at=observed_at,
         )
 
-    def _source_summary_from_evidence(
-        self,
-        *,
-        change: Change | None,
-        evidence: object,
-        entity_uid: str | None = None,
-    ) -> ReviewChangeSummarySide:
-        provider = evidence.get("provider") if isinstance(evidence, dict) and isinstance(evidence.get("provider"), str) else None
-        if provider == "gmail":
-            source_kind = "email"
-            source_label = "Gmail"
-        elif provider in {"ics", "calendar"}:
-            source_kind = "calendar"
-            source_label = "Canvas ICS"
-        else:
-            source_kind = None
-            source_label = None
-        lookup_uid = change.entity_uid if change is not None else entity_uid
-        observed_at = self.observed_at_by_entity_uid.get(lookup_uid) if isinstance(lookup_uid, str) else None
-        return ReviewChangeSummarySide(
-            source_label=source_label,
-            source_kind=source_kind,
-            source_observed_at=observed_at,
-        )
-
 
 def build_review_projection_context(db: Session, *, user_id: int, changes: list[Change]) -> ReviewProjectionContext:
     all_refs: list[ChangeSourceRefPayload] = []
     for change in changes:
-        all_refs.extend(
-            normalize_source_refs(
-                [
-                    {
-                        "source_id": row.source_id,
-                        "source_kind": row.source_kind.value if row.source_kind is not None else None,
-                        "provider": row.provider,
-                        "external_event_id": row.external_event_id,
-                        "confidence": row.confidence,
-                    }
-                    for row in sorted(change.source_refs, key=lambda item: item.position)
-                ]
-            )
-        )
+        all_refs.extend(source_refs_from_change(change))
 
     source_ids = sorted({row.source_id for row in all_refs})
     sources_by_id: dict[int, InputSource] = {}
@@ -166,30 +125,9 @@ def build_review_projection_context(db: Session, *, user_id: int, changes: list[
             if isinstance(source_id, int) and isinstance(external_event_id, str) and isinstance(observed_at, datetime)
         }
 
-    entity_uids = sorted({change.entity_uid for change in changes if isinstance(change.entity_uid, str) and change.entity_uid.strip()})
-    observed_at_by_entity_uid: dict[str, datetime] = {}
-    if entity_uids:
-        rows = db.execute(
-            select(
-                SourceEventObservation.entity_uid,
-                func.max(SourceEventObservation.observed_at),
-            )
-            .where(
-                SourceEventObservation.user_id == user_id,
-                SourceEventObservation.entity_uid.in_(entity_uids),
-            )
-            .group_by(SourceEventObservation.entity_uid)
-        ).all()
-        observed_at_by_entity_uid = {
-            entity_uid: observed_at
-            for entity_uid, observed_at in rows
-            if isinstance(entity_uid, str) and isinstance(observed_at, datetime)
-        }
-
     return ReviewProjectionContext(
         sources_by_id=sources_by_id,
         observed_at_by_source_ref=observed_at_by_source_ref,
-        observed_at_by_entity_uid=observed_at_by_entity_uid,
     )
 
 

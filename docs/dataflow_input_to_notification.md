@@ -105,4 +105,4 @@ Use these files as implementation anchors when building detailed dataflow tables
 - Treat missing `family_id`/family-row label authority as an integrity bug (fail loudly), not a normal display fallback path.
 - Treat missing course identity as unresolved ingest isolation (`ingest_unresolved_records`), not as normal reviewable pending change input.
 - Family lifecycle policy: no normal hard-delete path for family rows; manage via rename/relink workflows.
-- `course_work_item_family_rebuild` is retained as a temporary side path and should be converged to the main runtime contract in follow-up work.
+- `course_work_item_family_rebuild` is observation-native: it updates active runtime observations and recomputes pending proposals without parser-payload replay.

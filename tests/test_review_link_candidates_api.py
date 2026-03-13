@@ -59,7 +59,7 @@ def _create_family(db_session, *, user_id: int, canonical_label: str = "Homework
     return family
 
 
-def _add_entity(db_session, *, user_id: int, entity_uid: str, family_id: int, family_name: str = "Legacy Label") -> None:
+def _add_entity(db_session, *, user_id: int, entity_uid: str, family_id: int) -> None:
     db_session.add(
         EventEntity(
             user_id=user_id,
@@ -67,7 +67,6 @@ def _add_entity(db_session, *, user_id: int, entity_uid: str, family_id: int, fa
             course_dept="CSE",
             course_number=100,
             family_id=family_id,
-            family_name=family_name,
             raw_type="Homework",
             event_name="Homework 1",
             ordinal=1,
@@ -80,7 +79,7 @@ def _add_entity(db_session, *, user_id: int, entity_uid: str, family_id: int, fa
 def test_link_candidate_approve_creates_manual_link(client, db_session, auth_headers) -> None:
     user, source = _create_user_and_email_source(db_session)
     family = _create_family(db_session, user_id=user.id, canonical_label="Problem Set")
-    _add_entity(db_session, user_id=user.id, entity_uid="ent_target_a", family_id=family.id, family_name="Homework")
+    _add_entity(db_session, user_id=user.id, entity_uid="ent_target_a", family_id=family.id)
     db_session.add(
         EventLinkCandidate(
             user_id=user.id,

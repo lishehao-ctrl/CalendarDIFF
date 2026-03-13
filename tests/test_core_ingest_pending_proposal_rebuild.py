@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from sqlalchemy import select
 
 from app.db.models.input import InputSource, SourceKind
@@ -66,6 +67,7 @@ def _add_observation(
     family_name: str = "Homework",
     family_id: int,
     raw_type: str | None = None,
+    is_active: bool = True,
 ) -> None:
     semantic = _semantic_payload(
         uid=entity_uid,
@@ -95,7 +97,7 @@ def _add_observation(
             },
             event_hash="0" * 64,
             observed_at=datetime.now(timezone.utc),
-            is_active=True,
+            is_active=is_active,
             last_request_id="req-rebuild",
         )
     )
@@ -181,7 +183,6 @@ def test_rebuild_creates_due_changed_and_removed_against_active_entity_state(db_
                 course_quarter="WI",
                 course_year2=26,
                 family_id=family.id,
-                family_name="Homework",
                 raw_type="Homework",
                 event_name="Homework 1",
                 ordinal=1,
@@ -198,7 +199,6 @@ def test_rebuild_creates_due_changed_and_removed_against_active_entity_state(db_
                 course_quarter="WI",
                 course_year2=26,
                 family_id=family.id,
-                family_name="Homework",
                 raw_type="Homework",
                 event_name="Homework 1",
                 ordinal=1,
@@ -215,6 +215,15 @@ def test_rebuild_creates_due_changed_and_removed_against_active_entity_state(db_
         external_event_id="evt-due",
         due_at=changed_due,
         family_id=family.id,
+    )
+    _add_observation(
+        db_session,
+        source=source,
+        entity_uid="ent-removed",
+        external_event_id="evt-removed",
+        due_at=base_due,
+        family_id=family.id,
+        is_active=False,
     )
     db_session.commit()
 
@@ -238,6 +247,9 @@ def test_rebuild_creates_due_changed_and_removed_against_active_entity_state(db_
     )
     assert due_change is not None and due_change.change_type == ChangeType.DUE_CHANGED
     assert removed_change is not None and removed_change.change_type == ChangeType.REMOVED
+    assert len(removed_change.source_refs) == 1
+    assert removed_change.source_refs[0].source_id == source.id
+    assert removed_change.source_refs[0].external_event_id == "evt-removed"
 
 
 def test_rebuild_treats_family_id_as_authority_when_family_label_is_renamed(db_session) -> None:
@@ -265,7 +277,6 @@ def test_rebuild_treats_family_id_as_authority_when_family_label_is_renamed(db_s
             course_quarter="WI",
             course_year2=26,
             family_id=family.id,
-            family_name="Homework",
             raw_type="Homework",
             event_name="Homework 1",
             ordinal=1,
@@ -298,3 +309,48 @@ def test_rebuild_treats_family_id_as_authority_when_family_label_is_renamed(db_s
     assert created_count == 0
     assert pending_entity_uids == set()
     assert db_session.scalar(select(Change).where(Change.entity_uid == "ent-family-rename")) is None
+
+
+def test_rebuild_removed_without_last_known_source_refs_fails_loudly(db_session) -> None:
+    source = _seed_source(db_session)
+    family = CourseWorkItemLabelFamily(
+        user_id=source.user_id,
+        course_dept="CSE",
+        course_number=100,
+        course_quarter="WI",
+        course_year2=26,
+        normalized_course_identity="cse:100::wi:26",
+        canonical_label="Homework",
+        normalized_canonical_label="homework",
+    )
+    db_session.add(family)
+    db_session.flush()
+    due_at = datetime(2026, 3, 20, 18, 0, tzinfo=timezone.utc)
+    db_session.add(
+        EventEntity(
+            user_id=source.user_id,
+            entity_uid="ent-missing-source-refs",
+            lifecycle=EventEntityLifecycle.ACTIVE,
+            course_dept="CSE",
+            course_number=100,
+            course_quarter="WI",
+            course_year2=26,
+            family_id=family.id,
+            raw_type="Homework",
+            event_name="Homework 1",
+            ordinal=1,
+            due_date=due_at.date(),
+            due_time=due_at.timetz().replace(tzinfo=None),
+            time_precision="datetime",
+        )
+    )
+    db_session.commit()
+
+    with pytest.raises(RuntimeError, match="change_source_refs_integrity_error"):
+        rebuild_pending_change_proposals(
+            db=db_session,
+            user_id=source.user_id,
+            source=source,
+            affected_entity_uids={"ent-missing-source-refs"},
+            applied_at=datetime.now(timezone.utc),
+        )

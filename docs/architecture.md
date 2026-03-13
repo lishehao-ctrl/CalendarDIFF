@@ -116,14 +116,15 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 7. family label authority is explicit:
    - `family_id` is the only label authority
    - user-facing display resolves latest `course_work_item_label_families.canonical_label` by `family_id`
-   - `event_entities.family_name` is deprecated snapshot storage and not display authority
+   - `event_entities` no longer persists `family_name`; display label is read-time projection only
    - `changes.family_name` may remain as frozen audit payload, not default display authority
    - missing `family_id` or missing family-row label authority is a data-integrity error (not a normal `"Unknown"` UI branch)
 8. family lifecycle hardening:
    - family rows are not a normal hard-delete target
    - `DELETE /users/me/course-work-item-families/{family_id}` is intentionally removed; update/relink flows remain the product path
-9. follow-up cleanup scope:
-   - `course_work_item_family_rebuild` remains a side path for now and should converge to the main runtime contract in a later pass
+9. family rebuild path is observation-native:
+   - `course_work_item_family_rebuild` recomputes from active runtime observations directly
+   - it does not replay parser-stage payloads or call pseudo-ingest apply
 10. unresolved ingest isolation:
    - missing course identity routes records to `ingest_unresolved_records`
    - unresolved records do not upsert normal `source_event_observations`

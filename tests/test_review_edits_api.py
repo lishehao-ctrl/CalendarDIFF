@@ -147,7 +147,6 @@ def test_review_edit_canonical_applies_directly_to_entity_state(client, db_sessi
             course_number=8,
             course_suffix="A",
             family_id=family.id,
-            family_name="Homework",
             raw_type="Homework",
             event_name="HW2",
             ordinal=2,

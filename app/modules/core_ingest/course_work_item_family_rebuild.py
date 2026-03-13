@@ -3,19 +3,17 @@ from __future__ import annotations
 import hashlib
 from collections import defaultdict
 from datetime import datetime, timezone
-from types import SimpleNamespace
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models.ingestion import ConnectorResultStatus
-from app.db.models.input import InputSource, SourceKind
+from app.db.models.input import InputSource
 from app.db.models.review import SourceEventObservation
 from app.db.models.shared import User
 from app.modules.common.course_identity import normalized_course_identity_key
-from app.modules.common.payload_schemas import SourceFacts
-from app.modules.core_ingest.apply import apply_records
-from app.modules.core_ingest.semantic_event_service import course_display_name
+from app.modules.core_ingest.course_work_item_family_resolution import resolve_kind_resolution
+from app.modules.core_ingest.observation_store import compute_payload_hash, normalize_observation_payload
+from app.modules.core_ingest.pending_proposal_rebuild import rebuild_pending_change_proposals
 from app.modules.users.course_work_item_families_service import (
     mark_course_work_item_family_rebuild_complete,
     mark_course_work_item_family_rebuild_failed,
@@ -43,11 +41,19 @@ def rebuild_user_work_item_state(
     )
     try:
         observations = _load_active_observations(db, user_id=user.id, normalized_course_key=normalized_course_key)
-        _replay_observations(
+        now = datetime.now(timezone.utc)
+        affected_by_source = _recompute_observations(
             db,
             user_id=user.id,
             observations=observations,
             request_scope=f"user:{user.id}:{normalized_course_key or 'all'}",
+            applied_at=now,
+        )
+        _rebuild_pending_proposals(
+            db=db,
+            user_id=user.id,
+            affected_entity_uids_by_source=affected_by_source,
+            applied_at=now,
         )
         db.commit()
         mark_course_work_item_family_rebuild_complete(db, user=user)
@@ -75,57 +81,93 @@ def _load_active_observations(
     return [row for row in rows if _normalize_observation_course_key(row.event_payload) == normalized_course_key]
 
 
-def _replay_observations(
+def _recompute_observations(
     db: Session,
     *,
     user_id: int,
     observations: list[SourceEventObservation],
     request_scope: str,
-) -> None:
+    applied_at: datetime,
+) -> dict[int, set[str]]:
     if not observations:
-        return
+        return {}
+    affected_by_source: dict[int, set[str]] = defaultdict(set)
+
     rows_by_source_id: dict[int, list[SourceEventObservation]] = defaultdict(list)
     for row in observations:
-        rows_by_source_id[row.source_id].append(row)
+        rows_by_source_id[int(row.source_id)].append(row)
 
-    sources = list(
-        db.scalars(
-            select(InputSource)
-            .where(
-                InputSource.user_id == user_id,
-                InputSource.is_active.is_(True),
-                InputSource.id.in_(rows_by_source_id.keys()),
-            )
-            .order_by(InputSource.source_kind.asc(), InputSource.id.asc())
-        ).all()
-    )
-    sources.sort(key=lambda row: (0 if row.source_kind == SourceKind.CALENDAR else 1, row.id))
-
-    now = datetime.now(timezone.utc)
-    for source in sources:
-        source_rows = rows_by_source_id.get(source.id, [])
-        if not source_rows:
-            continue
-        record_type = "calendar.event.extracted" if source.source_kind == SourceKind.CALENDAR else "gmail.message.extracted"
-        records = [
-            {
-                "record_type": record_type,
-                "payload": _rebuild_payload_from_observation(
-                    source_kind=source.source_kind,
-                    external_event_id=row.external_event_id,
-                    payload=row.event_payload,
-                ),
-            }
-            for row in source_rows
-        ]
-        pseudo_result = SimpleNamespace(records=records, status=ConnectorResultStatus.CHANGED)
+    for source_id in sorted(rows_by_source_id.keys()):
         request_id = _build_rebuild_request_id(
             user_id=user_id,
-            source_id=source.id,
+            source_id=source_id,
             request_scope=request_scope,
-            at=now,
+            at=applied_at,
         )
-        apply_records(db=db, result=pseudo_result, source=source, applied_at=now, request_id=request_id)
+        for row in rows_by_source_id[source_id]:
+            payload = row.event_payload if isinstance(row.event_payload, dict) else {}
+            normalized_payload = normalize_observation_payload(payload)
+
+            source_facts = normalized_payload.get("source_facts")
+            semantic_event = normalized_payload.get("semantic_event")
+            link_signals = normalized_payload.get("link_signals")
+            if not isinstance(source_facts, dict) or not isinstance(semantic_event, dict) or not isinstance(link_signals, dict):
+                raise RuntimeError(
+                    f"family_rebuild_integrity_error: invalid runtime payload for observation_id={row.id}"
+                )
+
+            entity_uid = row.entity_uid.strip() if isinstance(row.entity_uid, str) else ""
+            if not entity_uid:
+                raise RuntimeError(
+                    f"family_rebuild_integrity_error: missing entity_uid for observation_id={row.id}"
+                )
+
+            kind_resolution = resolve_kind_resolution(
+                db,
+                user_id=user_id,
+                course_parse=_course_parse_from_semantic_event(semantic_event),
+                semantic_parse=_semantic_parse_from_semantic_event(semantic_event),
+                source_facts=source_facts,
+                source_kind=row.source_kind.value,
+                external_event_id=row.external_event_id,
+                source_id=row.source_id,
+                request_id=request_id,
+                provider=row.provider,
+                source_observation_id=row.id,
+            )
+            if kind_resolution.get("status") == "unresolved":
+                raise RuntimeError(
+                    f"family_rebuild_integrity_error: active observation unresolved observation_id={row.id}"
+                )
+
+            next_semantic_event = dict(semantic_event)
+            next_semantic_event["uid"] = entity_uid
+            next_semantic_event["family_id"] = kind_resolution.get("family_id")
+            if isinstance(kind_resolution.get("canonical_label"), str):
+                next_semantic_event["family_name"] = kind_resolution["canonical_label"]
+            if isinstance(kind_resolution.get("raw_type"), str):
+                next_semantic_event["raw_type"] = kind_resolution["raw_type"]
+
+            next_payload: dict[str, object] = {
+                "source_facts": dict(source_facts),
+                "semantic_event": next_semantic_event,
+                "link_signals": dict(link_signals),
+                "kind_resolution": kind_resolution,
+            }
+            raw_ics_component_b64 = normalized_payload.get("raw_ics_component_b64")
+            if isinstance(raw_ics_component_b64, str) and raw_ics_component_b64:
+                next_payload["raw_ics_component_b64"] = raw_ics_component_b64
+            normalized_next_payload = normalize_observation_payload(next_payload)
+
+            if normalized_next_payload == normalized_payload:
+                continue
+            row.event_payload = normalized_next_payload
+            row.event_hash = compute_payload_hash(normalized_next_payload)
+            row.observed_at = applied_at
+            row.last_request_id = request_id
+            affected_by_source[source_id].add(entity_uid)
+
+    return {source_id: entity_uids for source_id, entity_uids in affected_by_source.items() if entity_uids}
 
 
 def _build_rebuild_request_id(*, user_id: int, source_id: int, request_scope: str, at: datetime) -> str:
@@ -133,19 +175,62 @@ def _build_rebuild_request_id(*, user_id: int, source_id: int, request_scope: st
     return f"rebuild:{user_id}:{source_id}:{digest}:{int(at.timestamp())}"[:64]
 
 
-def _rebuild_payload_from_observation(*, source_kind: SourceKind, external_event_id: str, payload: object) -> dict:
-    raw = payload if isinstance(payload, dict) else {}
-    source_facts_raw = raw.get("source_facts")
-    try:
-        source_facts = (
-            SourceFacts.model_validate(source_facts_raw).model_dump(mode="json")
-            if isinstance(source_facts_raw, dict)
-            else {}
+def _rebuild_pending_proposals(
+    *,
+    db: Session,
+    user_id: int,
+    affected_entity_uids_by_source: dict[int, set[str]],
+    applied_at: datetime,
+) -> None:
+    if not affected_entity_uids_by_source:
+        return
+    for source_id in sorted(affected_entity_uids_by_source.keys()):
+        affected_entity_uids = affected_entity_uids_by_source.get(source_id) or set()
+        if not affected_entity_uids:
+            continue
+        source = db.scalar(
+            select(InputSource).where(
+                InputSource.id == source_id,
+                InputSource.user_id == user_id,
+            ).limit(1)
         )
-    except Exception:
-        source_facts = dict(source_facts_raw) if isinstance(source_facts_raw, dict) else {}
+        if source is None:
+            continue
+        rebuild_pending_change_proposals(
+            db=db,
+            user_id=user_id,
+            source=source,
+            affected_entity_uids=affected_entity_uids,
+            applied_at=applied_at,
+        )
+
+
+def _normalize_observation_course_key(payload: object) -> str:
+    raw = payload if isinstance(payload, dict) else {}
     semantic_event = raw.get("semantic_event") if isinstance(raw.get("semantic_event"), dict) else {}
-    semantic_draft = {
+    return normalized_course_identity_key(
+        course_dept=semantic_event.get("course_dept") if isinstance(semantic_event.get("course_dept"), str) else None,
+        course_number=semantic_event.get("course_number") if isinstance(semantic_event.get("course_number"), int) else None,
+        course_suffix=semantic_event.get("course_suffix") if isinstance(semantic_event.get("course_suffix"), str) else None,
+        course_quarter=semantic_event.get("course_quarter") if isinstance(semantic_event.get("course_quarter"), str) else None,
+        course_year2=semantic_event.get("course_year2") if isinstance(semantic_event.get("course_year2"), int) else None,
+    )
+
+
+def _course_parse_from_semantic_event(semantic_event: dict) -> dict:
+    return {
+        "dept": semantic_event.get("course_dept"),
+        "number": semantic_event.get("course_number"),
+        "suffix": semantic_event.get("course_suffix"),
+        "quarter": semantic_event.get("course_quarter"),
+        "year2": semantic_event.get("course_year2"),
+        "confidence": semantic_event.get("confidence") if isinstance(semantic_event.get("confidence"), (int, float)) else 0.0,
+        "evidence": semantic_event.get("evidence") if isinstance(semantic_event.get("evidence"), str) else "",
+    }
+
+
+def _semantic_parse_from_semantic_event(semantic_event: dict) -> dict:
+    return {
         "course_dept": semantic_event.get("course_dept"),
         "course_number": semantic_event.get("course_number"),
         "course_suffix": semantic_event.get("course_suffix"),
@@ -159,38 +244,6 @@ def _rebuild_payload_from_observation(*, source_kind: SourceKind, external_event
         "time_precision": semantic_event.get("time_precision"),
         "confidence": semantic_event.get("confidence"),
         "evidence": semantic_event.get("evidence"),
-    }
-    link_signals = raw.get("link_signals") if isinstance(raw.get("link_signals"), dict) else {}
-    rebuilt: dict = {
-        "source_facts": source_facts,
-        "semantic_event_draft": semantic_draft,
-        "link_signals": link_signals,
-    }
-    if source_kind == SourceKind.EMAIL:
-        rebuilt["message_id"] = external_event_id
-    if source_kind == SourceKind.CALENDAR and isinstance(raw.get("raw_ics_component_b64"), str):
-        rebuilt["raw_ics_component_b64"] = raw["raw_ics_component_b64"]
-    return rebuilt
-
-
-def _normalize_observation_course_key(payload: object) -> str:
-    raw = payload if isinstance(payload, dict) else {}
-    semantic_event = raw.get("semantic_event") if isinstance(raw.get("semantic_event"), dict) else {}
-    return normalized_course_identity_key(
-        **_course_identity_from_display(course_display_name(semantic_event=semantic_event))
-    )
-
-
-def _course_identity_from_display(course_display: str | None) -> dict[str, object]:
-    from app.modules.common.course_identity import parse_course_display
-
-    parsed = parse_course_display(course_display)
-    return {
-        "course_dept": parsed["course_dept"] if isinstance(parsed["course_dept"], str) else None,
-        "course_number": parsed["course_number"] if isinstance(parsed["course_number"], int) else None,
-        "course_suffix": parsed["course_suffix"] if isinstance(parsed["course_suffix"], str) else None,
-        "course_quarter": parsed["course_quarter"] if isinstance(parsed["course_quarter"], str) else None,
-        "course_year2": parsed["course_year2"] if isinstance(parsed["course_year2"], int) else None,
     }
 
 

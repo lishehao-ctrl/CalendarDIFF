@@ -6,7 +6,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.review import Change, ChangeOrigin, ChangeType, ReviewStatus
-from app.modules.common.change_source_refs import change_source_refs_as_dicts, normalize_source_refs, replace_change_source_refs
+from app.modules.common.change_source_refs import (
+    change_source_refs_as_dicts,
+    normalize_source_refs,
+    replace_change_source_refs,
+    require_non_empty_source_refs,
+)
 from app.modules.common.payload_schemas import ChangeSourceRefPayload
 
 
@@ -43,6 +48,10 @@ def upsert_pending_change(
     before_evidence_json: dict | None = None,
     after_evidence_json: dict | None = None,
 ) -> Change | None:
+    normalized_source_refs = require_non_empty_source_refs(
+        source_refs=source_refs,
+        context=f"pending_change user_id={user_id} entity_uid={entity_uid} change_type={change_type.value}",
+    )
     existing_pending = db.scalar(
         select(Change)
         .where(
@@ -74,7 +83,7 @@ def upsert_pending_change(
             reviewed_by_user_id=None,
         )
         db.add(change)
-        replace_change_source_refs(change=change, source_refs=source_refs)
+        replace_change_source_refs(change=change, source_refs=normalized_source_refs)
         db.flush()
         return change
 
@@ -84,7 +93,7 @@ def upsert_pending_change(
         before_semantic_json=before_semantic_json,
         after_semantic_json=after_semantic_json,
         delta_seconds=delta_seconds,
-        source_refs=source_refs,
+        source_refs=normalized_source_refs,
     ):
         if existing_pending.before_evidence_json is None:
             existing_pending.before_evidence_json = before_evidence_json
@@ -97,7 +106,7 @@ def upsert_pending_change(
     existing_pending.before_semantic_json = before_semantic_json
     existing_pending.after_semantic_json = after_semantic_json
     existing_pending.delta_seconds = delta_seconds
-    replace_change_source_refs(change=existing_pending, source_refs=source_refs)
+    replace_change_source_refs(change=existing_pending, source_refs=normalized_source_refs)
     existing_pending.before_evidence_json = before_evidence_json
     existing_pending.after_evidence_json = after_evidence_json
     existing_pending.viewed_at = None

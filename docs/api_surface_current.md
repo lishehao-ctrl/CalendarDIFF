@@ -179,7 +179,7 @@ All `/internal/*` endpoints require:
 2. parser runtime service is `llm-service`
 3. protocol is OpenAI-compatible `chat/completions`
 4. ICS parser contract uses `calendar_delta` payloads for changed VEVENT components only
-5. canonical/enrichment split keeps canonical fields deterministic and enrichment LLM-derived
+5. parser output stays parser-stage (`semantic_event_draft`) and is normalized into runtime observation `semantic_event`
 6. parser payload contract is fixed at `obs_v3`
 7. env:
    - `INGESTION_LLM_MODEL`

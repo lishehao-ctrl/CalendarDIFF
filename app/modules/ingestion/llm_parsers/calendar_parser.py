@@ -53,7 +53,7 @@ def parse_calendar_content(*, db: Session, content: bytes, context: ParserContex
             continue
 
         source_facts = _extract_source_facts(component=component, source_id=context.source_id, index=index)
-        enrichment, parse_model_hint = parse_semantic_enrichment_text(
+        semantic_extract, parse_model_hint = parse_semantic_event_draft_text(
             db=db,
             source_facts=source_facts,
             context=context,
@@ -64,8 +64,8 @@ def parse_calendar_content(*, db: Session, content: bytes, context: ParserContex
 
         payload = {
             "source_facts": source_facts,
-            "semantic_event_draft": enrichment["semantic_event_draft"],
-            "link_signals": enrichment["link_signals"],
+            "semantic_event_draft": semantic_extract["semantic_event_draft"],
+            "link_signals": semantic_extract["link_signals"],
         }
         records.append({"record_type": "calendar.event.extracted", "payload": payload})
 
@@ -77,7 +77,7 @@ def parse_calendar_content(*, db: Session, content: bytes, context: ParserContex
     )
 
 
-def parse_semantic_enrichment_text(
+def parse_semantic_event_draft_text(
     *,
     db: Session,
     source_facts: dict,
@@ -184,10 +184,6 @@ def parse_semantic_enrichment_text(
         provider=context.provider,
         parser_version="mainline",
     )
-
-
-parse_event_enrichment_text = parse_semantic_enrichment_text
-parse_course_parse_text = parse_semantic_enrichment_text
 
 
 def _extract_source_facts(*, component, source_id: int, index: int) -> dict:
