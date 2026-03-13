@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from app.modules.common.payload_schemas import LinkSignals, SemanticEventDraft, SourceFacts
+from app.modules.ingestion.llm_parsers.schemas import GmailDirectiveExtractionResponse
 
 LEGACY_TOP_LEVEL_KEYS = frozenset(
     {
@@ -26,6 +27,17 @@ LEGACY_TOP_LEVEL_KEYS = frozenset(
 
 class PayloadContractError(RuntimeError):
     pass
+
+
+class GmailDirectivePayload(BaseModel):
+    message_id: str = Field(min_length=1, max_length=255)
+    source_facts: SourceFacts
+    segment_index: int = Field(ge=0)
+    segment_anchor: str | None = Field(default=None, max_length=255)
+    segment_snippet: str | None = Field(default=None, max_length=2048)
+    directive: GmailDirectiveExtractionResponse
+
+    model_config = {"extra": "forbid"}
 
 
 def validate_calendar_payload(*, payload: dict[str, Any], record_index: int) -> None:
@@ -65,6 +77,21 @@ def validate_gmail_payload(*, payload: dict[str, Any], record_index: int) -> Non
     _validate_source_facts(payload=payload, record_index=record_index, record_type="gmail.message.extracted")
     _validate_semantic_event_draft(payload=payload, record_index=record_index, record_type="gmail.message.extracted")
     _validate_link_signals(payload=payload, record_index=record_index, record_type="gmail.message.extracted")
+
+
+def validate_gmail_directive_payload(*, payload: dict[str, Any], record_index: int) -> None:
+    _ensure_no_legacy_top_level(payload=payload, record_index=record_index, record_type="gmail.directive.extracted")
+    try:
+        GmailDirectivePayload.model_validate(payload)
+    except ValidationError as exc:
+        last_loc = exc.errors()[0]["loc"][-1]
+        raise PayloadContractError(
+            _invalid_payload_message(
+                record_type="gmail.directive.extracted",
+                record_index=record_index,
+                detail=f"invalid directive payload: {last_loc}",
+            )
+        ) from exc
 
 
 def _ensure_no_legacy_top_level(*, payload: dict[str, Any], record_index: int, record_type: str) -> None:

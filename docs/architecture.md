@@ -152,16 +152,20 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 13. parser contract remains additive and parser-stage:
    - calendar parser payload: `source_facts` + `semantic_event_draft` + `link_signals`
    - gmail parser payload: `message_id` + `source_facts` + `semantic_event_draft` + `link_signals`
-14. Gmail-to-ICS linker is inventory-rule driven (no same-day window or score-band thresholds) and persists normalized link state in:
+14. gmail parser workflow is two-pass in backend runtime:
+   - pass 1 planner emits `message_id + mode + segment_array` (`segment_type_hint`: `atomic|directive|unknown`)
+   - pass 2 extracts `atomic` segments into `gmail.message.extracted` and `directive` segments into `gmail.directive.extracted`
+   - directive records do not create fake observations; they apply deterministically into normal pending `changes`
+15. Gmail-to-ICS linker is inventory-rule driven (no same-day window or score-band thresholds) and persists normalized link state in:
    - `event_entity_links` (auto/manual accepted links)
    - `event_link_candidates` (review queue for deterministic rule misses / low anchor confidence)
    - `event_link_blocks` (permanent rejected pairs)
-15. Auto-link rules are deterministic:
+16. Auto-link rules are deterministic:
    - require `dept+number` and `semantic_event.raw_type`
    - enforce suffix exact-match when inventory for that `dept+number` has any suffix
    - enforce `semantic_event.ordinal` exact-match when inventory for same course+raw_type has multiple ordinals
-16. blocked source/entity pairs are never auto-linked and never re-enter pending candidate flow until unblocked
-17. review API provides queue aggregation and bulk moderation helpers:
+17. blocked source/entity pairs are never auto-linked and never re-enter pending candidate flow until unblocked
+18. review API provides queue aggregation and bulk moderation helpers:
    - `GET /review/summary` (pending counts for `changes`, `link-candidates`)
    - `POST /review/link-candidates/batch/decisions` (`approve`/`reject`, partial success)
 

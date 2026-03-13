@@ -108,6 +108,7 @@ The parser-stage `ingest_results.records[*].payload` envelope used between llm/r
 3. `link_signals`: parser-stage linking signals (required on extracted records).
 4. Gmail extracted records also include `message_id` (required).
 5. parser-stage `semantic_event_draft` is normalized in apply/runtime into observation `semantic_event`.
+6. Gmail directive records (`record_type = "gmail.directive.extracted"`) carry schema-validated `directive` payload (`selector + mutation + confidence + evidence`) and are applied without creating `source_event_observations`.
 
 Runtime observation envelope (`source_event_observations.event_payload`) is fixed to:
 
@@ -127,6 +128,7 @@ Parser note:
 2. `link_signals` is required and schema-validated; missing/invalid objects fail parser output.
 3. link-candidate review flow is storage/API-only (`event_link_candidates` + `/review/link-candidates*`) and does not emit outbox notification events.
 4. accepted links are persisted in `event_entity_links`; uncertain linking decisions are persisted in `event_link_candidates`.
+5. directive records never masquerade as `gmail.message.extracted`; unsupported/unmatched directives are isolated and do not create guessed pending changes.
 
 Example (`calendar.event.extracted`):
 

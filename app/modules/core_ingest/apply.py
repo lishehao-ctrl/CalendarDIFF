@@ -38,19 +38,22 @@ def apply_records(
             request_id=request_id,
             previous_observation_payloads=previous_observation_payloads,
         )
+        directive_changes_created = 0
     elif source.source_kind == SourceKind.EMAIL:
-        affected_entity_uids = apply_gmail_observations(
+        gmail_outcome = apply_gmail_observations(
             db=db,
             source=source,
             records=records,
             applied_at=applied_at,
             request_id=request_id,
         )
+        affected_entity_uids = gmail_outcome.affected_entity_uids
+        directive_changes_created = gmail_outcome.directive_changes_created
     else:
         return 0
 
     if not affected_entity_uids:
-        return 0
+        return directive_changes_created
 
     db.flush()
     changes_created, pending_entity_uids = rebuild_pending_change_proposals(
@@ -61,7 +64,7 @@ def apply_records(
         applied_at=applied_at,
         previous_observation_payloads=previous_observation_payloads,
     )
-    return changes_created
+    return changes_created + directive_changes_created
 
 
 def get_ingest_apply_status(db: Session, *, request_id: str) -> dict:
