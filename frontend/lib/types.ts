@@ -53,16 +53,38 @@ export type SyncStatus = {
   } | null;
 };
 
+export type EventDisplay = {
+  course_display: string;
+  family_name: string;
+  ordinal: number | null;
+  display_label: string;
+};
+
+export type UserFacingEvent = {
+  uid?: string | null;
+  event_display: EventDisplay;
+  due_date?: string | null;
+  due_time?: string | null;
+  time_precision: "date_only" | "datetime" | string;
+};
+
 export type ReviewChange = {
   id: number;
-  event_uid: string;
+  entity_uid: string;
   change_type: string;
+  change_origin: string;
   detected_at: string;
   review_status: string;
-  before_json: Record<string, unknown> | null;
-  after_json: Record<string, unknown> | null;
-  proposal_merge_key?: string | null;
-  source_id: number | null;
+  before_display: EventDisplay | null;
+  after_display: EventDisplay | null;
+  before_event: UserFacingEvent | null;
+  after_event: UserFacingEvent | null;
+  primary_source?: {
+    source_id: number;
+    source_kind?: string | null;
+    provider?: string | null;
+    external_event_id?: string | null;
+  } | null;
   proposal_sources: Array<{
     source_id: number;
     source_kind?: string | null;
@@ -74,7 +96,6 @@ export type ReviewChange = {
   viewed_note?: string | null;
   reviewed_at?: string | null;
   review_note?: string | null;
-  source_kind?: string | null;
   priority_rank?: number | null;
   priority_label?: string | null;
   notification_state?: string | null;
@@ -107,8 +128,8 @@ export type EvidencePreviewEvent = {
 
 export type EvidencePreviewStructuredItem = {
   uid?: string | null;
-  title?: string | null;
-  course_label?: string | null;
+  event_display?: EventDisplay | null;
+  source_title?: string | null;
   start_at?: string | null;
   end_at?: string | null;
   location?: string | null;
@@ -154,17 +175,56 @@ export type ReviewBatchDecisionResponse = {
 
 export type ReviewEditMode = "proposal" | "canonical";
 
-export type ReviewEditEventPayload = {
-  uid: string;
-  title: string;
-  course_label: string;
-  start_at_utc: string;
-  end_at_utc: string;
+export type ReviewEditEventPayload = UserFacingEvent;
+
+export type ReviewEditTarget = {
+  change_id?: number;
+  entity_uid?: string | null;
+};
+
+export type ReviewEditPatch = {
+  event_name?: string | null;
+  due_date?: string | null;
+  due_time?: string | null;
+  time_precision?: "date_only" | "datetime" | null;
+  course_dept?: string | null;
+  course_number?: number | null;
+  course_suffix?: string | null;
+  course_quarter?: "WI" | "SP" | "SU" | "FA" | null;
+  course_year2?: number | null;
+};
+
+export type ReviewEditRequest = {
+  mode: ReviewEditMode;
+  target: ReviewEditTarget;
+  patch: ReviewEditPatch;
+  reason?: string | null;
+};
+
+export type ReviewEditContext = {
+  change_id: number;
+  entity_uid: string;
+  editable_event: {
+    uid: string;
+    family_id?: number | null;
+    family_name?: string | null;
+    course_dept?: string | null;
+    course_number?: number | null;
+    course_suffix?: string | null;
+    course_quarter?: "WI" | "SP" | "SU" | "FA" | null;
+    course_year2?: number | null;
+    raw_type?: string | null;
+    event_name?: string | null;
+    ordinal?: number | null;
+    due_date?: string | null;
+    due_time?: string | null;
+    time_precision: "date_only" | "datetime";
+  };
 };
 
 export type ReviewEditPreviewResponse = {
   mode: ReviewEditMode;
-  event_uid: string;
+  entity_uid: string;
   change_id: number | null;
   proposal_change_type: "created" | "due_changed" | null;
   base: ReviewEditEventPayload;
@@ -178,7 +238,7 @@ export type ReviewEditApplyResponse = {
   mode: ReviewEditMode;
   applied: boolean;
   idempotent: boolean;
-  event_uid: string;
+  entity_uid: string;
   edited_change_id: number | null;
   canonical_edit_change_id: number | null;
   rejected_pending_change_ids: number[];
@@ -202,8 +262,7 @@ export type LinkCandidate = {
   evidence_snapshot?: Record<string, unknown> | null;
   proposed_entity?: {
     entity_uid: string;
-    course_best_display?: string | null;
-    course_best_strength?: number | null;
+    event_display?: EventDisplay | null;
   } | null;
 };
 
@@ -229,8 +288,7 @@ export type LinkRow = {
   signals?: Record<string, unknown> | null;
   linked_entity?: {
     entity_uid: string;
-    course_best_display?: string | null;
-    course_best_strength?: number | null;
+    event_display?: EventDisplay | null;
   } | null;
 };
 
@@ -249,16 +307,29 @@ export type LinkAlert = {
   review_note?: string | null;
   linked_entity?: {
     entity_uid: string;
-    course_best_display?: string | null;
-    course_best_strength?: number | null;
+    event_display?: EventDisplay | null;
   } | null;
 };
 
+export type CourseIdentity = {
+  course_display: string;
+  course_dept: string;
+  course_number: number;
+  course_suffix?: string | null;
+  course_quarter?: string | null;
+  course_year2?: number | null;
+};
+
 export type CourseWorkItemFamily = {
+  course_display: string;
+  course_dept: string;
+  course_number: number;
+  course_suffix?: string | null;
+  course_quarter?: string | null;
+  course_year2?: number | null;
   id: number;
-  course_key: string;
   canonical_label: string;
-  aliases: string[];
+  raw_types: string[];
   created_at: string;
   updated_at: string;
 };
@@ -274,6 +345,7 @@ export type UserProfile = {
   email: string | null;
   notify_email: string | null;
   timezone_name: string;
+  timezone_source: "auto" | "manual";
   calendar_delay_seconds: number;
   created_at?: string;
 };
@@ -281,14 +353,24 @@ export type UserProfile = {
 
 export type LabelLearningFamilyOption = {
   id: number;
-  course_key: string;
+  course_display: string;
+  course_dept: string;
+  course_number: number;
+  course_suffix?: string | null;
+  course_quarter?: string | null;
+  course_year2?: number | null;
   canonical_label: string;
-  aliases: string[];
+  raw_types: string[];
 };
 
 export type LabelLearningPreview = {
   change_id: number;
-  course_key: string | null;
+  course_display: string | null;
+  course_dept?: string | null;
+  course_number?: number | null;
+  course_suffix?: string | null;
+  course_quarter?: string | null;
+  course_year2?: number | null;
   raw_label: string | null;
   ordinal: number | null;
   status: "resolved" | "unresolved";
@@ -299,7 +381,12 @@ export type LabelLearningPreview = {
 
 export type LabelLearningApplyResponse = {
   applied: boolean;
-  course_key: string | null;
+  course_display: string | null;
+  course_dept?: string | null;
+  course_number?: number | null;
+  course_suffix?: string | null;
+  course_quarter?: string | null;
+  course_year2?: number | null;
   raw_label: string | null;
   family_id: number | null;
   canonical_label: string | null;

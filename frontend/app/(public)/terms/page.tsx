@@ -31,7 +31,7 @@ const sections = [
   {
     title: "Operational output",
     body: [
-      "CalendarDIFF generates review items, canonical event records, source health signals, and other workflow artifacts from connected inputs. Users are responsible for reviewing those outputs before relying on them for operational or academic decisions.",
+      "CalendarDIFF generates review items, approved semantic event records, source health signals, and other workflow artifacts from connected inputs. Users are responsible for reviewing those outputs before relying on them for operational or academic decisions.",
       "The service may surface inferred, normalized, or machine-assisted outputs. Those outputs are intended to support review workflows and are not guaranteed to be complete, final, or error-free without user validation."
     ]
   },

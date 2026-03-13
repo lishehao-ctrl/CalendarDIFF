@@ -18,7 +18,7 @@ const sections = [
     title: "Information the service processes",
     body: [
       "CalendarDIFF processes account information such as login email, password hash, session state, timezone, and application preferences needed to operate the workspace.",
-      "When a user connects external sources, CalendarDIFF processes source metadata, synchronization status, and extracted event or message signals required to build review items and canonical deadline records.",
+      "When a user connects external sources, CalendarDIFF processes source metadata, synchronization status, and extracted event or message signals required to build review items and approved semantic deadline records.",
       "If Gmail is connected, CalendarDIFF requests read-only Gmail access and processes mailbox data needed to identify course-related deadlines. The service is not intended to send, delete, or modify email on the user's behalf."
     ]
   },
@@ -32,7 +32,7 @@ const sections = [
   {
     title: "How data is retained and controlled",
     body: [
-      "CalendarDIFF retains operational data needed to provide the console, including review history, source records, synchronization records, and canonical event state produced by the workflow.",
+      "CalendarDIFF retains operational data needed to provide the console, including review history, source records, synchronization records, and approved semantic event state produced by the workflow.",
       "Users can disconnect a Gmail source or archive a source from the Sources workspace. Disconnecting or removing a source stops future synchronization for that source, although prior operational records may remain as part of the system's audit and review history."
     ]
   },

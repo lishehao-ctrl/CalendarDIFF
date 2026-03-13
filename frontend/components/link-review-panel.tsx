@@ -244,7 +244,7 @@ export function LinkReviewPanel() {
                         <p className="font-semibold text-ink">{row.external_event_id}</p>
                         <Badge tone="pending">{formatStatusLabel(row.reason_code)}</Badge>
                       </div>
-                      <p className="mt-2 text-sm text-[#314051]">{row.proposed_entity?.course_best_display || row.proposed_entity_uid || "No proposed entity"}</p>
+                      <p className="mt-2 text-sm text-[#314051]">{row.proposed_entity?.event_display?.display_label || row.proposed_entity_uid || "No proposed entity"}</p>
                       <div className="mt-2 flex flex-wrap gap-2 text-xs text-[#6d7885]">
                         <span>Source #{row.source_id}</span>
                         <span>•</span>
@@ -298,7 +298,7 @@ export function LinkReviewPanel() {
                           <p className="font-semibold text-ink">{row.external_event_id}</p>
                           <Badge tone="approved">{formatStatusLabel(row.link_origin)}</Badge>
                         </div>
-                        <p className="mt-2 text-sm text-[#314051]">{row.linked_entity?.course_best_display || row.entity_uid}</p>
+                        <p className="mt-2 text-sm text-[#314051]">{row.linked_entity?.event_display?.display_label || row.entity_uid}</p>
                         <div className="mt-2 flex flex-wrap gap-2 text-xs text-[#6d7885]">
                           <span>{formatStatusLabel(row.source_kind)}</span>
                           <span>•</span>
@@ -391,7 +391,7 @@ export function LinkReviewPanel() {
                     <p className="font-semibold text-ink">{row.external_event_id}</p>
                     <Badge tone="pending">{formatStatusLabel(row.risk_level || "medium")}</Badge>
                   </div>
-                  <p className="mt-2 text-sm text-[#314051]">{row.linked_entity?.course_best_display || row.entity_uid}</p>
+                  <p className="mt-2 text-sm text-[#314051]">{row.linked_entity?.event_display?.display_label || row.entity_uid}</p>
                   <div className="mt-2 flex flex-wrap gap-2 text-xs text-[#6d7885]">
                     <span>{formatStatusLabel(row.reason_code)}</span>
                     {row.reviewed_at ? (

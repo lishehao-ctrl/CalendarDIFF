@@ -8,7 +8,9 @@ import type {
   ReviewBatchDecisionResponse,
   ReviewChange,
   ReviewEditApplyResponse,
+  ReviewEditContext,
   ReviewEditPreviewResponse,
+  ReviewEditRequest,
   ReviewSummary,
   LabelLearningApplyResponse,
   LabelLearningPreview,
@@ -24,6 +26,10 @@ export async function listReviewChanges(params: { review_status: string; limit?:
 
 export async function getReviewChange(changeId: number) {
   return apiGet<ReviewChange>(`/review/changes/${changeId}`);
+}
+
+export async function getReviewChangeEditContext(changeId: number) {
+  return apiGet<ReviewEditContext>(`/review/changes/${changeId}/edit-context`);
 }
 
 export async function markReviewChangeViewed(changeId: number, payload: { viewed: boolean; note?: string | null }) {
@@ -42,11 +48,11 @@ export async function previewReviewChangeEvidence(changeId: number, side: "befor
   return apiGet<EvidencePreviewResponse>(`/review/changes/${changeId}/evidence/${side}/preview`);
 }
 
-export async function previewReviewEdit(payload: { mode: "proposal" | "canonical"; target: { change_id?: number; event_uid?: string | null }; patch: { due_at: string; title?: string | null; course_label?: string | null }; reason?: string | null }) {
+export async function previewReviewEdit(payload: ReviewEditRequest) {
   return apiPost<ReviewEditPreviewResponse>("/review/edits/preview", payload);
 }
 
-export async function applyReviewEdit(payload: { mode: "proposal" | "canonical"; target: { change_id?: number; event_uid?: string | null }; patch: { due_at: string; title?: string | null; course_label?: string | null }; reason?: string | null }) {
+export async function applyReviewEdit(payload: ReviewEditRequest) {
   return apiPost<ReviewEditApplyResponse>("/review/edits", payload);
 }
 

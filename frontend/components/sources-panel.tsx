@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArchiveRestore, BellDot, CalendarSync, ChevronRight, Mailbox, RefreshCw, Trash2 } from "lucide-react";
+import { ArchiveRestore, BellDot, CalendarSync, CheckCircle2, ChevronRight, CircleAlert, Mailbox, RefreshCw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -39,6 +39,59 @@ function formatSourceSubtitle(source: SourceRow) {
     return "Student calendar feed";
   }
   return `${source.source_kind} source · key \`${source.source_key}\``;
+}
+
+function SourceCatalogCard({
+  providerLabel,
+  title,
+  description,
+  href,
+  connected,
+  icon,
+  iconShellClassName,
+}: {
+  providerLabel: string;
+  title: string;
+  description: string;
+  href: string;
+  connected: boolean;
+  icon: React.ReactNode;
+  iconShellClassName: string;
+}) {
+  const statusTone = connected ? "approved" : "pending";
+  const StatusIcon = connected ? CheckCircle2 : CircleAlert;
+
+  return (
+    <Card className="bg-white/60 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className={iconShellClassName}>{icon}</div>
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{providerLabel}</p>
+            <h4 className="mt-2 text-lg font-semibold text-ink">{title}</h4>
+          </div>
+        </div>
+        <Badge tone={statusTone} className="gap-1.5 whitespace-nowrap">
+          <StatusIcon className="h-3.5 w-3.5" />
+          {connected ? "Connected" : "Needs setup"}
+        </Badge>
+      </div>
+      <p className="mt-4 text-sm leading-6 text-[#596270]">{description}</p>
+      <div className="mt-4 rounded-[1rem] border border-dashed border-line/80 bg-white/45 px-4 py-3 text-sm text-[#314051]">
+        {connected
+          ? "This source is already configured for the workspace. Open setup to review, reconnect, or adjust it."
+          : "This source is not connected yet. Open setup to finish the required connection flow for this workspace."}
+      </div>
+      <div className="mt-5">
+        <Button asChild>
+          <Link href={href}>
+            {connected ? `Manage ${providerLabel}` : `Connect ${providerLabel}`}
+            <ChevronRight className="ml-2 h-4 w-4" />
+          </Link>
+        </Button>
+      </div>
+    </Card>
+  );
 }
 
 function sourceSetupHref(provider: string) {
@@ -346,46 +399,24 @@ export function SourcesPanel() {
 
         {activeSection === "catalog" ? (
           <div className="mt-5 grid gap-4 lg:grid-cols-3">
-            <Card className="bg-white/60 p-5">
-              <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(31,94,255,0.1)] text-cobalt">
-                  <CalendarSync className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Canvas ICS</p>
-                  <h4 className="mt-2 text-lg font-semibold text-ink">Student calendar feed</h4>
-                  <p className="mt-2 text-sm leading-6 text-[#596270]">Open the dedicated setup flow to connect, update, or reconnect your Canvas subscription URL.</p>
-                </div>
-              </div>
-              <div className="mt-5">
-                <Button asChild>
-                  <Link href="/sources/connect/canvas-ics">
-                    Open Canvas setup
-                    <ChevronRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
-              </div>
-            </Card>
-            <Card className="bg-white/60 p-5">
-              <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(215,90,45,0.12)] text-ember">
-                  <Mailbox className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Gmail</p>
-                  <h4 className="mt-2 text-lg font-semibold text-ink">OAuth mailbox</h4>
-                  <p className="mt-2 text-sm leading-6 text-[#596270]">Open the Gmail setup flow to connect, reconnect, or disconnect the single mailbox used by this workspace.</p>
-                </div>
-              </div>
-              <div className="mt-5">
-                <Button asChild>
-                  <Link href="/sources/connect/gmail">
-                    Open Gmail setup
-                    <ChevronRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
-              </div>
-            </Card>
+            <SourceCatalogCard
+              providerLabel="Canvas ICS"
+              title="Student calendar feed"
+              description="Open the dedicated setup flow to connect, update, or reconnect your Canvas subscription URL."
+              href="/sources/connect/canvas-ics"
+              connected={activeProviders.has("ics")}
+              icon={<CalendarSync className="h-5 w-5" />}
+              iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(31,94,255,0.1)] text-cobalt"
+            />
+            <SourceCatalogCard
+              providerLabel="Gmail"
+              title="OAuth mailbox"
+              description="Open the Gmail setup flow to connect, reconnect, or disconnect the single mailbox used by this workspace."
+              href="/sources/connect/gmail"
+              connected={activeProviders.has("gmail")}
+              icon={<Mailbox className="h-5 w-5" />}
+              iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(215,90,45,0.12)] text-ember"
+            />
             <Card className="bg-white/60 p-5">
               <div className="flex items-start gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(20,32,44,0.08)] text-ink">

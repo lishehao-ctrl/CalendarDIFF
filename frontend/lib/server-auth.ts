@@ -11,6 +11,7 @@ export type ServerSession = {
     id: number;
     notify_email: string;
     timezone_name: string;
+    timezone_source: "auto" | "manual";
     created_at: string;
     onboarding_stage: "needs_source_connection" | "ready";
     first_source_id: number | null;

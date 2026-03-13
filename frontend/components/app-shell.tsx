@@ -15,7 +15,19 @@ import {
   X
 } from "lucide-react";
 import { LogoutButton } from "@/components/logout-button";
+import { updateCurrentUser } from "@/lib/api/users";
+import { getBrowserTimeZone } from "@/lib/browser-timezone";
 import { cn } from "@/lib/utils";
+
+type SessionUser = {
+  id: number;
+  notify_email: string;
+  timezone_name: string;
+  timezone_source: "auto" | "manual";
+  created_at: string;
+  onboarding_stage: "needs_source_connection" | "ready";
+  first_source_id: number | null;
+};
 
 const items = [
   { href: "/", label: "Overview", icon: LayoutDashboard, description: "Health, onboarding, queue pressure" },
@@ -78,13 +90,48 @@ function NavContent({ pathname, onNavigate }: { pathname: string; onNavigate?: (
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  sessionUser,
+}: {
+  children: React.ReactNode;
+  sessionUser: SessionUser;
+}) {
   const pathname = usePathname();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [timezoneSynced, setTimezoneSynced] = useState(false);
 
   useEffect(() => {
     setMobileNavOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (timezoneSynced || sessionUser.timezone_source !== "auto") {
+      return;
+    }
+    const browserTimeZone = getBrowserTimeZone();
+    if (!browserTimeZone || browserTimeZone === sessionUser.timezone_name) {
+      setTimezoneSynced(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    void updateCurrentUser({
+      timezone_name: browserTimeZone,
+      timezone_source: "auto",
+    })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) {
+          setTimezoneSynced(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionUser.timezone_name, sessionUser.timezone_source, timezoneSynced]);
 
   return (
     <div className="mx-auto flex min-h-screen max-w-[1500px] gap-6 p-4 md:p-6">

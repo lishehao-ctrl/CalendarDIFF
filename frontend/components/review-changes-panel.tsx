@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { applyLabelLearning, batchDecideReviewChanges, decideReviewChange, listReviewChanges, markReviewChangeViewed, previewLabelLearning, previewReviewChangeEvidence } from "@/lib/api/review";
-import { extractEventSubtitle, formatDateTime, formatStatusLabel, sourceDescriptor, sourceKindDescriptor, summarizeChange } from "@/lib/presenters";
+import { formatDateTime, formatSemanticDue, formatStatusLabel, sourceDescriptor, sourceKindDescriptor, summarizeChange } from "@/lib/presenters";
 import type { EvidencePreviewResponse, LabelLearningPreview, ReviewBatchDecisionResponse, ReviewChange } from "@/lib/types";
 import { useApiResource } from "@/lib/use-api-resource";
 
@@ -75,7 +75,7 @@ function EvidenceField({ label, value, truncate = false }: { label: string; valu
 function renderFallbackStructuredItems(evidence: LoadedEvidence): StructuredEvidenceItem[] {
   return (evidence.payload.events || []).map((event) => ({
     uid: event.uid,
-    title: event.summary,
+    source_title: event.summary,
     start_at: event.dtstart,
     end_at: event.dtend,
     location: event.location,
@@ -101,8 +101,8 @@ function EvidenceSummary({ evidence }: { evidence: LoadedEvidence }) {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-medium text-ink">{item.title || "Untitled event"}</p>
-                  {item.course_label ? <Badge tone="info">{item.course_label}</Badge> : null}
+                  <p className="font-medium text-ink">{item.event_display?.display_label || "Untitled event"}</p>
+                  {item.source_title ? <Badge tone="info">{item.source_title}</Badge> : null}
                 </div>
                 {item.uid ? <p className="mt-1 text-xs text-[#6d7885]">UID: {item.uid}</p> : null}
               </div>
@@ -133,9 +133,9 @@ function EvidenceSummary({ evidence }: { evidence: LoadedEvidence }) {
         <div key={`${item.uid || "event"}-${index}`} className="rounded-[1.15rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="font-medium text-ink">{item.title || "Untitled event"}</p>
-                {item.course_label ? <Badge tone="info">{item.course_label}</Badge> : null}
+                <div className="flex flex-wrap items-center gap-2">
+                <p className="font-medium text-ink">{item.event_display?.display_label || "Untitled event"}</p>
+                {item.source_title ? <Badge tone="info">{item.source_title}</Badge> : null}
               </div>
               {item.uid ? <p className="mt-1 text-xs text-[#6d7885]">UID: {item.uid}</p> : null}
             </div>
@@ -512,7 +512,7 @@ export function ReviewChangesPanel() {
                   <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Selected change</p>
                   <SheetTitle className="mt-3">{summarizeChange(selected).title}</SheetTitle>
                   <SheetDescription>
-                    {extractEventSubtitle(selected.after_json) || extractEventSubtitle(selected.before_json) || `Event ${selected.event_uid}`}
+                    {formatSemanticDue((selected.after_event || selected.before_event || {}) as unknown as Record<string, unknown>, "Event")}
                   </SheetDescription>
                 </div>
                 <div className="flex items-center gap-3">
@@ -628,7 +628,7 @@ export function ReviewChangesPanel() {
                   {selected.review_status === "pending" && labelLearning ? (
                     <div className="mt-4 rounded-[1.1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#596270]">
                       <p className="font-medium text-ink">Label learning</p>
-                      <p className="mt-2 leading-6">Course: {labelLearning.course_key || 'Unknown'} · Raw label: {labelLearning.raw_label || 'Unknown'} · Ordinal: {labelLearning.ordinal ?? 'N/A'}</p>
+                      <p className="mt-2 leading-6">Course: {labelLearning.course_display || 'Unknown'} · Raw label: {labelLearning.raw_label || 'Unknown'} · Ordinal: {labelLearning.ordinal ?? 'N/A'}</p>
                       {labelLearning.status === 'resolved' ? (
                         <p className="mt-2 text-[#314051]">Already resolved to {labelLearning.resolved_canonical_label || 'existing family'}.</p>
                       ) : (
