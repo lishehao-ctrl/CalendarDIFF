@@ -38,6 +38,8 @@ flowchart LR
 - `ingest-connector`: claims jobs with source-level FIFO, fetches source data (Gmail incremental or ICS delta), prepares parse payload.
 - `llm-service`: parses only changed items; removal records can pass without LLM call in delta flow.
 - `review-apply`: writes/updates `source_event_observations`, computes pending `changes`, emits notification trigger event.
+  - runtime observation payload is fixed to `source_facts + semantic_event + link_signals + kind_resolution`
+  - parser-stage `semantic_event_draft` is normalized immediately and is not a runtime observation field
 - `notification-consumer`: consumes pending-created events and enqueues `notifications`.
 - `notification-dispatcher`: groups newly due pending review items per user and sends an immediate review email.
 
@@ -99,3 +101,7 @@ Use these files as implementation anchors when building detailed dataflow tables
 - Keep main chain order as: `sync.requested -> ingest.result.ready -> review.pending.created`.
 - Treat `review.decision.*` as an audit stream, not a notification trigger chain.
 - Keep canonical edit explicitly marked as bypass behavior relative to pending-created notifications.
+- Keep user-facing family label display aligned to latest label by `family_id`; do not treat frozen snapshot names as display authority.
+- Treat missing `family_id`/family-row label authority as an integrity bug (fail loudly), not a normal display fallback path.
+- Family lifecycle policy: no normal hard-delete path for family rows; manage via rename/relink workflows.
+- `course_work_item_family_rebuild` is retained as a temporary side path and should be converged to the main runtime contract in follow-up work.

@@ -87,26 +87,36 @@ Consumers: optional observability/audit services
 2. Existing keys are immutable in meaning.
 3. Consumers must ignore unknown fields.
 4. Event type names are immutable once published.
-5. Family label authority is split on purpose:
-   - approved entity state uses `family_id` as authority and may resolve the latest canonical label at read time
-   - `changes.family_name` is frozen review/audit display text and does not rename retroactively
+5. Family label authority is explicit:
+   - `family_id` is the only label authority
+   - user-facing display resolves latest `course_work_item_label_families.canonical_label` by `family_id`
+   - `changes.family_name` may remain frozen audit payload text and is not default display authority
+   - missing `family_id` or unresolved family-row label authority is treated as a runtime data-integrity error, not a normal fallback case
+6. Family lifecycle policy is non-destructive for normal product flows:
+   - family rows are not a normal hard-delete target
+   - update/relink flows remain authoritative for user-facing management
 
 ## Internal Ingest Record Envelope (Non-Outbox, additive)
 
-The `ingest_results.records[*].payload` envelope used between llm/review runtime keeps record types stable and adds layered fields:
+The parser-stage `ingest_results.records[*].payload` envelope used between llm/review runtime keeps record types stable:
 
-1. fixed parser schema version: `enrichment.payload_schema_version = "obs_v3"` (required).
-2. `source_facts`: deterministic source fields used for semantic proposal diff and pending generation.
-3. `enrichment`: LLM-derived metadata (`course_parse`, `event_parts`, `link_signals`). No local regex/raw-text fallback is used for these fields.
-4. additive linker signals:
-   - Gmail source facts: `from_header`, `thread_id`, `internal_date`
-   - ICS source facts: `organizer`
-   - enrichment signals: `enrichment.link_signals` (`keywords`, `exam_sequence`, `location_text`, `instructor_hint`)
+1. `source_facts`: deterministic source fields used for semantic proposal diff and pending generation.
+2. `semantic_event_draft`: parser-stage semantic payload (required on extracted records).
+3. `link_signals`: parser-stage linking signals (required on extracted records).
+4. Gmail extracted records also include `message_id` (required).
+5. parser-stage `semantic_event_draft` is normalized in apply/runtime into observation `semantic_event`.
+
+Runtime observation envelope (`source_event_observations.event_payload`) is fixed to:
+
+1. `source_facts`
+2. `semantic_event`
+3. `link_signals`
+4. `kind_resolution`
 
 Parser note:
 
-1. `course_parse` must be schema-valid from LLM output; invalid/missing objects are treated as parser failures (retry/dead-letter path), not downgraded by local inference.
-2. `event_parts` and `link_signals` are also required and schema-validated; missing/invalid objects fail the parser output.
+1. `semantic_event_draft` must be schema-valid from parser output; invalid/missing objects are treated as parser failures (retry/dead-letter path), not downgraded by local inference.
+2. `link_signals` is required and schema-validated; missing/invalid objects fail parser output.
 3. link-candidate review flow is storage/API-only (`event_link_candidates` + `/review/link-candidates*`) and does not emit outbox notification events.
 4. link-alert flow is storage/API-only (`event_link_alerts` + `/review/link-alerts*`) and does not emit outbox notification events.
 
@@ -121,30 +131,26 @@ Example (`calendar.event.extracted`):
       "source_dtstart_utc": "2026-03-10T20:00:00+00:00",
       "source_dtend_utc": "2026-03-10T21:00:00+00:00"
     },
-    "enrichment": {
-      "course_parse": {
-        "dept": "CSE",
-        "number": 151,
-        "suffix": "A",
-        "quarter": "WI",
-        "year2": 26,
-        "confidence": 0.95,
-        "evidence": "CSE 151A WI26"
-      },
-      "event_parts": {
-        "type": "exam",
-        "index": 1,
-        "qualifier": null,
-        "confidence": 0.94,
-        "evidence": "exam 1"
-      },
-      "link_signals": {
-        "keywords": ["exam"],
-        "exam_sequence": 1,
-        "location_text": "Center Hall 101",
-        "instructor_hint": "Prof Alice"
-      },
-      "payload_schema_version": "obs_v3"
+    "semantic_event_draft": {
+      "course_dept": "CSE",
+      "course_number": 151,
+      "course_suffix": "A",
+      "course_quarter": "WI",
+      "course_year2": 26,
+      "raw_type": "exam",
+      "event_name": "Exam 1",
+      "ordinal": 1,
+      "due_date": "2026-03-10",
+      "due_time": "20:00:00",
+      "time_precision": "datetime",
+      "confidence": 0.95,
+      "evidence": "CSE 151A exam 1"
+    },
+    "link_signals": {
+      "keywords": ["exam"],
+      "exam_sequence": 1,
+      "location_text": "Center Hall 101",
+      "instructor_hint": "Prof Alice"
     }
   }
 }

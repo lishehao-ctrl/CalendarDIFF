@@ -113,11 +113,16 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 5. canonical edit mode auto-rejects conflicting pending changes for the same `entity_uid`
 6. canonical edit mode continues to write `review.decision.approved` audit events with `decision_origin=canonical_edit`
 7. family label authority is explicit:
-   - `event_entities.family_id` is the stable authority
-   - `event_entities.family_name` is an approved snapshot only
-   - current approved-entity display resolves latest `course_work_item_label_families.canonical_label` by `family_id`
-   - `changes.family_name` stays frozen at detection/edit time
-   - review notifications and review history display the frozen `changes.family_name`, not the latest renamed label
+   - `family_id` is the only label authority
+   - user-facing display resolves latest `course_work_item_label_families.canonical_label` by `family_id`
+   - `event_entities.family_name` is deprecated snapshot storage and not display authority
+   - `changes.family_name` may remain as frozen audit payload, not default display authority
+   - missing `family_id` or missing family-row label authority is a data-integrity error (not a normal `"Unknown"` UI branch)
+8. family lifecycle hardening:
+   - family rows are not a normal hard-delete target
+   - `DELETE /users/me/course-work-item-families/{family_id}` is intentionally removed; update/relink flows remain the product path
+9. follow-up cleanup scope:
+   - `course_work_item_family_rebuild` remains a side path for now and should converge to the main runtime contract in a later pass
 
 ## 6) LLM Runtime Placement
 
@@ -127,25 +132,31 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 4. gateway protocol remains OpenAI-compatible `chat/completions`
 5. ICS path is delta-first (`UID + RECURRENCE-ID` component key); cancelled components map to removal records
 6. ICS source facts are deterministic from parser/source and persisted as `source_facts`
-7. LLM output is enrichment-only (`course_parse`, `event_parts`, `link_signals`), persisted under `enrichment`
-8. `course_parse` is LLM-only with strict schema validation; parser failures enter existing retry/dead-letter flow
-9. pending/review diff only evaluates semantic source fields, not enrichment drift
-10. review-service maintains `event_entities` for strong/weak course naming (`course_best` + aliases) based on 5 parsed parts only (`dept/number/suffix/quarter/year2`)
-11. Parser payload contract is fixed at `obs_v3` envelope:
-   - calendar record payload: `source_facts` + `enrichment(course_parse,event_parts,link_signals,payload_schema_version=obs_v3)`
-   - gmail record payload: `message_id` + `source_facts` + `enrichment(course_parse,event_parts,link_signals,payload_schema_version=obs_v3)`
-12. Gmail-to-ICS linker is inventory-rule driven (no same-day window or score-band thresholds) and persists normalized link state in:
+7. parser output is parser-stage only: `source_facts` + `semantic_event_draft` + `link_signals`
+8. apply/runtime normalizes parser-stage payloads into observation runtime envelope:
+   - `source_facts`
+   - `semantic_event`
+   - `link_signals`
+   - `kind_resolution`
+9. `semantic_event` is the only active runtime semantic field; `semantic_event_draft` is parser-stage only
+10. `enrichment` is not an active runtime observation contract
+11. pending/review diff evaluates normalized semantic fields from runtime `semantic_event`
+12. review-service maintains `event_entities` for strong/weak course naming (`course_best` + aliases) based on 5 parsed parts only (`dept/number/suffix/quarter/year2`)
+13. parser contract remains additive and parser-stage:
+   - calendar parser payload: `source_facts` + `semantic_event_draft` + `link_signals`
+   - gmail parser payload: `message_id` + `source_facts` + `semantic_event_draft` + `link_signals`
+14. Gmail-to-ICS linker is inventory-rule driven (no same-day window or score-band thresholds) and persists normalized link state in:
    - `event_entity_links` (auto/manual accepted links)
    - `event_link_candidates` (review queue for deterministic rule misses / low anchor confidence)
    - `event_link_blocks` (permanent rejected pairs)
    - `event_link_alerts` (medium-risk non-blocking queue for auto-link without canonical pending)
-13. Auto-link rules are deterministic:
-   - require `dept+number` and `event_parts.type`
+15. Auto-link rules are deterministic:
+   - require `dept+number` and `semantic_event.raw_type`
    - enforce suffix exact-match when inventory for that `dept+number` has any suffix
-   - enforce `event_parts.index` exact-match when inventory for same course+type has multiple indexes
-14. blocked source/entity pairs are never auto-linked and never re-enter pending candidate flow until unblocked
-15. `event_link_alerts` is auto-resolved when higher-priority governance takes over (`candidate_opened`, `canonical_pending_created`, `link_removed`, `link_relinked`)
-16. review API provides queue aggregation and bulk moderation helpers:
+   - enforce `semantic_event.ordinal` exact-match when inventory for same course+raw_type has multiple ordinals
+16. blocked source/entity pairs are never auto-linked and never re-enter pending candidate flow until unblocked
+17. `event_link_alerts` is auto-resolved when higher-priority governance takes over (`candidate_opened`, `canonical_pending_created`, `link_removed`, `link_relinked`)
+18. review API provides queue aggregation and bulk moderation helpers:
    - `GET /review/summary` (pending counts for `changes`, `link-candidates`, `link-alerts`)
    - `POST /review/link-candidates/batch/decisions` (`approve`/`reject`, partial success)
    - `POST /review/link-alerts/batch/decisions` (`dismiss`/`mark_safe`, partial success)
@@ -172,7 +183,7 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 1. `apply.py`: ingest apply status, semantic apply orchestration, and idempotent result application
 3. `calendar_apply.py`: calendar observation apply + component/external id resolution
 4. `gmail_apply.py`: gmail observation apply + link/candidate/auto-link decision flow
-5. `payload_extractors.py`: `source_facts` / `enrichment` normalization
+5. `payload_extractors.py`: parser-stage extraction + runtime semantic normalization (`semantic_event_draft` -> `semantic_event`)
 6. `source_facts_coercion.py`: strict source-facts datetime/text coercion
 7. `source_identity.py`: `entity_uid`-first source-scoped identity construction
 8. `linking_engine.py`: link candidate/link/block resolution primitives
@@ -193,7 +204,7 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 6. `canonical_edit_apply_txn.py`: canonical edit apply transaction body (lock/update/change/audit)
 7. `canonical_edit_target.py`: target entity resolution + user loading
 8. `canonical_edit_snapshot.py`: approved semantic payload and pending change reads
-9. `canonical_edit_builder.py`: patch build + timezone/datetime normalization
+9. `canonical_edit_builder.py`: semantic patch build + due-field validation
 10. `canonical_edit_audit.py`: conflicting pending rejection + audit outbox write
 11. `review_projection.py`: batched source/observation projection for review list and summary display
 
