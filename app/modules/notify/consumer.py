@@ -6,11 +6,11 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db.models.review import Change, Input
+from app.db.models.review import Change
 from app.db.models.shared import IntegrationInbox, IntegrationOutbox, OutboxStatus
 from app.modules.notify.service import enqueue_notifications_for_changes
 
-NOTIFICATION_PENDING_CONSUMER = "notification.review_pending_created.v1"
+NOTIFICATION_PENDING_CONSUMER = "notification.review_pending_created"
 NOTIFICATION_CONSUMER_BATCH_SIZE = 200
 
 
@@ -50,11 +50,11 @@ def run_notification_enqueue_tick(db: Session) -> int:
             processed += 1
             continue
 
-        input_id_raw = payload.get("input_id")
+        user_id_raw = payload.get("user_id")
         change_ids_raw = payload.get("change_ids")
         deliver_after_raw = payload.get("deliver_after")
 
-        if not isinstance(input_id_raw, int) or not isinstance(change_ids_raw, list):
+        if not isinstance(user_id_raw, int) or not isinstance(change_ids_raw, list):
             row.status = OutboxStatus.FAILED
             row.attempt += 1
             row.last_error = "invalid review.pending.created payload"
@@ -70,16 +70,7 @@ def run_notification_enqueue_tick(db: Session) -> int:
             processed += 1
             continue
 
-        input_row = db.get(Input, input_id_raw)
-        if input_row is None:
-            row.status = OutboxStatus.FAILED
-            row.attempt += 1
-            row.last_error = f"input not found: {input_id_raw}"
-            db.commit()
-            processed += 1
-            continue
-
-        changes = list(db.scalars(select(Change).where(Change.id.in_(change_ids))).all())
+        changes = list(db.scalars(select(Change).where(Change.user_id == user_id_raw, Change.id.in_(change_ids))).all())
 
         deliver_after = now
         if isinstance(deliver_after_raw, str):
@@ -93,7 +84,6 @@ def run_notification_enqueue_tick(db: Session) -> int:
 
         enqueue_notifications_for_changes(
             db,
-            input=input_row,
             changes=changes,
             deliver_after=deliver_after,
             enqueue_reason="digest_queue",

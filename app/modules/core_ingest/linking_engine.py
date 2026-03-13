@@ -28,7 +28,7 @@ def link_gmail_observation_to_entity(
     source: InputSource,
     external_event_id: str,
     course_parse: dict,
-    event_parts: dict,
+    semantic_parse: dict,
     time_anchor_confidence: float,
     signals: dict,
 ) -> LinkDecision:
@@ -43,7 +43,7 @@ def link_gmail_observation_to_entity(
         source=source,
         external_event_id=external_event_id,
         course_parse=course_parse,
-        event_parts=event_parts,
+        semantic_parse=semantic_parse,
         time_anchor_confidence=time_anchor_confidence,
         blocked_entity_uids=blocked_entity_uids,
     )
@@ -216,7 +216,6 @@ def with_candidate_evidence(*, score_breakdown: dict, signals: dict) -> dict:
         "location_text": signals.get("location_text"),
         "from_header": signals.get("from_header"),
         "thread_id": signals.get("thread_id"),
-        "title_signature": signals.get("title_signature"),
     }
     return payload
 

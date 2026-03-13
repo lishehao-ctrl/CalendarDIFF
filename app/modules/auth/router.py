@@ -21,7 +21,12 @@ def register_auth(
     db: Session = Depends(get_db),
 ) -> AuthSessionResponse:
     try:
-        user = register_user(db, notify_email=payload.notify_email, password=payload.password)
+        user = register_user(
+            db,
+            notify_email=payload.notify_email,
+            password=payload.password,
+            timezone_name=payload.timezone_name,
+        )
     except AuthEmailExistsError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:
@@ -38,9 +43,16 @@ def login_auth(
     db: Session = Depends(get_db),
 ) -> AuthSessionResponse:
     try:
-        user = login_user(db, notify_email=payload.notify_email, password=payload.password)
+        user = login_user(
+            db,
+            notify_email=payload.notify_email,
+            password=payload.password,
+            timezone_name=payload.timezone_name,
+        )
     except InvalidCredentialsError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
     attach_session_cookie(response, user=user, db=db)
     return AuthSessionResponse(user=_to_auth_session_user(db, user=user))
@@ -70,6 +82,7 @@ def _to_auth_session_user(db: Session, *, user: User) -> AuthSessionUserResponse
         id=user.id,
         notify_email=user.notify_email or "",
         timezone_name=user.timezone_name,
+        timezone_source=user.timezone_source,
         created_at=user.created_at,
         onboarding_stage=status_payload.stage if status_payload.stage in {"needs_source_connection", "ready"} else "needs_source_connection",
         first_source_id=status_payload.first_source_id,

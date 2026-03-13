@@ -522,10 +522,10 @@ def main() -> int:
                         f"sources={sorted(candidate_sources)}"
                     )
 
-                topic_uid_raw = candidate_row.get("event_uid")
+                topic_uid_raw = candidate_row.get("entity_uid")
                 topic_uid = str(topic_uid_raw) if isinstance(topic_uid_raw, str) and topic_uid_raw.strip() else ""
                 if not topic_uid:
-                    raise SmokeFailure(f"round {profile.round_id}: strict gate failed missing event_uid")
+                    raise SmokeFailure(f"round {profile.round_id}: strict gate failed missing entity_uid")
                 round_report["topic_uid"] = topic_uid
 
                 if global_topic_uid is None:
@@ -592,8 +592,8 @@ def main() -> int:
                     "/review/changes?review_status=approved&limit=200",
                 )
                 round_report["feed_count_after"] = len(feed_rows)
-                round_event_uids = {topic_uid}
-                feed_event_uids = {str(item["event_uid"]) for item in feed_rows if isinstance(item.get("event_uid"), str)}
+                round_entity_uids = {topic_uid}
+                feed_entity_uids = {str(item["entity_uid"]) for item in feed_rows if isinstance(item.get("entity_uid"), str)}
                 approved_feed_ids = {
                     int(item["id"])
                     for item in feed_rows
@@ -608,8 +608,8 @@ def main() -> int:
                 _assert(
                     report["assertions"],
                     name=f"round_{profile.round_id}_approved_feed_contains_round_uids",
-                    passed=round_event_uids.issubset(feed_event_uids),
-                    detail=f"round_event_uids={sorted(round_event_uids)}",
+                    passed=round_entity_uids.issubset(feed_entity_uids),
+                    detail=f"round_entity_uids={sorted(round_entity_uids)}",
                 )
 
             provider_state = _request_json(fake_client, "GET", "/__admin/state")

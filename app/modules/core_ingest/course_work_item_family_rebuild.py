@@ -5,28 +5,50 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-from sqlalchemy import and_, case, delete, func, literal, or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.ingestion import ConnectorResultStatus
 from app.db.models.input import InputSource, SourceKind
-from app.db.models.review import Change, Event, EventEntity, EventEntityLink, EventLinkAlert, EventLinkBlock, EventLinkCandidate, Input, InputType, ReviewStatus, SourceEventObservation
+from app.db.models.review import SourceEventObservation
 from app.db.models.shared import User
-from app.modules.core_ingest.apply_orchestrator import apply_records, ensure_canonical_input_for_user
-from app.modules.core_ingest.entity_profile import course_display_name, entity_best_display_name
-from app.modules.users.course_work_item_families_service import mark_course_work_item_family_rebuild_complete, mark_course_work_item_family_rebuild_failed, mark_course_work_item_family_rebuild_running, normalize_course_key
+from app.modules.common.course_identity import normalized_course_identity_key
+from app.modules.common.payload_schemas import SourceFacts
+from app.modules.core_ingest.apply import apply_records
+from app.modules.core_ingest.semantic_event_service import course_display_name
+from app.modules.users.course_work_item_families_service import (
+    mark_course_work_item_family_rebuild_complete,
+    mark_course_work_item_family_rebuild_failed,
+    mark_course_work_item_family_rebuild_running,
+)
 
 
-def rebuild_user_work_item_state(db: Session, *, user: User, course_key: str | None = None) -> None:
+def rebuild_user_work_item_state(
+    db: Session,
+    *,
+    user: User,
+    course_dept: str | None = None,
+    course_number: int | None = None,
+    course_suffix: str | None = None,
+    course_quarter: str | None = None,
+    course_year2: int | None = None,
+) -> None:
     mark_course_work_item_family_rebuild_running(db, user=user)
-    normalized_course_key = normalize_course_key(course_key)
+    normalized_course_key = normalized_course_identity_key(
+        course_dept=course_dept,
+        course_number=course_number,
+        course_suffix=course_suffix,
+        course_quarter=course_quarter,
+        course_year2=course_year2,
+    )
     try:
-        if normalized_course_key:
-            _rebuild_user_course_state(db, user=user, normalized_course_key=normalized_course_key)
-        else:
-            _clear_user_derived_state(db, user_id=user.id)
-            observations = _load_active_observations(db, user_id=user.id)
-            _replay_observations(db, user_id=user.id, observations=observations, request_scope=f"user:{user.id}")
+        observations = _load_active_observations(db, user_id=user.id, normalized_course_key=normalized_course_key)
+        _replay_observations(
+            db,
+            user_id=user.id,
+            observations=observations,
+            request_scope=f"user:{user.id}:{normalized_course_key or 'all'}",
+        )
         db.commit()
         mark_course_work_item_family_rebuild_complete(db, user=user)
     except Exception as exc:
@@ -35,38 +57,22 @@ def rebuild_user_work_item_state(db: Session, *, user: User, course_key: str | N
         raise
 
 
-def _rebuild_user_course_state(db: Session, *, user: User, normalized_course_key: str) -> None:
-    canonical_input = ensure_canonical_input_for_user(db=db, user_id=user.id)
-    observations = _load_active_observations(db, user_id=user.id, normalized_course_key=normalized_course_key)
-    _clear_course_derived_state(
-        db,
-        user_id=user.id,
-        canonical_input=canonical_input,
-        normalized_course_key=normalized_course_key,
-        observations=observations,
-    )
-    _replay_observations(
-        db,
-        user_id=user.id,
-        observations=observations,
-        request_scope=f"user:{user.id}:course:{normalized_course_key}",
-    )
-
-
 def _load_active_observations(
     db: Session,
     *,
     user_id: int,
-    normalized_course_key: str | None = None,
+    normalized_course_key: str | None,
 ) -> list[SourceEventObservation]:
-    stmt = (
-        select(SourceEventObservation)
-        .where(SourceEventObservation.user_id == user_id, SourceEventObservation.is_active.is_(True))
-        .order_by(SourceEventObservation.source_id.asc(), SourceEventObservation.observed_at.asc(), SourceEventObservation.id.asc())
+    rows = list(
+        db.scalars(
+            select(SourceEventObservation)
+            .where(SourceEventObservation.user_id == user_id, SourceEventObservation.is_active.is_(True))
+            .order_by(SourceEventObservation.source_id.asc(), SourceEventObservation.observed_at.asc(), SourceEventObservation.id.asc())
+        ).all()
     )
-    if normalized_course_key:
-        stmt = stmt.where(_observation_course_key_clause(normalized_course_key))
-    return list(db.scalars(stmt).all())
+    if not normalized_course_key:
+        return rows
+    return [row for row in rows if _normalize_observation_course_key(row.event_payload) == normalized_course_key]
 
 
 def _replay_observations(
@@ -100,15 +106,18 @@ def _replay_observations(
         source_rows = rows_by_source_id.get(source.id, [])
         if not source_rows:
             continue
-        records: list[dict] = []
         record_type = "calendar.event.extracted" if source.source_kind == SourceKind.CALENDAR else "gmail.message.extracted"
-        for row in source_rows:
-            payload = _rebuild_payload_from_observation(
-                source_kind=source.source_kind,
-                external_event_id=row.external_event_id,
-                payload=row.event_payload,
-            )
-            records.append({"record_type": record_type, "payload": payload})
+        records = [
+            {
+                "record_type": record_type,
+                "payload": _rebuild_payload_from_observation(
+                    source_kind=source.source_kind,
+                    external_event_id=row.external_event_id,
+                    payload=row.event_payload,
+                ),
+            }
+            for row in source_rows
+        ]
         pseudo_result = SimpleNamespace(records=records, status=ConnectorResultStatus.CHANGED)
         request_id = _build_rebuild_request_id(
             user_id=user_id,
@@ -119,186 +128,71 @@ def _replay_observations(
         apply_records(db=db, result=pseudo_result, source=source, applied_at=now, request_id=request_id)
 
 
-
-def _clear_user_derived_state(db: Session, *, user_id: int) -> None:
-    canonical_input = db.scalar(
-        select(Input).where(
-            Input.user_id == user_id,
-            Input.type == InputType.ICS,
-            Input.identity_key == f"canonical:user:{user_id}",
-        )
-    )
-    if canonical_input is not None:
-        db.delete(canonical_input)
-        db.flush()
-    db.execute(delete(EventLinkAlert).where(EventLinkAlert.user_id == user_id))
-    db.execute(delete(EventLinkCandidate).where(EventLinkCandidate.user_id == user_id))
-    db.execute(delete(EventLinkBlock).where(EventLinkBlock.user_id == user_id))
-    db.execute(delete(EventEntityLink).where(EventEntityLink.user_id == user_id))
-    db.execute(delete(EventEntity).where(EventEntity.user_id == user_id))
-    db.flush()
-
-
-
-def _clear_course_derived_state(
-    db: Session,
-    *,
-    user_id: int,
-    canonical_input: Input,
-    normalized_course_key: str,
-    observations: list[SourceEventObservation],
-) -> None:
-    source_pairs = {(row.source_id, row.external_event_id) for row in observations}
-    entity_uids_to_remove = {row.merge_key for row in observations if isinstance(row.merge_key, str) and row.merge_key.strip()}
-
-    canonical_events = list(
-        db.scalars(select(Event).where(Event.input_id == canonical_input.id)).all()
-    )
-    for row in canonical_events:
-        event_course_key = normalize_course_key(row.course_label)
-        if row.uid in entity_uids_to_remove or event_course_key == normalized_course_key:
-            entity_uids_to_remove.add(row.uid)
-            db.delete(row)
-
-    change_rows = list(
-        db.scalars(select(Change).where(Change.input_id == canonical_input.id)).all()
-    )
-    for row in change_rows:
-        if row.event_uid in entity_uids_to_remove or _change_matches_course(row, normalized_course_key):
-            entity_uids_to_remove.add(row.event_uid)
-            if row.review_status == ReviewStatus.PENDING:
-                db.delete(row)
-
-    entity_links = list(
-        db.scalars(select(EventEntityLink).where(EventEntityLink.user_id == user_id)).all()
-    )
-    for row in entity_links:
-        if (row.source_id, row.external_event_id) in source_pairs or row.entity_uid in entity_uids_to_remove:
-            entity_uids_to_remove.add(row.entity_uid)
-            db.delete(row)
-
-    link_candidates = list(
-        db.scalars(select(EventLinkCandidate).where(EventLinkCandidate.user_id == user_id)).all()
-    )
-    for row in link_candidates:
-        if (row.source_id, row.external_event_id) in source_pairs or (row.proposed_entity_uid in entity_uids_to_remove if row.proposed_entity_uid else False):
-            if isinstance(row.proposed_entity_uid, str):
-                entity_uids_to_remove.add(row.proposed_entity_uid)
-            db.delete(row)
-
-    link_blocks = list(
-        db.scalars(select(EventLinkBlock).where(EventLinkBlock.user_id == user_id)).all()
-    )
-    for row in link_blocks:
-        if (row.source_id, row.external_event_id) in source_pairs or row.blocked_entity_uid in entity_uids_to_remove:
-            entity_uids_to_remove.add(row.blocked_entity_uid)
-            db.delete(row)
-
-    link_alerts = list(
-        db.scalars(select(EventLinkAlert).where(EventLinkAlert.user_id == user_id)).all()
-    )
-    for row in link_alerts:
-        if (row.source_id, row.external_event_id) in source_pairs or row.entity_uid in entity_uids_to_remove:
-            entity_uids_to_remove.add(row.entity_uid)
-            db.delete(row)
-
-    entities = list(
-        db.scalars(select(EventEntity).where(EventEntity.user_id == user_id)).all()
-    )
-    for row in entities:
-        course_display = entity_best_display_name(row.course_best_json)
-        if row.entity_uid in entity_uids_to_remove or normalize_course_key(course_display) == normalized_course_key:
-            db.delete(row)
-
-    db.flush()
-
-
-
-def _change_matches_course(row: Change, normalized_course_key: str) -> bool:
-    return _normalize_change_course_key(row.before_json) == normalized_course_key or _normalize_change_course_key(row.after_json) == normalized_course_key
-
-
-
-def _normalize_change_course_key(payload: dict | None) -> str:
-    if not isinstance(payload, dict):
-        return ""
-    course_label = payload.get("course_label")
-    return normalize_course_key(course_label if isinstance(course_label, str) else None)
-
-
-
-def _observation_course_key_clause(normalized_course_key: str):
-    payload = SourceEventObservation.event_payload
-    top_level_course_label = payload["course_label"].as_string()
-    dept = payload["enrichment"]["course_parse"]["dept"].as_string()
-    number = payload["enrichment"]["course_parse"]["number"].as_string()
-    suffix = payload["enrichment"]["course_parse"]["suffix"].as_string()
-    quarter = payload["enrichment"]["course_parse"]["quarter"].as_string()
-    year2 = payload["enrichment"]["course_parse"]["year2"].as_string()
-
-    course_parse_display = func.concat(
-        func.coalesce(func.upper(dept), literal("")),
-        case((number.is_not(None), literal(" ")), else_=literal("")),
-        func.coalesce(number, literal("")),
-        func.coalesce(func.upper(suffix), literal("")),
-        case((and_(quarter.is_not(None), year2.is_not(None)), literal(" ")), else_=literal("")),
-        case((and_(quarter.is_not(None), year2.is_not(None)), func.upper(quarter)), else_=literal("")),
-        case((and_(quarter.is_not(None), year2.is_not(None)), func.lpad(year2, 2, "0")), else_=literal("")),
-    )
-
-    return or_(
-        _sql_normalize_course_text(top_level_course_label) == normalized_course_key,
-        and_(
-            dept.is_not(None),
-            number.is_not(None),
-            _sql_normalize_course_text(course_parse_display) == normalized_course_key,
-        ),
-    )
-
-
-
-def _sql_normalize_course_text(expr):
-    lowered = func.lower(func.coalesce(expr, literal("")))
-    punctuation_normalized = func.replace(func.replace(lowered, "-", " "), "_", " ")
-    collapsed = func.regexp_replace(punctuation_normalized, r"\s+", " ", "g")
-    return func.btrim(collapsed)
-
-
-
-def _normalize_observation_course_key(payload: object) -> str:
-    raw = payload if isinstance(payload, dict) else {}
-    course_label = raw.get("course_label")
-    if isinstance(course_label, str) and course_label.strip():
-        normalized = normalize_course_key(course_label)
-        if normalized:
-            return normalized
-    enrichment = raw.get("enrichment") if isinstance(raw.get("enrichment"), dict) else {}
-    course_parse = enrichment.get("course_parse") if isinstance(enrichment.get("course_parse"), dict) else {}
-    return normalize_course_key(course_display_name(course_parse=course_parse))
-
-
-
 def _build_rebuild_request_id(*, user_id: int, source_id: int, request_scope: str, at: datetime) -> str:
     digest = hashlib.sha1(request_scope.encode("utf-8")).hexdigest()[:10]
     return f"rebuild:{user_id}:{source_id}:{digest}:{int(at.timestamp())}"[:64]
 
 
-__all__ = ["rebuild_user_work_item_state"]
-
-
-
 def _rebuild_payload_from_observation(*, source_kind: SourceKind, external_event_id: str, payload: object) -> dict:
     raw = payload if isinstance(payload, dict) else {}
-    source_canonical_raw = raw.get("source_canonical")
-    source_canonical = dict(source_canonical_raw) if isinstance(source_canonical_raw, dict) else {}
-    enrichment_raw = raw.get("enrichment")
-    enrichment = dict(enrichment_raw) if isinstance(enrichment_raw, dict) else {}
+    source_facts_raw = raw.get("source_facts")
+    try:
+        source_facts = (
+            SourceFacts.model_validate(source_facts_raw).model_dump(mode="json")
+            if isinstance(source_facts_raw, dict)
+            else {}
+        )
+    except Exception:
+        source_facts = dict(source_facts_raw) if isinstance(source_facts_raw, dict) else {}
+    semantic_event = raw.get("semantic_event") if isinstance(raw.get("semantic_event"), dict) else {}
+    semantic_draft = {
+        "course_dept": semantic_event.get("course_dept"),
+        "course_number": semantic_event.get("course_number"),
+        "course_suffix": semantic_event.get("course_suffix"),
+        "course_quarter": semantic_event.get("course_quarter"),
+        "course_year2": semantic_event.get("course_year2"),
+        "raw_type": semantic_event.get("raw_type"),
+        "event_name": semantic_event.get("event_name"),
+        "ordinal": semantic_event.get("ordinal"),
+        "due_date": semantic_event.get("due_date"),
+        "due_time": semantic_event.get("due_time"),
+        "time_precision": semantic_event.get("time_precision"),
+        "confidence": semantic_event.get("confidence"),
+        "evidence": semantic_event.get("evidence"),
+    }
+    link_signals = raw.get("link_signals") if isinstance(raw.get("link_signals"), dict) else {}
     rebuilt: dict = {
-        "source_canonical": source_canonical,
-        "enrichment": enrichment,
+        "source_facts": source_facts,
+        "semantic_event_draft": semantic_draft,
+        "link_signals": link_signals,
     }
     if source_kind == SourceKind.EMAIL:
         rebuilt["message_id"] = external_event_id
     if source_kind == SourceKind.CALENDAR and isinstance(raw.get("raw_ics_component_b64"), str):
         rebuilt["raw_ics_component_b64"] = raw["raw_ics_component_b64"]
     return rebuilt
+
+
+def _normalize_observation_course_key(payload: object) -> str:
+    raw = payload if isinstance(payload, dict) else {}
+    semantic_event = raw.get("semantic_event") if isinstance(raw.get("semantic_event"), dict) else {}
+    semantic_draft = raw.get("semantic_event_draft") if isinstance(raw.get("semantic_event_draft"), dict) else {}
+    return normalized_course_identity_key(
+        **_course_identity_from_display(course_display_name(semantic_event=semantic_event or semantic_draft))
+    )
+
+
+def _course_identity_from_display(course_display: str | None) -> dict[str, object]:
+    from app.modules.common.course_identity import parse_course_display
+
+    parsed = parse_course_display(course_display)
+    return {
+        "course_dept": parsed["course_dept"] if isinstance(parsed["course_dept"], str) else None,
+        "course_number": parsed["course_number"] if isinstance(parsed["course_number"], int) else None,
+        "course_suffix": parsed["course_suffix"] if isinstance(parsed["course_suffix"], str) else None,
+        "course_quarter": parsed["course_quarter"] if isinstance(parsed["course_quarter"], str) else None,
+        "course_year2": parsed["course_year2"] if isinstance(parsed["course_year2"], int) else None,
+    }
+
+
+__all__ = ["rebuild_user_work_item_state"]

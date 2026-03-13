@@ -5,12 +5,14 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models.review import Change, ChangeType, Input, ReviewStatus
-from app.modules.core_ingest.evidence_snapshots import materialize_change_snapshot
-from app.modules.review_changes.change_event_codec import event_json_equivalent, parse_after_json, safe_delta_seconds
+from app.db.models.review import Change, ChangeType, ReviewStatus
+from app.modules.common.event_display import user_facing_event_view
+from app.modules.core_ingest.review_evidence import freeze_semantic_evidence
+from app.modules.common.semantic_codec import parse_semantic_payload, semantic_delta_seconds, semantic_payloads_equivalent
 from app.modules.review_changes.canonical_edit_builder import build_candidate_after, edit_payload_from_event_json
 from app.modules.review_changes.canonical_edit_errors import CanonicalEditNotFoundError, CanonicalEditValidationError
-from app.modules.review_changes.canonical_edit_service import apply_canonical_edit, preview_canonical_edit
+from app.modules.review_changes.canonical_edit_apply_txn import execute_canonical_edit_apply_txn
+from app.modules.review_changes.canonical_edit_preview_flow import build_canonical_edit_preview
 from app.modules.review_changes.canonical_edit_target import load_user_or_raise
 
 
@@ -32,10 +34,8 @@ def preview_review_edit(
     user_id: int,
     mode: str,
     change_id: int | None,
-    event_uid: str | None,
-    due_at: str,
-    title: str | None,
-    course_label: str | None,
+    entity_uid: str | None,
+    patch: dict,
     reason: str | None,
 ) -> dict:
     if mode == "proposal":
@@ -43,20 +43,16 @@ def preview_review_edit(
             db=db,
             user_id=user_id,
             change_id=change_id,
-            due_at=due_at,
-            title=title,
-            course_label=course_label,
+            patch=patch,
         )
     if mode == "canonical":
         try:
-            payload = preview_canonical_edit(
+            payload = build_canonical_edit_preview(
                 db=db,
                 user_id=user_id,
                 change_id=change_id,
-                event_uid=event_uid,
-                due_at=due_at,
-                title=title,
-                course_label=course_label,
+                entity_uid=entity_uid,
+                patch=patch,
                 reason=reason,
             )
         except CanonicalEditNotFoundError as exc:
@@ -65,16 +61,61 @@ def preview_review_edit(
             raise ReviewEditValidationError(str(exc)) from exc
         return {
             "mode": "canonical",
-            "event_uid": payload["event_uid"],
+            "entity_uid": payload["entity_uid"],
             "change_id": change_id,
             "proposal_change_type": None,
-            "base": payload["base"],
-            "candidate_after": payload["candidate_after"],
+            "base": user_facing_event_view(payload["base"], strict=True),
+            "candidate_after": user_facing_event_view(payload["candidate_after"], strict=True),
             "delta_seconds": payload["delta_seconds"],
             "will_reject_pending_change_ids": payload["will_reject_pending_change_ids"],
             "idempotent": payload["idempotent"],
         }
     raise ReviewEditValidationError("mode must be one of: proposal, canonical")
+
+
+def load_review_edit_context(
+    db: Session,
+    *,
+    user_id: int,
+    change_id: int,
+) -> dict:
+    row = db.scalar(
+        select(Change).where(Change.id == change_id, Change.user_id == user_id).limit(1)
+    )
+    if row is None:
+        raise ReviewEditNotFoundError("target change not found")
+    semantic_payload = (
+        row.after_semantic_json
+        if isinstance(row.after_semantic_json, dict)
+        else row.before_semantic_json
+        if isinstance(row.before_semantic_json, dict)
+        else None
+    )
+    if semantic_payload is None:
+        raise ReviewEditValidationError("change has no editable semantic payload")
+    parsed = parse_semantic_payload(row.entity_uid, semantic_payload)
+    if parsed is None:
+        raise ReviewEditValidationError("change payload is invalid")
+    return {
+        "change_id": row.id,
+        "entity_uid": row.entity_uid,
+        "editable_event": {
+            "uid": row.entity_uid,
+            "family_id": parsed.family_id,
+            "family_name": parsed.family_name,
+            "course_dept": parsed.course_dept,
+            "course_number": parsed.course_number,
+            "course_suffix": parsed.course_suffix,
+            "course_quarter": parsed.course_quarter,
+            "course_year2": parsed.course_year2,
+            "raw_type": parsed.raw_type,
+            "event_name": parsed.event_name,
+            "ordinal": parsed.ordinal,
+            "due_date": parsed.due_date.isoformat() if parsed.due_date is not None else None,
+            "due_time": parsed.due_time.isoformat() if parsed.due_time is not None else None,
+            "time_precision": parsed.time_precision or "datetime",
+        },
+    }
 
 
 def apply_review_edit(
@@ -83,10 +124,8 @@ def apply_review_edit(
     user_id: int,
     mode: str,
     change_id: int | None,
-    event_uid: str | None,
-    due_at: str,
-    title: str | None,
-    course_label: str | None,
+    entity_uid: str | None,
+    patch: dict,
     reason: str | None,
 ) -> dict:
     if mode == "proposal":
@@ -94,20 +133,16 @@ def apply_review_edit(
             db=db,
             user_id=user_id,
             change_id=change_id,
-            due_at=due_at,
-            title=title,
-            course_label=course_label,
+            patch=patch,
         )
     if mode == "canonical":
         try:
-            payload = apply_canonical_edit(
+            payload = execute_canonical_edit_apply_txn(
                 db=db,
                 user_id=user_id,
                 change_id=change_id,
-                event_uid=event_uid,
-                due_at=due_at,
-                title=title,
-                course_label=course_label,
+                entity_uid=entity_uid,
+                patch=patch,
                 reason=reason,
             )
         except CanonicalEditNotFoundError as exc:
@@ -118,11 +153,11 @@ def apply_review_edit(
             "mode": "canonical",
             "applied": payload["applied"],
             "idempotent": payload["idempotent"],
-            "event_uid": payload["event_uid"],
+            "entity_uid": payload["entity_uid"],
             "edited_change_id": None,
             "canonical_edit_change_id": payload["canonical_edit_change_id"],
             "rejected_pending_change_ids": payload["rejected_pending_change_ids"],
-            "event": payload["event"],
+            "event": user_facing_event_view(payload["event"], strict=True),
         }
     raise ReviewEditValidationError("mode must be one of: proposal, canonical")
 
@@ -132,31 +167,25 @@ def _preview_proposal_edit(
     *,
     user_id: int,
     change_id: int | None,
-    due_at: str,
-    title: str | None,
-    course_label: str | None,
+    patch: dict,
 ) -> dict:
-    user = load_user_or_raise(db, user_id=user_id)
     row = _load_pending_proposal_change(db=db, user_id=user_id, change_id=change_id, for_update=False)
-    base_snapshot = _current_after_snapshot(row)
+    current_payload = _current_proposal_payload(row)
     candidate_after = build_candidate_after(
-        event_uid=row.event_uid,
-        base_snapshot=base_snapshot,
-        due_at=due_at,
-        title=title,
-        course_label=course_label,
-        timezone_name=user.timezone_name,
+        entity_uid=row.entity_uid,
+        base_payload=current_payload,
+        patch=patch,
     )
     return {
         "mode": "proposal",
-        "event_uid": row.event_uid,
+        "entity_uid": row.entity_uid,
         "change_id": row.id,
         "proposal_change_type": row.change_type.value,
-        "base": edit_payload_from_event_json(base_snapshot),
-        "candidate_after": edit_payload_from_event_json(candidate_after),
-        "delta_seconds": _proposal_delta_seconds(row=row, candidate_after=candidate_after),
+        "base": user_facing_event_view(edit_payload_from_event_json(current_payload), strict=True),
+        "candidate_after": user_facing_event_view(edit_payload_from_event_json(candidate_after), strict=True),
+        "delta_seconds": _proposal_delta_seconds(row=row, candidate_after_payload=candidate_after),
         "will_reject_pending_change_ids": [],
-        "idempotent": event_json_equivalent(base_snapshot, candidate_after),
+        "idempotent": semantic_payloads_equivalent(current_payload, candidate_after),
     }
 
 
@@ -165,46 +194,33 @@ def _apply_proposal_edit(
     *,
     user_id: int,
     change_id: int | None,
-    due_at: str,
-    title: str | None,
-    course_label: str | None,
+    patch: dict,
 ) -> dict:
-    user = load_user_or_raise(db, user_id=user_id)
     row = _load_pending_proposal_change(db=db, user_id=user_id, change_id=change_id, for_update=True)
-    base_snapshot = _current_after_snapshot(row)
+    current_payload = _current_proposal_payload(row)
     candidate_after = build_candidate_after(
-        event_uid=row.event_uid,
-        base_snapshot=base_snapshot,
-        due_at=due_at,
-        title=title,
-        course_label=course_label,
-        timezone_name=user.timezone_name,
+        entity_uid=row.entity_uid,
+        base_payload=current_payload,
+        patch=patch,
     )
-    now = datetime.now(timezone.utc)
-    snapshot_id = materialize_change_snapshot(
-        db=db,
-        input_id=row.input_id,
-        event_payload=None,
-        fallback_json=candidate_after,
-        retrieved_at=now,
-    )
-    idempotent = event_json_equivalent(base_snapshot, candidate_after)
+    idempotent = semantic_payloads_equivalent(current_payload, candidate_after)
     if not idempotent:
-        row.after_json = candidate_after
-        row.delta_seconds = _proposal_delta_seconds(row=row, candidate_after=candidate_after)
-    if snapshot_id is not None:
-        row.after_snapshot_id = snapshot_id
+        row.after_semantic_json = candidate_after
+        row.delta_seconds = _proposal_delta_seconds(row=row, candidate_after_payload=candidate_after)
+    if row.after_evidence_json is None or not idempotent:
+        evidence = freeze_semantic_evidence(provider=None, semantic_payload=candidate_after)
+        row.after_evidence_json = evidence.model_dump(mode="json") if evidence is not None else None
     db.commit()
     db.refresh(row)
     return {
         "mode": "proposal",
         "applied": True,
         "idempotent": idempotent,
-        "event_uid": row.event_uid,
+        "entity_uid": row.entity_uid,
         "edited_change_id": row.id,
         "canonical_edit_change_id": None,
         "rejected_pending_change_ids": [],
-        "event": edit_payload_from_event_json(candidate_after),
+        "event": user_facing_event_view(edit_payload_from_event_json(candidate_after), strict=True),
     }
 
 
@@ -217,12 +233,7 @@ def _load_pending_proposal_change(
 ) -> Change:
     if change_id is None:
         raise ReviewEditValidationError("proposal edits require target.change_id")
-    stmt = (
-        select(Change)
-        .join(Input, Input.id == Change.input_id)
-        .where(Change.id == change_id, Input.user_id == user_id)
-        .limit(1)
-    )
+    stmt = select(Change).where(Change.id == change_id, Change.user_id == user_id).limit(1)
     if for_update:
         stmt = stmt.with_for_update()
     row = db.scalar(stmt)
@@ -235,27 +246,36 @@ def _load_pending_proposal_change(
     return row
 
 
-def _current_after_snapshot(row: Change) -> dict:
-    after_json = row.after_json if isinstance(row.after_json, dict) else None
-    if after_json is None:
-        raise ReviewEditValidationError("pending proposal has no editable after_json")
-    parsed = parse_after_json(row.event_uid, after_json)
+def _current_proposal_payload(row: Change) -> dict:
+    semantic_payload = row.after_semantic_json if isinstance(row.after_semantic_json, dict) else None
+    if semantic_payload is None:
+        raise ReviewEditValidationError("pending proposal has no editable semantic payload")
+    parsed = parse_semantic_payload(row.entity_uid, semantic_payload)
     if parsed is None:
-        raise ReviewEditValidationError("pending proposal after_json is invalid")
+        raise ReviewEditValidationError("pending proposal semantic payload is invalid")
     return {
-        "uid": row.event_uid,
-        "title": parsed["title"],
-        "course_label": parsed["course_label"],
-        "start_at_utc": parsed["start_at_utc"].isoformat(),
-        "end_at_utc": parsed["end_at_utc"].isoformat(),
+        "uid": row.entity_uid,
+        "course_dept": parsed.course_dept,
+        "course_number": parsed.course_number,
+        "course_suffix": parsed.course_suffix,
+        "course_quarter": parsed.course_quarter,
+        "course_year2": parsed.course_year2,
+        "family_id": parsed.family_id,
+        "family_name": parsed.family_name,
+        "raw_type": parsed.raw_type,
+        "event_name": parsed.event_name,
+        "ordinal": parsed.ordinal,
+        "due_date": parsed.due_date.isoformat() if parsed.due_date is not None else None,
+        "due_time": parsed.due_time.isoformat() if parsed.due_time is not None else None,
+        "time_precision": parsed.time_precision or "datetime",
     }
 
 
-def _proposal_delta_seconds(*, row: Change, candidate_after: dict) -> int | None:
-    before_json = row.before_json if isinstance(row.before_json, dict) else None
-    if before_json is None:
+def _proposal_delta_seconds(*, row: Change, candidate_after_payload: dict) -> int | None:
+    before_payload = row.before_semantic_json if isinstance(row.before_semantic_json, dict) else None
+    if before_payload is None:
         return None
-    return safe_delta_seconds(before_json=before_json, after_json=candidate_after)
+    return semantic_delta_seconds(before_payload=before_payload, after_payload=candidate_after_payload)
 
 
 __all__ = [
@@ -263,5 +283,6 @@ __all__ = [
     "ReviewEditNotFoundError",
     "ReviewEditValidationError",
     "apply_review_edit",
+    "load_review_edit_context",
     "preview_review_edit",
 ]

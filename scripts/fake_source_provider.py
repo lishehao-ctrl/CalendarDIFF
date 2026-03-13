@@ -216,7 +216,7 @@ def _build_semester_ics_content(scenario: SemesterBatchScenario, *, run_tag: str
             continue
         start_dt = _parse_iso(due_iso)
         end_dt = start_dt + timedelta(hours=1)
-        uid = str(event.get("event_uid") or event.get("event_id") or f"s{scenario.semester}b{scenario.batch}")
+        uid = str(event.get("entity_uid") or event.get("event_id") or f"s{scenario.semester}b{scenario.batch}")
         title = _with_run_tag(str(event.get("title") or "Untitled Event"), run_tag)
         course = event.get("course")
         course_label = ""

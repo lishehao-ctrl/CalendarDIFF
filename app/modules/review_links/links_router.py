@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.modules.common.deps import get_onboarded_user_or_409
+from app.modules.auth.deps import get_onboarded_authenticated_user_or_409 as get_onboarded_user_or_409
 from app.modules.review_links.candidates_decision_service import LinkCandidateDecisionError
 from app.modules.review_links.links_service import LinkNotFoundError, delete_link, list_links, relink_observation
-from app.modules.review_links.router_common import raise_not_found, raise_unprocessable
 from app.modules.review_links.schemas import LinkDeleteResponse, LinkItemResponse, LinkRelinkRequest, LinkRelinkResponse
 
 router = APIRouter(prefix="/review/links")
@@ -48,7 +47,7 @@ def delete_link_route(
             note=note,
         )
     except LinkNotFoundError as exc:
-        raise_not_found(exc)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return LinkDeleteResponse(deleted=True, id=deleted_id, block_id=block_row.id if block_row is not None else None)
 
 
@@ -69,7 +68,7 @@ def post_relink_observation(
             note=payload.note,
         )
     except LinkCandidateDecisionError as exc:
-        raise_unprocessable(exc)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
     return LinkRelinkResponse(
         link_id=row.id,

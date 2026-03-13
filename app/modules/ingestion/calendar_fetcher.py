@@ -5,7 +5,7 @@ from typing import Any, cast
 from app.db.models.ingestion import ConnectorResultStatus
 from app.db.models.input import InputSource
 from app.modules.ingestion.connector_types import ConnectorFetchOutcome
-from app.modules.ingestion.ics_delta import ICS_COMPONENT_FINGERPRINT_HASH_VERSION, IcsDeltaParseError, build_ics_delta
+from app.modules.ingestion.ics_delta import ICS_COMPONENT_FINGERPRINT_HASH_KEY, IcsDeltaParseError, build_ics_delta
 from app.modules.ingestion.job_claiming import extract_ics_component_fingerprints
 from app.modules.input_control_plane.source_secrets import decode_source_secrets
 from app.modules.sync.ics_client import ICSClient
@@ -71,7 +71,7 @@ def fetch_calendar_delta(*, source: Any) -> ConnectorFetchOutcome:
     cursor_patch = {
         "etag": fetched.etag,
         "last_modified": fetched.last_modified,
-        "ics_component_fingerprints_v1": delta.next_fingerprints,
+        "ics_component_fingerprints": delta.next_fingerprints,
         "ics_delta_components_total": delta.total_components,
         "ics_delta_changed_components": delta.changed_components_count,
         "ics_delta_removed_components": delta.removed_components_count,
@@ -87,13 +87,13 @@ def fetch_calendar_delta(*, source: Any) -> ConnectorFetchOutcome:
         )
 
     parse_payload = {
-        "kind": "calendar_delta_v1",
+        "kind": "calendar_delta",
         "changed_components": delta.changed_components,
         "removed_component_keys": delta.removed_component_keys,
         "snapshot_meta": {
             "etag": fetched.etag,
             "last_modified": fetched.last_modified,
-            "hash_version": ICS_COMPONENT_FINGERPRINT_HASH_VERSION,
+            "hash_key": ICS_COMPONENT_FINGERPRINT_HASH_KEY,
         },
     }
     return ConnectorFetchOutcome(

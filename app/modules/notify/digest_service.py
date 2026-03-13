@@ -1,244 +1,137 @@
 from __future__ import annotations
 
-from datetime import date, datetime, time, timezone
-from zoneinfo import ZoneInfo
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.logging import sanitize_log_message
-from app.db.models.notify import DigestSendLog, Notification, NotificationChannel, NotificationStatus
-from app.db.models.review import Change, Input
+from app.db.models.notify import Notification, NotificationChannel, NotificationStatus
+from app.db.models.review import Change
 from app.db.models.shared import User
 from app.modules.notify.notifier_factory import build_notifier
 from app.modules.notify.service import _to_digest_item
 
-
-def compute_due_slots(
-    *,
-    now_utc: datetime,
-    timezone_name: str,
-    digest_times: list[str],
-    sent_slots: set[str],
-) -> tuple[date, list[str]]:
-    tz = _resolve_timezone(timezone_name)
-    local_now = now_utc.astimezone(tz)
-    local_date = local_now.date()
-
-    due: list[str] = []
-    for value in sorted(set(digest_times)):
-        parsed = _parse_hhmm(value)
-        if parsed is None:
-            continue
-        slot_dt = datetime.combine(local_date, parsed, tz)
-        slot_key = f"{local_date.isoformat()}|{value}"
-        if local_now >= slot_dt and slot_key not in sent_slots:
-            due.append(value)
-    return local_date, due
+NOTIFICATION_DISPATCH_BATCH_SIZE = 200
 
 
-def process_due_digests(db: Session, *, now: datetime | None = None) -> int:
+@dataclass(frozen=True)
+class NotificationDispatchResult:
+    processed_batches: int = 0
+    sent_count: int = 0
+    failed_count: int = 0
+    sent_notification_count: int = 0
+    failed_notification_count: int = 0
+
+
+def dispatch_pending_notifications(db: Session, *, now: datetime | None = None) -> NotificationDispatchResult:
     current = now or datetime.now(timezone.utc)
-    settings = get_settings()
-    digest_times = _parse_fixed_digest_times(settings.digest_fixed_times)
-    if not digest_times:
-        return 0
-
-    processed_slots = 0
-    users = db.scalars(select(User).where(User.onboarding_completed_at.is_not(None))).all()
-    for user in users:
-        if _resolve_recipient(user) is None:
-            continue
-
-        sent_rows = db.scalars(
-            select(DigestSendLog).where(
-                DigestSendLog.user_id == user.id,
-            )
-        ).all()
-        sent_keys = {f"{row.scheduled_local_date.isoformat()}|{row.scheduled_local_time}" for row in sent_rows}
-        local_date, due_times = compute_due_slots(
-            now_utc=current,
-            timezone_name=settings.digest_fixed_timezone,
-            digest_times=digest_times,
-            sent_slots=sent_keys,
-        )
-        for slot_time in due_times:
-            send_digest_for_slot(
-                db,
-                user=user,
-                scheduled_local_date=local_date,
-                scheduled_local_time=slot_time,
-                now=current,
-            )
-            processed_slots += 1
-
-    return processed_slots
-
-
-def send_digest_for_slot(
-    db: Session,
-    *,
-    user: User,
-    scheduled_local_date: date,
-    scheduled_local_time: str,
-    now: datetime | None = None,
-) -> None:
-    current = now or datetime.now(timezone.utc)
-
-    existing = db.scalar(
-        select(DigestSendLog.id).where(
-            DigestSendLog.user_id == user.id,
-            DigestSendLog.scheduled_local_date == scheduled_local_date,
-            DigestSendLog.scheduled_local_time == scheduled_local_time,
-        )
-    )
-    if existing is not None:
-        return
-
     rows = db.execute(
-        select(Notification, Change, Input)
+        select(Notification, Change, User)
         .join(Change, Notification.change_id == Change.id)
-        .join(Input, Change.input_id == Input.id)
+        .join(User, Change.user_id == User.id)
         .where(
             Notification.channel == NotificationChannel.EMAIL,
             Notification.status == NotificationStatus.PENDING,
-            Notification.enqueue_reason == "digest_queue",
             Notification.notified_at.is_(None),
-            Input.user_id == user.id,
+            Notification.deliver_after <= current,
         )
-        .order_by(Change.detected_at.asc(), Notification.id.asc())
+        .order_by(User.id.asc(), Change.detected_at.asc(), Notification.id.asc())
+        .with_for_update(skip_locked=True, of=Notification)
+        .limit(NOTIFICATION_DISPATCH_BATCH_SIZE)
     ).all()
 
     if not rows:
-        _insert_digest_log(
-            db,
+        return NotificationDispatchResult()
+
+    grouped: dict[int, list[tuple[Notification, Change, User]]] = defaultdict(list)
+    for row in rows:
+        notification, _change, user = row
+        grouped[user.id].append(row)
+
+    processed_batches = 0
+    sent_count = 0
+    failed_count = 0
+    sent_notification_count = 0
+    failed_notification_count = 0
+    notifier = build_notifier()
+
+    for group_rows in grouped.values():
+        processed_batches += 1
+        notifications = [row[0] for row in group_rows]
+        changes = [row[1] for row in group_rows]
+        user = group_rows[0][2]
+
+        to_email = _resolve_recipient(user)
+        if to_email is None:
+            _mark_notifications_failed(
+                notifications,
+                error="No notification recipient configured",
+                current=current,
+            )
+            failed_count += 1
+            failed_notification_count += len(notifications)
+            continue
+
+        items = [_to_digest_item(change) for change in changes]
+        send_result = notifier.send_changes_digest(
+            to_email=to_email,
+            review_label=_build_review_label(len(items)),
             user_id=user.id,
-            scheduled_local_date=scheduled_local_date,
-            scheduled_local_time=scheduled_local_time,
-            status="skipped_empty",
-            item_count=0,
-            error=None,
-            sent_at=current,
+            items=items,
+            timezone_name=user.timezone_name,
         )
-        return
 
-    to_email = _resolve_recipient(user)
-    if to_email is None:
-        _insert_digest_log(
-            db,
-            user_id=user.id,
-            scheduled_local_date=scheduled_local_date,
-            scheduled_local_time=scheduled_local_time,
-            status="failed",
-            item_count=0,
-            error="No digest recipient configured",
-            sent_at=current,
-        )
-        return
+        if not send_result.success:
+            _mark_notifications_failed(
+                notifications,
+                error=sanitize_log_message(send_result.error or "unknown send failure"),
+                current=current,
+            )
+            failed_count += 1
+            failed_notification_count += len(notifications)
+            continue
 
-    notifications = [row[0] for row in rows]
-    changes = [row[1] for row in rows]
-    digest_items = [_to_digest_item(change) for change in changes]
+        for notification in notifications:
+            notification.status = NotificationStatus.SENT
+            notification.sent_at = current
+            notification.notified_at = current
+            notification.error = None
 
-    send_result = build_notifier().send_changes_digest(
-        to_email,
-        f"User {user.id} Digest",
-        user.id,
-        digest_items,
+        sent_count += 1
+        sent_notification_count += len(notifications)
+
+    db.commit()
+    return NotificationDispatchResult(
+        processed_batches=processed_batches,
+        sent_count=sent_count,
+        failed_count=failed_count,
+        sent_notification_count=sent_notification_count,
+        failed_notification_count=failed_notification_count,
     )
 
-    if not send_result.success:
-        _insert_digest_log(
-            db,
-            user_id=user.id,
-            scheduled_local_date=scheduled_local_date,
-            scheduled_local_time=scheduled_local_time,
-            status="failed",
-            item_count=0,
-            error=sanitize_log_message(send_result.error or "unknown send failure"),
-            sent_at=current,
-        )
-        return
 
-    for notification in notifications:
-        notification.status = NotificationStatus.SENT
-        notification.sent_at = current
-        notification.notified_at = current
-        notification.error = None
-
-    _insert_digest_log(
-        db,
-        user_id=user.id,
-        scheduled_local_date=scheduled_local_date,
-        scheduled_local_time=scheduled_local_time,
-        status="sent",
-        item_count=len(notifications),
-        error=None,
-        sent_at=current,
-    )
+def process_due_digests(db: Session, *, now: datetime | None = None) -> int:
+    return dispatch_pending_notifications(db, now=now).processed_batches
 
 
-def _insert_digest_log(
-    db: Session,
+def _build_review_label(review_count: int) -> str:
+    return f"{review_count} new review" if review_count == 1 else f"{review_count} new reviews"
+
+
+def _mark_notifications_failed(
+    notifications: list[Notification],
     *,
-    user_id: int,
-    scheduled_local_date: date,
-    scheduled_local_time: str,
-    status: str,
-    item_count: int,
-    error: str | None,
-    sent_at: datetime,
+    error: str,
+    current: datetime,
 ) -> None:
-    row = DigestSendLog(
-        user_id=user_id,
-        scheduled_local_date=scheduled_local_date,
-        scheduled_local_time=scheduled_local_time,
-        status=status,
-        item_count=item_count,
-        error=error,
-        sent_at=sent_at,
-    )
-    db.add(row)
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-
-
-def _parse_hhmm(value: str) -> time | None:
-    parts = value.split(":")
-    if len(parts) != 2:
-        return None
-    try:
-        hour = int(parts[0])
-        minute = int(parts[1])
-    except ValueError:
-        return None
-    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
-        return None
-    return time(hour=hour, minute=minute)
-
-
-def _parse_fixed_digest_times(raw: str) -> list[str]:
-    values: list[str] = []
-    for part in raw.split(","):
-        token = part.strip()
-        if not token:
-            continue
-        if _parse_hhmm(token) is None:
-            continue
-        values.append(token)
-    unique_sorted = sorted(set(values))
-    return unique_sorted
-
-
-def _resolve_timezone(name: str) -> ZoneInfo:
-    try:
-        return ZoneInfo(name)
-    except Exception:  # pragma: no cover - platform-specific tzdata behavior
-        return ZoneInfo("UTC")
+    for notification in notifications:
+        notification.status = NotificationStatus.FAILED
+        notification.notified_at = current
+        notification.error = error
 
 
 def _resolve_recipient(user: User) -> str | None:
@@ -250,3 +143,10 @@ def _resolve_recipient(user: User) -> str | None:
         if stripped:
             return stripped
     return None
+
+
+__all__ = [
+    "NotificationDispatchResult",
+    "dispatch_pending_notifications",
+    "process_due_digests",
+]

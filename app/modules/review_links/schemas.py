@@ -5,11 +5,12 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.modules.common.event_display import EventDisplayResponse
+
 
 class LinkCandidateEntityPreview(BaseModel):
     entity_uid: str
-    course_best_display: str | None = None
-    course_best_strength: int | None = None
+    event_display: EventDisplayResponse | None = None
 
 
 class LinkCandidateItemResponse(BaseModel):

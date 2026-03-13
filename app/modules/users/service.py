@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from email.utils import parseaddr
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.db.models.input import InputSource
-from app.db.models.review import Input, InputType
 from app.db.models.shared import User
-from app.modules.users.email_utils import is_valid_email_address
 
 USER_NOT_INITIALIZED_MESSAGE = "Initialize user via /auth/register"
 USER_ONBOARDING_INCOMPLETE_MESSAGE = "Connect at least one active input source via /sources"
@@ -60,27 +60,6 @@ def get_first_active_input_source(db: Session, *, user_id: int) -> InputSource |
         .limit(1)
     )
 
-
-def get_single_ics_input_for_user(
-    db: Session,
-    *,
-    user_id: int,
-    require_active: bool = False,
-    for_update: bool = False,
-) -> Input | None:
-    stmt = select(Input).where(Input.user_id == user_id, Input.type == InputType.ICS)
-    if require_active:
-        stmt = stmt.where(Input.is_active.is_(True))
-    stmt = stmt.order_by(Input.id.asc()).limit(2)
-    if for_update:
-        stmt = stmt.with_for_update()
-
-    rows = db.scalars(stmt).all()
-    if len(rows) != 1:
-        return None
-    return rows[0]
-
-
 def update_current_user(
     db: Session,
     *,
@@ -88,6 +67,7 @@ def update_current_user(
     email: str | None = None,
     notify_email: str | None = None,
     timezone_name: str | None = None,
+    timezone_source: str | None = None,
     calendar_delay_seconds: int | None = None,
 ) -> User:
     if email is not None:
@@ -96,6 +76,7 @@ def update_current_user(
         raise ValueError("notify_email is managed by auth and cannot be changed here")
     if timezone_name is not None:
         user.timezone_name = _normalize_timezone_name(timezone_name)
+        user.timezone_source = _normalize_timezone_source(timezone_source) if timezone_source is not None else "manual"
     if calendar_delay_seconds is not None:
         user.calendar_delay_seconds = calendar_delay_seconds
     db.commit()
@@ -114,13 +95,59 @@ def _normalize_required_email(value: str) -> str:
     stripped = value.strip()
     if not stripped:
         raise ValueError("notify_email must not be blank")
-    if not is_valid_email_address(stripped):
+    if not _is_valid_email_address(stripped):
         raise ValueError("notify_email must be a valid email address")
     return stripped
 
 
 def _is_valid_email(value: str | None) -> bool:
-    return is_valid_email_address(value)
+    return _is_valid_email_address(value)
+
+
+def sync_auto_timezone(
+    db: Session,
+    *,
+    user: User,
+    timezone_name: str | None,
+) -> User:
+    if timezone_name is None or user.timezone_source != "auto":
+        return user
+    normalized = _normalize_timezone_name(timezone_name)
+    if user.timezone_name == normalized:
+        return user
+    user.timezone_name = normalized
+    user.timezone_source = "auto"
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def _normalize_timezone_source(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized not in {"auto", "manual"}:
+        raise ValueError("timezone_source must be either 'auto' or 'manual'")
+    return normalized
+
+
+def _is_valid_email_address(value: str | None) -> bool:
+    if value is None:
+        return False
+    candidate = value.strip()
+    if not candidate:
+        return False
+    if any(ch.isspace() for ch in candidate):
+        return False
+    _, parsed = parseaddr(candidate)
+    if parsed != candidate:
+        return False
+    local, separator, domain = candidate.rpartition("@")
+    if separator != "@":
+        return False
+    if not local or not domain or "." not in domain:
+        return False
+    if domain.startswith(".") or domain.endswith(".") or ".." in domain:
+        return False
+    return True
 
 
 def _normalize_timezone_name(value: str) -> str:

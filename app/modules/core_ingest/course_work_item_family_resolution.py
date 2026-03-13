@@ -1,13 +1,22 @@
 from __future__ import annotations
 
-import hashlib
-
 from sqlalchemy.orm import Session
 
-from app.modules.core_ingest.entity_profile import course_display_name
-from app.modules.core_ingest.merge_engine import build_merge_key
-from app.modules.core_ingest.payload_extractors import normalize_work_item_parse
-from app.modules.users.course_work_item_families_service import normalize_course_key, resolve_course_work_item_family
+from app.modules.common.course_identity import course_display_name, normalize_label_token
+from app.modules.core_ingest.source_identity import build_source_scoped_entity_uid as hash_source_scoped_entity_uid
+from app.modules.core_ingest.semantic_event_service import normalize_semantic_parse
+from app.modules.core_ingest.raw_type_matching import RawTypeMatchError, compare_raw_type_against_known_types
+from app.modules.users.course_raw_types_service import (
+    create_course_raw_type,
+    create_raw_type_suggestion,
+    find_course_raw_type,
+    list_course_raw_types,
+)
+from app.modules.users.course_work_item_families_service import (
+    create_course_work_item_family,
+    list_course_work_item_families,
+    resolve_course_work_item_family,
+)
 
 
 def resolve_kind_resolution(
@@ -15,67 +24,199 @@ def resolve_kind_resolution(
     *,
     user_id: int,
     course_parse: dict,
-    work_item_parse: dict,
+    semantic_parse: dict,
     source_kind: str,
     external_event_id: str,
+    source_id: int | None = None,
+    request_id: str | None = None,
+    provider: str | None = None,
+    source_observation_id: int | None = None,
 ) -> dict[str, object]:
     del source_kind
     del external_event_id
-    target_course = course_display_name(course_parse=course_parse) if isinstance(course_parse, dict) else None
-    raw_label = work_item_parse.get("raw_label") if isinstance(work_item_parse, dict) else None
-    resolution = resolve_course_work_item_family(db, user_id=user_id, course_key=target_course, raw_label=raw_label)
-    ordinal = work_item_parse.get("ordinal") if isinstance(work_item_parse.get("ordinal"), int) else None
-    if not target_course or resolution.get("status") != "resolved" or ordinal is None:
+    normalized_semantic = normalize_semantic_parse(semantic_parse)
+    course_dept = course_parse.get("dept") if isinstance(course_parse.get("dept"), str) else None
+    course_number = course_parse.get("number") if isinstance(course_parse.get("number"), int) else None
+    course_suffix = course_parse.get("suffix") if isinstance(course_parse.get("suffix"), str) else None
+    course_quarter = course_parse.get("quarter") if isinstance(course_parse.get("quarter"), str) else None
+    course_year2 = course_parse.get("year2") if isinstance(course_parse.get("year2"), int) else None
+    target_course_display = course_display_name(course_parse=course_parse) if isinstance(course_parse, dict) else None
+    raw_type = normalized_semantic.get("raw_type")
+    ordinal = normalized_semantic.get("ordinal") if isinstance(normalized_semantic.get("ordinal"), int) else None
+    event_name_value = normalized_semantic.get("event_name") if isinstance(normalized_semantic.get("event_name"), str) else None
+    incoming_raw_type = raw_type or event_name_value
+    if course_dept is None or course_number is None or not incoming_raw_type:
         return {
             "status": "unresolved",
-            "family_id": resolution.get("family_id"),
-            "canonical_label": resolution.get("canonical_label"),
-            "matched_alias": resolution.get("matched_alias"),
-            "course_key": target_course,
-            "raw_label": raw_label,
+            "family_id": None,
+            "canonical_label": None,
+            "matched_alias": None,
+            "course_display": target_course_display,
+            "course_dept": course_dept,
+            "course_number": course_number,
+            "course_suffix": course_suffix,
+            "course_quarter": course_quarter,
+            "course_year2": course_year2,
+            "raw_type": incoming_raw_type,
             "ordinal": ordinal,
-            "entity_uid": None,
+            "raw_type_id": None,
+            "suggestion_id": None,
         }
-    family_id = int(resolution["family_id"])
-    entity_uid = build_semantic_entity_uid(course_key=target_course, family_id=family_id, ordinal=ordinal)
+
+    exact_resolution = resolve_course_work_item_family(
+        db,
+        user_id=user_id,
+        course_dept=course_dept,
+        course_number=course_number,
+        course_suffix=course_suffix,
+        course_quarter=course_quarter,
+        course_year2=course_year2,
+        raw_label=incoming_raw_type,
+    )
+    if exact_resolution.get("status") == "resolved" and isinstance(exact_resolution.get("family_id"), int):
+        family_id = int(exact_resolution["family_id"])
+        return {
+            "status": "exact",
+            "family_id": family_id,
+            "canonical_label": exact_resolution.get("canonical_label"),
+            "matched_alias": exact_resolution.get("matched_alias"),
+            "course_display": target_course_display,
+            "course_dept": course_dept,
+            "course_number": course_number,
+            "course_suffix": course_suffix,
+            "course_quarter": course_quarter,
+            "course_year2": course_year2,
+            "raw_type": incoming_raw_type,
+            "ordinal": ordinal,
+            "raw_type_id": exact_resolution.get("raw_type_id"),
+            "suggestion_id": None,
+        }
+
+    family = create_course_work_item_family(
+        db,
+        user_id=user_id,
+        course_dept=course_dept,
+        course_number=course_number,
+        course_suffix=course_suffix,
+        course_quarter=course_quarter,
+        course_year2=course_year2,
+        canonical_label=incoming_raw_type,
+        raw_types=[],
+        commit=False,
+    )
+    current_raw_type = find_course_raw_type(
+        db,
+        user_id=user_id,
+        course_dept=course_dept,
+        course_number=course_number,
+        course_suffix=course_suffix,
+        course_quarter=course_quarter,
+        course_year2=course_year2,
+        raw_type=incoming_raw_type,
+    )
+    if current_raw_type is None:
+        current_raw_type = create_course_raw_type(db, family=family, raw_type=incoming_raw_type, commit=False)
+    known_rows = [
+        row
+        for row in list_course_raw_types(
+            db,
+            user_id=user_id,
+            course_dept=course_dept,
+            course_number=course_number,
+            course_suffix=course_suffix,
+            course_quarter=course_quarter,
+            course_year2=course_year2,
+        )
+        if row.id != current_raw_type.id
+    ]
+    known_raw_types = [row.raw_type for row in known_rows]
+    known_family_by_label = {
+        normalize_label_token(row.canonical_label): row
+        for row in list_course_work_item_families(
+            db,
+            user_id=user_id,
+            course_dept=course_dept,
+            course_number=course_number,
+            course_suffix=course_suffix,
+            course_quarter=course_quarter,
+            course_year2=course_year2,
+        )
+        if row.id != family.id
+    }
+    for normalized_label, row in known_family_by_label.items():
+        if normalized_label and normalized_label not in {normalize_label_token(value) for value in known_raw_types}:
+            known_raw_types.append(row.canonical_label)
+    suggestion_id = None
+    matched_alias = incoming_raw_type
+    status = "new_family"
+    if known_raw_types:
+        try:
+            llm_match = compare_raw_type_against_known_types(
+                db,
+                source_id=source_id,
+                request_id=request_id,
+                provider=provider,
+                course_key=target_course_display or "",
+                incoming_raw_type=incoming_raw_type,
+                event_name=event_name_value or incoming_raw_type,
+                ordinal=ordinal,
+                known_raw_types=known_raw_types,
+            )
+        except RawTypeMatchError:
+            llm_match = {"matched_raw_type": None, "confidence": 0.0, "evidence": ""}
+        matched_raw_type = llm_match.get("matched_raw_type") if isinstance(llm_match.get("matched_raw_type"), str) else None
+        if matched_raw_type and normalize_label_token(matched_raw_type) != normalize_label_token(incoming_raw_type):
+            suggested_row = find_course_raw_type(
+                db,
+                user_id=user_id,
+                course_dept=course_dept,
+                course_number=course_number,
+                course_suffix=course_suffix,
+                course_quarter=course_quarter,
+                course_year2=course_year2,
+                raw_type=matched_raw_type,
+            )
+            if suggested_row is None:
+                suggested_family = known_family_by_label.get(normalize_label_token(matched_raw_type))
+                if suggested_family is not None:
+                    suggested_row = create_course_raw_type(db, family=suggested_family, raw_type=suggested_family.canonical_label, commit=False)
+            if suggested_row is not None:
+                suggestion = create_raw_type_suggestion(
+                    db,
+                    source_raw_type=current_raw_type,
+                    suggested_raw_type=suggested_row,
+                    source_observation_id=source_observation_id,
+                    confidence=float(llm_match.get("confidence") or 0.0),
+                    evidence=str(llm_match.get("evidence") or "") or None,
+                )
+                suggestion_id = suggestion.id
+                status = "suggested"
+                matched_alias = matched_raw_type
+
     return {
-        "status": "resolved",
-        "family_id": family_id,
-        "canonical_label": resolution.get("canonical_label"),
-        "matched_alias": resolution.get("matched_alias"),
-        "course_key": target_course,
-        "raw_label": raw_label,
+        "status": status,
+        "family_id": family.id,
+        "canonical_label": family.canonical_label,
+        "matched_alias": matched_alias,
+        "course_display": target_course_display,
+        "course_dept": course_dept,
+        "course_number": course_number,
+        "course_suffix": course_suffix,
+        "course_quarter": course_quarter,
+        "course_year2": course_year2,
+        "raw_type": incoming_raw_type,
         "ordinal": ordinal,
-        "entity_uid": entity_uid,
+        "raw_type_id": current_raw_type.id,
+        "suggestion_id": suggestion_id,
     }
 
 
 def build_source_scoped_entity_uid(*, source_kind: str, external_event_id: str) -> str:
-    return build_merge_key(
-        course_label=None,
-        title=None,
-        start_at=None,
-        end_at=None,
-        event_type=None,
-        source_kind=source_kind,
-        external_event_id=external_event_id,
-    )
-
-
-def build_semantic_entity_uid(*, course_key: str, family_id: int, ordinal: int) -> str:
-    canonical = "|".join([
-        normalize_course_key(course_key),
-        str(int(family_id)),
-        str(int(ordinal)),
-        "course_family_v1",
-    ])
-    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:32]
-    return f"clf_{digest}"
+    return hash_source_scoped_entity_uid(source_kind=source_kind, external_event_id=external_event_id)
 
 
 __all__ = [
-    "build_semantic_entity_uid",
     "build_source_scoped_entity_uid",
-    "normalize_work_item_parse",
+    "normalize_semantic_parse",
     "resolve_kind_resolution",
 ]

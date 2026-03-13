@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import html
 import smtplib
-from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timezone
 from email.message import EmailMessage
+from email.utils import formataddr
+from zoneinfo import ZoneInfo
 
 from app.core.config import get_settings
 from app.core.oauth_config import resolve_frontend_app_base_url
@@ -14,20 +16,32 @@ class SMTPEmailNotifier(Notifier):
     def send_changes_digest(
         self,
         to_email: str,
-        input_label: str,
-        input_id: int,
+        review_label: str,
+        user_id: int,
         items: list[ChangeDigestItem],
+        timezone_name: str | None = None,
     ) -> SendResult:
         settings = get_settings()
+        review_count = len(items)
+        review_label = "new review" if review_count == 1 else "new reviews"
 
-        subject = f"[Deadline Diff] {input_label} - {len(items)} changes"
-        body = _build_email_body(input_id=input_id, input_label=input_label, items=items)
+        subject = f"[CalendarDIFF] {review_count} {review_label}"
+        plain_body, html_body = _build_email_bodies(
+            user_id=user_id,
+            review_label=review_label,
+            items=items,
+            timezone_name=timezone_name,
+        )
 
         message = EmailMessage()
         message["Subject"] = subject
-        message["From"] = settings.smtp_from_email
+        message["From"] = _format_from_header(
+            from_email=settings.smtp_from_email,
+            from_name=settings.smtp_from_name,
+        )
         message["To"] = to_email
-        message.set_content(body)
+        message.set_content(plain_body)
+        message.add_alternative(html_body, subtype="html")
 
         try:
             with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as smtp:
@@ -42,61 +56,129 @@ class SMTPEmailNotifier(Notifier):
         return SendResult(success=True)
 
 
-def _build_email_body(input_id: int, input_label: str, items: list[ChangeDigestItem]) -> str:
-    settings = get_settings()
-    grouped: dict[str, list[ChangeDigestItem]] = defaultdict(list)
-    for item in items:
-        grouped[item.course_label].append(item)
+def _format_from_header(*, from_email: str, from_name: str | None) -> str:
+    normalized_name = (from_name or "").strip()
+    if not normalized_name:
+        return from_email
+    return formataddr((normalized_name, from_email))
 
+
+def _build_email_bodies(
+    user_id: int,
+    review_label: str,
+    items: list[ChangeDigestItem],
+    timezone_name: str | None,
+) -> tuple[str, str]:
+    settings = get_settings()
+    del user_id, review_label
     try:
         base_url = resolve_frontend_app_base_url(settings=settings)
     except Exception:
         base_url = settings.app_base_url.rstrip("/") if settings.app_base_url else ""
-    link_path = f"/review/changes?review_status=pending&source_id={input_id}"
+    link_path = "/review/changes?review_status=pending"
     link = f"{base_url}{link_path}" if base_url else link_path
 
-    lines: list[str] = [f"Input: {input_label}", f"Changes: {len(items)}", ""]
+    review_count = len(items)
+    review_label = "new review" if review_count == 1 else "new reviews"
+    plain_lines: list[str] = [
+        f"You have {review_count} {review_label} in your review box.",
+        "",
+    ]
+    html_parts: list[str] = [
+        "<html><body>",
+        f"<p>You have {review_count} {review_label} in your review box.</p>",
+    ]
 
-    for course_label in sorted(grouped):
-        lines.append(f"## {course_label}")
-        for item in grouped[course_label]:
-            before = item.before_start_at_utc or "N/A"
-            after = item.after_start_at_utc or "N/A"
-            delta_text = _humanize_delta(item.delta_seconds)
-            lines.append(f"- title: {item.title}")
-            lines.append(f"  before -> after: {before} -> {after}")
-            lines.append(f"  delta: {delta_text}")
-            lines.append(f"  detected_at: {item.detected_at.isoformat()}")
-            lines.append(f"  change_type: {item.change_type}")
-            lines.append(f"  evidence: {item.evidence_path or 'n/a'}")
-        lines.append("")
+    for section_title, section_items in _group_items(items=items):
+        plain_lines.append(section_title)
+        html_parts.append(f"<p><strong>{html.escape(section_title)}</strong></p>")
+        html_parts.append("<ul>")
+        for item in section_items:
+            before = _format_due_for_timezone(
+                item.before_due_at,
+                time_precision=item.before_time_precision,
+                timezone_name=timezone_name,
+            )
+            after = _format_due_for_timezone(
+                item.after_due_at,
+                time_precision=item.after_time_precision,
+                timezone_name=timezone_name,
+            )
+            line = _build_change_line(
+                item=item,
+                before=before,
+                after=after,
+            )
+            plain_lines.append(line)
+            html_parts.append(f"<li>{html.escape(line)}</li>")
+        plain_lines.append("")
+        html_parts.append("</ul>")
 
-    lines.append(f"View changes: {link}")
-    return "\n".join(lines)
+    plain_lines.append(f"Open review box: {link}")
+    html_parts.append(f'<p><a href="{html.escape(link, quote=True)}">Open review box</a></p>')
+    html_parts.append("</body></html>")
+    return "\n".join(plain_lines), "".join(html_parts)
 
 
-def _humanize_delta(delta_seconds: int | None) -> str:
-    if delta_seconds is None:
-        return "n/a"
-    if delta_seconds == 0:
-        return "no time shift"
+def _format_due_for_timezone(value: str | None, *, time_precision: str, timezone_name: str | None) -> str:
+    if not value:
+        return "N/A"
+    if time_precision == "date_only":
+        return value[:10]
 
-    direction = "later" if delta_seconds > 0 else "earlier"
-    total_seconds = abs(delta_seconds)
-    delta = timedelta(seconds=total_seconds)
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return value
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
 
-    days = delta.days
-    hours, remainder = divmod(delta.seconds, 3600)
-    minutes = remainder // 60
+    if timezone_name:
+        try:
+            parsed = parsed.astimezone(ZoneInfo(timezone_name))
+        except Exception:
+            parsed = parsed.astimezone(timezone.utc)
 
-    parts: list[str] = []
-    if days:
-        parts.append(f"{days}d")
-    if hours:
-        parts.append(f"{hours}h")
-    if minutes:
-        parts.append(f"{minutes}m")
-    if not parts:
-        parts.append(f"{total_seconds}s")
+    date_part = parsed.strftime("%Y-%m-%d")
+    hour = parsed.strftime("%I").lstrip("0") or "12"
+    minute = parsed.strftime("%M")
+    meridiem = parsed.strftime("%p")
+    return f"{date_part} {hour}:{minute} {meridiem}"
 
-    return f"moved {direction} by {' '.join(parts)}"
+
+def _build_change_line(
+    *,
+    item: ChangeDigestItem,
+    before: str,
+    after: str,
+) -> str:
+    before_label = item.before_display.display_label if item.before_display is not None else item.entity_uid
+    after_label = item.after_display.display_label if item.after_display is not None else before_label
+    if item.change_type == "created":
+        return f"Added {after_label}: {after}"
+    if item.change_type == "removed":
+        return f"Removed {before_label}: {before}"
+    return f"{before_label}: {before} -> {after}"
+
+
+def _group_items(items: list[ChangeDigestItem]) -> list[tuple[str, list[ChangeDigestItem]]]:
+    ordered_sections = [
+        ("Changed", "due_changed"),
+        ("Added", "created"),
+        ("Removed", "removed"),
+    ]
+    out: list[tuple[str, list[ChangeDigestItem]]] = []
+    for section_title, change_type in ordered_sections:
+        section_items = [item for item in items if item.change_type == change_type]
+        if not section_items:
+            continue
+        section_items.sort(
+            key=lambda item: (
+                (item.after_display or item.before_display).course_display.casefold() if (item.after_display or item.before_display) is not None else "",
+                (item.after_display or item.before_display).display_label.casefold() if (item.after_display or item.before_display) is not None else item.entity_uid.casefold(),
+                item.after_due_at or item.before_due_at or "",
+            )
+        )
+        out.append((section_title, section_items))
+    return out

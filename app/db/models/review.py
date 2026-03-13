@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, time
 from enum import Enum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Enum as SAEnum,
     Float,
@@ -16,6 +17,7 @@ from sqlalchemy import (
     JSON,
     String,
     Text,
+    Time,
     UniqueConstraint,
     func,
 )
@@ -30,21 +32,26 @@ if TYPE_CHECKING:
     from app.db.models.shared import User
 
 
-class InputType(str, Enum):
-    ICS = "ics"
-    EMAIL = "email"
-
-
 class ChangeType(str, Enum):
     CREATED = "created"
     REMOVED = "removed"
     DUE_CHANGED = "due_changed"
 
 
+class ChangeOrigin(str, Enum):
+    INGEST_PROPOSAL = "ingest_proposal"
+    MANUAL_CANONICAL_EDIT = "manual_canonical_edit"
+
+
 class ReviewStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+
+
+class EventEntityLifecycle(str, Enum):
+    ACTIVE = "active"
+    REMOVED = "removed"
 
 
 class EventLinkOrigin(str, Enum):
@@ -88,69 +95,36 @@ class EventLinkAlertResolution(str, Enum):
     LINK_RELINKED = "link_relinked"
 
 
-class Input(Base):
-    __tablename__ = "inputs"
-    __table_args__ = (
-        UniqueConstraint("user_id", "type", "identity_key", name="uq_inputs_user_type_identity_key"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    type: Mapped[InputType] = mapped_column(
-        SAEnum(InputType, name="input_type", native_enum=False),
-        nullable=False,
-        default=InputType.ICS,
-        server_default=InputType.ICS.value,
-    )
-    identity_key: Mapped[str] = mapped_column(String(128), nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-
-    user: Mapped["User"] = relationship("User", back_populates="inputs")
-    events: Mapped[list["Event"]] = relationship("Event", back_populates="input", cascade="all, delete-orphan")
-    snapshots: Mapped[list["Snapshot"]] = relationship("Snapshot", back_populates="input", cascade="all, delete-orphan")
-    changes: Mapped[list["Change"]] = relationship("Change", back_populates="input", cascade="all, delete-orphan")
-
-    @property
-    def display_label(self) -> str:
-        if self.type == InputType.EMAIL:
-            return f"Gmail · input-{self.id}"
-        return "Calendar · Primary"
-
-
-class Event(Base):
-    __tablename__ = "events"
-    __table_args__ = (UniqueConstraint("input_id", "uid", name="uq_events_input_id_uid"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    input_id: Mapped[int] = mapped_column(ForeignKey("inputs.id", ondelete="CASCADE"), nullable=False)
-    uid: Mapped[str] = mapped_column(String(255), nullable=False)
-    course_label: Mapped[str] = mapped_column(String(64), nullable=False)
-    title: Mapped[str] = mapped_column(String(512), nullable=False)
-    start_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    end_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
-    )
-
-    input: Mapped[Input] = relationship("Input", back_populates="events")
-
-
 class EventEntity(Base):
     __tablename__ = "event_entities"
     __table_args__ = (
         UniqueConstraint("user_id", "entity_uid", name="uq_event_entities_user_entity_uid"),
         Index("ix_event_entities_user_updated", "user_id", "updated_at"),
+        Index("ix_event_entities_user_semantic_tuple", "user_id", "course_dept", "course_number", "family_id", "ordinal"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     entity_uid: Mapped[str] = mapped_column(String(128), nullable=False)
-    course_best_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    course_best_strength: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    course_aliases_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
-    title_aliases_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
-    metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    lifecycle: Mapped[EventEntityLifecycle] = mapped_column(
+        SAEnum(EventEntityLifecycle, name="event_entity_lifecycle", native_enum=False),
+        nullable=False,
+        default=EventEntityLifecycle.ACTIVE,
+        server_default=EventEntityLifecycle.ACTIVE.value,
+    )
+    course_dept: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    course_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    course_suffix: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    course_quarter: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    course_year2: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    family_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    family_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    raw_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    event_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    ordinal: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    due_time: Mapped[time | None] = mapped_column(Time(timezone=False), nullable=True)
+    time_precision: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
@@ -318,72 +292,40 @@ class EventLinkAlert(Base):
     source: Mapped["InputSource"] = relationship("InputSource", back_populates="event_link_alerts")
 
 
-class Snapshot(Base):
-    __tablename__ = "snapshots"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    input_id: Mapped[int] = mapped_column(ForeignKey("inputs.id", ondelete="CASCADE"), nullable=False)
-    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    etag: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    event_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    raw_evidence_key: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-
-    input: Mapped[Input] = relationship("Input", back_populates="snapshots")
-    snapshot_events: Mapped[list["SnapshotEvent"]] = relationship(
-        "SnapshotEvent", back_populates="snapshot", cascade="all, delete-orphan"
-    )
-    changes_as_before: Mapped[list["Change"]] = relationship(
-        "Change",
-        foreign_keys="Change.before_snapshot_id",
-        back_populates="before_snapshot",
-    )
-    changes_as_after: Mapped[list["Change"]] = relationship(
-        "Change",
-        foreign_keys="Change.after_snapshot_id",
-        back_populates="after_snapshot",
-    )
-
-
-class SnapshotEvent(Base):
-    __tablename__ = "snapshot_events"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    snapshot_id: Mapped[int] = mapped_column(ForeignKey("snapshots.id", ondelete="CASCADE"), nullable=False)
-    uid: Mapped[str] = mapped_column(String(255), nullable=False)
-    course_label: Mapped[str] = mapped_column(String(64), nullable=False)
-    title: Mapped[str] = mapped_column(String(512), nullable=False)
-    start_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    end_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-    snapshot: Mapped[Snapshot] = relationship("Snapshot", back_populates="snapshot_events")
-
-
 class Change(Base):
     __tablename__ = "changes"
     __table_args__ = (
-        Index("ix_changes_input_detected_desc", "input_id", "detected_at"),
-        Index("ix_changes_review_status_detected_at", "review_status", "detected_at"),
+        Index("ix_changes_user_detected_desc", "user_id", "detected_at"),
+        Index("ix_changes_user_review_status_detected", "user_id", "review_status", "detected_at"),
+        Index("ix_changes_user_entity_status_detected", "user_id", "entity_uid", "review_status", "detected_at"),
     )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    input_id: Mapped[int] = mapped_column(ForeignKey("inputs.id", ondelete="CASCADE"), nullable=False)
-    event_uid: Mapped[str] = mapped_column(String(255), nullable=False)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    entity_uid: Mapped[str] = mapped_column(String(255), nullable=False)
+    change_origin: Mapped[ChangeOrigin] = mapped_column(
+        SAEnum(ChangeOrigin, name="change_origin", native_enum=False),
+        nullable=False,
+        default=ChangeOrigin.INGEST_PROPOSAL,
+        server_default=ChangeOrigin.INGEST_PROPOSAL.value,
+    )
     change_type: Mapped[ChangeType] = mapped_column(
         SAEnum(ChangeType, name="change_type", native_enum=False),
         nullable=False,
     )
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    before_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    after_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    before_semantic_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    after_semantic_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     delta_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    before_evidence_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    after_evidence_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     viewed_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     review_status: Mapped[ReviewStatus] = mapped_column(
         SAEnum(ReviewStatus, name="review_status", native_enum=False),
         nullable=False,
-        default=ReviewStatus.APPROVED,
-        server_default=ReviewStatus.APPROVED.value,
+        default=ReviewStatus.PENDING,
+        server_default=ReviewStatus.PENDING.value,
     )
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -391,37 +333,45 @@ class Change(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
-    proposal_merge_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    proposal_sources_json: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
-    before_snapshot_id: Mapped[int | None] = mapped_column(
-        ForeignKey("snapshots.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    after_snapshot_id: Mapped[int | None] = mapped_column(
-        ForeignKey("snapshots.id", ondelete="CASCADE"),
-        nullable=True,
-    )
-    evidence_keys: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
-    input: Mapped[Input] = relationship("Input", back_populates="changes")
-    before_snapshot: Mapped[Snapshot | None] = relationship(
-        "Snapshot",
-        foreign_keys=[before_snapshot_id],
-        back_populates="changes_as_before",
-    )
-    after_snapshot: Mapped[Snapshot | None] = relationship(
-        "Snapshot",
-        foreign_keys=[after_snapshot_id],
-        back_populates="changes_as_after",
-    )
+    user: Mapped["User"] = relationship("User", back_populates="changes", foreign_keys=[user_id])
     notifications: Mapped[list["Notification"]] = relationship("Notification", back_populates="change", cascade="all, delete-orphan")
+    source_refs: Mapped[list["ChangeSourceRef"]] = relationship(
+        "ChangeSourceRef",
+        back_populates="change",
+        cascade="all, delete-orphan",
+        order_by="ChangeSourceRef.position",
+    )
+
+
+class ChangeSourceRef(Base):
+    __tablename__ = "change_source_refs"
+    __table_args__ = (
+        UniqueConstraint("change_id", "position", name="uq_change_source_refs_change_position"),
+        Index("ix_change_source_refs_change_id", "change_id"),
+        Index("ix_change_source_refs_source_id", "source_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    change_id: Mapped[int] = mapped_column(ForeignKey("changes.id", ondelete="CASCADE"), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), nullable=False)
+    source_kind: Mapped[SourceKind | None] = mapped_column(
+        SAEnum(SourceKind, name="source_kind", native_enum=False),
+        nullable=True,
+    )
+    provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    external_event_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    change: Mapped["Change"] = relationship("Change", back_populates="source_refs")
 
 
 class SourceEventObservation(Base):
     __tablename__ = "source_event_observations"
     __table_args__ = (
         UniqueConstraint("source_id", "external_event_id", name="uq_source_event_observations_source_external"),
-        Index("ix_source_event_observations_user_merge_active", "user_id", "merge_key", "is_active"),
+        Index("ix_source_event_observations_user_entity_active", "user_id", "entity_uid", "is_active"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -433,7 +383,7 @@ class SourceEventObservation(Base):
     )
     provider: Mapped[str] = mapped_column(String(64), nullable=False)
     external_event_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    merge_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    entity_uid: Mapped[str] = mapped_column(String(128), nullable=False)
     event_payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     event_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -469,9 +419,11 @@ class IngestApplyLog(Base):
 
 __all__ = [
     "Change",
+    "ChangeOrigin",
+    "ChangeSourceRef",
     "ChangeType",
-    "Event",
     "EventEntity",
+    "EventEntityLifecycle",
     "EventEntityLink",
     "EventLinkAlert",
     "EventLinkAlertReason",
@@ -484,10 +436,6 @@ __all__ = [
     "EventLinkCandidateStatus",
     "EventLinkOrigin",
     "IngestApplyLog",
-    "Input",
-    "InputType",
     "ReviewStatus",
-    "Snapshot",
-    "SnapshotEvent",
     "SourceEventObservation",
 ]

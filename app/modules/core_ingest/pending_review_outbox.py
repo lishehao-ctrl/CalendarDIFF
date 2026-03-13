@@ -12,7 +12,7 @@ from app.db.models.shared import IntegrationOutbox, OutboxStatus
 def emit_review_pending_created_event(
     *,
     db: Session,
-    canonical_input_id: int,
+    user_id: int,
     changes: list[Change],
     detected_at: datetime,
 ) -> None:
@@ -24,7 +24,7 @@ def emit_review_pending_created_event(
         aggregate_type="change_batch",
         aggregate_id=str(change_ids[0]),
         payload={
-            "input_id": canonical_input_id,
+            "user_id": user_id,
             "change_ids": change_ids,
             "deliver_after": detected_at.isoformat(),
         },

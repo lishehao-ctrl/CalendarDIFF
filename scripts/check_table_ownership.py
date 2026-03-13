@@ -18,6 +18,7 @@ VALID_OWNERS = {
 
 TABLE_OWNERSHIP: dict[str, str] = {
     "users": "platform-shared",
+    "user_sessions": "platform-shared",
     "input_sources": "input-service",
     "input_source_configs": "input-service",
     "input_source_secrets": "input-service",
@@ -34,11 +35,11 @@ TABLE_OWNERSHIP: dict[str, str] = {
     "event_link_candidates": "review-service",
     "event_link_blocks": "review-service",
     "event_link_alerts": "review-service",
-    "inputs": "review-service",
-    "events": "review-service",
-    "snapshots": "review-service",
-    "snapshot_events": "review-service",
     "changes": "review-service",
+    "change_source_refs": "review-service",
+    "course_work_item_label_families": "review-service",
+    "course_work_item_raw_types": "review-service",
+    "course_raw_type_suggestions": "review-service",
     "notifications": "notification-service",
     "digest_send_log": "notification-service",
 }

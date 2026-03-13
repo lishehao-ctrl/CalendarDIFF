@@ -3,14 +3,14 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models.review import Change, Input, ReviewStatus, SourceEventObservation
-from app.modules.core_ingest.entity_profile import course_display_name
+from app.db.models.review import Change, ReviewStatus, SourceEventObservation
+from app.db.models.shared import User
+from app.modules.common.course_identity import course_display_name, course_identity_matches
 from app.modules.core_ingest.course_work_item_family_rebuild import rebuild_user_work_item_state
-from app.modules.core_ingest.course_work_item_family_resolution import normalize_work_item_parse
 from app.modules.review_changes.change_decision_service import ReviewChangeNotFoundError, decide_review_change
 from app.modules.users.course_work_item_families_service import (
     CourseWorkItemFamilyValidationError,
-    add_alias_to_course_work_item_family,
+    add_raw_type_to_course_work_item_family,
     create_course_work_item_family,
     get_course_work_item_family,
     list_course_work_item_families,
@@ -34,10 +34,23 @@ def preview_label_learning(
 ) -> dict:
     change = _load_change(db, user_id=user_id, change_id=change_id)
     context = _load_learning_context(db=db, user_id=user_id, change=change)
-    families = list_course_work_item_families(db, user_id=user_id, course_key=context["course_key"])
+    families = list_course_work_item_families(
+        db,
+        user_id=user_id,
+        course_dept=context["course_dept"],
+        course_number=context["course_number"],
+        course_suffix=context["course_suffix"],
+        course_quarter=context["course_quarter"],
+        course_year2=context["course_year2"],
+    )
     return {
         "change_id": change.id,
-        "course_key": context["course_key"],
+        "course_display": context["course_display"],
+        "course_dept": context["course_dept"],
+        "course_number": context["course_number"],
+        "course_suffix": context["course_suffix"],
+        "course_quarter": context["course_quarter"],
+        "course_year2": context["course_year2"],
         "raw_label": context["raw_label"],
         "ordinal": context["ordinal"],
         "status": context["status"],
@@ -46,9 +59,25 @@ def preview_label_learning(
         "families": [
             {
                 "id": row.id,
-                "course_key": row.course_key,
+                "course_display": course_display_name(
+                    course_dept=row.course_dept,
+                    course_number=row.course_number,
+                    course_suffix=row.course_suffix,
+                    course_quarter=row.course_quarter,
+                    course_year2=row.course_year2,
+                )
+                or "Unknown",
+                "course_dept": row.course_dept,
+                "course_number": row.course_number,
+                "course_suffix": row.course_suffix,
+                "course_quarter": row.course_quarter,
+                "course_year2": row.course_year2,
                 "canonical_label": row.canonical_label,
-                "aliases": row.aliases_json if isinstance(row.aliases_json, list) else [],
+                "raw_types": [
+                    item.raw_type
+                    for item in (row.raw_types if isinstance(row.raw_types, list) else [])
+                    if isinstance(getattr(item, "raw_type", None), str)
+                ],
             }
             for row in families
         ],
@@ -67,9 +96,8 @@ def apply_label_learning(
     change = _load_change(db, user_id=user_id, change_id=change_id)
     context = _load_learning_context(db=db, user_id=user_id, change=change)
     raw_label = context["raw_label"]
-    course_key = context["course_key"]
-    if not course_key or not raw_label:
-        raise LabelLearningValidationError("label learning requires current course_key and raw_label")
+    if context["course_dept"] is None or context["course_number"] is None or not raw_label:
+        raise LabelLearningValidationError("label learning requires current course identity and raw_label")
 
     target_family_id: int | None = None
     target_canonical_label: str | None = None
@@ -79,9 +107,18 @@ def apply_label_learning(
         family = get_course_work_item_family(db, user_id=user_id, family_id=family_id)
         if family is None:
             raise LabelLearningNotFoundError("course work item family not found")
-        if family.course_key.strip() != course_key:
+        if not course_identity_matches(
+            {
+                "course_dept": family.course_dept,
+                "course_number": family.course_number,
+                "course_suffix": family.course_suffix,
+                "course_quarter": family.course_quarter,
+                "course_year2": family.course_year2,
+            },
+            context,
+        ):
             raise LabelLearningValidationError("family must belong to the same course")
-        family = add_alias_to_course_work_item_family(db, family=family, alias=raw_label)
+        family = add_raw_type_to_course_work_item_family(db, family=family, raw_type=raw_label)
         target_family_id = family.id
         target_canonical_label = family.canonical_label
     elif mode == "create_family":
@@ -91,19 +128,31 @@ def apply_label_learning(
         family = create_course_work_item_family(
             db,
             user_id=user_id,
-            course_key=course_key,
+            course_dept=context["course_dept"],
+            course_number=context["course_number"],
+            course_suffix=context["course_suffix"],
+            course_quarter=context["course_quarter"],
+            course_year2=context["course_year2"],
             canonical_label=label,
-            aliases=[raw_label] if label.strip().lower() != raw_label.strip().lower() else [],
+            raw_types=[raw_label] if label.strip().lower() != raw_label.strip().lower() else [],
         )
         target_family_id = family.id
         target_canonical_label = family.canonical_label
     else:
         raise LabelLearningValidationError("mode must be one of: add_alias, create_family")
 
-    user = db.get(Input, change.input_id).user  # type: ignore[union-attr]
+    user = db.get(User, user_id)
     if user is None:
         raise LabelLearningNotFoundError("user not found")
-    rebuild_user_work_item_state(db, user=user, course_key=course_key)
+    rebuild_user_work_item_state(
+        db,
+        user=user,
+        course_dept=context["course_dept"],
+        course_number=context["course_number"],
+        course_suffix=context["course_suffix"],
+        course_quarter=context["course_quarter"],
+        course_year2=context["course_year2"],
+    )
 
     approved_change_id = _approve_rebuilt_pending_change(
         db=db,
@@ -113,7 +162,12 @@ def apply_label_learning(
     )
     return {
         "applied": True,
-        "course_key": course_key,
+        "course_display": context["course_display"],
+        "course_dept": context["course_dept"],
+        "course_number": context["course_number"],
+        "course_suffix": context["course_suffix"],
+        "course_quarter": context["course_quarter"],
+        "course_year2": context["course_year2"],
         "raw_label": raw_label,
         "family_id": target_family_id,
         "canonical_label": target_canonical_label,
@@ -126,12 +180,17 @@ def _approve_rebuilt_pending_change(*, db: Session, user_id: int, source_id: int
         return None
     rows = db.scalars(
         select(Change)
-        .join(Input, Input.id == Change.input_id)
-        .where(Input.user_id == user_id, Change.review_status == ReviewStatus.PENDING)
+        .where(Change.user_id == user_id, Change.review_status == ReviewStatus.PENDING)
         .order_by(Change.id.desc())
     ).all()
     for row in rows:
-        sources = row.proposal_sources_json if isinstance(row.proposal_sources_json, list) else []
+        sources = [
+            {
+                "source_id": source_ref.source_id,
+                "external_event_id": source_ref.external_event_id,
+            }
+            for source_ref in row.source_refs
+        ]
         for source in sources:
             if not isinstance(source, dict):
                 continue
@@ -143,10 +202,7 @@ def _approve_rebuilt_pending_change(*, db: Session, user_id: int, source_id: int
 
 def _load_change(db: Session, *, user_id: int, change_id: int) -> Change:
     row = db.scalar(
-        select(Change)
-        .join(Input, Input.id == Change.input_id)
-        .where(Change.id == change_id, Input.user_id == user_id)
-        .limit(1)
+        select(Change).where(Change.id == change_id, Change.user_id == user_id).limit(1)
     )
     if row is None:
         raise ReviewChangeNotFoundError("Review change not found")
@@ -154,7 +210,13 @@ def _load_change(db: Session, *, user_id: int, change_id: int) -> Change:
 
 
 def _load_learning_context(*, db: Session, user_id: int, change: Change) -> dict:
-    sources = change.proposal_sources_json if isinstance(change.proposal_sources_json, list) else []
+    sources = [
+        {
+            "source_id": source_ref.source_id,
+            "external_event_id": source_ref.external_event_id,
+        }
+        for source_ref in change.source_refs
+    ]
     primary = next((row for row in sources if isinstance(row, dict) and isinstance(row.get("source_id"), int)), None)
     if primary is None:
         raise LabelLearningValidationError("label learning requires proposal source metadata")
@@ -177,13 +239,46 @@ def _load_learning_context(*, db: Session, user_id: int, change: Change) -> dict
     payload = observation.event_payload if isinstance(observation.event_payload, dict) else {}
     enrichment = payload.get("enrichment") if isinstance(payload.get("enrichment"), dict) else {}
     course_parse = enrichment.get("course_parse") if isinstance(enrichment.get("course_parse"), dict) else {}
-    work_item_parse = normalize_work_item_parse(enrichment.get("work_item_parse"))
-    course_key = course_display_name(course_parse=course_parse)
-    resolution = resolve_course_work_item_family(db, user_id=user_id, course_key=course_key, raw_label=work_item_parse.get("raw_label"))
+    semantic_event = payload.get("semantic_event") if isinstance(payload.get("semantic_event"), dict) else {}
+    semantic_draft = payload.get("semantic_event_draft") if isinstance(payload.get("semantic_event_draft"), dict) else {}
+    semantic_like = semantic_event or semantic_draft
+    course_display = course_display_name(semantic_event=semantic_like) or course_display_name(course_parse=course_parse)
+    course_dept = (
+        semantic_like.get("course_dept") if isinstance(semantic_like.get("course_dept"), str) else course_parse.get("dept") if isinstance(course_parse.get("dept"), str) else None
+    )
+    course_number = (
+        semantic_like.get("course_number") if isinstance(semantic_like.get("course_number"), int) else course_parse.get("number") if isinstance(course_parse.get("number"), int) else None
+    )
+    course_suffix = (
+        semantic_like.get("course_suffix") if isinstance(semantic_like.get("course_suffix"), str) else course_parse.get("suffix") if isinstance(course_parse.get("suffix"), str) else None
+    )
+    course_quarter = (
+        semantic_like.get("course_quarter") if isinstance(semantic_like.get("course_quarter"), str) else course_parse.get("quarter") if isinstance(course_parse.get("quarter"), str) else None
+    )
+    course_year2 = (
+        semantic_like.get("course_year2") if isinstance(semantic_like.get("course_year2"), int) else course_parse.get("year2") if isinstance(course_parse.get("year2"), int) else None
+    )
+    raw_label = semantic_like.get("raw_type") if isinstance(semantic_like.get("raw_type"), str) else None
+    ordinal = semantic_like.get("ordinal") if isinstance(semantic_like.get("ordinal"), int) else None
+    resolution = resolve_course_work_item_family(
+        db,
+        user_id=user_id,
+        course_dept=course_dept,
+        course_number=course_number,
+        course_suffix=course_suffix,
+        course_quarter=course_quarter,
+        course_year2=course_year2,
+        raw_label=raw_label,
+    )
     return {
-        "course_key": course_key,
-        "raw_label": work_item_parse.get("raw_label"),
-        "ordinal": work_item_parse.get("ordinal"),
+        "course_display": course_display,
+        "course_dept": course_dept,
+        "course_number": course_number,
+        "course_suffix": course_suffix,
+        "course_quarter": course_quarter,
+        "course_year2": course_year2,
+        "raw_label": raw_label,
+        "ordinal": ordinal,
         "status": resolution.get("status") or "unresolved",
         "resolved_family_id": resolution.get("family_id"),
         "resolved_canonical_label": resolution.get("canonical_label"),

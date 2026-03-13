@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.modules.common.deps import get_onboarded_user_or_409
+from app.modules.auth.deps import get_onboarded_authenticated_user_or_409 as get_onboarded_user_or_409
 from app.modules.review_links.candidates_decision_service import (
     LinkBlockNotFoundError,
     LinkCandidateDecisionError,
@@ -14,7 +14,6 @@ from app.modules.review_links.candidates_decision_service import (
     delete_link_block,
 )
 from app.modules.review_links.candidates_query_service import list_link_blocks, list_link_candidates
-from app.modules.review_links.router_common import normalize_status_filter, raise_not_found, raise_unprocessable
 from app.modules.review_links.schemas import (
     LinkBlockDeleteResponse,
     LinkBlockItemResponse,
@@ -37,12 +36,12 @@ def get_link_candidates(
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> list[LinkCandidateItemResponse]:
-    normalized_status = normalize_status_filter(
-        status_filter,
-        default_value="pending",
-        allowed_values=("pending", "approved", "rejected", "all"),
-        error_detail="status must be one of: pending, approved, rejected, all",
-    )
+    normalized_status = status_filter.strip().lower() if isinstance(status_filter, str) else "pending"
+    if normalized_status not in {"pending", "approved", "rejected", "all"}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="status must be one of: pending, approved, rejected, all",
+        )
     rows = list_link_candidates(
         db,
         user_id=user.id,
@@ -86,9 +85,9 @@ def post_link_candidate_decision(
             note=payload.note,
         )
     except LinkCandidateNotFoundError as exc:
-        raise_not_found(exc)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except LinkCandidateDecisionError as exc:
-        raise_unprocessable(exc)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
     return LinkCandidateDecisionResponse(
         id=row.id,
@@ -136,7 +135,7 @@ def delete_link_block_route(
     try:
         row = delete_link_block(db, user_id=user.id, block_id=block_id)
     except LinkBlockNotFoundError as exc:
-        raise_not_found(exc)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     return LinkBlockDeleteResponse(deleted=True, id=row.id)
 

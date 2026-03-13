@@ -4,15 +4,19 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
+from app.modules.common.event_display import EventDisplay
+
 
 @dataclass(frozen=True)
 class ChangeDigestItem:
-    event_uid: str
+    entity_uid: str
     change_type: str
-    course_label: str
-    title: str
-    before_start_at_utc: str | None
-    after_start_at_utc: str | None
+    before_display: EventDisplay | None
+    after_display: EventDisplay | None
+    before_due_at: str | None
+    after_due_at: str | None
+    before_time_precision: str
+    after_time_precision: str
     delta_seconds: int | None
     detected_at: datetime
     evidence_path: str | None
@@ -28,8 +32,9 @@ class Notifier(Protocol):
     def send_changes_digest(
         self,
         to_email: str,
-        input_label: str,
-        input_id: int,
+        review_label: str,
+        user_id: int,
         items: list[ChangeDigestItem],
+        timezone_name: str | None = None,
     ) -> SendResult:
         ...

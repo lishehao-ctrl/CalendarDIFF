@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from app.modules.common.event_display import EventDisplayResponse, UserFacingEventResponse
+from app.modules.common.payload_schemas import SemanticEventDraft
 
 
 class ReviewSourceRef(BaseModel):
@@ -12,6 +15,13 @@ class ReviewSourceRef(BaseModel):
     provider: str | None = None
     external_event_id: str | None = None
     confidence: float | None = None
+
+
+class ReviewPrimarySourceRef(BaseModel):
+    source_id: int
+    source_kind: str | None = None
+    provider: str | None = None
+    external_event_id: str | None = None
 
 
 class ChangeSummarySide(BaseModel):
@@ -28,20 +38,21 @@ class ChangeSummary(BaseModel):
 
 class ReviewChangeItemResponse(BaseModel):
     id: int
-    event_uid: str
+    entity_uid: str
     change_type: str
+    change_origin: str
     detected_at: datetime
     review_status: Literal["pending", "approved", "rejected"]
-    before_json: dict | None
-    after_json: dict | None
-    proposal_merge_key: str | None
+    before_display: EventDisplayResponse | None = None
+    after_display: EventDisplayResponse | None = None
+    before_event: UserFacingEventResponse | None = None
+    after_event: UserFacingEventResponse | None = None
+    primary_source: ReviewPrimarySourceRef | None = None
     proposal_sources: list[ReviewSourceRef]
-    source_id: int | None
     viewed_at: datetime | None
     viewed_note: str | None
     reviewed_at: datetime | None
     review_note: str | None
-    source_kind: str | None = None
     priority_rank: int | None = None
     priority_label: str | None = None
     notification_state: str | None = None
@@ -117,8 +128,8 @@ class EvidencePreviewEvent(BaseModel):
 
 class EvidencePreviewStructuredItem(BaseModel):
     uid: str | None = None
-    title: str | None = None
-    course_label: str | None = None
+    event_display: EventDisplayResponse | None = None
+    source_title: str | None = None
     start_at: str | None = None
     end_at: str | None = None
     location: str | None = None
@@ -145,17 +156,29 @@ class EvidencePreviewResponse(BaseModel):
 
 class ReviewEditTargetRequest(BaseModel):
     change_id: int | None = Field(default=None, ge=1)
-    event_uid: str | None = Field(default=None, max_length=255)
+    entity_uid: str | None = Field(default=None, max_length=255)
 
     model_config = {"extra": "forbid"}
 
 
 class ReviewEditPatchRequest(BaseModel):
-    due_at: str = Field(min_length=1, max_length=128)
-    title: str | None = Field(default=None, max_length=512)
-    course_label: str | None = Field(default=None, max_length=64)
+    event_name: str | None = Field(default=None, max_length=512)
+    due_date: date | None = None
+    due_time: str | None = Field(default=None, max_length=32)
+    time_precision: Literal["date_only", "datetime"] | None = None
+    course_dept: str | None = Field(default=None, max_length=16)
+    course_number: int | None = Field(default=None, ge=0, le=9999)
+    course_suffix: str | None = Field(default=None, max_length=8)
+    course_quarter: Literal["WI", "SP", "SU", "FA"] | None = None
+    course_year2: int | None = Field(default=None, ge=0, le=99)
 
     model_config = {"extra": "forbid"}
+
+    @model_validator(mode="after")
+    def _validate_non_empty_patch(self) -> "ReviewEditPatchRequest":
+        if not self.model_fields_set:
+            raise ValueError("patch must include at least one semantic field")
+        return self
 
 
 class ReviewEditRequest(BaseModel):
@@ -166,22 +189,28 @@ class ReviewEditRequest(BaseModel):
 
     model_config = {"extra": "forbid"}
 
+    @model_validator(mode="after")
+    def _validate_target_mode(self) -> "ReviewEditRequest":
+        if self.mode == "proposal" and self.target.change_id is None:
+            raise ValueError("proposal edits require target.change_id")
+        if self.mode == "canonical" and not self.target.entity_uid:
+            raise ValueError("canonical edits require target.entity_uid")
+        return self
 
-class ReviewEditEventPayload(BaseModel):
-    uid: str
-    title: str
-    course_label: str
-    start_at_utc: datetime
-    end_at_utc: datetime
+
+class ReviewEditContextResponse(BaseModel):
+    change_id: int
+    entity_uid: str
+    editable_event: SemanticEventDraft
 
 
 class ReviewEditPreviewResponse(BaseModel):
     mode: Literal["proposal", "canonical"]
-    event_uid: str
+    entity_uid: str
     change_id: int | None = None
     proposal_change_type: Literal["created", "due_changed"] | None = None
-    base: ReviewEditEventPayload
-    candidate_after: ReviewEditEventPayload
+    base: UserFacingEventResponse
+    candidate_after: UserFacingEventResponse
     delta_seconds: int | None
     will_reject_pending_change_ids: list[int]
     idempotent: bool
@@ -191,23 +220,33 @@ class ReviewEditApplyResponse(BaseModel):
     mode: Literal["proposal", "canonical"]
     applied: bool
     idempotent: bool
-    event_uid: str
+    entity_uid: str
     edited_change_id: int | None = None
     canonical_edit_change_id: int | None = None
     rejected_pending_change_ids: list[int]
-    event: ReviewEditEventPayload
+    event: UserFacingEventResponse
 
 
 class LabelLearningFamilyOption(BaseModel):
     id: int
-    course_key: str
+    course_display: str
+    course_dept: str
+    course_number: int
+    course_suffix: str | None = None
+    course_quarter: str | None = None
+    course_year2: int | None = None
     canonical_label: str
-    aliases: list[str]
+    raw_types: list[str]
 
 
 class LabelLearningPreviewResponse(BaseModel):
     change_id: int
-    course_key: str | None
+    course_display: str | None
+    course_dept: str | None = None
+    course_number: int | None = None
+    course_suffix: str | None = None
+    course_quarter: str | None = None
+    course_year2: int | None = None
     raw_label: str | None
     ordinal: int | None
     status: Literal["resolved", "unresolved"]
@@ -226,8 +265,53 @@ class LabelLearningApplyRequest(BaseModel):
 
 class LabelLearningApplyResponse(BaseModel):
     applied: bool
-    course_key: str | None
+    course_display: str | None
+    course_dept: str | None = None
+    course_number: int | None = None
+    course_suffix: str | None = None
+    course_quarter: str | None = None
+    course_year2: int | None = None
     raw_label: str | None
     family_id: int | None
     canonical_label: str | None
     approved_change_id: int | None = None
+
+
+class RawTypeSuggestionItemResponse(BaseModel):
+    id: int
+    course_display: str
+    course_dept: str
+    course_number: int
+    course_suffix: str | None = None
+    course_quarter: str | None = None
+    course_year2: int | None = None
+    status: Literal["pending", "approved", "rejected", "dismissed"]
+    confidence: float
+    evidence: str | None = None
+    source_observation_id: int | None = None
+    source_raw_type: str | None = None
+    source_raw_type_id: int | None = None
+    source_family_id: int | None = None
+    source_family_name: str | None = None
+    suggested_raw_type: str | None = None
+    suggested_raw_type_id: int | None = None
+    suggested_family_id: int | None = None
+    suggested_family_name: str | None = None
+    review_note: str | None = None
+    reviewed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RawTypeSuggestionDecisionRequest(BaseModel):
+    decision: Literal["approve", "reject", "dismiss"]
+    note: str | None = Field(default=None, max_length=512)
+
+    model_config = {"extra": "forbid"}
+
+
+class RawTypeSuggestionDecisionResponse(BaseModel):
+    id: int
+    status: Literal["pending", "approved", "rejected", "dismissed"]
+    review_note: str | None = None
+    reviewed_at: datetime | None = None

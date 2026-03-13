@@ -16,20 +16,30 @@ class JsonlFileNotifier(Notifier):
     def send_changes_digest(
         self,
         to_email: str,
-        input_label: str,
-        input_id: int,
+        review_label: str,
+        user_id: int,
         items: list[ChangeDigestItem],
+        timezone_name: str | None = None,
     ) -> SendResult:
         settings = get_settings()
+        del timezone_name
         output_path = Path(settings.notify_jsonl_path).expanduser()
         context = get_notification_runtime_context()
         payload = {
             "sent_at": datetime.now(UTC).isoformat(),
             "to_email": to_email,
-            "input_id": input_id,
-            "input_label": input_label,
+            "user_id": user_id,
+            "review_label": review_label,
             "item_count": len(items),
-            "item_event_uids": [item.event_uid for item in items],
+            "item_entity_uids": [item.entity_uid for item in items],
+            "item_display_labels": [
+                item.after_display.display_label
+                if item.after_display is not None
+                else item.before_display.display_label
+                if item.before_display is not None
+                else item.entity_uid
+                for item in items
+            ],
             "run_id": context.get("run_id"),
             "semester": context.get("semester"),
             "batch": context.get("batch"),

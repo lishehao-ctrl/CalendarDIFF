@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models.review import Change, ReviewStatus
+from app.db.models.review import Change, ChangeSourceRef, ReviewStatus
 from app.db.schema_guard import ensure_schema_ready
 from app.db.session import get_engine, get_session_factory
 
@@ -52,16 +52,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _extract_source_ids(raw_sources: object) -> set[int]:
-    if not isinstance(raw_sources, list):
-        return set()
-    out: set[int] = set()
-    for item in raw_sources:
-        if isinstance(item, dict) and isinstance(item.get("source_id"), int):
-            out.add(int(item["source_id"]))
-    return out
-
-
 def _validate_args(args: argparse.Namespace) -> set[int]:
     if args.limit <= 0:
         raise ValueError("--limit must be greater than 0")
@@ -78,7 +68,12 @@ def _validate_args(args: argparse.Namespace) -> set[int]:
 def _query_candidates(db: Session, *, limit: int, target_source_ids: set[int]) -> tuple[list[Change], dict[int, int], bool]:
     rows = db.scalars(
         select(Change)
-        .where(Change.review_status == ReviewStatus.PENDING)
+        .join(ChangeSourceRef, ChangeSourceRef.change_id == Change.id)
+        .where(
+            Change.review_status == ReviewStatus.PENDING,
+            ChangeSourceRef.source_id.in_(sorted(target_source_ids)),
+        )
+        .distinct()
         .order_by(Change.id.asc())
         .limit(limit + 1)
     ).all()
@@ -90,7 +85,7 @@ def _query_candidates(db: Session, *, limit: int, target_source_ids: set[int]) -
     matched: list[Change] = []
     source_hits: dict[int, int] = {}
     for row in rows:
-        row_source_ids = _extract_source_ids(row.proposal_sources_json)
+        row_source_ids = {int(ref.source_id) for ref in row.source_refs if isinstance(ref.source_id, int)}
         hit_ids = sorted(row_source_ids.intersection(target_source_ids))
         if not hit_ids:
             continue

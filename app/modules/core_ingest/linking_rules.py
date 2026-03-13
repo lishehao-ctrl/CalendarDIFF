@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource, SourceKind
 from app.db.models.review import SourceEventObservation
+from app.modules.core_ingest.semantic_event_service import normalize_semantic_parse
 
 
 @dataclass(frozen=True)
@@ -26,7 +27,7 @@ def decide_inventory_link(
     source: InputSource,
     external_event_id: str,
     course_parse: dict,
-    event_parts: dict,
+    semantic_parse: dict,
     time_anchor_confidence: float,
     blocked_entity_uids: set[str],
 ) -> LinkDecision:
@@ -42,10 +43,9 @@ def decide_inventory_link(
     incoming_dept = _coerce_text(course_parse.get("dept"))
     incoming_number = course_parse.get("number") if isinstance(course_parse.get("number"), int) else None
     incoming_suffix = _coerce_text(course_parse.get("suffix"))
-    incoming_event_type = _coerce_text(event_parts.get("type"))
-    incoming_event_index = event_parts.get("index") if isinstance(event_parts.get("index"), int) else None
-    if incoming_event_index is not None and incoming_event_index <= 0:
-        incoming_event_index = None
+    normalized_semantic = normalize_semantic_parse(semantic_parse)
+    incoming_raw_type = _coerce_text(normalized_semantic.get("raw_type"))
+    incoming_ordinal = normalized_semantic.get("ordinal") if isinstance(normalized_semantic.get("ordinal"), int) else None
 
     if incoming_dept is None or incoming_number is None:
         return _candidate(
@@ -53,11 +53,11 @@ def decide_inventory_link(
             candidate_entity_uid=None,
             evidence={"incoming_course_parse": {"dept": incoming_dept, "number": incoming_number}},
         )
-    if incoming_event_type is None:
+    if incoming_raw_type is None:
         return _candidate(
-            rule_reason="missing_event_type",
+            rule_reason="missing_raw_type",
             candidate_entity_uid=None,
-            evidence={"incoming_event_parts": {"type": incoming_event_type, "index": incoming_event_index}},
+            evidence={"incoming_semantic_parse": {"raw_type": incoming_raw_type, "ordinal": incoming_ordinal}},
         )
 
     calendar_observations = db.scalars(
@@ -120,67 +120,51 @@ def decide_inventory_link(
                 },
             )
 
-    by_type = [
-        row
-        for row in suffix_filtered
-        if _coerce_text(_event_parts_from_payload(row.event_payload).get("type")) == incoming_event_type
+    by_raw_type = [
+        row for row in suffix_filtered if _coerce_text(_semantic_parse_from_payload(row.event_payload).get("raw_type")) == incoming_raw_type
     ]
-    if not by_type:
+    if not by_raw_type:
         return _candidate(
             rule_reason="no_rule_match",
             candidate_entity_uid=_pick_candidate_uid(suffix_filtered),
-            evidence={
-                "incoming_event_type": incoming_event_type,
-                "candidate_count": 0,
-            },
+            evidence={"incoming_raw_type": incoming_raw_type, "candidate_count": 0},
         )
 
-    index_set = sorted(
+    ordinal_set = sorted(
         {
             int(value)
-            for value in (_event_parts_from_payload(row.event_payload).get("index") for row in by_type)
+            for value in (_semantic_parse_from_payload(row.event_payload).get("ordinal") for row in by_raw_type)
             if isinstance(value, int) and int(value) > 0
         }
     )
-    index_filtered = list(by_type)
-    if len(index_set) > 1:
-        if incoming_event_index is None:
+    ordinal_filtered = list(by_raw_type)
+    if len(ordinal_set) > 1:
+        if incoming_ordinal is None:
             return _candidate(
-                rule_reason="multi_index_requires_input_index",
-                candidate_entity_uid=_pick_candidate_uid(by_type),
-                evidence={
-                    "incoming_event_index": None,
-                    "candidate_indexes": index_set,
-                },
+                rule_reason="multi_ordinal_requires_input_ordinal",
+                candidate_entity_uid=_pick_candidate_uid(by_raw_type),
+                evidence={"incoming_ordinal": None, "candidate_ordinals": ordinal_set},
             )
-        index_filtered = [
-            row
-            for row in by_type
-            if _event_parts_from_payload(row.event_payload).get("index") == incoming_event_index
+        ordinal_filtered = [
+            row for row in by_raw_type if _semantic_parse_from_payload(row.event_payload).get("ordinal") == incoming_ordinal
         ]
-        if not index_filtered:
+        if not ordinal_filtered:
             return _candidate(
-                rule_reason="index_mismatch",
-                candidate_entity_uid=_pick_candidate_uid(by_type),
-                evidence={
-                    "incoming_event_index": incoming_event_index,
-                    "candidate_indexes": index_set,
-                },
+                rule_reason="ordinal_mismatch",
+                candidate_entity_uid=_pick_candidate_uid(by_raw_type),
+                evidence={"incoming_ordinal": incoming_ordinal, "candidate_ordinals": ordinal_set},
             )
-    elif len(index_set) == 1:
-        existing_index = index_set[0]
-        if incoming_event_index is not None and incoming_event_index != existing_index:
+    elif len(ordinal_set) == 1:
+        existing_ordinal = ordinal_set[0]
+        if incoming_ordinal is not None and incoming_ordinal != existing_ordinal:
             return _candidate(
-                rule_reason="index_mismatch",
-                candidate_entity_uid=_pick_candidate_uid(by_type),
-                evidence={
-                    "incoming_event_index": incoming_event_index,
-                    "candidate_indexes": index_set,
-                },
+                rule_reason="ordinal_mismatch",
+                candidate_entity_uid=_pick_candidate_uid(by_raw_type),
+                evidence={"incoming_ordinal": incoming_ordinal, "candidate_ordinals": ordinal_set},
             )
 
-    unblocked = [row for row in index_filtered if row.merge_key not in blocked_entity_uids]
-    blocked_count = len(index_filtered) - len(unblocked)
+    unblocked = [row for row in ordinal_filtered if row.entity_uid not in blocked_entity_uids]
+    blocked_count = len(ordinal_filtered) - len(unblocked)
     if not unblocked:
         return LinkDecision(
             entity_uid=None,
@@ -203,16 +187,16 @@ def decide_inventory_link(
             evidence={
                 "candidate_count": len(unblocked),
                 "blocked_candidates": blocked_count,
-                "candidate_entity_uids": sorted({row.merge_key for row in unblocked}),
+                "candidate_entity_uids": sorted({row.entity_uid for row in unblocked}),
             },
         )
 
     linked_row = unblocked[0]
     return LinkDecision(
-        entity_uid=linked_row.merge_key,
+        entity_uid=linked_row.entity_uid,
         status="linked",
         score=1.0,
-        candidate_entity_uid=linked_row.merge_key,
+        candidate_entity_uid=linked_row.entity_uid,
         reason_code="auto_link_inventory_rule",
         score_breakdown={
             "rule_engine": "inventory",
@@ -220,18 +204,15 @@ def decide_inventory_link(
             "course_key": f"{incoming_dept}{incoming_number}",
             "course_requires_suffix": requires_suffix,
             "incoming_suffix": incoming_suffix,
-            "incoming_event_type": incoming_event_type,
-            "incoming_event_index": incoming_event_index,
+            "incoming_raw_type": incoming_raw_type,
+            "incoming_ordinal": incoming_ordinal,
             "blocked_candidates": blocked_count,
         },
     )
 
 
 def _candidate(*, rule_reason: str, candidate_entity_uid: str | None, evidence: dict, reason_code: str = "score_band") -> LinkDecision:
-    payload = {
-        "rule_engine": "inventory",
-        "rule_reason": rule_reason,
-    }
+    payload = {"rule_engine": "inventory", "rule_reason": rule_reason}
     payload.update(evidence)
     return LinkDecision(
         entity_uid=None,
@@ -254,7 +235,7 @@ def _pick_candidate_uid(observations: list[SourceEventObservation]) -> str | Non
         ),
         reverse=True,
     )
-    return sorted_rows[0].merge_key
+    return sorted_rows[0].entity_uid
 
 
 def _course_key(course_parse: dict) -> tuple[str, int] | None:
@@ -268,23 +249,41 @@ def _course_key(course_parse: dict) -> tuple[str, int] | None:
 def _course_parse_from_payload(payload: object) -> dict:
     if not isinstance(payload, dict):
         return {}
-    enrichment_raw = payload.get("enrichment")
-    enrichment = enrichment_raw if isinstance(enrichment_raw, dict) else {}
+    semantic_event = payload.get("semantic_event")
+    if isinstance(semantic_event, dict):
+        return {
+            "dept": semantic_event.get("course_dept"),
+            "number": semantic_event.get("course_number"),
+            "suffix": semantic_event.get("course_suffix"),
+            "quarter": semantic_event.get("course_quarter"),
+            "year2": semantic_event.get("course_year2"),
+        }
+    semantic_draft = payload.get("semantic_event_draft")
+    if isinstance(semantic_draft, dict):
+        return {
+            "dept": semantic_draft.get("course_dept"),
+            "number": semantic_draft.get("course_number"),
+            "suffix": semantic_draft.get("course_suffix"),
+            "quarter": semantic_draft.get("course_quarter"),
+            "year2": semantic_draft.get("course_year2"),
+        }
+    enrichment = payload.get("enrichment") if isinstance(payload.get("enrichment"), dict) else {}
     course_parse = enrichment.get("course_parse")
-    if isinstance(course_parse, dict):
-        return course_parse
-    return {}
+    return course_parse if isinstance(course_parse, dict) else {}
 
 
-def _event_parts_from_payload(payload: object) -> dict:
+def _semantic_parse_from_payload(payload: object) -> dict:
     if not isinstance(payload, dict):
         return {}
-    enrichment_raw = payload.get("enrichment")
-    enrichment = enrichment_raw if isinstance(enrichment_raw, dict) else {}
-    event_parts = enrichment.get("event_parts")
-    if isinstance(event_parts, dict):
-        return event_parts
-    return {}
+    semantic_event = payload.get("semantic_event")
+    if isinstance(semantic_event, dict):
+        return semantic_event
+    semantic_draft = payload.get("semantic_event_draft")
+    if isinstance(semantic_draft, dict):
+        return semantic_draft
+    enrichment = payload.get("enrichment") if isinstance(payload.get("enrichment"), dict) else {}
+    semantic_parse = enrichment.get("semantic_parse")
+    return semantic_parse if isinstance(semantic_parse, dict) else {}
 
 
 def _coerce_text(value: object) -> str | None:

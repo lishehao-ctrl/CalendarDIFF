@@ -84,7 +84,7 @@ return {1, "ok", tokens, hard_count}
 
 def _limiter_prefix() -> str:
     stream_key = parse_queue_stream_key()
-    return f"{stream_key}:limiter:v1"
+    return f"{stream_key}:limiter"
 
 
 def _limiter_keys(*, now_seconds: int) -> tuple[str, str, str]:

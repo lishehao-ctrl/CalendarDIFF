@@ -5,7 +5,7 @@ from app.core.config import get_settings
 
 def parse_queue_stream_key() -> str:
     settings = get_settings()
-    return settings.llm_queue_stream_key.strip() or "llm:parse:stream:v1"
+    return settings.llm_queue_stream_key.strip() or "llm:parse:stream"
 
 
 def parse_queue_group() -> str:

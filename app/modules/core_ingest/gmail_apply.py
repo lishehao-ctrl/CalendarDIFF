@@ -1,27 +1,28 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource, SourceKind
 from app.db.models.review import EventLinkOrigin
-from app.modules.core_ingest.canonical_coercion import parse_optional_iso_datetime
-from app.modules.core_ingest.entity_profile import get_or_create_event_entity, update_event_entity_course_profile
+from app.modules.core_ingest.semantic_event_service import build_semantic_event_payload
 from app.modules.core_ingest.linking_engine import (
     find_existing_entity_link,
+    link_gmail_observation_to_entity,
     resolve_pending_link_candidates_for_pair,
     upsert_event_entity_link,
+    upsert_link_candidate,
+    with_candidate_evidence,
 )
-from app.modules.core_ingest.observation_store import deactivate_observation, upsert_observation
-from app.modules.core_ingest.payload_contracts import PayloadContractError, validate_gmail_payload_v3
+from app.modules.core_ingest.observation_store import upsert_observation
+from app.modules.core_ingest.payload_contracts import PayloadContractError, validate_gmail_payload
 from app.modules.core_ingest.payload_extractors import (
     extract_enrichment_course_parse,
-    extract_enrichment_event_parts,
-    extract_enrichment_work_item_parse,
     extract_link_signals,
-    extract_source_canonical_from_gmail_payload,
+    extract_semantic_event_draft,
+    extract_source_facts_from_gmail_payload,
 )
 from app.modules.core_ingest.course_work_item_family_resolution import build_source_scoped_entity_uid, resolve_kind_resolution
 
@@ -46,7 +47,7 @@ def apply_gmail_observations(
         if not isinstance(payload, dict):
             continue
         try:
-            validate_gmail_payload_v3(payload=payload, record_index=index)
+            validate_gmail_payload(payload=payload, record_index=index)
         except PayloadContractError as exc:
             raise RuntimeError(str(exc)) from exc
 
@@ -54,35 +55,24 @@ def apply_gmail_observations(
         if not isinstance(message_id, str) or not message_id.strip():
             continue
         external_event_id = message_id.strip()
-        source_canonical = extract_source_canonical_from_gmail_payload(payload=payload)
-        due_at = parse_optional_iso_datetime(source_canonical.get("source_dtstart_utc"))
-        if due_at is None:
-            affected_entity_uids.update(
-                deactivate_observation(
-                    db=db,
-                    source_id=source.id,
-                    external_event_id=external_event_id,
-                    applied_at=applied_at,
-                    request_id=request_id,
-                )
-            )
-            continue
+        source_facts = extract_source_facts_from_gmail_payload(payload=payload)
 
         course_parse = extract_enrichment_course_parse(payload=payload)
-        work_item_parse = extract_enrichment_work_item_parse(payload=payload)
-        event_parts = extract_enrichment_event_parts(payload=payload)
+        semantic_draft = extract_semantic_event_draft(payload=payload, source_facts=source_facts)
         link_signals = extract_link_signals(
             payload=payload,
-            source_canonical=source_canonical,
+            source_facts=source_facts,
         )
-        confidence = float(course_parse.get("confidence") or work_item_parse.get("confidence") or 0.0)
         kind_resolution = resolve_kind_resolution(
             db,
             user_id=source.user_id,
             course_parse=course_parse,
-            work_item_parse=work_item_parse,
+            semantic_parse=semantic_draft,
             source_kind=SourceKind.EMAIL.value,
             external_event_id=external_event_id,
+            source_id=source.id,
+            request_id=request_id,
+            provider=source.provider,
         )
 
         existing_link = find_existing_entity_link(
@@ -91,95 +81,123 @@ def apply_gmail_observations(
             source_id=source.id,
             external_event_id=external_event_id,
         )
-        entity_uid = (
-            existing_link.entity_uid
-            if existing_link is not None and isinstance(existing_link.entity_uid, str)
-            else str(kind_resolution.get("entity_uid") or build_source_scoped_entity_uid(source_kind=SourceKind.EMAIL.value, external_event_id=external_event_id))
-        )
-
-        if existing_link is None:
-            link_row = upsert_event_entity_link(
+        link_row = None
+        should_emit_semantic_proposal = False
+        if existing_link is not None and existing_link.link_origin != EventLinkOrigin.AUTO and isinstance(existing_link.entity_uid, str):
+            entity_uid = existing_link.entity_uid
+            should_emit_semantic_proposal = True
+        else:
+            link_decision = link_gmail_observation_to_entity(
                 db=db,
                 source=source,
                 external_event_id=external_event_id,
-                entity_uid=entity_uid,
-                link_origin=EventLinkOrigin.AUTO,
-                link_score=1.0 if kind_resolution.get("status") == "resolved" else 0.2,
-                signals_json=link_signals,
+                course_parse=course_parse,
+                semantic_parse=semantic_draft,
+                time_anchor_confidence=float(link_signals.get("time_anchor_confidence") or 0.0),
+                signals=link_signals,
             )
-            resolve_pending_link_candidates_for_pair(
-                db=db,
-                user_id=source.user_id,
-                source_id=source.id,
-                external_event_id=external_event_id,
-                note="semantic_link_resolved",
-            )
-            if auto_link_contexts is not None and kind_resolution.get("status") == "resolved":
-                auto_link_contexts.append(
-                    {
-                        "user_id": source.user_id,
-                        "source_id": source.id,
-                        "external_event_id": external_event_id,
-                        "entity_uid": entity_uid,
-                        "link_row": link_row,
-                        "evidence_snapshot": {
-                            "request_id": request_id,
+            if link_decision.status == "linked" and isinstance(link_decision.entity_uid, str):
+                entity_uid = link_decision.entity_uid
+                link_row = upsert_event_entity_link(
+                    db=db,
+                    source=source,
+                    external_event_id=external_event_id,
+                    entity_uid=entity_uid,
+                    link_origin=EventLinkOrigin.AUTO,
+                    link_score=float(link_decision.score),
+                    signals_json=link_signals,
+                )
+                should_emit_semantic_proposal = True
+                resolve_pending_link_candidates_for_pair(
+                    db=db,
+                    user_id=source.user_id,
+                    source_id=source.id,
+                    external_event_id=external_event_id,
+                    note="semantic_link_resolved",
+                )
+                if auto_link_contexts is not None:
+                    auto_link_contexts.append(
+                        {
+                            "user_id": source.user_id,
                             "source_id": source.id,
                             "external_event_id": external_event_id,
                             "entity_uid": entity_uid,
-                            "kind_resolution": kind_resolution,
-                            "source_dtstart_utc": source_canonical.get("source_dtstart_utc"),
-                        },
-                    }
+                            "link_row": link_row,
+                            "evidence_snapshot": {
+                                "request_id": request_id,
+                                "source_id": source.id,
+                                "external_event_id": external_event_id,
+                                "entity_uid": entity_uid,
+                                "kind_resolution": kind_resolution,
+                                "link_decision": {
+                                    "status": link_decision.status,
+                                    "reason_code": link_decision.reason_code,
+                                    "score": link_decision.score,
+                                },
+                                "source_dtstart_utc": source_facts.get("source_dtstart_utc"),
+                            },
+                        }
+                    )
+            else:
+                rule_reason = str(link_decision.score_breakdown.get("rule_reason") or "")
+                candidate_can_emit_semantic_proposal = (
+                    link_decision.status == "candidate"
+                    and rule_reason in {"no_rule_match", "missing_raw_type"}
+                    and isinstance(kind_resolution.get("family_id"), int)
                 )
+                entity_uid = (
+                    existing_link.entity_uid
+                    if existing_link is not None and isinstance(existing_link.entity_uid, str)
+                    else build_source_scoped_entity_uid(source_kind=SourceKind.EMAIL.value, external_event_id=external_event_id)
+                )
+                should_emit_semantic_proposal = candidate_can_emit_semantic_proposal
+                if link_decision.status == "candidate" and not candidate_can_emit_semantic_proposal:
+                    upsert_link_candidate(
+                        db=db,
+                        user_id=source.user_id,
+                        source_id=source.id,
+                        external_event_id=external_event_id,
+                        proposed_entity_uid=link_decision.candidate_entity_uid,
+                        score=float(link_decision.score),
+                        score_breakdown=with_candidate_evidence(score_breakdown=link_decision.score_breakdown, signals=link_signals),
+                        reason_code=str(link_decision.reason_code or "score_band"),
+                    )
 
-        entity = get_or_create_event_entity(db=db, user_id=source.user_id, entity_uid=entity_uid)
-        course_label = update_event_entity_course_profile(
-            entity=entity,
-            source_kind=SourceKind.EMAIL.value,
-            course_parse=course_parse,
-            source_title=source_canonical.get("source_title"),
+        semantic_event = build_semantic_event_payload(
+            semantic_draft=semantic_draft,
+            source_facts=source_facts,
+            family_id=kind_resolution.get("family_id") if isinstance(kind_resolution.get("family_id"), int) else None,
+            family_name=kind_resolution.get("canonical_label") if isinstance(kind_resolution.get("canonical_label"), str) else None,
+            raw_type=kind_resolution.get("raw_type") if isinstance(kind_resolution.get("raw_type"), str) else None,
+            entity_uid=entity_uid,
         )
+        semantic_event["uid"] = entity_uid
         logger.debug(
-            "core_ingest.merge.gmail request_id=%s source_id=%s entity_uid=%s external_event_id=%s resolution=%s",
+            "core_ingest.observation.gmail request_id=%s source_id=%s entity_uid=%s external_event_id=%s resolution=%s",
             request_id,
             source.id,
             entity_uid,
             external_event_id,
             kind_resolution.get("status"),
         )
-
         observation_payload = {
-            "uid": entity_uid,
-            "title": str(source_canonical.get("source_title") or f"Email event {external_event_id}")[:512],
-            "course_label": course_label,
-            "start_at_utc": str(source_canonical.get("source_dtstart_utc") or due_at.isoformat()),
-            "end_at_utc": str(source_canonical.get("source_dtend_utc") or (due_at + timedelta(hours=1)).isoformat()),
-            "confidence": confidence,
-            "raw_confidence": confidence,
-            "message_id": external_event_id,
             "kind_resolution": kind_resolution,
-            "source_canonical": source_canonical,
-            "enrichment": {
-                "course_parse": course_parse,
-                "work_item_parse": work_item_parse,
-                "event_parts": event_parts,
-                "link_signals": link_signals,
-                "payload_schema_version": "obs_v3",
-            },
+            "source_facts": source_facts,
+            "semantic_event": semantic_event,
+            "link_signals": link_signals,
         }
 
-        affected_entity_uids.update(
-            upsert_observation(
-                db=db,
-                source=source,
-                external_event_id=external_event_id,
-                merge_key=entity_uid,
-                event_payload=observation_payload,
-                applied_at=applied_at,
-                request_id=request_id,
-            )
+        changed_entity_uids = upsert_observation(
+            db=db,
+            source=source,
+            external_event_id=external_event_id,
+            entity_uid=entity_uid,
+            event_payload=observation_payload,
+            applied_at=applied_at,
+            request_id=request_id,
         )
+        if should_emit_semantic_proposal:
+            affected_entity_uids.update(changed_entity_uids)
 
     return affected_entity_uids
 

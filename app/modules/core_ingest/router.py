@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import require_internal_service_token
 from app.db.session import get_db
-from app.modules.core_ingest.apply_service import apply_ingest_result_idempotent, get_ingest_apply_status
+from app.modules.core_ingest.apply import apply_ingest_result_idempotent, get_ingest_apply_status
 
 router = APIRouter(
     prefix="/internal/review",

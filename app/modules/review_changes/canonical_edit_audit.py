@@ -13,8 +13,13 @@ from app.db.models.shared import IntegrationOutbox, OutboxStatus
 def reject_conflicting_pending_changes(
     *,
     db: Session,
+<<<<<<< ours
     canonical_input_id: int,
     event_uid: str,
+=======
+    user_id: int,
+    entity_uid: str,
+>>>>>>> theirs
     reviewed_at: datetime,
     reviewed_by_user_id: int,
     canonical_edit_change_id: int,
@@ -22,8 +27,13 @@ def reject_conflicting_pending_changes(
     pending_rows = db.scalars(
         select(Change)
         .where(
+<<<<<<< ours
             Change.input_id == canonical_input_id,
             Change.event_uid == event_uid,
+=======
+            Change.user_id == user_id,
+            Change.entity_uid == entity_uid,
+>>>>>>> theirs
             Change.review_status == ReviewStatus.PENDING,
         )
         .with_for_update()
@@ -45,7 +55,11 @@ def emit_canonical_edit_audit_event(
     *,
     db: Session,
     change_id: int,
+<<<<<<< ours
     event_uid: str,
+=======
+    entity_uid: str,
+>>>>>>> theirs
     reviewed_by_user_id: int,
     reviewed_at: datetime,
     rejected_pending_change_ids: list[int],
@@ -56,7 +70,11 @@ def emit_canonical_edit_audit_event(
         aggregate_id=str(change_id),
         payload={
             "change_id": change_id,
+<<<<<<< ours
             "event_uid": event_uid,
+=======
+            "entity_uid": entity_uid,
+>>>>>>> theirs
             "review_status": ReviewStatus.APPROVED.value,
             "reviewed_by_user_id": reviewed_by_user_id,
             "reviewed_at": reviewed_at.isoformat(),

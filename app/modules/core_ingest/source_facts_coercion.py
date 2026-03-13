@@ -2,30 +2,33 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from app.modules.common.course_identity import course_display_name
+from app.modules.common.payload_schemas import SourceFacts
 from app.modules.core_ingest.time_utils import as_utc
 from app.modules.sync.types import CanonicalEventInput
 
 
 def coerce_calendar_payload(*, payload: dict) -> CanonicalEventInput:
-    from app.modules.core_ingest.entity_profile import course_display_name
     from app.modules.core_ingest.payload_extractors import extract_enrichment_course_parse
 
-    source_canonical_raw = payload.get("source_canonical")
-    source_canonical = source_canonical_raw if isinstance(source_canonical_raw, dict) else {}
-    uid_raw = source_canonical.get("external_event_id")
-    uid = uid_raw.strip() if isinstance(uid_raw, str) and uid_raw.strip() else ""
+    source_facts_raw = payload.get("source_facts")
+    try:
+        source_facts = SourceFacts.model_validate(source_facts_raw if isinstance(source_facts_raw, dict) else {})
+    except Exception as exc:
+        raise RuntimeError("core_ingest_payload_invalid: calendar payload missing source_facts.external_event_id") from exc
+    uid = source_facts.external_event_id
     if not uid:
-        raise RuntimeError("core_ingest_payload_invalid: calendar payload missing source_canonical.external_event_id")
+        raise RuntimeError("core_ingest_payload_invalid: calendar payload missing source_facts.external_event_id")
 
-    title_raw = source_canonical.get("source_title")
+    title_raw = source_facts.source_title
     if not isinstance(title_raw, str) or not title_raw.strip():
-        raise RuntimeError(f"calendar record uid={uid} missing non-empty source_canonical.source_title")
+        raise RuntimeError(f"calendar record uid={uid} missing non-empty source_facts.source_title")
     title = title_raw.strip()
 
     course_label = course_display_name(course_parse=extract_enrichment_course_parse(payload=payload)) or "Unknown"
 
-    start_value = source_canonical.get("source_dtstart_utc")
-    end_value = source_canonical.get("source_dtend_utc")
+    start_value = source_facts.source_dtstart_utc
+    end_value = source_facts.source_dtend_utc
     start_at = parse_iso_datetime(start_value, field="start_at", uid=uid)
     end_at = parse_iso_datetime(end_value, field="end_at", uid=uid)
     if end_at <= start_at:

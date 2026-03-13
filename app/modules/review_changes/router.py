@@ -7,15 +7,19 @@ from sqlalchemy.orm import Session
 
 from app.core.security import require_public_api_key
 from app.db.session import get_db
-from app.modules.common.deps import get_onboarded_user_or_409
+from app.modules.auth.deps import get_onboarded_authenticated_user_or_409 as get_onboarded_user_or_409
 from app.modules.review_changes.schemas import (
     EvidencePreviewResponse,
     LabelLearningApplyRequest,
     LabelLearningApplyResponse,
     LabelLearningPreviewResponse,
+    RawTypeSuggestionDecisionRequest,
+    RawTypeSuggestionDecisionResponse,
+    RawTypeSuggestionItemResponse,
     ReviewBatchDecisionRequest,
     ReviewBatchDecisionResponse,
     ReviewEditApplyResponse,
+    ReviewEditContextResponse,
     ReviewEditPreviewResponse,
     ReviewEditRequest,
     ReviewChangeItemResponse,
@@ -35,6 +39,7 @@ from app.modules.review_changes.edit_service import (
     ReviewEditNotFoundError,
     ReviewEditValidationError,
     apply_review_edit,
+    load_review_edit_context,
     preview_review_edit,
 )
 from app.modules.review_changes.evidence_preview_service import (
@@ -49,6 +54,12 @@ from app.modules.review_changes.label_learning_service import (
     preview_label_learning,
 )
 from app.modules.users.course_work_item_families_service import CourseWorkItemFamilyValidationError
+from app.modules.review_changes.raw_type_suggestion_service import (
+    RawTypeSuggestionNotFoundError,
+    RawTypeSuggestionValidationError,
+    decide_review_raw_type_suggestion,
+    list_review_raw_type_suggestions,
+)
 
 router = APIRouter(
     prefix="/review",
@@ -94,6 +105,21 @@ def get_review_change_item(
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review change not found")
     return ReviewChangeItemResponse(**row)
+
+
+@router.get("/changes/{change_id}/edit-context", response_model=ReviewEditContextResponse)
+def get_review_change_edit_context(
+    change_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> ReviewEditContextResponse:
+    try:
+        payload = load_review_edit_context(db=db, user_id=user.id, change_id=change_id)
+    except ReviewEditNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ReviewEditValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return ReviewEditContextResponse(**payload)
 
 
 @router.patch("/changes/{change_id}/views", response_model=ReviewChangeItemResponse)
@@ -197,10 +223,8 @@ def post_review_edit_preview(
             user_id=user.id,
             mode=payload.mode,
             change_id=payload.target.change_id,
-            event_uid=payload.target.event_uid,
-            due_at=payload.patch.due_at,
-            title=payload.patch.title,
-            course_label=payload.patch.course_label,
+            entity_uid=payload.target.entity_uid,
+            patch=payload.patch.model_dump(exclude_unset=True),
             reason=payload.reason,
         )
     except ReviewEditNotFoundError as exc:
@@ -256,6 +280,56 @@ def post_label_learning_apply(
     return LabelLearningApplyResponse.model_validate(result)
 
 
+@router.get("/raw-type-suggestions", response_model=list[RawTypeSuggestionItemResponse])
+def get_raw_type_suggestions(
+    status: str = Query(default="pending"),
+    course_dept: str | None = Query(default=None),
+    course_number: int | None = Query(default=None),
+    course_suffix: str | None = Query(default=None),
+    course_quarter: str | None = Query(default=None),
+    course_year2: int | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> list[RawTypeSuggestionItemResponse]:
+    rows = list_review_raw_type_suggestions(
+        db,
+        user_id=user.id,
+        status=status,
+        course_dept=course_dept,
+        course_number=course_number,
+        course_suffix=course_suffix,
+        course_quarter=course_quarter,
+        course_year2=course_year2,
+        limit=limit,
+        offset=offset,
+    )
+    return [RawTypeSuggestionItemResponse(**row) for row in rows]
+
+
+@router.post("/raw-type-suggestions/{suggestion_id}/decisions", response_model=RawTypeSuggestionDecisionResponse)
+def post_raw_type_suggestion_decision(
+    suggestion_id: int,
+    payload: RawTypeSuggestionDecisionRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> RawTypeSuggestionDecisionResponse:
+    try:
+        result = decide_review_raw_type_suggestion(
+            db,
+            user_id=user.id,
+            suggestion_id=suggestion_id,
+            decision=payload.decision,
+            note=payload.note,
+        )
+    except RawTypeSuggestionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RawTypeSuggestionValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return RawTypeSuggestionDecisionResponse(**result)
+
+
 @router.post("/edits", response_model=ReviewEditApplyResponse)
 def post_review_edit_apply(
     payload: ReviewEditRequest,
@@ -268,10 +342,8 @@ def post_review_edit_apply(
             user_id=user.id,
             mode=payload.mode,
             change_id=payload.target.change_id,
-            event_uid=payload.target.event_uid,
-            due_at=payload.patch.due_at,
-            title=payload.patch.title,
-            course_label=payload.patch.course_label,
+            entity_uid=payload.target.entity_uid,
+            patch=payload.patch.model_dump(exclude_unset=True),
             reason=payload.reason,
         )
     except ReviewEditNotFoundError as exc:

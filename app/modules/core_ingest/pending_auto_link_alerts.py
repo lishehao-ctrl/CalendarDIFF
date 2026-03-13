@@ -9,13 +9,13 @@ def upsert_auto_link_alerts_without_pending(
     *,
     db: Session,
     auto_link_contexts: list[dict],
-    pending_event_uids: set[str],
+    pending_entity_uids: set[str],
 ) -> None:
     for context in auto_link_contexts:
         entity_uid = context.get("entity_uid")
         if not isinstance(entity_uid, str) or not entity_uid.strip():
             continue
-        if entity_uid in pending_event_uids:
+        if entity_uid in pending_entity_uids:
             continue
         link_row = context.get("link_row")
         link_row_id = getattr(link_row, "id", None)

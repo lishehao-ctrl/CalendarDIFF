@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 import logging
 
 from icalendar import Calendar
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.modules.ingestion.ics_delta.fingerprint import build_external_event_id
+from app.modules.common.payload_schemas import SourceFacts
+from app.modules.core_ingest.semantic_event_service import normalize_semantic_event
+from app.modules.ingestion.ics_delta.fingerprint import build_component_key, build_external_event_id
 from app.modules.ingestion.llm_parsers.contracts import LlmParseError, ParserContext, ParserOutput
-from app.modules.ingestion.llm_parsers.schemas import EventEnrichmentResponse
+from app.modules.ingestion.llm_parsers.schemas import SemanticEventDraftResponse
 from app.modules.llm_gateway import (
     LLM_FORMAT_MAX_ATTEMPTS,
     LlmGatewayError,
@@ -50,32 +52,22 @@ def parse_calendar_content(*, db: Session, content: bytes, context: ParserContex
         if getattr(component, "name", "") != "VEVENT":
             continue
 
-        canonical = _extract_source_canonical(component=component, source_id=context.source_id, index=index)
-        enrichment, parse_model_hint = parse_event_enrichment_text(
+        source_facts = _extract_source_facts(component=component, source_id=context.source_id, index=index)
+        enrichment, parse_model_hint = parse_semantic_enrichment_text(
             db=db,
-            source_canonical=canonical,
+            source_facts=source_facts,
             context=context,
-            task_name="calendar_event_enrichment",
+            task_name="calendar_event_semantic_extract",
         )
         if parse_model_hint:
             model_hint = parse_model_hint
 
         payload = {
-            "source_canonical": canonical,
-            "enrichment": {
-                "course_parse": enrichment["course_parse"],
-                "work_item_parse": enrichment["work_item_parse"],
-                "event_parts": enrichment["event_parts"],
-                "link_signals": enrichment["link_signals"],
-                "payload_schema_version": "obs_v3",
-            },
+            "source_facts": source_facts,
+            "semantic_event_draft": enrichment["semantic_event_draft"],
+            "link_signals": enrichment["link_signals"],
         }
-        records.append(
-            {
-                "record_type": "calendar.event.extracted",
-                "payload": payload,
-            }
-        )
+        records.append({"record_type": "calendar.event.extracted", "payload": payload})
 
     return ParserOutput(
         records=records,
@@ -85,21 +77,21 @@ def parse_calendar_content(*, db: Session, content: bytes, context: ParserContex
     )
 
 
-def parse_course_parse_text(
+def parse_semantic_enrichment_text(
     *,
     db: Session,
-    source_canonical: dict,
+    source_facts: dict,
     context: ParserContext,
     task_name: str,
 ) -> tuple[dict, str | None]:
-    source_title = str(source_canonical.get("source_title") or "").strip()
-    source_summary = str(source_canonical.get("source_summary") or "").strip()
-    source_location = str(source_canonical.get("location") or "").strip()
-    source_organizer = str(source_canonical.get("organizer") or "").strip()
+    source_title = str(source_facts.get("source_title") or "").strip()
+    source_summary = str(source_facts.get("source_summary") or "").strip()
+    source_location = str(source_facts.get("location") or "").strip()
+    source_organizer = str(source_facts.get("organizer") or "").strip()
     if not source_title and not source_summary:
         raise LlmParseError(
             code="llm_calendar_payload_invalid",
-            message="calendar event source text is empty for enrichment parse",
+            message="calendar event source text is empty for semantic parse",
             retryable=False,
             provider=context.provider,
             parser_version="mainline",
@@ -108,30 +100,34 @@ def parse_course_parse_text(
     invoke_request = LlmInvokeRequest(
         task_name=task_name,
         system_prompt=(
-            "Extract course and event semantics from academic calendar text. "
+            "Extract semantic academic event data from calendar text. "
             "Return JSON with schema: "
-            '{"course_parse":{"dept":string|null,"number":number|null,"suffix":string|null,"quarter":"WI"|"SP"|"SU"|"FA"|null,'
-            '"year2":number|null,"confidence":number,"evidence":string},'
-            '"work_item_parse":{"raw_kind_label":string|null,"ordinal":number|null,"confidence":number,"evidence":string},'
-            '"event_parts":{"type":"exam"|"deadline"|"quiz"|"project"|"lecture"|"other"|null,'
-            '"index":number|null,"qualifier":string|null,"confidence":number,"evidence":string},'
+            '{"semantic_event_draft":{"course_dept":string|null,"course_number":number|null,"course_suffix":string|null,'
+            '"course_quarter":"WI"|"SP"|"SU"|"FA"|null,"course_year2":number|null,'
+            '"raw_type":string|null,"event_name":string|null,"ordinal":number|null,'
+            '"due_date":string|null,"due_time":string|null,"time_precision":"date_only"|"datetime"|null,'
+            '"confidence":number,"evidence":string},'
             '"link_signals":{"keywords":["exam"|"midterm"|"final"],"exam_sequence":number|null,'
             '"location_text":string|null,"instructor_hint":string|null}}. '
-            "Do not infer missing fields aggressively; use null when uncertain. Evidence must be copied from input text."
+            "Use semantic_event_draft as the only event schema. "
+            "Use ISO-8601 for due_date (YYYY-MM-DD) and due_time (HH:MM[:SS]) when present. "
+            "Use null when uncertain and copy evidence from the input text."
         ),
         user_payload={
             "source_id": context.source_id,
             "provider": context.provider,
             "source_kind": context.source_kind,
-            "source_canonical": {
+            "source_facts": {
                 "source_title": source_title,
                 "source_summary": source_summary,
                 "location": source_location or None,
                 "organizer": source_organizer or None,
+                "source_dtstart_utc": source_facts.get("source_dtstart_utc"),
+                "source_dtend_utc": source_facts.get("source_dtend_utc"),
             },
         },
-        output_schema_name="EventEnrichmentResponse",
-        output_schema_json=EventEnrichmentResponse.model_json_schema(),
+        output_schema_name="SemanticEventDraftResponse",
+        output_schema_json=SemanticEventDraftResponse.model_json_schema(),
         source_id=context.source_id,
         source_provider=context.provider,
         request_id=context.request_id,
@@ -144,11 +140,12 @@ def parse_course_parse_text(
             raise _map_llm_error(exc, provider=context.provider) from exc
 
         try:
-            parsed = EventEnrichmentResponse.model_validate(invoke_result.json_object)
+            parsed = SemanticEventDraftResponse.model_validate(invoke_result.json_object)
             return {
-                "course_parse": parsed.course_parse.model_dump(),
-                "work_item_parse": parsed.work_item_parse.model_dump(),
-                "event_parts": parsed.event_parts.model_dump(),
+                "semantic_event_draft": normalize_semantic_event(
+                    parsed.semantic_event_draft.model_dump(mode="json"),
+                    fallback_due_raw=source_facts.get("source_dtstart_utc"),
+                ),
                 "link_signals": parsed.link_signals.model_dump(),
             }, invoke_result.model
         except ValidationError as exc:
@@ -189,8 +186,69 @@ def parse_course_parse_text(
     )
 
 
-# Kept import name stable for existing callers/tests.
-parse_event_enrichment_text = parse_course_parse_text
+parse_event_enrichment_text = parse_semantic_enrichment_text
+parse_course_parse_text = parse_semantic_enrichment_text
+
+
+def _extract_source_facts(*, component, source_id: int, index: int) -> dict:
+    summary = _coerce_component_text(component.get("summary")) or "Untitled"
+    description = _coerce_component_text(component.get("description"))
+    status = _coerce_component_text(component.get("status"))
+    location = _coerce_component_text(component.get("location"))
+    organizer = _coerce_component_text(component.get("organizer"))
+    uid_value = _coerce_component_text(component.get("uid")) or f"component-{source_id}-{index}"
+    recurrence_id = _coerce_component_text(component.get("recurrence-id"))
+    dtstart_value = _component_datetime(component.get("dtstart"))
+    dtend_value = _component_datetime(component.get("dtend")) or dtstart_value
+    if dtstart_value is None or dtend_value is None:
+        raise LlmParseError(
+            code="llm_calendar_payload_invalid",
+            message="calendar event missing dtstart/dtend",
+            retryable=False,
+            provider="ics",
+            parser_version="mainline",
+        )
+    external_event_id = build_external_event_id(uid=uid_value, recurrence_id=recurrence_id)
+    return SourceFacts.model_validate(
+        {
+            "external_event_id": external_event_id,
+            "component_key": build_component_key(uid=uid_value, recurrence_id=recurrence_id),
+            "source_title": summary[:512],
+            "source_summary": description[:1024] if description else None,
+            "source_dtstart_utc": dtstart_value.isoformat(),
+            "source_dtend_utc": dtend_value.isoformat(),
+            "status": status,
+            "location": location,
+            "organizer": organizer,
+        }
+    ).model_dump(mode="json")
+
+
+def _coerce_component_text(value) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "to_ical"):
+        try:
+            rendered = value.to_ical().decode("utf-8")
+        except Exception:
+            rendered = str(value)
+    else:
+        rendered = str(value)
+    cleaned = rendered.strip()
+    return cleaned or None
+
+
+def _component_datetime(value) -> datetime | None:
+    if value is None:
+        return None
+    decoded = getattr(value, "dt", value)
+    if isinstance(decoded, datetime):
+        if decoded.tzinfo is None:
+            return decoded.replace(tzinfo=timezone.utc)
+        return decoded.astimezone(timezone.utc)
+    if isinstance(decoded, date):
+        return datetime(decoded.year, decoded.month, decoded.day, 23, 59, tzinfo=timezone.utc)
+    return None
 
 
 def _map_llm_error(exc: LlmGatewayError, *, provider: str) -> LlmParseError:
@@ -233,91 +291,3 @@ def _map_llm_error(exc: LlmGatewayError, *, provider: str) -> LlmParseError:
         provider=provider,
         parser_version="mainline",
     )
-
-
-def _extract_source_canonical(*, component, source_id: int, index: int) -> dict:  # noqa: ANN001
-    uid = _normalize_text(component.get("UID")) or f"calendar-{source_id}-{index}"
-    recurrence_id = _normalize_ical_value(component.get("RECURRENCE-ID"))
-    external_event_id = build_external_event_id(uid=uid, recurrence_id=recurrence_id)
-
-    summary = _normalize_text(component.get("SUMMARY"))
-    source_title = (summary or "Untitled")[:512]
-
-    start_at = _normalize_datetime(component.get("DTSTART"))
-    due_at = _normalize_datetime(component.get("DUE"))
-    end_at = _normalize_datetime(component.get("DTEND"))
-
-    if start_at is None and due_at is None:
-        raise LlmParseError(
-            code="llm_calendar_payload_invalid",
-            message=f"calendar event {external_event_id} missing DTSTART/DUE",
-            retryable=False,
-            provider="calendar",
-            parser_version="mainline",
-        )
-    effective_start = start_at or due_at
-    assert effective_start is not None
-    effective_end = end_at or (effective_start + timedelta(hours=1))
-    if effective_end <= effective_start:
-        effective_end = effective_start + timedelta(hours=1)
-
-    status = (_normalize_text(component.get("STATUS")) or "").upper() or None
-    location = _normalize_text(component.get("LOCATION"))
-    organizer = _normalize_text(component.get("ORGANIZER"))
-
-    return {
-        "external_event_id": external_event_id,
-        "component_uid": uid,
-        "component_recurrence_id": recurrence_id,
-        "source_title": source_title,
-        "source_summary": summary,
-        "source_dtstart_utc": effective_start.isoformat(),
-        "source_dtend_utc": effective_end.isoformat(),
-        "status": status,
-        "location": location,
-        "organizer": organizer,
-    }
-
-
-def _normalize_text(value: object) -> str | None:
-    if value is None:
-        return None
-    cleaned = str(value).strip()
-    return cleaned or None
-
-
-def _normalize_ical_value(value: object) -> str | None:
-    if value is None:
-        return None
-    candidate = value.dt if hasattr(value, "dt") else value
-    if isinstance(candidate, datetime):
-        if candidate.tzinfo is None:
-            return candidate.replace(tzinfo=timezone.utc).isoformat()
-        return candidate.astimezone(timezone.utc).isoformat()
-    if isinstance(candidate, date):
-        return candidate.isoformat()
-    cleaned = str(candidate).strip()
-    return cleaned or None
-
-
-def _normalize_datetime(value: object) -> datetime | None:
-    if value is None:
-        return None
-    candidate = value.dt if hasattr(value, "dt") else value
-    if isinstance(candidate, datetime):
-        if candidate.tzinfo is None:
-            return candidate.replace(tzinfo=timezone.utc)
-        return candidate.astimezone(timezone.utc)
-    if isinstance(candidate, date):
-        return datetime(candidate.year, candidate.month, candidate.day, tzinfo=timezone.utc)
-    text = str(candidate).strip()
-    if not text:
-        return None
-    normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)

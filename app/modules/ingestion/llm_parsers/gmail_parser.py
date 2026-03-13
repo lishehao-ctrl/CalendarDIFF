@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.modules.common.payload_schemas import SourceFacts
+from app.modules.core_ingest.semantic_event_service import normalize_semantic_event
 from app.modules.ingestion.llm_parsers.contracts import LlmParseError, ParserContext, ParserOutput
 from app.modules.ingestion.llm_parsers.schemas import GmailParserResponse
 from app.modules.llm_gateway import (
@@ -36,18 +38,18 @@ def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -
     invoke_request = LlmInvokeRequest(
         task_name="gmail_message_extract",
         system_prompt=(
-            "You extract actionable event metadata from Gmail messages for a deadline tracker. "
+            "You extract semantic academic event data from Gmail messages for a deadline tracker. "
             "Respond with JSON only using schema: "
-            "{\"messages\":[{\"message_id\":string|null,"
-            "\"due_at\":string|null,"
-            "\"time_anchor_confidence\":number,"
-            "\"course_parse\":{\"dept\":string|null,\"number\":number|null,\"suffix\":string|null,"
-            "\"quarter\":\"WI\"|\"SP\"|\"SU\"|\"FA\"|null,\"year2\":number|null,\"confidence\":number,\"evidence\":string},"
-            "\"event_parts\":{\"type\":\"exam\"|\"deadline\"|\"quiz\"|\"project\"|\"lecture\"|\"other\"|null,"
-            "\"index\":number|null,\"qualifier\":string|null,\"confidence\":number,\"evidence\":string},"
-            "\"link_signals\":{\"keywords\":[\"exam\"|\"midterm\"|\"final\"],\"exam_sequence\":number|null,"
-            "\"location_text\":string|null,\"instructor_hint\":string|null}}]} . "
-            "Return empty messages array when no extraction is possible."
+            '{"messages":[{"message_id":string|null,'
+            '"semantic_event_draft":{"course_dept":string|null,"course_number":number|null,"course_suffix":string|null,'
+            '"course_quarter":"WI"|"SP"|"SU"|"FA"|null,"course_year2":number|null,'
+            '"raw_type":string|null,"event_name":string|null,"ordinal":number|null,'
+            '"due_date":string|null,"due_time":string|null,"time_precision":"date_only"|"datetime"|null,'
+            '"confidence":number,"evidence":string},'
+            '"link_signals":{"keywords":["exam"|"midterm"|"final"],"exam_sequence":number|null,'
+            '"location_text":string|null,"instructor_hint":string|null}}]}. '
+            "Use semantic_event_draft as the only event schema. "
+            "Use ISO-8601 date/time text when present. Return an empty messages array when no extraction is possible."
         ),
         user_payload={
             "source_id": context.source_id,
@@ -66,10 +68,7 @@ def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -
     invoke_result = None
     for attempt in range(1, LLM_FORMAT_MAX_ATTEMPTS + 1):
         try:
-            invoke_result = invoke_llm_json(
-                db,
-                invoke_request=invoke_request,
-            )
+            invoke_result = invoke_llm_json(db, invoke_request=invoke_request)
         except LlmGatewayError as exc:
             raise _map_llm_error(exc, provider=context.provider) from exc
 
@@ -79,8 +78,7 @@ def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -
         except ValidationError as exc:
             if attempt < LLM_FORMAT_MAX_ATTEMPTS:
                 logger.warning(
-                    "gmail_parser.format_retry request_id=%s source_id=%s task_name=gmail_message_extract "
-                    "error_code=%s attempt=%s/%s",
+                    "gmail_parser.format_retry request_id=%s source_id=%s task_name=gmail_message_extract error_code=%s attempt=%s/%s",
                     context.request_id or "-",
                     context.source_id,
                     GMAIL_SCHEMA_INVALID_CODE,
@@ -89,8 +87,7 @@ def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -
                 )
                 continue
             logger.warning(
-                "gmail_parser.format_retry_exhausted request_id=%s source_id=%s task_name=gmail_message_extract "
-                "error_code=%s attempt=%s/%s",
+                "gmail_parser.format_retry_exhausted request_id=%s source_id=%s task_name=gmail_message_extract error_code=%s attempt=%s/%s",
                 context.request_id or "-",
                 context.source_id,
                 GMAIL_SCHEMA_INVALID_CODE,
@@ -124,37 +121,32 @@ def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -
     records: list[dict] = []
     for index, message in enumerate(parsed.messages):
         message_id = message.message_id or source_message_id or f"gmail-{context.source_id}-{index}"
-        due_at = _parse_optional_iso_datetime(message.due_at)
-        due_iso = due_at.isoformat() if due_at is not None else None
-        end_iso = (due_at + timedelta(hours=1)).isoformat() if due_at is not None else None
-        course_parse = message.course_parse.model_dump()
-        work_item_parse = message.work_item_parse.model_dump()
-        event_parts = message.event_parts.model_dump()
-        link_signals = message.link_signals.model_dump()
-        confidence = float(message.time_anchor_confidence)
+        semantic_event_draft = normalize_semantic_event(
+            message.semantic_event_draft.model_dump(mode="json"),
+            fallback_due_raw=source_internal_date,
+        )
+        due_start, due_end = _due_window_from_semantic(semantic_event_draft)
+        confidence = float(semantic_event_draft.get("confidence") or 0.0)
         records.append(
             {
                 "record_type": "gmail.message.extracted",
                 "payload": {
                     "message_id": message_id,
-                    "source_canonical": {
-                        "external_event_id": message_id,
-                        "source_title": source_subject[:512] if isinstance(source_subject, str) else "Untitled",
-                        "source_summary": source_snippet,
-                        "source_dtstart_utc": due_iso,
-                        "source_dtend_utc": end_iso,
-                        "time_anchor_confidence": confidence,
-                        "from_header": source_from_header,
-                        "thread_id": source_thread_id,
-                        "internal_date": source_internal_date,
-                    },
-                    "enrichment": {
-                        "course_parse": course_parse,
-                        "work_item_parse": work_item_parse,
-                        "event_parts": event_parts,
-                        "link_signals": link_signals,
-                        "payload_schema_version": "obs_v3",
-                    },
+                    "source_facts": SourceFacts.model_validate(
+                        {
+                            "external_event_id": message_id,
+                            "source_title": source_subject[:512] if isinstance(source_subject, str) else "Untitled",
+                            "source_summary": source_snippet,
+                            "source_dtstart_utc": due_start,
+                            "source_dtend_utc": due_end,
+                            "time_anchor_confidence": confidence,
+                            "from_header": source_from_header,
+                            "thread_id": source_thread_id,
+                            "internal_date": source_internal_date,
+                        }
+                    ).model_dump(mode="json"),
+                    "semantic_event_draft": semantic_event_draft,
+                    "link_signals": message.link_signals.model_dump(),
                 },
             }
         )
@@ -165,6 +157,27 @@ def parse_gmail_payload(*, db: Session, payload: dict, context: ParserContext) -
         parser_version="mainline",
         model_hint=invoke_result.model,
     )
+
+
+def _due_window_from_semantic(semantic_parse: dict) -> tuple[str | None, str | None]:
+    due_date_raw = semantic_parse.get("due_date")
+    if not isinstance(due_date_raw, str) or not due_date_raw:
+        return None, None
+    try:
+        due_date_value = date.fromisoformat(due_date_raw)
+    except ValueError:
+        return None, None
+    due_time_raw = semantic_parse.get("due_time")
+    time_precision = str(semantic_parse.get("time_precision") or "datetime")
+    if time_precision == "date_only" or not isinstance(due_time_raw, str) or not due_time_raw:
+        start_at = datetime(due_date_value.year, due_date_value.month, due_date_value.day, 23, 59, tzinfo=timezone.utc)
+    else:
+        try:
+            due_time_value = time.fromisoformat(due_time_raw)
+        except ValueError:
+            return None, None
+        start_at = datetime.combine(due_date_value, due_time_value, tzinfo=timezone.utc)
+    return start_at.isoformat(), (start_at + timedelta(hours=1)).isoformat()
 
 
 def _map_llm_error(exc: LlmGatewayError, *, provider: str) -> LlmParseError:
@@ -207,17 +220,3 @@ def _map_llm_error(exc: LlmGatewayError, *, provider: str) -> LlmParseError:
         provider=provider,
         parser_version="mainline",
     )
-
-
-def _parse_optional_iso_datetime(value: object) -> datetime | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    raw = value.strip()
-    normalized = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)

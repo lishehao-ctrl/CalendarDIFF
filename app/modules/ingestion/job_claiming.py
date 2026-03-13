@@ -123,7 +123,7 @@ def claim_jobs(db: Session, *, worker_id: str, batch_size: int = CONNECTOR_BATCH
 
 
 def extract_ics_component_fingerprints(cursor: dict) -> dict[str, str]:
-    raw = cursor.get("ics_component_fingerprints_v1")
+    raw = cursor.get("ics_component_fingerprints")
     if not isinstance(raw, dict):
         return {}
     normalized: dict[str, str] = {}

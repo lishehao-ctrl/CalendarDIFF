@@ -1,10 +1,12 @@
 __pycache__/
 *.pyc
+*.egg-info/
 .pytest_cache/
 .venv/
 .env
 node_modules/
 .next/
+dist/
 frontend/out/
 frontend/tsconfig.tsbuildinfo
 dev.db
@@ -22,9 +24,9 @@ tools/labeling/.env
 
 # Keep synthetic benchmark dataset tracked.
 !/data/synthetic/
-!/data/synthetic/v2_ddlchange_160/
-!/data/synthetic/v2_ddlchange_160/**
-!/data/synthetic/v2_ddlchange_160/ics/pairs/*.ics
+!/data/synthetic/ddlchange_160/
+!/data/synthetic/ddlchange_160/**
+!/data/synthetic/ddlchange_160/ics/pairs/*.ics
 .playwright-cli/
 output/dev-stack/
 output/playwright/

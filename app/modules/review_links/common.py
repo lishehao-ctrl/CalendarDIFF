@@ -4,6 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.review import EventEntity, SourceEventObservation
+from app.modules.common.event_display import event_display_dict
+from app.modules.common.family_labels import load_latest_family_labels, resolve_family_label
+from app.modules.common.payload_schemas import SourceFacts
+from app.modules.common.semantic_codec import approved_entity_to_semantic_payload
 
 
 def normalize_review_note(note: str | None, *, max_len: int = 512) -> str | None:
@@ -30,22 +34,43 @@ def dedupe_ids_preserve_order(ids: list[int]) -> list[int]:
 def load_entity_preview(*, db: Session, user_id: int, entity_uid: str | None) -> dict | None:
     if not isinstance(entity_uid, str) or not entity_uid.strip():
         return None
-    row = db.scalar(
+    entity_row = db.scalar(
         select(EventEntity).where(
             EventEntity.user_id == user_id,
             EventEntity.entity_uid == entity_uid,
         )
     )
-    if row is None:
-        return {"entity_uid": entity_uid, "course_best_display": None, "course_best_strength": None}
+    if entity_row is not None:
+        latest_family_labels = load_latest_family_labels(db, user_id=user_id, family_ids=[entity_row.family_id])
+        event_display = event_display_dict(
+            approved_entity_to_semantic_payload(
+                entity_row,
+                family_name_override=resolve_family_label(
+                    family_id=entity_row.family_id,
+                    snapshot_family_name=entity_row.family_name,
+                    latest_family_labels=latest_family_labels,
+                ),
+            ),
+            strict=False,
+        )
+        if event_display is not None:
+            return {"entity_uid": entity_uid, "event_display": event_display}
 
-    course_best = row.course_best_json if isinstance(row.course_best_json, dict) else {}
-    display_name = course_best.get("display_name") if isinstance(course_best.get("display_name"), str) else None
-    return {
-        "entity_uid": row.entity_uid,
-        "course_best_display": display_name,
-        "course_best_strength": int(row.course_best_strength or 0),
-    }
+    observation = db.scalar(
+        select(SourceEventObservation)
+        .where(
+            SourceEventObservation.user_id == user_id,
+            SourceEventObservation.entity_uid == entity_uid,
+            SourceEventObservation.is_active.is_(True),
+        )
+        .order_by(SourceEventObservation.observed_at.desc(), SourceEventObservation.id.desc())
+        .limit(1)
+    )
+    if observation is not None:
+        payload = observation.event_payload if isinstance(observation.event_payload, dict) else {}
+        semantic_event = payload.get("semantic_event") if isinstance(payload.get("semantic_event"), dict) else None
+        return {"entity_uid": entity_uid, "event_display": event_display_dict(semantic_event, strict=False) if semantic_event is not None else None}
+    return {"entity_uid": entity_uid, "event_display": None}
 
 
 def load_observation_snapshot(
@@ -66,14 +91,17 @@ def load_observation_snapshot(
         return None
 
     payload = row.event_payload if isinstance(row.event_payload, dict) else {}
-    source_canonical_raw = payload.get("source_canonical")
-    source_canonical = source_canonical_raw if isinstance(source_canonical_raw, dict) else {}
+    source_facts_raw = payload.get("source_facts")
+    try:
+        source_facts = SourceFacts.model_validate(source_facts_raw if isinstance(source_facts_raw, dict) else {})
+    except Exception:
+        source_facts = None
     return {
-        "merge_key": row.merge_key,
+        "entity_uid": row.entity_uid,
         "source_kind": row.source_kind.value,
-        "source_title": source_canonical.get("source_title"),
-        "source_dtstart_utc": source_canonical.get("source_dtstart_utc"),
-        "source_dtend_utc": source_canonical.get("source_dtend_utc"),
+        "source_title": source_facts.source_title if source_facts is not None else None,
+        "source_dtstart_utc": source_facts.source_dtstart_utc if source_facts is not None else None,
+        "source_dtend_utc": source_facts.source_dtend_utc if source_facts is not None else None,
         "is_active": row.is_active,
     }
 

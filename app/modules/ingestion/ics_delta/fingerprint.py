@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-ICS_COMPONENT_FINGERPRINT_HASH_VERSION = "v1"
+ICS_COMPONENT_FINGERPRINT_HASH_KEY = "ics_component_fingerprint"
 
 
 def build_component_key(*, uid: str, recurrence_id: str | None) -> str:
@@ -34,7 +34,7 @@ def external_event_id_from_component_key(component_key: str) -> str:
 
 def compute_component_fingerprint(*, fields: dict[str, object]) -> str:
     payload = {
-        "hash_version": ICS_COMPONENT_FINGERPRINT_HASH_VERSION,
+        "hash_key": ICS_COMPONENT_FINGERPRINT_HASH_KEY,
         "fields": fields,
     }
     canonical = json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True)

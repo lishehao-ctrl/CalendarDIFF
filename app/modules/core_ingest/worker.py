@@ -8,9 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.db.models.input import SyncRequest, SyncRequestStatus
 from app.db.models.shared import IntegrationInbox, IntegrationOutbox, OutboxStatus
-from app.modules.core_ingest.apply_service import apply_ingest_result_idempotent
+from app.modules.core_ingest.apply import apply_ingest_result_idempotent
 
-CORE_APPLY_CONSUMER = "core.ingest.apply.v1"
+CORE_APPLY_CONSUMER = "core.ingest.apply"
 CORE_APPLY_BATCH_SIZE = 200
 MAX_SYNC_REQUEST_ERROR_LEN = 512
 

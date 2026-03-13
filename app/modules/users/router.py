@@ -7,6 +7,7 @@ from app.core.security import require_public_api_key
 from app.db.models.shared import User
 from app.db.session import get_db
 from app.modules.auth.deps import get_authenticated_user_or_401
+from app.modules.common.course_identity import course_display_name
 from app.modules.core_ingest.course_work_item_family_rebuild import rebuild_user_work_item_state
 from app.modules.users.course_work_item_families_service import (
     CourseWorkItemFamilyValidationError,
@@ -14,11 +15,21 @@ from app.modules.users.course_work_item_families_service import (
     delete_course_work_item_family,
     get_course_work_item_family,
     list_course_work_item_families,
-    list_known_course_keys,
+    list_known_course_identities,
     update_course_work_item_family,
 )
+from app.modules.users.course_raw_types_service import (
+    CourseRawTypeValidationError,
+    get_course_raw_type,
+    list_course_raw_types,
+    move_course_raw_type_to_family,
+)
 from app.modules.users.schemas import (
+    CourseIdentityResponse,
     CourseWorkItemFamilyCoursesResponse,
+    CourseRawTypeMoveRequest,
+    CourseRawTypeMoveResponse,
+    CourseRawTypeResponse,
     CourseWorkItemFamilyCreateRequest,
     CourseWorkItemFamilyResponse,
     CourseWorkItemFamilyStatusResponse,
@@ -51,6 +62,7 @@ def patch_user(
             email=payload.email,
             notify_email=payload.notify_email,
             timezone_name=payload.timezone_name,
+            timezone_source=payload.timezone_source,
             calendar_delay_seconds=payload.calendar_delay_seconds,
         )
     except ValueError as exc:
@@ -60,12 +72,89 @@ def patch_user(
 
 @router.get("/me/course-work-item-families", response_model=list[CourseWorkItemFamilyResponse])
 def get_course_families(
-    course_key: str | None = Query(default=None),
+    course_dept: str | None = Query(default=None),
+    course_number: int | None = Query(default=None),
+    course_suffix: str | None = Query(default=None),
+    course_quarter: str | None = Query(default=None),
+    course_year2: int | None = Query(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_authenticated_user_or_401),
 ) -> list[CourseWorkItemFamilyResponse]:
-    rows = list_course_work_item_families(db, user_id=user.id, course_key=course_key)
+    rows = list_course_work_item_families(
+        db,
+        user_id=user.id,
+        course_dept=course_dept,
+        course_number=course_number,
+        course_suffix=course_suffix,
+        course_quarter=course_quarter,
+        course_year2=course_year2,
+    )
     return [_to_course_family_response(row) for row in rows]
+
+
+@router.get("/me/course-work-item-raw-types", response_model=list[CourseRawTypeResponse])
+def get_course_raw_types(
+    course_dept: str | None = Query(default=None),
+    course_number: int | None = Query(default=None),
+    course_suffix: str | None = Query(default=None),
+    course_quarter: str | None = Query(default=None),
+    course_year2: int | None = Query(default=None),
+    family_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
+) -> list[CourseRawTypeResponse]:
+    rows = list_course_raw_types(
+        db,
+        user_id=user.id,
+        course_dept=course_dept,
+        course_number=course_number,
+        course_suffix=course_suffix,
+        course_quarter=course_quarter,
+        course_year2=course_year2,
+        family_id=family_id,
+    )
+    return [_to_course_raw_type_response(row) for row in rows]
+
+
+@router.post("/me/course-work-item-raw-types/relink", response_model=CourseRawTypeMoveResponse)
+def post_course_raw_type_relink(
+    payload: CourseRawTypeMoveRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
+) -> CourseRawTypeMoveResponse:
+    raw_type = get_course_raw_type(db, user_id=user.id, raw_type_id=payload.raw_type_id)
+    if raw_type is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course raw type not found")
+    family = get_course_work_item_family(db, user_id=user.id, family_id=payload.family_id)
+    if family is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course work item family not found")
+    previous_family_id = raw_type.family_id
+    try:
+        move_course_raw_type_to_family(db, raw_type=raw_type, family=family, commit=True)
+        db.refresh(user)
+        rebuild_user_work_item_state(
+            db,
+            user=user,
+            course_dept=family.course_dept,
+            course_number=family.course_number,
+            course_suffix=family.course_suffix,
+            course_quarter=family.course_quarter,
+            course_year2=family.course_year2,
+        )
+    except CourseRawTypeValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return CourseRawTypeMoveResponse(
+        raw_type_id=raw_type.id,
+        family_id=raw_type.family_id,
+        previous_family_id=previous_family_id,
+        **_course_identity_response_payload(
+            course_dept=family.course_dept,
+            course_number=family.course_number,
+            course_suffix=family.course_suffix,
+            course_quarter=family.course_quarter,
+            course_year2=family.course_year2,
+        ),
+    )
 
 
 @router.get("/me/course-work-item-families/courses", response_model=CourseWorkItemFamilyCoursesResponse)
@@ -73,7 +162,20 @@ def get_course_family_courses(
     db: Session = Depends(get_db),
     user: User = Depends(get_authenticated_user_or_401),
 ) -> CourseWorkItemFamilyCoursesResponse:
-    return CourseWorkItemFamilyCoursesResponse(courses=list_known_course_keys(db, user_id=user.id))
+    course_rows = list_known_course_identities(db, user_id=user.id)
+    if not course_rows:
+        course_rows = [
+            _course_identity_response_payload(
+                course_dept=row.course_dept,
+                course_number=row.course_number,
+                course_suffix=row.course_suffix,
+                course_quarter=row.course_quarter,
+                course_year2=row.course_year2,
+            )
+            for row in list_course_work_item_families(db, user_id=user.id)
+        ]
+    courses = [CourseIdentityResponse(**row) for row in course_rows]
+    return CourseWorkItemFamilyCoursesResponse(courses=courses)
 
 
 @router.post("/me/course-work-item-families", response_model=CourseWorkItemFamilyResponse, status_code=status.HTTP_201_CREATED)
@@ -86,12 +188,24 @@ def post_course_family(
         row = create_course_work_item_family(
             db,
             user_id=user.id,
-            course_key=payload.course_key,
+            course_dept=payload.course_dept,
+            course_number=payload.course_number,
+            course_suffix=payload.course_suffix,
+            course_quarter=payload.course_quarter,
+            course_year2=payload.course_year2,
             canonical_label=payload.canonical_label,
-            aliases=payload.aliases,
+            raw_types=payload.raw_types,
         )
         db.refresh(user)
-        rebuild_user_work_item_state(db, user=user, course_key=payload.course_key)
+        rebuild_user_work_item_state(
+            db,
+            user=user,
+            course_dept=payload.course_dept,
+            course_number=payload.course_number,
+            course_suffix=payload.course_suffix,
+            course_quarter=payload.course_quarter,
+            course_year2=payload.course_year2,
+        )
     except CourseWorkItemFamilyValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return _to_course_family_response(row)
@@ -107,19 +221,43 @@ def patch_course_family(
     family = get_course_work_item_family(db, user_id=user.id, family_id=family_id)
     if family is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course work item family not found")
-    previous_course_key = family.course_key
+    previous_identity = {
+        "course_dept": family.course_dept,
+        "course_number": family.course_number,
+        "course_suffix": family.course_suffix,
+        "course_quarter": family.course_quarter,
+        "course_year2": family.course_year2,
+    }
     try:
         row = update_course_work_item_family(
             db,
             family=family,
-            course_key=payload.course_key,
+            course_dept=payload.course_dept,
+            course_number=payload.course_number,
+            course_suffix=payload.course_suffix,
+            course_quarter=payload.course_quarter,
+            course_year2=payload.course_year2,
             canonical_label=payload.canonical_label,
-            aliases=payload.aliases,
+            raw_types=payload.raw_types,
         )
         db.refresh(user)
-        if previous_course_key.strip() != payload.course_key.strip():
-            rebuild_user_work_item_state(db, user=user, course_key=previous_course_key)
-        rebuild_user_work_item_state(db, user=user, course_key=payload.course_key)
+        if previous_identity != {
+            "course_dept": payload.course_dept,
+            "course_number": payload.course_number,
+            "course_suffix": payload.course_suffix,
+            "course_quarter": payload.course_quarter,
+            "course_year2": payload.course_year2,
+        }:
+            rebuild_user_work_item_state(db, user=user, **previous_identity)
+        rebuild_user_work_item_state(
+            db,
+            user=user,
+            course_dept=payload.course_dept,
+            course_number=payload.course_number,
+            course_suffix=payload.course_suffix,
+            course_quarter=payload.course_quarter,
+            course_year2=payload.course_year2,
+        )
     except CourseWorkItemFamilyValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return _to_course_family_response(row)
@@ -136,17 +274,23 @@ def delete_course_family(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course work item family not found")
     delete_course_work_item_family(db, family=family)
     db.refresh(user)
-    rebuild_user_work_item_state(db, user=user, course_key=family.course_key)
+    rebuild_user_work_item_state(
+        db,
+        user=user,
+        course_dept=family.course_dept,
+        course_number=family.course_number,
+        course_suffix=family.course_suffix,
+        course_quarter=family.course_quarter,
+        course_year2=family.course_year2,
+    )
     return {"deleted": True}
 
 
 @router.get("/me/course-work-item-families/status", response_model=CourseWorkItemFamilyStatusResponse)
 def get_course_family_status(
-    course_key: str | None = Query(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_authenticated_user_or_401),
 ) -> CourseWorkItemFamilyStatusResponse:
-    del course_key
     db.refresh(user)
     return CourseWorkItemFamilyStatusResponse(
         state=user.work_item_mappings_state,
@@ -161,18 +305,81 @@ def _to_user_response(user: User) -> UserResponse:
         email=user.email,
         notify_email=user.notify_email,
         timezone_name=user.timezone_name,
+        timezone_source=user.timezone_source,
         calendar_delay_seconds=user.calendar_delay_seconds,
         created_at=user.created_at,
     )
 
 
+def _course_identity_response_payload(
+    *,
+    course_dept: str,
+    course_number: int,
+    course_suffix: str | None,
+    course_quarter: str | None,
+    course_year2: int | None,
+) -> dict[str, object]:
+    return {
+        "course_display": course_display_name(
+            course_dept=course_dept,
+            course_number=course_number,
+            course_suffix=course_suffix,
+            course_quarter=course_quarter,
+            course_year2=course_year2,
+        )
+        or "Unknown",
+        "course_dept": course_dept,
+        "course_number": course_number,
+        "course_suffix": course_suffix,
+        "course_quarter": course_quarter,
+        "course_year2": course_year2,
+    }
+
+
 def _to_course_family_response(row) -> CourseWorkItemFamilyResponse:
-    aliases = row.aliases_json if isinstance(row.aliases_json, list) else []
+    raw_types = []
+    if hasattr(row, "raw_types") and isinstance(row.raw_types, list):
+        for item in row.raw_types:
+            raw = getattr(item, "raw_type", None)
+            if isinstance(raw, str) and raw.strip():
+                raw_types.append(raw)
+    seen = set()
+    deduped_raw_types = []
+    for item in raw_types:
+        key = item.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped_raw_types.append(item)
     return CourseWorkItemFamilyResponse(
         id=row.id,
-        course_key=row.course_key,
         canonical_label=row.canonical_label,
-        aliases=[alias for alias in aliases if isinstance(alias, str)],
+        raw_types=deduped_raw_types,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        **_course_identity_response_payload(
+            course_dept=row.course_dept,
+            course_number=row.course_number,
+            course_suffix=row.course_suffix,
+            course_quarter=row.course_quarter,
+            course_year2=row.course_year2,
+        ),
+    )
+
+
+def _to_course_raw_type_response(row) -> CourseRawTypeResponse:
+    family = row.family
+    return CourseRawTypeResponse(
+        id=row.id,
+        family_id=row.family_id,
+        raw_type=row.raw_type,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        **_course_identity_response_payload(
+            course_dept=family.course_dept if family is not None else "",
+            course_number=family.course_number if family is not None else 0,
+            course_suffix=family.course_suffix if family is not None else None,
+            course_quarter=family.course_quarter if family is not None else None,
+            course_year2=family.course_year2 if family is not None else None,
+        ),
     )

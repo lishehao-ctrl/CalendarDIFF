@@ -8,6 +8,7 @@ import redis
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models.ingestion import ConnectorResultStatus
+from app.modules.common.payload_schemas import SourceFacts
 from app.modules.ingestion.ics_delta import external_event_id_from_component_key
 from app.modules.ingestion.llm_parsers import (
     LlmParseError,
@@ -36,7 +37,7 @@ def parse_with_llm(
     request_id: str,
 ) -> tuple[list[dict], ConnectorResultStatus]:
     parse_kind = str(parse_payload.get("kind") or "").strip().lower()
-    if parse_kind not in {"gmail", "calendar", "calendar_delta_v1"}:
+    if parse_kind not in {"gmail", "calendar", "calendar_delta"}:
         raise LlmParseError(
             code="llm_parse_kind_invalid",
             message=f"unsupported llm parse kind: {parse_kind or '-'}",
@@ -87,7 +88,7 @@ def parse_with_llm(
             records.extend(attach_parser_metadata(records=parser_output.records, parser_output=parser_output))
         return records, ConnectorResultStatus.CHANGED
 
-    if parse_kind == "calendar_delta_v1":
+    if parse_kind == "calendar_delta":
         return parse_calendar_delta_with_llm(
             redis_client=redis_client,
             stream_key=stream_key,
@@ -248,11 +249,15 @@ def parse_calendar_delta_with_llm(
                 if not isinstance(payload, dict):
                     continue
                 payload["raw_ics_component_b64"] = component_ical_b64
-                source_canonical_raw = payload.get("source_canonical")
-                source_canonical = source_canonical_raw if isinstance(source_canonical_raw, dict) else {}
-                source_canonical["external_event_id"] = external_event_id
-                source_canonical["component_key"] = component_key
-                payload["source_canonical"] = source_canonical
+                source_facts_raw = payload.get("source_facts")
+                source_facts = source_facts_raw if isinstance(source_facts_raw, dict) else {}
+                payload["source_facts"] = SourceFacts.model_validate(
+                    {
+                        **source_facts,
+                        "external_event_id": external_event_id,
+                        "component_key": component_key,
+                    }
+                ).model_dump(mode="json")
                 payload["component_key"] = component_key
             records.extend(parsed_records)
 

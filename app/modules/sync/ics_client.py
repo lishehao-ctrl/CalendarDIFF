@@ -26,7 +26,7 @@ class ICSClient:
     def fetch(
         self,
         url: str,
-        input_id: int,
+        source_id: int,
         if_none_match: str | None = None,
         if_modified_since: str | None = None,
     ) -> FetchResult:
@@ -72,7 +72,7 @@ class ICSClient:
                     sleep_seconds = min(0.5 * (2**attempt), 2.0)
                     time.sleep(sleep_seconds)
                 else:
-                    logger.warning("ICS fetch failed for input_id=%s after retries", input_id)
+                    logger.warning("ICS fetch failed for source_id=%s after retries", source_id)
 
         assert last_error is not None
         raise last_error

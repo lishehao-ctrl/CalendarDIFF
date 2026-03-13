@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+<<<<<<< ours
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.modules.review_changes.change_event_codec import parse_iso_datetime
+=======
+from datetime import date
+
+from app.modules.core_ingest.semantic_event_service import normalize_semantic_event, semantic_event_with_patch
+>>>>>>> theirs
 from app.modules.review_changes.canonical_edit_errors import CanonicalEditValidationError
 
 
 def build_candidate_after(
     *,
+<<<<<<< ours
     event_uid: str,
     base_snapshot: dict,
     due_at: str,
@@ -70,6 +77,44 @@ def resolve_timezone_name(value: str | None) -> ZoneInfo:
         return ZoneInfo(normalized)
     except Exception:
         return ZoneInfo("UTC")
+=======
+    entity_uid: str,
+    base_payload: dict,
+    patch: dict,
+) -> dict:
+    normalized_base = normalize_semantic_event({**base_payload, "uid": entity_uid})
+    next_payload = dict(normalized_base)
+    if "event_name" in patch:
+        next_payload["event_name"] = coalesce_patch_text(
+            patch.get("event_name"),
+            fallback=str(normalized_base.get("event_name") or "Untitled"),
+            max_len=512,
+        )
+    for field in ("course_dept", "course_number", "course_suffix", "course_quarter", "course_year2"):
+        if field in patch and patch.get(field) is not None:
+            next_payload[field] = patch.get(field)
+    if "due_date" in patch:
+        due_date_value = patch.get("due_date")
+        if isinstance(due_date_value, date):
+            next_payload["due_date"] = due_date_value.isoformat()
+        elif isinstance(due_date_value, str) and due_date_value.strip():
+            next_payload["due_date"] = due_date_value.strip()
+        else:
+            raise CanonicalEditValidationError("patch.due_date must be a valid date")
+    if "due_time" in patch:
+        next_payload["due_time"] = patch.get("due_time")
+    if "time_precision" in patch and patch.get("time_precision") is not None:
+        next_payload["time_precision"] = patch.get("time_precision")
+    candidate = semantic_event_with_patch(normalized_base, next_payload)
+    if candidate.get("time_precision") == "date_only":
+        candidate["due_time"] = None
+    if not candidate.get("due_date"):
+        raise CanonicalEditValidationError("edited semantic payload must include due_date")
+    if not isinstance(candidate.get("event_name"), str) or not str(candidate.get("event_name")).strip():
+        raise CanonicalEditValidationError("edited semantic payload must include event_name")
+    candidate["uid"] = entity_uid
+    return candidate
+>>>>>>> theirs
 
 
 def coalesce_patch_text(value: str | None, *, fallback: str, max_len: int) -> str:
@@ -84,6 +129,7 @@ def coalesce_patch_text(value: str | None, *, fallback: str, max_len: int) -> st
 
 
 def edit_payload_from_event_json(payload: dict) -> dict:
+<<<<<<< ours
     start_raw = payload.get("start_at_utc")
     end_raw = payload.get("end_at_utc")
     if not isinstance(start_raw, str) or not isinstance(end_raw, str):
@@ -104,6 +150,16 @@ def edit_payload_from_event_json(payload: dict) -> dict:
         "start_at_utc": start_at,
         "end_at_utc": end_at,
     }
+=======
+    normalized = normalize_semantic_event(payload)
+    if not isinstance(normalized.get("uid"), str) or not normalized.get("uid"):
+        raise CanonicalEditValidationError("event payload missing uid")
+    if not isinstance(normalized.get("event_name"), str) or not normalized.get("event_name"):
+        raise CanonicalEditValidationError("event payload missing event_name")
+    if not normalized.get("due_date"):
+        raise CanonicalEditValidationError("event payload missing valid semantic due fields")
+    return normalized
+>>>>>>> theirs
 
 
 __all__ = [

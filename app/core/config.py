@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     ingestion_llm_model: str = ""
 
     redis_url: str | None = None
-    llm_queue_stream_key: str = "llm:parse:stream:v1"
+    llm_queue_stream_key: str = "llm:parse:stream"
     llm_queue_group: str = "llm-parse-workers"
     llm_queue_consumer_poll_ms: int = 500
     llm_worker_concurrency: int = 24
@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     smtp_username: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_USERNAME", "SMTP_USER"))
     smtp_password: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_PASSWORD", "SMTP_PASS"))
     smtp_use_tls: bool = False
+    smtp_from_name: str | None = Field(default="CalendarDIFF", validation_alias=AliasChoices("SMTP_FROM_NAME"))
     smtp_from_email: str = Field(
         default="no-reply@example.com", validation_alias=AliasChoices("SMTP_FROM_EMAIL", "SMTP_FROM")
     )

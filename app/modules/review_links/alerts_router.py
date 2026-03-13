@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.modules.common.deps import get_onboarded_user_or_409
+from app.modules.auth.deps import get_onboarded_authenticated_user_or_409 as get_onboarded_user_or_409
 from app.modules.review_links.alerts_decision_service import batch_decide_link_alerts, dismiss_link_alert, mark_safe_link_alert
 from app.modules.review_links.alerts_errors import LinkAlertNotFoundError
 from app.modules.review_links.alerts_query_service import list_link_alerts
-from app.modules.review_links.router_common import normalize_status_filter, raise_not_found
 from app.modules.review_links.schemas import (
     LinkAlertBatchDecisionRequest,
     LinkAlertBatchDecisionResponse,
@@ -29,12 +28,12 @@ def get_link_alerts(
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> list[LinkAlertItemResponse]:
-    normalized_status = normalize_status_filter(
-        status_filter,
-        default_value="pending",
-        allowed_values=("pending", "dismissed", "marked_safe", "resolved", "all"),
-        error_detail="status must be one of: pending, dismissed, marked_safe, resolved, all",
-    )
+    normalized_status = status_filter.strip().lower() if isinstance(status_filter, str) else "pending"
+    if normalized_status not in {"pending", "dismissed", "marked_safe", "resolved", "all"}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="status must be one of: pending, dismissed, marked_safe, resolved, all",
+        )
     rows = list_link_alerts(
         db=db,
         user_id=user.id,
@@ -77,7 +76,7 @@ def post_link_alert_dismiss(
             note=payload.note,
         )
     except LinkAlertNotFoundError as exc:
-        raise_not_found(exc)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return LinkAlertDecisionResponse(
         id=row.id,
         status=row.status.value,
@@ -102,7 +101,7 @@ def post_link_alert_mark_safe(
             note=payload.note,
         )
     except LinkAlertNotFoundError as exc:
-        raise_not_found(exc)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return LinkAlertDecisionResponse(
         id=row.id,
         status=row.status.value,

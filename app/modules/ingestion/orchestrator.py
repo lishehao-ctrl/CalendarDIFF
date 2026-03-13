@@ -12,7 +12,7 @@ from app.db.models.ingestion import IngestJob, IngestJobStatus
 from app.db.models.input import IngestTriggerType, InputSource, SyncRequest, SyncRequestStatus
 from app.db.models.shared import IntegrationInbox, IntegrationOutbox, OutboxStatus
 
-ORCHESTRATOR_SYNC_REQUEST_CONSUMER = "orchestrator.sync_requested.v1"
+ORCHESTRATOR_SYNC_REQUEST_CONSUMER = "orchestrator.sync_requested"
 OUTBOX_BATCH_SIZE = 200
 
 

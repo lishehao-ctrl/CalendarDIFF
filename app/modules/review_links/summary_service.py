@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models.review import Change, EventLinkAlert, EventLinkAlertStatus, EventLinkCandidate, EventLinkCandidateStatus, Input, ReviewStatus
+from app.db.models.review import Change, EventLinkAlert, EventLinkAlertStatus, EventLinkCandidate, EventLinkCandidateStatus, ReviewStatus
 
 
 def get_review_items_summary(
@@ -15,10 +15,8 @@ def get_review_items_summary(
 ) -> dict:
     changes_pending = int(
         db.scalar(
-            select(func.count(Change.id))
-            .join(Input, Input.id == Change.input_id)
-            .where(
-                Input.user_id == user_id,
+            select(func.count(Change.id)).where(
+                Change.user_id == user_id,
                 Change.review_status == ReviewStatus.PENDING,
             )
         )

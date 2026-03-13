@@ -8,7 +8,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.db.models.notify import Notification, NotificationChannel, NotificationStatus
-from app.db.models.review import Change, Input
+from app.db.models.review import Change
+from app.modules.common.event_display import event_display_from_payload
+from app.modules.core_ingest.semantic_event_service import normalize_time_precision, semantic_due_datetime_from_payload
 from app.modules.notify.interface import ChangeDigestItem
 
 
@@ -22,13 +24,11 @@ class NotificationEnqueueResult:
 
 def enqueue_notifications_for_changes(
     db: Session,
-    input: Input,
     changes: list[Change],
     *,
     deliver_after: datetime,
     enqueue_reason: str | None = None,
 ) -> NotificationEnqueueResult:
-    del input
     if not changes:
         return NotificationEnqueueResult()
 
@@ -81,46 +81,38 @@ def enqueue_notifications_for_changes(
 
 
 def _to_digest_item(change: Change) -> ChangeDigestItem:
-    before_json = change.before_json or {}
-    after_json = change.after_json or {}
-
-    title = str(after_json.get("title") or before_json.get("title") or change.event_uid)
-    course_label = str(after_json.get("course_label") or before_json.get("course_label") or "Unknown")
+    before_payload = change.before_semantic_json if isinstance(change.before_semantic_json, dict) else {}
+    after_payload = change.after_semantic_json if isinstance(change.after_semantic_json, dict) else {}
     evidence_path = _read_evidence_path(change)
 
     return ChangeDigestItem(
-        event_uid=change.event_uid,
+        entity_uid=change.entity_uid,
         change_type=change.change_type.value,
-        course_label=course_label,
-        title=title,
-        before_start_at_utc=_read_timestamp(before_json.get("start_at_utc")),
-        after_start_at_utc=_read_timestamp(after_json.get("start_at_utc")),
+        before_display=event_display_from_payload(before_payload, strict=True) if before_payload else None,
+        after_display=event_display_from_payload(after_payload, strict=True) if after_payload else None,
+        before_due_at=_read_semantic_due(before_payload),
+        after_due_at=_read_semantic_due(after_payload),
+        before_time_precision=_read_time_precision(before_payload),
+        after_time_precision=_read_time_precision(after_payload),
         delta_seconds=change.delta_seconds,
         detected_at=change.detected_at,
         evidence_path=evidence_path,
     )
 
 
-def _read_timestamp(value: object) -> str | None:
-    if isinstance(value, str) and value:
-        return value
-    return None
+def _read_semantic_due(payload: dict[str, object]) -> str | None:
+    due_at = semantic_due_datetime_from_payload(payload)
+    return due_at.isoformat() if due_at is not None else None
+
+
+def _read_time_precision(payload: dict[str, object]) -> str:
+    try:
+        return normalize_time_precision(payload.get("time_precision"))
+    except Exception:
+        return "datetime"
 
 
 def _read_evidence_path(change: Change) -> str | None:
-    evidence_keys = change.evidence_keys if isinstance(change.evidence_keys, dict) else None
-    if evidence_keys:
-        after = evidence_keys.get("after")
-        if isinstance(after, dict):
-            value = after.get("path")
-            if isinstance(value, str) and value:
-                return value
-
-    after_snapshot = getattr(change, "after_snapshot", None)
-    if after_snapshot and isinstance(after_snapshot.raw_evidence_key, dict):
-        value = after_snapshot.raw_evidence_key.get("path")
-        if isinstance(value, str) and value:
-            return value
     return None
 
 

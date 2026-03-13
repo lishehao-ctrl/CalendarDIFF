@@ -6,15 +6,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.contracts.events import new_event
-from app.db.models.review import Change, ChangeType, Event, Input, ReviewStatus
+from app.db.models.review import Change, ChangeType, ReviewStatus
 from app.db.models.shared import IntegrationOutbox, OutboxStatus
-from app.modules.review_changes.change_event_codec import (
-    event_json_equivalent,
-    event_row_to_json,
-    parse_after_json,
+from app.modules.common.semantic_codec import (
+    parse_semantic_payload,
     parse_iso_datetime,
-    safe_delta_seconds,
+    semantic_delta_seconds,
+    semantic_payloads_equivalent,
 )
+from app.modules.review_changes.approved_entity_state import apply_approved_entity_state
 from app.modules.review_links.common import dedupe_ids_preserve_order, normalize_review_note
 
 
@@ -31,10 +31,7 @@ def mark_review_change_viewed(
     note: str | None,
 ) -> Change:
     row = db.scalar(
-        select(Change)
-        .join(Input, Input.id == Change.input_id)
-        .where(Change.id == change_id, Input.user_id == user_id)
-        .with_for_update()
+        select(Change).where(Change.id == change_id, Change.user_id == user_id).with_for_update()
     )
     if row is None:
         raise ReviewChangeNotFoundError("Review change not found")
@@ -60,10 +57,7 @@ def decide_review_change(
     note: str | None,
 ) -> tuple[Change, bool]:
     row = db.scalar(
-        select(Change)
-        .join(Input, Input.id == Change.input_id)
-        .where(Change.id == change_id, Input.user_id == user_id)
-        .with_for_update()
+        select(Change).where(Change.id == change_id, Change.user_id == user_id).with_for_update()
     )
     if row is None:
         raise ReviewChangeNotFoundError("Review change not found")
@@ -73,7 +67,7 @@ def decide_review_change(
 
     now = datetime.now(timezone.utc)
     if decision == "approve":
-        apply_change_to_canonical_event(db=db, change=row)
+        apply_change_to_approved_entity_state(db=db, change=row)
         row.review_status = ReviewStatus.APPROVED
     else:
         row.review_status = ReviewStatus.REJECTED
@@ -88,7 +82,7 @@ def decide_review_change(
         aggregate_id=str(row.id),
         payload={
             "change_id": row.id,
-            "event_uid": row.event_uid,
+            "entity_uid": row.entity_uid,
             "review_status": row.review_status.value,
             "reviewed_by_user_id": user_id,
             "reviewed_at": now.isoformat(),
@@ -169,55 +163,25 @@ def batch_decide_review_changes(
     }
 
 
-def apply_change_to_canonical_event(*, db: Session, change: Change) -> None:
-    existing = db.scalar(
-        select(Event).where(
-            Event.input_id == change.input_id,
-            Event.uid == change.event_uid,
-        )
+def apply_change_to_approved_entity_state(*, db: Session, change: Change) -> None:
+    approved_payload = change.after_semantic_json if isinstance(change.after_semantic_json, dict) else None
+    apply_approved_entity_state(
+        db=db,
+        user_id=change.user_id,
+        entity_uid=change.entity_uid,
+        change_type=change.change_type,
+        semantic_payload=approved_payload,
     )
-
-    if change.change_type == ChangeType.REMOVED:
-        if existing is not None:
-            db.delete(existing)
-        return
-
-    after_json = change.after_json if isinstance(change.after_json, dict) else None
-    if after_json is None:
-        return
-
-    parsed = parse_after_json(change.event_uid, after_json)
-    if parsed is None:
-        return
-
-    if existing is None:
-        db.add(
-            Event(
-                input_id=change.input_id,
-                uid=change.event_uid,
-                course_label=parsed["course_label"],
-                title=parsed["title"],
-                start_at_utc=parsed["start_at_utc"],
-                end_at_utc=parsed["end_at_utc"],
-            )
-        )
-        return
-
-    existing.course_label = parsed["course_label"]
-    existing.title = parsed["title"]
-    existing.start_at_utc = parsed["start_at_utc"]
-    existing.end_at_utc = parsed["end_at_utc"]
 
 
 __all__ = [
     "ReviewChangeNotFoundError",
-    "apply_change_to_canonical_event",
+    "apply_change_to_approved_entity_state",
     "batch_decide_review_changes",
     "decide_review_change",
-    "event_json_equivalent",
-    "event_row_to_json",
     "mark_review_change_viewed",
-    "parse_after_json",
+    "parse_semantic_payload",
     "parse_iso_datetime",
-    "safe_delta_seconds",
+    "semantic_delta_seconds",
+    "semantic_payloads_equivalent",
 ]

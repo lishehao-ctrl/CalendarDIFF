@@ -5,6 +5,8 @@ import hashlib
 import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
+from email.utils import parseaddr
+from zoneinfo import ZoneInfo
 
 import bcrypt
 from fastapi import Request
@@ -13,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.models.shared import User, UserSession
-from app.modules.users.email_utils import is_valid_email_address
+from app.modules.users.service import sync_auto_timezone
 
 AUTH_SESSION_COOKIE_NAME = "calendardiff_session"
 AUTH_SESSION_TTL = timedelta(days=7)
@@ -31,7 +33,7 @@ class AuthenticationRequiredError(RuntimeError):
     pass
 
 
-def register_user(db: Session, *, notify_email: str, password: str) -> User:
+def register_user(db: Session, *, notify_email: str, password: str, timezone_name: str | None = None) -> User:
     normalized_email = _normalize_notify_email(notify_email)
     _validate_password(password)
 
@@ -39,11 +41,13 @@ def register_user(db: Session, *, notify_email: str, password: str) -> User:
     if existing is not None:
         raise AuthEmailExistsError("notify_email already exists")
 
+    normalized_timezone = _normalize_timezone_name(timezone_name) if timezone_name is not None else "UTC"
     user = User(
         email=None,
         notify_email=normalized_email,
         password_hash=_hash_password(password),
-        timezone_name="UTC",
+        timezone_name=normalized_timezone,
+        timezone_source="auto",
         onboarding_completed_at=None,
     )
     db.add(user)
@@ -52,14 +56,14 @@ def register_user(db: Session, *, notify_email: str, password: str) -> User:
     return user
 
 
-def login_user(db: Session, *, notify_email: str, password: str) -> User:
+def login_user(db: Session, *, notify_email: str, password: str, timezone_name: str | None = None) -> User:
     normalized_email = _normalize_notify_email(notify_email)
     user = db.scalar(select(User).where(User.notify_email == normalized_email).limit(1))
     if user is None or not user.password_hash:
         raise InvalidCredentialsError("invalid credentials")
     if not bcrypt.checkpw(password.encode("utf-8"), user.password_hash.encode("utf-8")):
         raise InvalidCredentialsError("invalid credentials")
-    return user
+    return sync_auto_timezone(db, user=user, timezone_name=timezone_name)
 
 
 def create_user_session(db: Session, *, user: User, now: datetime | None = None) -> str:
@@ -132,7 +136,7 @@ def _normalize_notify_email(value: str) -> str:
     normalized = value.strip().lower()
     if not normalized:
         raise ValueError("notify_email must not be blank")
-    if not is_valid_email_address(normalized):
+    if not _is_valid_email_address(normalized):
         raise ValueError("notify_email must be a valid email address")
     return normalized
 
@@ -151,3 +155,35 @@ def _decode_cookie_value(cookie_value: str | None) -> str | None:
     if not hmac.compare_digest(signature, expected):
         return None
     return session_id
+
+
+def _is_valid_email_address(value: str | None) -> bool:
+    if value is None:
+        return False
+    candidate = value.strip()
+    if not candidate:
+        return False
+    if any(ch.isspace() for ch in candidate):
+        return False
+    _, parsed = parseaddr(candidate)
+    if parsed != candidate:
+        return False
+    local, separator, domain = candidate.rpartition("@")
+    if separator != "@":
+        return False
+    if not local or not domain or "." not in domain:
+        return False
+    if domain.startswith(".") or domain.endswith(".") or ".." in domain:
+        return False
+    return True
+
+
+def _normalize_timezone_name(value: str) -> str:
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("timezone_name must not be blank")
+    try:
+        ZoneInfo(stripped)
+    except Exception as exc:
+        raise ValueError("timezone_name must be a valid IANA timezone") from exc
+    return stripped

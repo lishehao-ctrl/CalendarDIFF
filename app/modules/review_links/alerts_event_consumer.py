@@ -15,7 +15,7 @@ from app.modules.review_links.alerts_upsert_service import (
     upsert_pending_link_alert,
 )
 
-REVIEW_LINK_ALERTS_CONSUMER = "review.link_alerts.consumer.v1"
+REVIEW_LINK_ALERTS_CONSUMER = "review.link_alerts.consumer"
 REVIEW_LINK_ALERTS_BATCH_SIZE = 200
 REVIEW_LINK_ALERTS_EVENT_TYPES = {
     "review.link_alert.upsert.requested",
