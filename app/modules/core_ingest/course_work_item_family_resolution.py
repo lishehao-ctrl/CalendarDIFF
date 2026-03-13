@@ -25,6 +25,7 @@ def resolve_kind_resolution(
     user_id: int,
     course_parse: dict,
     semantic_parse: dict,
+    source_facts: dict | None = None,
     source_kind: str,
     external_event_id: str,
     source_id: int | None = None,
@@ -44,10 +45,12 @@ def resolve_kind_resolution(
     raw_type = normalized_semantic.get("raw_type")
     ordinal = normalized_semantic.get("ordinal") if isinstance(normalized_semantic.get("ordinal"), int) else None
     event_name_value = normalized_semantic.get("event_name") if isinstance(normalized_semantic.get("event_name"), str) else None
-    incoming_raw_type = raw_type or event_name_value
-    if course_dept is None or course_number is None or not incoming_raw_type:
+    source_title_value = source_facts.get("source_title") if isinstance(source_facts, dict) and isinstance(source_facts.get("source_title"), str) else None
+    incoming_raw_type = _first_non_empty_text(raw_type, event_name_value, source_title_value) or "Untitled"
+    if course_dept is None or course_number is None:
         return {
             "status": "unresolved",
+            "reason_code": "missing_course_identity",
             "family_id": None,
             "canonical_label": None,
             "matched_alias": None,
@@ -75,7 +78,7 @@ def resolve_kind_resolution(
     )
     if exact_resolution.get("status") == "resolved" and isinstance(exact_resolution.get("family_id"), int):
         family_id = int(exact_resolution["family_id"])
-        return {
+        resolution = {
             "status": "exact",
             "family_id": family_id,
             "canonical_label": exact_resolution.get("canonical_label"),
@@ -91,6 +94,8 @@ def resolve_kind_resolution(
             "raw_type_id": exact_resolution.get("raw_type_id"),
             "suggestion_id": None,
         }
+        _assert_family_resolution_invariant(resolution)
+        return resolution
 
     family = create_course_work_item_family(
         db,
@@ -193,7 +198,7 @@ def resolve_kind_resolution(
                 status = "suggested"
                 matched_alias = matched_raw_type
 
-    return {
+    resolution = {
         "status": status,
         "family_id": family.id,
         "canonical_label": family.canonical_label,
@@ -209,6 +214,26 @@ def resolve_kind_resolution(
         "raw_type_id": current_raw_type.id,
         "suggestion_id": suggestion_id,
     }
+    _assert_family_resolution_invariant(resolution)
+    return resolution
+
+
+def _assert_family_resolution_invariant(resolution: dict[str, object]) -> None:
+    status = resolution.get("status")
+    if status == "unresolved":
+        return
+    family_id = resolution.get("family_id")
+    if not isinstance(family_id, int):
+        raise RuntimeError(f"core_ingest_integrity_error: resolved kind_resolution missing family_id (status={status})")
+
+
+def _first_non_empty_text(*values: object) -> str | None:
+    for value in values:
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if cleaned:
+                return cleaned[:128]
+    return None
 
 
 def build_source_scoped_entity_uid(*, source_kind: str, external_event_id: str) -> str:

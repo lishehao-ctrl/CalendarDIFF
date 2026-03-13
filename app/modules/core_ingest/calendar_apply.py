@@ -12,9 +12,13 @@ from app.modules.core_ingest.source_facts_coercion import coerce_calendar_payloa
 from app.modules.core_ingest.linking_engine import find_existing_entity_link
 from app.modules.core_ingest.semantic_event_service import build_semantic_event_payload
 from app.modules.core_ingest.observation_store import deactivate_observation, upsert_observation
+from app.modules.core_ingest.unresolved_store import (
+    resolve_active_unresolved_records,
+    upsert_active_unresolved_record,
+)
 from app.modules.core_ingest.payload_contracts import PayloadContractError, validate_calendar_payload
 from app.modules.core_ingest.payload_extractors import (
-    extract_enrichment_course_parse,
+    extract_course_parse,
     extract_link_signals,
     extract_semantic_event_draft,
     extract_source_facts_from_calendar_payload,
@@ -81,6 +85,13 @@ def apply_calendar_observations(
                     request_id=request_id,
                 )
             )
+            resolve_active_unresolved_records(
+                db=db,
+                user_id=source.user_id,
+                source_id=source.id,
+                external_event_id=external_event_id,
+                resolved_at=applied_at,
+            )
             continue
 
         event = coerce_calendar_payload(payload=payload)
@@ -106,7 +117,7 @@ def apply_calendar_observations(
             and isinstance(existing_row.event_payload, dict)
         ):
             previous_observation_payloads.setdefault(existing_row.entity_uid, dict(existing_row.event_payload))
-        course_parse = extract_enrichment_course_parse(payload=payload)
+        course_parse = extract_course_parse(payload=payload, source_facts=source_facts)
         semantic_draft = extract_semantic_event_draft(payload=payload, source_facts=source_facts)
         link_signals = extract_link_signals(payload=payload, source_facts=source_facts)
         confidence = float(semantic_draft.get("confidence") or 0.0)
@@ -115,12 +126,30 @@ def apply_calendar_observations(
             user_id=source.user_id,
             course_parse=course_parse,
             semantic_parse=semantic_draft,
+            source_facts=source_facts,
             source_kind=SourceKind.CALENDAR.value,
             external_event_id=external_event_id,
             source_id=source.id,
             request_id=request_id,
             provider=source.provider,
         )
+        if kind_resolution.get("status") == "unresolved":
+            upsert_active_unresolved_record(
+                db=db,
+                user_id=source.user_id,
+                source_id=source.id,
+                source_kind=source.source_kind,
+                provider=source.provider,
+                external_event_id=external_event_id,
+                request_id=request_id,
+                reason_code=str(kind_resolution.get("reason_code") or "missing_course_identity"),
+                source_facts_json=source_facts,
+                semantic_event_draft_json=semantic_draft,
+                kind_resolution_json=kind_resolution,
+                raw_payload_json=payload,
+            )
+            seen_external_ids.add(external_event_id)
+            continue
         existing_link = find_existing_entity_link(
             db=db,
             user_id=source.user_id,
@@ -168,6 +197,13 @@ def apply_calendar_observations(
                 applied_at=applied_at,
                 request_id=request_id,
             )
+        )
+        resolve_active_unresolved_records(
+            db=db,
+            user_id=source.user_id,
+            source_id=source.id,
+            external_event_id=external_event_id,
+            resolved_at=applied_at,
         )
 
     if delta_mode:

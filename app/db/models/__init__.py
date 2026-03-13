@@ -1,6 +1,12 @@
 """Bounded-context SQLAlchemy model package."""
 
-from app.db.models.ingestion import ConnectorResultStatus, IngestJob, IngestJobStatus, IngestResult
+from app.db.models.ingestion import (
+    ConnectorResultStatus,
+    IngestJob,
+    IngestJobStatus,
+    IngestResult,
+    IngestUnresolvedRecord,
+)
 from app.db.models.input import (
     IngestTriggerType,
     InputSource,
@@ -58,6 +64,7 @@ __all__ = [
     "IngestJob",
     "IngestJobStatus",
     "IngestResult",
+    "IngestUnresolvedRecord",
     "IngestTriggerType",
     "InputSource",
     "InputSourceConfig",

@@ -4,13 +4,28 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, Enum as SAEnum, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    Enum as SAEnum,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.db.models.input import SourceKind
 
 if TYPE_CHECKING:
     from app.db.models.input import InputSource, SyncRequest
+    from app.db.models.shared import User
 
 
 class IngestJobStatus(str, Enum):
@@ -96,9 +111,53 @@ class IngestResult(Base):
     )
 
 
+class IngestUnresolvedRecord(Base):
+    __tablename__ = "ingest_unresolved_records"
+    __table_args__ = (
+        Index(
+            "ix_ingest_unresolved_records_user_source_external_active",
+            "user_id",
+            "source_id",
+            "external_event_id",
+            "is_active",
+        ),
+        Index(
+            "ix_ingest_unresolved_records_active_created",
+            "is_active",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), nullable=False)
+    source_kind: Mapped[SourceKind] = mapped_column(
+        SAEnum(SourceKind, name="source_kind", native_enum=False),
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    external_event_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reason_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_facts_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    semantic_event_draft_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    kind_resolution_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    raw_payload_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    source: Mapped["InputSource"] = relationship("InputSource")
+    user: Mapped["User"] = relationship("User")
+
+
 __all__ = [
     "ConnectorResultStatus",
     "IngestJob",
     "IngestJobStatus",
     "IngestResult",
+    "IngestUnresolvedRecord",
 ]
