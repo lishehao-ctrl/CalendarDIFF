@@ -293,6 +293,9 @@ def candidate_after_payload(*, entity_uid: str, payload: dict) -> ApprovedSemant
     semantic_event = payload.get("semantic_event") if isinstance(payload.get("semantic_event"), dict) else None
     if semantic_event is None:
         return None
+    family_id = semantic_event.get("family_id")
+    if not isinstance(family_id, int):
+        raise RuntimeError(f"core_ingest_integrity_error: semantic_event missing family_id for entity_uid={entity_uid}")
     event_name = semantic_event.get("event_name")
     due_date = semantic_event.get("due_date")
     if not isinstance(event_name, str) or not event_name.strip() or not isinstance(due_date, str) or not due_date.strip():
@@ -300,20 +303,20 @@ def candidate_after_payload(*, entity_uid: str, payload: dict) -> ApprovedSemant
     parsed = parse_semantic_payload(
         entity_uid,
         {
-        "uid": entity_uid,
-        "course_dept": semantic_event.get("course_dept"),
-        "course_number": semantic_event.get("course_number"),
-        "course_suffix": semantic_event.get("course_suffix"),
-        "course_quarter": semantic_event.get("course_quarter"),
-        "course_year2": semantic_event.get("course_year2"),
-        "family_id": semantic_event.get("family_id"),
-        "family_name": semantic_event.get("family_name"),
-        "raw_type": semantic_event.get("raw_type"),
-        "event_name": event_name.strip()[:512],
-        "ordinal": semantic_event.get("ordinal"),
-        "due_date": due_date.strip(),
-        "due_time": semantic_event.get("due_time"),
-        "time_precision": semantic_event.get("time_precision") or "datetime",
+            "uid": entity_uid,
+            "course_dept": semantic_event.get("course_dept"),
+            "course_number": semantic_event.get("course_number"),
+            "course_suffix": semantic_event.get("course_suffix"),
+            "course_quarter": semantic_event.get("course_quarter"),
+            "course_year2": semantic_event.get("course_year2"),
+            "family_id": family_id,
+            "family_name": semantic_event.get("family_name"),
+            "raw_type": semantic_event.get("raw_type"),
+            "event_name": event_name.strip()[:512],
+            "ordinal": semantic_event.get("ordinal"),
+            "due_date": due_date.strip(),
+            "due_time": semantic_event.get("due_time"),
+            "time_precision": semantic_event.get("time_precision") or "datetime",
         },
     )
     return parsed

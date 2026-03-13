@@ -9,7 +9,7 @@ from app.db.models.review import ChangeType, EventEntity, EventEntityLifecycle
 from app.db.models.shared import User
 from app.modules.core_ingest.calendar_apply import apply_calendar_observations
 from app.modules.review_changes.approved_entity_state import apply_approved_entity_state
-from tests.support.payload_builders import build_calendar_payload
+from tests.support.payload_builders import build_calendar_payload, build_course_parse
 
 
 def _create_user(db_session) -> User:
@@ -88,6 +88,14 @@ def test_ingest_calendar_observation_does_not_precreate_event_entity(db_session)
         external_event_id="evt-1",
         title="CSE 101 Homework 1",
         start_at=datetime(2026, 3, 10, 8, 0, tzinfo=timezone.utc),
+        course_parse=build_course_parse(
+            dept="CSE",
+            number=101,
+            quarter="SP",
+            year2=26,
+            confidence=0.9,
+            evidence="CSE 101",
+        ),
     )
     affected = apply_calendar_observations(
         db=db_session,
@@ -100,3 +108,38 @@ def test_ingest_calendar_observation_does_not_precreate_event_entity(db_session)
     assert affected
     entity_count = db_session.scalar(select(func.count(EventEntity.id)).where(EventEntity.user_id == user.id))
     assert int(entity_count or 0) == 0
+
+
+def test_apply_approved_entity_state_requires_family_id_for_active_payload(db_session) -> None:
+    user = _create_user(db_session)
+    entity_uid = "ent-missing-family-id"
+    payload = {
+        "uid": entity_uid,
+        "course_dept": "CSE",
+        "course_number": 101,
+        "course_suffix": "A",
+        "course_quarter": "SP",
+        "course_year2": 26,
+        "family_id": None,
+        "family_name": "Homework",
+        "raw_type": "Homework",
+        "event_name": "Homework 4",
+        "ordinal": 4,
+        "due_date": "2026-03-11",
+        "due_time": "23:59:00",
+        "time_precision": "datetime",
+    }
+
+    try:
+        apply_approved_entity_state(
+            db=db_session,
+            user_id=user.id,
+            entity_uid=entity_uid,
+            change_type=ChangeType.CREATED,
+            semantic_payload=payload,
+        )
+        db_session.flush()
+    except RuntimeError as exc:
+        assert "missing family_id" in str(exc)
+    else:
+        raise AssertionError("expected apply_approved_entity_state to reject missing family_id")

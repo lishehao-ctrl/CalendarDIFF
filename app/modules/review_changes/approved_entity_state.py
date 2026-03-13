@@ -31,6 +31,8 @@ def apply_approved_entity_state(
     parsed = parse_semantic_payload(entity_uid, semantic_payload if isinstance(semantic_payload, dict) else None)
     if parsed is None:
         return existing
+    if not isinstance(parsed.family_id, int):
+        raise RuntimeError(f"approved_entity_state_integrity_error: missing family_id for entity_uid={entity_uid}")
 
     if existing is None:
         existing = EventEntity(
@@ -47,7 +49,6 @@ def apply_approved_entity_state(
     existing.course_quarter = parsed.course_quarter
     existing.course_year2 = parsed.course_year2
     existing.family_id = parsed.family_id
-    existing.family_name = parsed.family_name
     existing.raw_type = parsed.raw_type
     existing.event_name = parsed.event_name
     existing.ordinal = parsed.ordinal

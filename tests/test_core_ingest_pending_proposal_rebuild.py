@@ -16,7 +16,7 @@ def _semantic_payload(
     family_name: str,
     event_name: str,
     due_at: datetime,
-    family_id: int | None = None,
+    family_id: int,
     raw_type: str | None = None,
 ) -> dict:
     return {
@@ -64,7 +64,7 @@ def _add_observation(
     external_event_id: str,
     due_at: datetime,
     family_name: str = "Homework",
-    family_id: int | None = None,
+    family_id: int,
     raw_type: str | None = None,
 ) -> None:
     semantic = _semantic_payload(
@@ -104,6 +104,18 @@ def _add_observation(
 
 def test_rebuild_creates_pending_change_and_outbox_for_new_entity(db_session) -> None:
     source = _seed_source(db_session)
+    family = CourseWorkItemLabelFamily(
+        user_id=source.user_id,
+        course_dept="CSE",
+        course_number=100,
+        course_quarter="WI",
+        course_year2=26,
+        normalized_course_identity="cse:100::wi:26",
+        canonical_label="Homework",
+        normalized_canonical_label="homework",
+    )
+    db_session.add(family)
+    db_session.flush()
     due_at = datetime(2026, 3, 18, 23, 59, tzinfo=timezone.utc)
     _add_observation(
         db_session,
@@ -111,6 +123,7 @@ def test_rebuild_creates_pending_change_and_outbox_for_new_entity(db_session) ->
         entity_uid="ent-created",
         external_event_id="evt-created",
         due_at=due_at,
+        family_id=family.id,
     )
     db_session.commit()
 
@@ -143,6 +156,18 @@ def test_rebuild_creates_pending_change_and_outbox_for_new_entity(db_session) ->
 
 def test_rebuild_creates_due_changed_and_removed_against_active_entity_state(db_session) -> None:
     source = _seed_source(db_session)
+    family = CourseWorkItemLabelFamily(
+        user_id=source.user_id,
+        course_dept="CSE",
+        course_number=100,
+        course_quarter="WI",
+        course_year2=26,
+        normalized_course_identity="cse:100::wi:26",
+        canonical_label="Homework",
+        normalized_canonical_label="homework",
+    )
+    db_session.add(family)
+    db_session.flush()
     base_due = datetime(2026, 3, 20, 18, 0, tzinfo=timezone.utc)
     changed_due = base_due + timedelta(hours=2)
     db_session.add_all(
@@ -155,6 +180,7 @@ def test_rebuild_creates_due_changed_and_removed_against_active_entity_state(db_
                 course_number=100,
                 course_quarter="WI",
                 course_year2=26,
+                family_id=family.id,
                 family_name="Homework",
                 raw_type="Homework",
                 event_name="Homework 1",
@@ -171,6 +197,7 @@ def test_rebuild_creates_due_changed_and_removed_against_active_entity_state(db_
                 course_number=100,
                 course_quarter="WI",
                 course_year2=26,
+                family_id=family.id,
                 family_name="Homework",
                 raw_type="Homework",
                 event_name="Homework 1",
@@ -187,6 +214,7 @@ def test_rebuild_creates_due_changed_and_removed_against_active_entity_state(db_
         entity_uid="ent-due",
         external_event_id="evt-due",
         due_at=changed_due,
+        family_id=family.id,
     )
     db_session.commit()
 
