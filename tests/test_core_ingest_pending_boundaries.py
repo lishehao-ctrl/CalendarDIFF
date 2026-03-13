@@ -33,8 +33,8 @@ def test_no_imports_reference_removed_pending_rebuild_module() -> None:
     assert not violations, "removed pending_rebuild module is still imported:\n" + "\n".join(sorted(violations))
 
 
-def test_apply_orchestrator_imports_new_pending_modules_only() -> None:
-    content = Path("app/modules/core_ingest/apply_orchestrator.py").read_text(encoding="utf-8")
+def test_unified_apply_module_imports_pending_modules_only() -> None:
+    content = Path("app/modules/core_ingest/apply.py").read_text(encoding="utf-8")
     assert "app.modules.core_ingest.pending_rebuild" not in content
     assert "app.modules.core_ingest.pending_proposal_rebuild" in content
     assert "app.modules.core_ingest.pending_auto_link_alerts" in content

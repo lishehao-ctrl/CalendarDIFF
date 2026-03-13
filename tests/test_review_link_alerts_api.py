@@ -70,11 +70,6 @@ def test_link_alerts_list_and_decisions(client, db_session, auth_headers) -> Non
         EventEntity(
             user_id=user.id,
             entity_uid="ent_alert_a",
-            course_best_json={"display_name": "CSE 151 WI26"},
-            course_best_strength=5,
-            course_aliases_json=[],
-            title_aliases_json=[],
-            metadata_json={},
         )
     )
     db_session.flush()
@@ -158,22 +153,12 @@ def test_link_alert_resolved_by_link_delete_and_relink(client, db_session, auth_
         EventEntity(
             user_id=user.id,
             entity_uid="ent_alert_a",
-            course_best_json={"display_name": "CSE 151A WI26"},
-            course_best_strength=5,
-            course_aliases_json=[],
-            title_aliases_json=[],
-            metadata_json={},
         )
     )
     db_session.add(
         EventEntity(
             user_id=user.id,
             entity_uid="ent_alert_b",
-            course_best_json={"display_name": "CSE 151B WI26"},
-            course_best_strength=5,
-            course_aliases_json=[],
-            title_aliases_json=[],
-            metadata_json={},
         )
     )
     db_session.flush()
@@ -268,11 +253,6 @@ def test_link_alert_batch_dismiss_partial_success(client, db_session, auth_heade
         EventEntity(
             user_id=user.id,
             entity_uid="ent_alert_batch",
-            course_best_json={"display_name": "CSE 142 SP26"},
-            course_best_strength=5,
-            course_aliases_json=[],
-            title_aliases_json=[],
-            metadata_json={},
         )
     )
     db_session.flush()
@@ -334,11 +314,6 @@ def test_link_alert_batch_mark_safe_success(client, db_session, auth_headers) ->
         EventEntity(
             user_id=user.id,
             entity_uid="ent_alert_batch_safe",
-            course_best_json={"display_name": "CSE 143 SP26"},
-            course_best_strength=5,
-            course_aliases_json=[],
-            title_aliases_json=[],
-            metadata_json={},
         )
     )
     db_session.flush()

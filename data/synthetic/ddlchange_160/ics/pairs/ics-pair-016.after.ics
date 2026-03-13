@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:phys2a-baseline-016
+DTSTART:20260317T120000Z
+DTEND:20260317T130000Z
+SUMMARY:phYS 2a Weekly Lecture
+DESCRIPTION:Pair context: ics-pair-016 (after snapshot) with expected class DUE_CHANGED. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=PhyS 2_a-baseline-016, DTSTART=20260317T120000Z, DTEND=20260317T130000Z, SUMMARY=PHys_2a Weekly Lecture. Reasoning context: fallback instructions are preserved so operational intent remains readable even without LMS UI metadata. Execution guidance: retain screenshot evidence of final submission or attendance acknowledgement for reconciliation requests. FAQ: If cancellation language appears elsewhere, verify whether the UID was replaced versus removed for debounce evaluation.
+END:VEVENT
+BEGIN:VEVENT
+UID:phys2a-task-016
+DTSTART:20260319T090000Z
+DTEND:20260319T100000Z
+SUMMARY:phYs 2a Assignment Deadline
+DESCRIPTION:Pair context: ics-pair-016 (after snapshot) with expected class DUE_CHANGED. This event carries the focal change semantics for the pair and contains the evidence needed to infer the expected diff class. Schedule anchor: UID=pHyS 2-a-task-016, DTSTART=20260319T090000Z, DTEND=20260319T100000Z, SUMMARY=PhYS 2_A Assignment Deadline. Reasoning context: fallback instructions are preserved so operational intent remains readable even without LMS UI metadata. Execution guidance: verify section enrollment mapping, then apply this schedule decision to the exact UID-linked task only. FAQ: If a teammate sees stale metadata, refresh enrollment context before concluding that the event disappeared.
+END:VEVENT
+END:VCALENDAR

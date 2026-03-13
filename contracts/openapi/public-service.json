@@ -15,6 +15,18 @@
             "minLength": 8,
             "title": "Password",
             "type": "string"
+          },
+          "timezone_name": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone Name"
           }
         },
         "required": [
@@ -51,6 +63,18 @@
             "minLength": 8,
             "title": "Password",
             "type": "string"
+          },
+          "timezone_name": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone Name"
           }
         },
         "required": [
@@ -115,12 +139,17 @@
           "timezone_name": {
             "title": "Timezone Name",
             "type": "string"
+          },
+          "timezone_source": {
+            "title": "Timezone Source",
+            "type": "string"
           }
         },
         "required": [
           "id",
           "notify_email",
           "timezone_name",
+          "timezone_source",
           "created_at",
           "onboarding_stage",
           "first_source_id"
@@ -200,11 +229,254 @@
         "title": "ChangeSummarySide",
         "type": "object"
       },
+      "CourseIdentityResponse": {
+        "properties": {
+          "course_dept": {
+            "title": "Course Dept",
+            "type": "string"
+          },
+          "course_display": {
+            "title": "Course Display",
+            "type": "string"
+          },
+          "course_number": {
+            "title": "Course Number",
+            "type": "integer"
+          },
+          "course_quarter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Quarter"
+          },
+          "course_suffix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Suffix"
+          },
+          "course_year2": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Year2"
+          }
+        },
+        "required": [
+          "course_display",
+          "course_dept",
+          "course_number"
+        ],
+        "title": "CourseIdentityResponse",
+        "type": "object"
+      },
+      "CourseRawTypeMoveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "family_id": {
+            "minimum": 1.0,
+            "title": "Family Id",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "raw_type_id": {
+            "minimum": 1.0,
+            "title": "Raw Type Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "raw_type_id",
+          "family_id"
+        ],
+        "title": "CourseRawTypeMoveRequest",
+        "type": "object"
+      },
+      "CourseRawTypeMoveResponse": {
+        "properties": {
+          "course_dept": {
+            "title": "Course Dept",
+            "type": "string"
+          },
+          "course_display": {
+            "title": "Course Display",
+            "type": "string"
+          },
+          "course_number": {
+            "title": "Course Number",
+            "type": "integer"
+          },
+          "course_quarter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Quarter"
+          },
+          "course_suffix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Suffix"
+          },
+          "course_year2": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Year2"
+          },
+          "family_id": {
+            "title": "Family Id",
+            "type": "integer"
+          },
+          "previous_family_id": {
+            "title": "Previous Family Id",
+            "type": "integer"
+          },
+          "raw_type_id": {
+            "title": "Raw Type Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "course_display",
+          "course_dept",
+          "course_number",
+          "raw_type_id",
+          "family_id",
+          "previous_family_id"
+        ],
+        "title": "CourseRawTypeMoveResponse",
+        "type": "object"
+      },
+      "CourseRawTypeResponse": {
+        "properties": {
+          "course_dept": {
+            "title": "Course Dept",
+            "type": "string"
+          },
+          "course_display": {
+            "title": "Course Display",
+            "type": "string"
+          },
+          "course_number": {
+            "title": "Course Number",
+            "type": "integer"
+          },
+          "course_quarter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Quarter"
+          },
+          "course_suffix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Suffix"
+          },
+          "course_year2": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Year2"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "family_id": {
+            "title": "Family Id",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "raw_type": {
+            "title": "Raw Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course_display",
+          "course_dept",
+          "course_number",
+          "id",
+          "family_id",
+          "raw_type",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CourseRawTypeResponse",
+        "type": "object"
+      },
       "CourseWorkItemFamilyCoursesResponse": {
         "properties": {
           "courses": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/CourseIdentityResponse"
             },
             "title": "Courses",
             "type": "array"
@@ -219,29 +491,73 @@
       "CourseWorkItemFamilyCreateRequest": {
         "additionalProperties": false,
         "properties": {
-          "aliases": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 64,
-            "title": "Aliases",
-            "type": "array"
-          },
           "canonical_label": {
             "maxLength": 128,
             "minLength": 1,
             "title": "Canonical Label",
             "type": "string"
           },
-          "course_key": {
-            "maxLength": 128,
+          "course_dept": {
+            "maxLength": 16,
             "minLength": 1,
-            "title": "Course Key",
+            "title": "Course Dept",
             "type": "string"
+          },
+          "course_number": {
+            "maximum": 9999.0,
+            "minimum": 0.0,
+            "title": "Course Number",
+            "type": "integer"
+          },
+          "course_quarter": {
+            "anyOf": [
+              {
+                "maxLength": 4,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Quarter"
+          },
+          "course_suffix": {
+            "anyOf": [
+              {
+                "maxLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Suffix"
+          },
+          "course_year2": {
+            "anyOf": [
+              {
+                "maximum": 99.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Year2"
+          },
+          "raw_types": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Raw Types",
+            "type": "array"
           }
         },
         "required": [
-          "course_key",
+          "course_dept",
+          "course_number",
           "canonical_label"
         ],
         "title": "CourseWorkItemFamilyCreateRequest",
@@ -249,20 +565,54 @@
       },
       "CourseWorkItemFamilyResponse": {
         "properties": {
-          "aliases": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Aliases",
-            "type": "array"
-          },
           "canonical_label": {
             "title": "Canonical Label",
             "type": "string"
           },
-          "course_key": {
-            "title": "Course Key",
+          "course_dept": {
+            "title": "Course Dept",
             "type": "string"
+          },
+          "course_display": {
+            "title": "Course Display",
+            "type": "string"
+          },
+          "course_number": {
+            "title": "Course Number",
+            "type": "integer"
+          },
+          "course_quarter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Quarter"
+          },
+          "course_suffix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Suffix"
+          },
+          "course_year2": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Year2"
           },
           "created_at": {
             "format": "date-time",
@@ -273,6 +623,13 @@
             "title": "Id",
             "type": "integer"
           },
+          "raw_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Raw Types",
+            "type": "array"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -280,10 +637,11 @@
           }
         },
         "required": [
+          "course_display",
+          "course_dept",
+          "course_number",
           "id",
-          "course_key",
           "canonical_label",
-          "aliases",
           "created_at",
           "updated_at"
         ],
@@ -331,32 +689,111 @@
       "CourseWorkItemFamilyUpdateRequest": {
         "additionalProperties": false,
         "properties": {
-          "aliases": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 64,
-            "title": "Aliases",
-            "type": "array"
-          },
           "canonical_label": {
             "maxLength": 128,
             "minLength": 1,
             "title": "Canonical Label",
             "type": "string"
           },
-          "course_key": {
-            "maxLength": 128,
+          "course_dept": {
+            "maxLength": 16,
             "minLength": 1,
-            "title": "Course Key",
+            "title": "Course Dept",
             "type": "string"
+          },
+          "course_number": {
+            "maximum": 9999.0,
+            "minimum": 0.0,
+            "title": "Course Number",
+            "type": "integer"
+          },
+          "course_quarter": {
+            "anyOf": [
+              {
+                "maxLength": 4,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Quarter"
+          },
+          "course_suffix": {
+            "anyOf": [
+              {
+                "maxLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Suffix"
+          },
+          "course_year2": {
+            "anyOf": [
+              {
+                "maximum": 99.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Year2"
+          },
+          "raw_types": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Raw Types",
+            "type": "array"
           }
         },
         "required": [
-          "course_key",
+          "course_dept",
+          "course_number",
           "canonical_label"
         ],
         "title": "CourseWorkItemFamilyUpdateRequest",
+        "type": "object"
+      },
+      "EventDisplayResponse": {
+        "properties": {
+          "course_display": {
+            "title": "Course Display",
+            "type": "string"
+          },
+          "display_label": {
+            "title": "Display Label",
+            "type": "string"
+          },
+          "family_name": {
+            "title": "Family Name",
+            "type": "string"
+          },
+          "ordinal": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordinal"
+          }
+        },
+        "required": [
+          "course_display",
+          "family_name",
+          "ordinal",
+          "display_label"
+        ],
+        "title": "EventDisplayResponse",
         "type": "object"
       },
       "EvidencePreviewEvent": {
@@ -536,17 +973,6 @@
       },
       "EvidencePreviewStructuredItem": {
         "properties": {
-          "course_label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Course Label"
-          },
           "description": {
             "anyOf": [
               {
@@ -568,6 +994,16 @@
               }
             ],
             "title": "End At"
+          },
+          "event_display": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EventDisplayResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "internal_date": {
             "anyOf": [
@@ -613,6 +1049,17 @@
             ],
             "title": "Snippet"
           },
+          "source_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Title"
+          },
           "start_at": {
             "anyOf": [
               {
@@ -634,17 +1081,6 @@
               }
             ],
             "title": "Thread Id"
-          },
-          "title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
           },
           "uid": {
             "anyOf": [
@@ -1047,7 +1483,7 @@
             ],
             "title": "Canonical Label"
           },
-          "course_key": {
+          "course_dept": {
             "anyOf": [
               {
                 "type": "string"
@@ -1056,7 +1492,62 @@
                 "type": "null"
               }
             ],
-            "title": "Course Key"
+            "title": "Course Dept"
+          },
+          "course_display": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Display"
+          },
+          "course_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Number"
+          },
+          "course_quarter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Quarter"
+          },
+          "course_suffix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Suffix"
+          },
+          "course_year2": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Year2"
           },
           "family_id": {
             "anyOf": [
@@ -1083,7 +1574,7 @@
         },
         "required": [
           "applied",
-          "course_key",
+          "course_display",
           "raw_label",
           "family_id",
           "canonical_label"
@@ -1093,31 +1584,74 @@
       },
       "LabelLearningFamilyOption": {
         "properties": {
-          "aliases": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Aliases",
-            "type": "array"
-          },
           "canonical_label": {
             "title": "Canonical Label",
             "type": "string"
           },
-          "course_key": {
-            "title": "Course Key",
+          "course_dept": {
+            "title": "Course Dept",
             "type": "string"
+          },
+          "course_display": {
+            "title": "Course Display",
+            "type": "string"
+          },
+          "course_number": {
+            "title": "Course Number",
+            "type": "integer"
+          },
+          "course_quarter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Quarter"
+          },
+          "course_suffix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Suffix"
+          },
+          "course_year2": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Year2"
           },
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "raw_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Raw Types",
+            "type": "array"
           }
         },
         "required": [
           "id",
-          "course_key",
+          "course_display",
+          "course_dept",
+          "course_number",
           "canonical_label",
-          "aliases"
+          "raw_types"
         ],
         "title": "LabelLearningFamilyOption",
         "type": "object"
@@ -1128,7 +1662,7 @@
             "title": "Change Id",
             "type": "integer"
           },
-          "course_key": {
+          "course_dept": {
             "anyOf": [
               {
                 "type": "string"
@@ -1137,7 +1671,62 @@
                 "type": "null"
               }
             ],
-            "title": "Course Key"
+            "title": "Course Dept"
+          },
+          "course_display": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Display"
+          },
+          "course_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Number"
+          },
+          "course_quarter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Quarter"
+          },
+          "course_suffix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Suffix"
+          },
+          "course_year2": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Year2"
           },
           "families": {
             "items": {
@@ -1201,7 +1790,7 @@
         },
         "required": [
           "change_id",
-          "course_key",
+          "course_display",
           "raw_label",
           "ordinal",
           "status",
@@ -1919,31 +2508,19 @@
       },
       "LinkCandidateEntityPreview": {
         "properties": {
-          "course_best_display": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Course Best Display"
-          },
-          "course_best_strength": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Course Best Strength"
-          },
           "entity_uid": {
             "title": "Entity Uid",
             "type": "string"
+          },
+          "event_display": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EventDisplayResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -2442,6 +3019,306 @@
         "title": "OnboardingStatusResponse",
         "type": "object"
       },
+      "RawTypeSuggestionDecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "approve",
+              "reject",
+              "dismiss"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "RawTypeSuggestionDecisionRequest",
+        "type": "object"
+      },
+      "RawTypeSuggestionDecisionResponse": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "dismissed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "RawTypeSuggestionDecisionResponse",
+        "type": "object"
+      },
+      "RawTypeSuggestionItemResponse": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "course_dept": {
+            "title": "Course Dept",
+            "type": "string"
+          },
+          "course_display": {
+            "title": "Course Display",
+            "type": "string"
+          },
+          "course_number": {
+            "title": "Course Number",
+            "type": "integer"
+          },
+          "course_quarter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Quarter"
+          },
+          "course_suffix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Suffix"
+          },
+          "course_year2": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Year2"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "source_family_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Family Id"
+          },
+          "source_family_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Family Name"
+          },
+          "source_observation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Observation Id"
+          },
+          "source_raw_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Raw Type"
+          },
+          "source_raw_type_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Raw Type Id"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "dismissed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "suggested_family_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Family Id"
+          },
+          "suggested_family_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Family Name"
+          },
+          "suggested_raw_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Raw Type"
+          },
+          "suggested_raw_type_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Raw Type Id"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "course_display",
+          "course_dept",
+          "course_number",
+          "status",
+          "confidence",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RawTypeSuggestionItemResponse",
+        "type": "object"
+      },
       "ReviewBatchDecisionItemResult": {
         "properties": {
           "error_code": {
@@ -2617,29 +3494,49 @@
       },
       "ReviewChangeItemResponse": {
         "properties": {
-          "after_json": {
+          "after_display": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/EventDisplayResponse"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "After Json"
+            ]
           },
-          "before_json": {
+          "after_event": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/UserFacingEventResponse"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Before Json"
+            ]
+          },
+          "before_display": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EventDisplayResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "before_event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserFacingEventResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "change_origin": {
+            "title": "Change Origin",
+            "type": "string"
           },
           "change_summary": {
             "anyOf": [
@@ -2672,8 +3569,8 @@
             "title": "Detected At",
             "type": "string"
           },
-          "event_uid": {
-            "title": "Event Uid",
+          "entity_uid": {
+            "title": "Entity Uid",
             "type": "string"
           },
           "id": {
@@ -2690,6 +3587,16 @@
               }
             ],
             "title": "Notification State"
+          },
+          "primary_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewPrimarySourceRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "priority_label": {
             "anyOf": [
@@ -2712,17 +3619,6 @@
               }
             ],
             "title": "Priority Rank"
-          },
-          "proposal_merge_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Proposal Merge Key"
           },
           "proposal_sources": {
             "items": {
@@ -2763,28 +3659,6 @@
             ],
             "title": "Reviewed At"
           },
-          "source_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Id"
-          },
-          "source_kind": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Kind"
-          },
           "viewed_at": {
             "anyOf": [
               {
@@ -2811,15 +3685,12 @@
         },
         "required": [
           "id",
-          "event_uid",
+          "entity_uid",
           "change_type",
+          "change_origin",
           "detected_at",
           "review_status",
-          "before_json",
-          "after_json",
-          "proposal_merge_key",
           "proposal_sources",
-          "source_id",
           "viewed_at",
           "viewed_note",
           "reviewed_at",
@@ -2965,12 +3836,12 @@
             ],
             "title": "Edited Change Id"
           },
-          "event": {
-            "$ref": "#/components/schemas/ReviewEditEventPayload"
-          },
-          "event_uid": {
-            "title": "Event Uid",
+          "entity_uid": {
+            "title": "Entity Uid",
             "type": "string"
+          },
+          "event": {
+            "$ref": "#/components/schemas/UserFacingEventResponse"
           },
           "idempotent": {
             "title": "Idempotent",
@@ -2996,70 +3867,130 @@
           "mode",
           "applied",
           "idempotent",
-          "event_uid",
+          "entity_uid",
           "rejected_pending_change_ids",
           "event"
         ],
         "title": "ReviewEditApplyResponse",
         "type": "object"
       },
-      "ReviewEditEventPayload": {
+      "ReviewEditContextResponse": {
         "properties": {
-          "course_label": {
-            "title": "Course Label",
-            "type": "string"
+          "change_id": {
+            "title": "Change Id",
+            "type": "integer"
           },
-          "end_at_utc": {
-            "format": "date-time",
-            "title": "End At Utc",
-            "type": "string"
+          "editable_event": {
+            "$ref": "#/components/schemas/SemanticEventDraft"
           },
-          "start_at_utc": {
-            "format": "date-time",
-            "title": "Start At Utc",
-            "type": "string"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "uid": {
-            "title": "Uid",
+          "entity_uid": {
+            "title": "Entity Uid",
             "type": "string"
           }
         },
         "required": [
-          "uid",
-          "title",
-          "course_label",
-          "start_at_utc",
-          "end_at_utc"
+          "change_id",
+          "entity_uid",
+          "editable_event"
         ],
-        "title": "ReviewEditEventPayload",
+        "title": "ReviewEditContextResponse",
         "type": "object"
       },
       "ReviewEditPatchRequest": {
         "additionalProperties": false,
         "properties": {
-          "course_label": {
+          "course_dept": {
             "anyOf": [
               {
-                "maxLength": 64,
+                "maxLength": 16,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Course Label"
+            "title": "Course Dept"
           },
-          "due_at": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Due At",
-            "type": "string"
+          "course_number": {
+            "anyOf": [
+              {
+                "maximum": 9999.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Number"
           },
-          "title": {
+          "course_quarter": {
+            "anyOf": [
+              {
+                "enum": [
+                  "WI",
+                  "SP",
+                  "SU",
+                  "FA"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Quarter"
+          },
+          "course_suffix": {
+            "anyOf": [
+              {
+                "maxLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Suffix"
+          },
+          "course_year2": {
+            "anyOf": [
+              {
+                "maximum": 99.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Year2"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "due_time": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Time"
+          },
+          "event_name": {
             "anyOf": [
               {
                 "maxLength": 512,
@@ -3069,22 +4000,34 @@
                 "type": "null"
               }
             ],
-            "title": "Title"
+            "title": "Event Name"
+          },
+          "time_precision": {
+            "anyOf": [
+              {
+                "enum": [
+                  "date_only",
+                  "datetime"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Precision"
           }
         },
-        "required": [
-          "due_at"
-        ],
         "title": "ReviewEditPatchRequest",
         "type": "object"
       },
       "ReviewEditPreviewResponse": {
         "properties": {
           "base": {
-            "$ref": "#/components/schemas/ReviewEditEventPayload"
+            "$ref": "#/components/schemas/UserFacingEventResponse"
           },
           "candidate_after": {
-            "$ref": "#/components/schemas/ReviewEditEventPayload"
+            "$ref": "#/components/schemas/UserFacingEventResponse"
           },
           "change_id": {
             "anyOf": [
@@ -3108,8 +4051,8 @@
             ],
             "title": "Delta Seconds"
           },
-          "event_uid": {
-            "title": "Event Uid",
+          "entity_uid": {
+            "title": "Entity Uid",
             "type": "string"
           },
           "idempotent": {
@@ -3149,7 +4092,7 @@
         },
         "required": [
           "mode",
-          "event_uid",
+          "entity_uid",
           "base",
           "candidate_after",
           "delta_seconds",
@@ -3212,7 +4155,7 @@
             ],
             "title": "Change Id"
           },
-          "event_uid": {
+          "entity_uid": {
             "anyOf": [
               {
                 "maxLength": 255,
@@ -3222,7 +4165,7 @@
                 "type": "null"
               }
             ],
-            "title": "Event Uid"
+            "title": "Entity Uid"
           }
         },
         "title": "ReviewEditTargetRequest",
@@ -3255,6 +4198,52 @@
           "generated_at"
         ],
         "title": "ReviewItemsSummaryResponse",
+        "type": "object"
+      },
+      "ReviewPrimarySourceRef": {
+        "properties": {
+          "external_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Event Id"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "integer"
+          },
+          "source_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Kind"
+          }
+        },
+        "required": [
+          "source_id"
+        ],
+        "title": "ReviewPrimarySourceRef",
         "type": "object"
       },
       "ReviewSourceRef": {
@@ -3312,6 +4301,199 @@
           "source_id"
         ],
         "title": "ReviewSourceRef",
+        "type": "object"
+      },
+      "SemanticEventDraft": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "course_dept": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Dept"
+          },
+          "course_number": {
+            "anyOf": [
+              {
+                "maximum": 9999.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Number"
+          },
+          "course_quarter": {
+            "anyOf": [
+              {
+                "enum": [
+                  "WI",
+                  "SP",
+                  "SU",
+                  "FA"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Quarter"
+          },
+          "course_suffix": {
+            "anyOf": [
+              {
+                "maxLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Suffix"
+          },
+          "course_year2": {
+            "anyOf": [
+              {
+                "maximum": 99.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Year2"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "due_time": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Time"
+          },
+          "event_name": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Name"
+          },
+          "evidence": {
+            "default": "",
+            "maxLength": 160,
+            "title": "Evidence",
+            "type": "string"
+          },
+          "family_id": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Id"
+          },
+          "family_name": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Name"
+          },
+          "ordinal": {
+            "anyOf": [
+              {
+                "maximum": 999.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordinal"
+          },
+          "raw_type": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Type"
+          },
+          "time_precision": {
+            "default": "datetime",
+            "enum": [
+              "date_only",
+              "datetime"
+            ],
+            "title": "Time Precision",
+            "type": "string"
+          },
+          "uid": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uid"
+          }
+        },
+        "title": "SemanticEventDraft",
         "type": "object"
       },
       "SourceHealthSummaryResponse": {
@@ -3562,6 +4744,56 @@
         "title": "SyncRequestStatusResponse",
         "type": "object"
       },
+      "UserFacingEventResponse": {
+        "properties": {
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "due_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Time"
+          },
+          "event_display": {
+            "$ref": "#/components/schemas/EventDisplayResponse"
+          },
+          "time_precision": {
+            "title": "Time Precision",
+            "type": "string"
+          },
+          "uid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uid"
+          }
+        },
+        "required": [
+          "event_display",
+          "time_precision"
+        ],
+        "title": "UserFacingEventResponse",
+        "type": "object"
+      },
       "UserResponse": {
         "properties": {
           "calendar_delay_seconds": {
@@ -3602,6 +4834,10 @@
           "timezone_name": {
             "title": "Timezone Name",
             "type": "string"
+          },
+          "timezone_source": {
+            "title": "Timezone Source",
+            "type": "string"
           }
         },
         "required": [
@@ -3609,6 +4845,7 @@
           "email",
           "notify_email",
           "timezone_name",
+          "timezone_source",
           "calendar_delay_seconds",
           "created_at"
         ],
@@ -3666,6 +4903,18 @@
               }
             ],
             "title": "Timezone Name"
+          },
+          "timezone_source": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone Source"
           }
         },
         "title": "UserUpdateRequest",
@@ -4374,6 +5623,64 @@
           }
         },
         "summary": "Post Review Decision",
+        "tags": [
+          "review-items"
+        ]
+      }
+    },
+    "/review/changes/{change_id}/edit-context": {
+      "get": {
+        "operationId": "get_review_change_edit_context_review_changes__change_id__edit_context_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "title": "Change Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewEditContextResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Review Change Edit Context",
         "tags": [
           "review-items"
         ]
@@ -5678,6 +6985,240 @@
         ]
       }
     },
+    "/review/raw-type-suggestions": {
+      "get": {
+        "operationId": "get_raw_type_suggestions_review_raw_type_suggestions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_dept",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Dept"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_number",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_suffix",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Suffix"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_quarter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Quarter"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_year2",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Year2"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RawTypeSuggestionItemResponse"
+                  },
+                  "title": "Response Get Raw Type Suggestions Review Raw Type Suggestions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Raw Type Suggestions",
+        "tags": [
+          "review-items"
+        ]
+      }
+    },
+    "/review/raw-type-suggestions/{suggestion_id}/decisions": {
+      "post": {
+        "operationId": "post_raw_type_suggestion_decision_review_raw_type_suggestions__suggestion_id__decisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "suggestion_id",
+            "required": true,
+            "schema": {
+              "title": "Suggestion Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RawTypeSuggestionDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RawTypeSuggestionDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Raw Type Suggestion Decision",
+        "tags": [
+          "review-items"
+        ]
+      }
+    },
     "/review/summary": {
       "get": {
         "operationId": "get_review_items_summary_route_review_summary_get",
@@ -6380,7 +7921,7 @@
         "parameters": [
           {
             "in": "query",
-            "name": "course_key",
+            "name": "course_dept",
             "required": false,
             "schema": {
               "anyOf": [
@@ -6391,7 +7932,71 @@
                   "type": "null"
                 }
               ],
-              "title": "Course Key"
+              "title": "Course Dept"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_number",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_suffix",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Suffix"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_quarter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Quarter"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_year2",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Year2"
             }
           },
           {
@@ -6553,22 +8158,6 @@
       "get": {
         "operationId": "get_course_family_status_users_me_course_work_item_families_status_get",
         "parameters": [
-          {
-            "in": "query",
-            "name": "course_key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Course Key"
-            }
-          },
           {
             "in": "header",
             "name": "X-API-Key",
@@ -6737,6 +8326,214 @@
           }
         },
         "summary": "Patch Course Family",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/users/me/course-work-item-raw-types": {
+      "get": {
+        "operationId": "get_course_raw_types_users_me_course_work_item_raw_types_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "course_dept",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Dept"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_number",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_suffix",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Suffix"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_quarter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Quarter"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_year2",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Year2"
+            }
+          },
+          {
+            "in": "query",
+            "name": "family_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Family Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CourseRawTypeResponse"
+                  },
+                  "title": "Response Get Course Raw Types Users Me Course Work Item Raw Types Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Course Raw Types",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/users/me/course-work-item-raw-types/relink": {
+      "post": {
+        "operationId": "post_course_raw_type_relink_users_me_course_work_item_raw_types_relink_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CourseRawTypeMoveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseRawTypeMoveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Course Raw Type Relink",
         "tags": [
           "users"
         ]

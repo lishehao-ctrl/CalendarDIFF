@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:mae8-baseline-020
+DTSTART:20260321T120000Z
+DTEND:20260321T130000Z
+SUMMARY:mae_8 Weekly lecture session
+DESCRIPTION:Pair context: ics-pair-020 (before snapshot) with expected class CREATED. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=mae 8-baseline-020, DTSTART=20260321T120000Z, DTEND=20260321T130000Z, SUMMARY=MAE_8 Weekly lecture session. Reasoning context: fallback instructions are preserved so operational intent remains readable even without LMS UI metadata. Execution guidance: students should prioritize the explicit timestamp over relative wording if both appear in adjacent notices. FAQ: If a teammate sees stale metadata, refresh enrollment context before concluding that the event disappeared.
+END:VEVENT
+BEGIN:VEVENT
+UID:mae8-task-020
+DTSTART:20260321T090000Z
+DTEND:20260321T100000Z
+SUMMARY:mAe8 active task entry
+DESCRIPTION:Pair context: ics-pair-020 (before snapshot) with expected class CREATED. This event carries the focal change semantics for the pair and contains the evidence needed to infer the expected diff class. Schedule anchor: UID=mae 8-task-020, DTSTART=20260321T090000Z, DTEND=20260321T100000Z, SUMMARY=MAe 8 active task entry. Reasoning context: timezone handling was surfaced because prior cohorts reported one-hour and date-boundary confusion. Execution guidance: students should prioritize the explicit timestamp over relative wording if both appear in adjacent notices. FAQ: If your local clock differs from server time, buffer your execution window and do not submit at the final minute.
+END:VEVENT
+END:VCALENDAR

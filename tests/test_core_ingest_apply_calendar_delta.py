@@ -11,7 +11,7 @@ from app.db.models.ingestion import ConnectorResultStatus, IngestResult
 from app.db.models.input import IngestTriggerType, InputSource, InputSourceConfig, InputSourceCursor, InputSourceSecret, SourceKind, SyncRequest, SyncRequestStatus
 from app.db.models.review import SourceEventObservation
 from app.db.models.shared import User
-from app.modules.core_ingest.apply_service import apply_ingest_result_idempotent
+from app.modules.core_ingest.apply import apply_ingest_result_idempotent
 from tests.support.payload_builders import (
     build_calendar_payload,
     build_course_parse,

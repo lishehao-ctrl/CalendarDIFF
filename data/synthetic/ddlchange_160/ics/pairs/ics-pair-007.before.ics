@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:ece17r-baseline-007
+DTSTART:20260308T120000Z
+DTEND:20260308T130000Z
+SUMMARY:Ece-17R weekly class sync
+DESCRIPTION:Pair context: ics-pair-007 (before snapshot) with expected class DUE_CHANGED. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=ECE17r-baseline-007, DTSTART=20260308T120000Z, DTEND=20260308T130000Z, SUMMARY=eCE 17r weekly class sync. Reasoning context: fallback instructions are preserved so operational intent remains readable even without LMS UI metadata. Execution guidance: retain screenshot evidence of final submission or attendance acknowledgement for reconciliation requests. FAQ: If accommodation or conflict applies, follow approved pathways; this text does not override formal accommodation workflows.
+END:VEVENT
+BEGIN:VEVENT
+UID:ece17r-task-007
+DTSTART:20260308T090000Z
+DTEND:20260308T100000Z
+SUMMARY:EcE 17R assignment due window
+DESCRIPTION:Pair context: ics-pair-007 (before snapshot) with expected class DUE_CHANGED. This event carries the focal change semantics for the pair and contains the evidence needed to infer the expected diff class. Schedule anchor: UID=EcE 17r-task-007, DTSTART=20260308T090000Z, DTEND=20260308T100000Z, SUMMARY=ecE17_r assignment due window. Reasoning context: scheduling adjustments were reviewed against dependency chains to minimize downstream collisions. Execution guidance: verify section enrollment mapping, then apply this schedule decision to the exact UID-linked task only. FAQ: If cancellation language appears elsewhere, verify whether the UID was replaced versus removed for debounce evaluation.
+END:VEVENT
+END:VCALENDAR

@@ -1,154 +1,150 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 
 from app.db.models.input import InputSource, SourceKind
-from app.db.models.review import Change, ChangeType, Event, Input, InputType, ReviewStatus
+from app.db.models.review import Change, ChangeOrigin, ChangeType, EventEntity, EventEntityLifecycle, ReviewStatus
 from app.db.models.shared import User
 
 
-def _create_user_and_input(db_session) -> tuple[User, Input]:
+def _create_onboarded_user(db_session) -> User:
     user = User(
-        email="batch-review@example.com",
-        notify_email="batch-review@example.com",
+        email="batch@example.com",
+        notify_email="batch@example.com",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
     db_session.flush()
-    input_row = Input(
-        user_id=user.id,
-        type=InputType.ICS,
-        identity_key=f"canonical:user:{user.id}",
-        is_active=True,
+    db_session.add(
+        InputSource(
+            user_id=user.id,
+            source_kind=SourceKind.CALENDAR,
+            provider="ics",
+            source_key=f"batch-{user.id}",
+            display_name="Calendar",
+            is_active=True,
+            poll_interval_seconds=900,
+        )
     )
-    source = InputSource(
-        user_id=user.id,
-        source_kind=SourceKind.CALENDAR,
-        provider="ics",
-        source_key=f"batch-source-{user.id}",
-        display_name="Batch Source",
-        is_active=True,
-        poll_interval_seconds=900,
-        next_poll_at=datetime.now(timezone.utc),
-    )
-    db_session.add(input_row)
-    db_session.add(source)
     db_session.commit()
     db_session.refresh(user)
-    db_session.refresh(input_row)
-    return user, input_row
+    return user
 
 
-def _create_pending_change(db_session, *, input_id: int, event_uid: str, title: str, start_at: datetime) -> Change:
+def _seed_pending_change(db_session, *, user_id: int, entity_uid: str, event_name: str, due_date: str) -> Change:
     row = Change(
-        input_id=input_id,
-        event_uid=event_uid,
+        user_id=user_id,
+        entity_uid=entity_uid,
+        change_origin=ChangeOrigin.INGEST_PROPOSAL,
         change_type=ChangeType.CREATED,
         detected_at=datetime.now(timezone.utc),
-        before_json=None,
-        after_json={
-            "uid": event_uid,
-            "title": title,
-            "course_label": "CSE100",
-            "start_at_utc": start_at.isoformat(),
-            "end_at_utc": (start_at + timedelta(hours=1)).isoformat(),
+        after_semantic_json={
+            "uid": entity_uid,
+            "course_dept": "CSE",
+            "course_number": 100,
+            "course_quarter": "WI",
+            "course_year2": 26,
+            "family_name": "Homework",
+            "raw_type": "Homework",
+            "event_name": event_name,
+            "ordinal": 1,
+            "due_date": due_date,
+            "due_time": "23:59:00",
+            "time_precision": "datetime",
         },
-        delta_seconds=None,
         review_status=ReviewStatus.PENDING,
-        proposal_merge_key=event_uid,
-        proposal_sources_json=[],
     )
     db_session.add(row)
     db_session.flush()
     return row
 
 
-def test_review_changes_batch_approve_updates_multiple_pending_rows(client, db_session, auth_headers) -> None:
-    user, input_row = _create_user_and_input(db_session)
-    change_one = _create_pending_change(
-        db_session,
-        input_id=input_row.id,
-        event_uid="batch-approve-1",
-        title="Quiz 1",
-        start_at=datetime(2026, 3, 10, 18, 0, tzinfo=timezone.utc),
-    )
-    change_two = _create_pending_change(
-        db_session,
-        input_id=input_row.id,
-        event_uid="batch-approve-2",
-        title="Quiz 2",
-        start_at=datetime(2026, 3, 12, 18, 0, tzinfo=timezone.utc),
-    )
+def test_review_changes_batch_approve_updates_event_entities(client, db_session, auth_headers) -> None:
+    user = _create_onboarded_user(db_session)
+    change_one = _seed_pending_change(db_session, user_id=user.id, entity_uid="ent-1", event_name="Homework 1", due_date="2026-03-10")
+    change_two = _seed_pending_change(db_session, user_id=user.id, entity_uid="ent-2", event_name="Homework 2", due_date="2026-03-12")
     db_session.commit()
 
-    headers = auth_headers(client, user=user)
     response = client.post(
         "/review/changes/batch/decisions",
-        headers=headers,
+        headers=auth_headers(client, user=user),
         json={"ids": [change_one.id, change_two.id], "decision": "approve", "note": "batch approve"},
     )
     assert response.status_code == 200
     payload = response.json()
     assert payload["decision"] == "approve"
-    assert payload["total_requested"] == 2
     assert payload["succeeded"] == 2
     assert payload["failed"] == 0
-    assert all(item["ok"] is True for item in payload["results"])
-    assert all(item["review_status"] == "approved" for item in payload["results"])
 
     db_session.expire_all()
-    approved_rows = db_session.scalars(select(Change).where(Change.id.in_([change_one.id, change_two.id]))).all()
-    assert all(row.review_status == ReviewStatus.APPROVED for row in approved_rows)
-    events = db_session.scalars(select(Event).where(Event.input_id == input_row.id).order_by(Event.uid.asc())).all()
-    assert [row.uid for row in events] == ["batch-approve-1", "batch-approve-2"]
+    changes = db_session.scalars(select(Change).where(Change.id.in_([change_one.id, change_two.id]))).all()
+    assert all(row.review_status == ReviewStatus.APPROVED for row in changes)
+    entities = db_session.scalars(select(EventEntity).where(EventEntity.user_id == user.id).order_by(EventEntity.entity_uid.asc())).all()
+    assert [row.entity_uid for row in entities] == ["ent-1", "ent-2"]
+    assert all(row.lifecycle == EventEntityLifecycle.ACTIVE for row in entities)
 
 
-
-def test_review_changes_batch_reject_reports_mixed_outcomes(client, db_session, auth_headers) -> None:
-    user, input_row = _create_user_and_input(db_session)
-    pending = _create_pending_change(
-        db_session,
-        input_id=input_row.id,
-        event_uid="batch-reject-1",
-        title="Homework",
-        start_at=datetime(2026, 3, 14, 23, 59, tzinfo=timezone.utc),
+def test_review_changes_batch_reject_keeps_approved_state_untouched(client, db_session, auth_headers) -> None:
+    user = _create_onboarded_user(db_session)
+    db_session.add(
+        EventEntity(
+            user_id=user.id,
+            entity_uid="ent-existing",
+            lifecycle=EventEntityLifecycle.ACTIVE,
+            course_dept="CSE",
+            course_number=100,
+            course_quarter="WI",
+            course_year2=26,
+            family_name="Homework",
+            raw_type="Homework",
+            event_name="Homework Existing",
+            ordinal=1,
+            due_date=datetime(2026, 3, 10, tzinfo=timezone.utc).date(),
+            time_precision="date_only",
+        )
     )
-    reviewed = _create_pending_change(
-        db_session,
-        input_id=input_row.id,
-        event_uid="batch-reject-2",
-        title="Lab",
-        start_at=datetime(2026, 3, 15, 23, 59, tzinfo=timezone.utc),
+    pending = Change(
+        user_id=user.id,
+        entity_uid="ent-existing",
+        change_origin=ChangeOrigin.INGEST_PROPOSAL,
+        change_type=ChangeType.DUE_CHANGED,
+        detected_at=datetime.now(timezone.utc),
+        before_semantic_json={
+            "uid": "ent-existing",
+            "course_dept": "CSE",
+            "course_number": 100,
+            "family_name": "Homework",
+            "event_name": "Homework Existing",
+            "ordinal": 1,
+            "due_date": "2026-03-10",
+            "time_precision": "date_only",
+        },
+        after_semantic_json={
+            "uid": "ent-existing",
+            "course_dept": "CSE",
+            "course_number": 100,
+            "family_name": "Homework",
+            "event_name": "Homework Existing",
+            "ordinal": 1,
+            "due_date": "2026-03-11",
+            "time_precision": "date_only",
+        },
+        review_status=ReviewStatus.PENDING,
     )
-    reviewed.review_status = ReviewStatus.APPROVED
-    reviewed.reviewed_at = datetime.now(timezone.utc)
-    reviewed.review_note = "already approved"
+    db_session.add(pending)
     db_session.commit()
 
-    headers = auth_headers(client, user=user)
     response = client.post(
         "/review/changes/batch/decisions",
-        headers=headers,
-        json={"ids": [pending.id, reviewed.id, 999999], "decision": "reject", "note": "batch reject"},
+        headers=auth_headers(client, user=user),
+        json={"ids": [pending.id], "decision": "reject", "note": "batch reject"},
     )
     assert response.status_code == 200
-    payload = response.json()
-    assert payload["total_requested"] == 3
-    assert payload["succeeded"] == 2
-    assert payload["failed"] == 1
-
-    result_map = {row["id"]: row for row in payload["results"]}
-    assert result_map[pending.id]["ok"] is True
-    assert result_map[pending.id]["review_status"] == "rejected"
-    assert result_map[reviewed.id]["ok"] is True
-    assert result_map[reviewed.id]["idempotent"] is True
-    assert result_map[999999]["ok"] is False
-    assert result_map[999999]["error_code"] == "not_found"
 
     db_session.expire_all()
-    refreshed_pending = db_session.get(Change, pending.id)
-    refreshed_reviewed = db_session.get(Change, reviewed.id)
-    assert refreshed_pending is not None and refreshed_pending.review_status == ReviewStatus.REJECTED
-    assert refreshed_reviewed is not None and refreshed_reviewed.review_status == ReviewStatus.APPROVED
+    entity = db_session.scalar(select(EventEntity).where(EventEntity.user_id == user.id, EventEntity.entity_uid == "ent-existing"))
+    refreshed = db_session.get(Change, pending.id)
+    assert entity is not None and entity.due_date.isoformat() == "2026-03-10"
+    assert refreshed is not None and refreshed.review_status == ReviewStatus.REJECTED

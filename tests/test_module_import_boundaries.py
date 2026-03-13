@@ -7,15 +7,16 @@ def _read(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
-def test_core_ingest_apply_modules_do_not_import_apply_service() -> None:
+def test_core_ingest_apply_modules_import_unified_apply_module_only() -> None:
     paths = [
         "app/modules/core_ingest/calendar_apply.py",
         "app/modules/core_ingest/gmail_apply.py",
-        "app/modules/core_ingest/apply_orchestrator.py",
+        "app/modules/core_ingest/apply.py",
     ]
     for path in paths:
         content = _read(path)
         assert "app.modules.core_ingest.apply_service" not in content
+        assert "app.modules.core_ingest.apply_orchestrator" not in content
         assert "app.modules.core_ingest.pending_rebuild" not in content
 
 
@@ -24,7 +25,7 @@ def test_review_change_services_do_not_import_router_or_legacy_service() -> None
         "app/modules/review_changes/change_listing_service.py",
         "app/modules/review_changes/change_decision_service.py",
         "app/modules/review_changes/evidence_preview_service.py",
-        "app/modules/review_changes/canonical_edit_service.py",
+        "app/modules/review_changes/edit_service.py",
     ]
     forbidden_tokens = [
         "app.modules.review_changes.router",

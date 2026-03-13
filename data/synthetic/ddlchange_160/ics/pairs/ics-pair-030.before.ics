@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:ece17-baseline-030
+DTSTART:20260331T120000Z
+DTEND:20260331T130000Z
+SUMMARY:ECE 17 weekly lecture block
+DESCRIPTION:Pair context: ics-pair-030 (before snapshot) with expected class NO_CHANGE. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=ECe 17-baseline-030, DTSTART=20260331T120000Z, DTEND=20260331T130000Z, SUMMARY=eCe17 weekly lecture block. Reasoning context: this longform description is intentionally explicit to reduce parser brittleness under varied textual style. Execution guidance: verify section enrollment mapping, then apply this schedule decision to the exact UID-linked task only. FAQ: If cancellation language appears elsewhere, verify whether the UID was replaced versus removed for debounce evaluation.
+END:VEVENT
+BEGIN:VEVENT
+UID:ece17-task-030
+DTSTART:20260331T090000Z
+DTEND:20260331T100000Z
+SUMMARY:ece-17 Assignment Deadline
+DESCRIPTION:Pair context: ics-pair-030 (before snapshot) with expected class NO_CHANGE. This event carries the focal change semantics for the pair and contains the evidence needed to infer the expected diff class. Schedule anchor: UID=eCE 17-task-030, DTSTART=20260331T090000Z, DTEND=20260331T100000Z, SUMMARY=Ece17 Assignment Deadline. Reasoning context: scheduling adjustments were reviewed against dependency chains to minimize downstream collisions. Execution guidance: students should prioritize the explicit timestamp over relative wording if both appear in adjacent notices. FAQ: If cancellation language appears elsewhere, verify whether the UID was replaced versus removed for debounce evaluation.
+END:VEVENT
+END:VCALENDAR

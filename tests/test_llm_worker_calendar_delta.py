@@ -12,9 +12,9 @@ from app.modules.llm_runtime import parse_pipeline
 def test_calendar_delta_removed_only_skips_llm(db_session_factory: sessionmaker) -> None:
     records, status = parse_pipeline.parse_calendar_delta_with_llm(
         redis_client=object(),  # type: ignore[arg-type]
-        stream_key="llm:parse:stream:v1",
+        stream_key="llm:parse:stream",
         parse_payload={
-            "kind": "calendar_delta_v1",
+            "kind": "calendar_delta",
             "changed_components": [],
             "removed_component_keys": ["evt-remove#"],
         },
@@ -64,11 +64,24 @@ def test_calendar_delta_changed_component_overrides_uid(monkeypatch, db_session_
                 {
                     "record_type": "calendar.event.extracted",
                     "payload": {
-                        "title": "Quiz",
-                        "start_at": "2026-03-01T10:00:00+00:00",
-                        "end_at": "2026-03-01T11:00:00+00:00",
-                        "course_label": "CSE 8A",
-                        "raw_confidence": 0.9,
+                        "source_facts": {
+                            "external_event_id": "stale-value",
+                            "source_title": "Quiz",
+                            "source_dtstart_utc": "2026-03-01T10:00:00+00:00",
+                            "source_dtend_utc": "2026-03-01T11:00:00+00:00",
+                        },
+                        "semantic_event_draft": {
+                            "course_dept": "CSE",
+                            "course_number": 8,
+                            "course_suffix": "A",
+                            "event_name": "Quiz",
+                            "due_date": "2026-03-01",
+                            "due_time": "10:00:00",
+                            "time_precision": "datetime",
+                            "confidence": 0.9,
+                            "evidence": "Quiz",
+                        },
+                        "link_signals": {},
                     },
                 }
             ],
@@ -81,9 +94,9 @@ def test_calendar_delta_changed_component_overrides_uid(monkeypatch, db_session_
 
     records, status = parse_pipeline.parse_calendar_delta_with_llm(
         redis_client=object(),  # type: ignore[arg-type]
-        stream_key="llm:parse:stream:v1",
+        stream_key="llm:parse:stream",
         parse_payload={
-            "kind": "calendar_delta_v1",
+            "kind": "calendar_delta",
             "changed_components": [
                 {
                     "component_key": "evt-rid#20260301T100000Z",
@@ -102,5 +115,5 @@ def test_calendar_delta_changed_component_overrides_uid(monkeypatch, db_session_
     assert status == ConnectorResultStatus.CHANGED
     assert len(records) == 1
     payload = records[0]["payload"]
-    assert payload["source_canonical"]["external_event_id"] == expected_external_event_id
+    assert payload["source_facts"]["external_event_id"] == expected_external_event_id
     assert payload["component_key"] == "evt-rid#20260301T100000Z"

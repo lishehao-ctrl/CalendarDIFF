@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:cogs118a-baseline-036
+DTSTART:20260406T120000Z
+DTEND:20260406T130000Z
+SUMMARY:COgS_118A Weekly Lecture
+DESCRIPTION:Pair context: ics-pair-036 (before snapshot) with expected class REMOVED_CANDIDATE. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=cOgS-118a-baseline-036, DTSTART=20260406T120000Z, DTEND=20260406T130000Z, SUMMARY=coGs 118a Weekly Lecture. Reasoning context: scheduling adjustments were reviewed against dependency chains to minimize downstream collisions. Execution guidance: if tooling discrepancy appears, escalate with exact timestamp, platform region, and reproducible steps. FAQ: If cancellation language appears elsewhere, verify whether the UID was replaced versus removed for debounce evaluation.
+END:VEVENT
+BEGIN:VEVENT
+UID:cogs118a-task-036-removed
+DTSTART:20260406T090000Z
+DTEND:20260406T100000Z
+SUMMARY:coGs 118A Assignment DDL milestone
+DESCRIPTION:Pair context: ics-pair-036 (before snapshot) with expected class REMOVED_CANDIDATE. This event is intentionally absent from the after snapshot to represent history-dependent removal candidate behavior. Schedule anchor: UID=coGS 118_A-task-036-removed, DTSTART=20260406T090000Z, DTEND=20260406T100000Z, SUMMARY=COgs_118a Assignment DDL milestone. Reasoning context: this longform description is intentionally explicit to reduce parser brittleness under varied textual style. Execution guidance: students should prioritize the explicit timestamp over relative wording if both appear in adjacent notices. FAQ: If cancellation language appears elsewhere, verify whether the UID was replaced versus removed for debounce evaluation.
+END:VEVENT
+END:VCALENDAR

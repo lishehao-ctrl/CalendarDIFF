@@ -35,7 +35,7 @@ def test_critical_modules_are_not_shell_reexports() -> None:
         "app/modules/ingestion/connector_runtime.py",
         "app/modules/core_ingest/pending_proposal_rebuild.py",
         "app/modules/core_ingest/pending_change_store.py",
-        "app/modules/review_changes/canonical_edit_service.py",
+        "app/modules/review_changes/edit_service.py",
         "app/modules/review_changes/canonical_edit_preview_flow.py",
         "app/modules/review_changes/canonical_edit_apply_txn.py",
         "app/modules/review_links/alerts_upsert_service.py",

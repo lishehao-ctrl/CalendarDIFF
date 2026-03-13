@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:cogs118a-baseline-012
+DTSTART:20260313T120000Z
+DTEND:20260313T130000Z
+SUMMARY:coGS 118A Weekly Lecture
+DESCRIPTION:Pair context: ics-pair-012 (before snapshot) with expected class DUE_CHANGED. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=cOgS 118a-baseline-012, DTSTART=20260313T120000Z, DTEND=20260313T130000Z, SUMMARY=coGs_118a Weekly Lecture. Reasoning context: timezone handling was surfaced because prior cohorts reported one-hour and date-boundary confusion. Execution guidance: avoid assuming mirrored systems update simultaneously; rely on the published canonical statement first. FAQ: If cancellation language appears elsewhere, verify whether the UID was replaced versus removed for debounce evaluation.
+END:VEVENT
+BEGIN:VEVENT
+UID:cogs118a-task-012
+DTSTART:20260313T090000Z
+DTEND:20260313T100000Z
+SUMMARY:CoGs118_a assignment due window
+DESCRIPTION:Pair context: ics-pair-012 (before snapshot) with expected class DUE_CHANGED. This event carries the focal change semantics for the pair and contains the evidence needed to infer the expected diff class. Schedule anchor: UID=Cogs118A-task-012, DTSTART=20260313T090000Z, DTEND=20260313T100000Z, SUMMARY=CoGS_118A assignment due window. Reasoning context: fallback instructions are preserved so operational intent remains readable even without LMS UI metadata. Execution guidance: students should prioritize the explicit timestamp over relative wording if both appear in adjacent notices. FAQ: If a teammate sees stale metadata, refresh enrollment context before concluding that the event disappeared.
+END:VEVENT
+END:VCALENDAR

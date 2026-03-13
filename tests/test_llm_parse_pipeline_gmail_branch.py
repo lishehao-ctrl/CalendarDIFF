@@ -41,7 +41,7 @@ def test_parse_with_llm_processes_gmail_messages(monkeypatch) -> None:
 
     records, status = pipeline.parse_with_llm(
         redis_client=object(),  # type: ignore[arg-type]
-        stream_key="llm:parse:stream:v1",
+        stream_key="llm:parse:stream",
         source_id=1,
         provider_hint="gmail",
         parse_payload={"kind": "gmail", "messages": [{"message_id": "m1"}]},

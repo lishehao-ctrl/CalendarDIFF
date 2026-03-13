@@ -33,8 +33,8 @@ def test_calendar_fetch_not_modified_returns_no_change(monkeypatch) -> None:
     monkeypatch.setattr(calendar_fetcher, "decode_source_secrets", lambda _source: {"url": "https://example.com/test.ics"})
 
     class _FakeICSClient:
-        def fetch(self, url, input_id, if_none_match=None, if_modified_since=None):  # noqa: ANN001, D401
-            del url, input_id, if_none_match, if_modified_since
+        def fetch(self, url, source_id, if_none_match=None, if_modified_since=None):  # noqa: ANN001, D401
+            del url, source_id, if_none_match, if_modified_since
             return FetchResult(
                 content=None,
                 etag="etag-mainline",
@@ -59,8 +59,8 @@ def test_calendar_fetch_changed_returns_calendar_delta_payload(monkeypatch) -> N
     monkeypatch.setattr(calendar_fetcher, "decode_source_secrets", lambda _source: {"url": "https://example.com/test.ics"})
 
     class _FakeICSClient:
-        def fetch(self, url, input_id, if_none_match=None, if_modified_since=None):  # noqa: ANN001, D401
-            del url, input_id, if_none_match, if_modified_since
+        def fetch(self, url, source_id, if_none_match=None, if_modified_since=None):  # noqa: ANN001, D401
+            del url, source_id, if_none_match, if_modified_since
             return FetchResult(
                 content=_ics_content("Homework Updated"),
                 etag="etag-v3",
@@ -77,11 +77,11 @@ def test_calendar_fetch_changed_returns_calendar_delta_payload(monkeypatch) -> N
     assert outcome.error_code is None
     assert outcome.error_message is None
     assert outcome.parse_payload is not None
-    assert outcome.parse_payload["kind"] == "calendar_delta_v1"
+    assert outcome.parse_payload["kind"] == "calendar_delta"
     assert isinstance(outcome.parse_payload["changed_components"], list)
     assert outcome.parse_payload["changed_components"]
     assert outcome.parse_payload["removed_component_keys"] == []
-    assert "ics_component_fingerprints_v1" in outcome.cursor_patch
+    assert "ics_component_fingerprints" in outcome.cursor_patch
     assert outcome.cursor_patch["ics_delta_changed_components"] >= 1
 
 
@@ -89,8 +89,8 @@ def test_calendar_fetch_malformed_content_fails_closed(monkeypatch) -> None:
     monkeypatch.setattr(calendar_fetcher, "decode_source_secrets", lambda _source: {"url": "https://example.com/test.ics"})
 
     class _FakeICSClient:
-        def fetch(self, url, input_id, if_none_match=None, if_modified_since=None):  # noqa: ANN001, D401
-            del url, input_id, if_none_match, if_modified_since
+        def fetch(self, url, source_id, if_none_match=None, if_modified_since=None):  # noqa: ANN001, D401
+            del url, source_id, if_none_match, if_modified_since
             return FetchResult(
                 content=b"BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:x\nSUMMARY:oops\n",
                 etag="etag-bad",

@@ -41,11 +41,6 @@ def test_link_candidate_approve_creates_manual_link(client, db_session, auth_hea
         EventEntity(
             user_id=user.id,
             entity_uid="ent_target_a",
-            course_best_json={"display_name": "CSE 151A WI26"},
-            course_best_strength=5,
-            course_aliases_json=[],
-            title_aliases_json=[],
-            metadata_json={},
         )
     )
     db_session.add(
@@ -161,22 +156,12 @@ def test_links_api_list_delete_and_relink(client, db_session, auth_headers) -> N
         EventEntity(
             user_id=user.id,
             entity_uid="ent_target_a",
-            course_best_json={"display_name": "CSE 151A WI26"},
-            course_best_strength=5,
-            course_aliases_json=[],
-            title_aliases_json=[],
-            metadata_json={},
         )
     )
     db_session.add(
         EventEntity(
             user_id=user.id,
             entity_uid="ent_target_b",
-            course_best_json={"display_name": "CSE 151B WI26"},
-            course_best_strength=5,
-            course_aliases_json=[],
-            title_aliases_json=[],
-            metadata_json={},
         )
     )
     db_session.flush()
@@ -245,11 +230,6 @@ def test_link_candidate_batch_approve_partial_success(client, db_session, auth_h
         EventEntity(
             user_id=user.id,
             entity_uid="ent_batch_a",
-            course_best_json={"display_name": "CSE 101 SP26"},
-            course_best_strength=5,
-            course_aliases_json=[],
-            title_aliases_json=[],
-            metadata_json={},
         )
     )
     db_session.flush()

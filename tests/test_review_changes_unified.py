@@ -7,7 +7,7 @@ from app.core.security import encrypt_secret
 from app.db.models.ingestion import ConnectorResultStatus, IngestResult
 from app.db.models.input import IngestTriggerType, InputSource, InputSourceConfig, InputSourceCursor, InputSourceSecret, SourceKind, SyncRequest, SyncRequestStatus
 from app.db.models.shared import User
-from app.modules.core_ingest.apply_service import apply_ingest_result_idempotent
+from app.modules.core_ingest.apply import apply_ingest_result_idempotent
 from tests.support.payload_builders import (
     build_calendar_payload,
     build_course_parse,
@@ -278,7 +278,7 @@ def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session
     round1_rows = pending_round1.json()
     assert len(round1_rows) == 1
     round1_change = round1_rows[0]
-    round1_uid = round1_change["event_uid"]
+    round1_uid = round1_change["entity_uid"]
     assert isinstance(round1_uid, str) and round1_uid
     source_ids = {row["source_id"] for row in round1_change["proposal_sources"]}
     assert source_ids == {calendar_source.id, gmail_source.id}
@@ -342,6 +342,9 @@ def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session
     round2_rows = pending_round2.json()
     assert len(round2_rows) == 1
     round2_change = round2_rows[0]
-    assert round2_change["event_uid"] == round1_uid
+    assert round2_change["entity_uid"] == round1_uid
     assert round2_change["change_type"] == "due_changed"
-    assert round2_change["before_json"]["start_at_utc"] != round2_change["after_json"]["start_at_utc"]
+    assert (
+        round2_change["before_event"]["due_date"] != round2_change["after_event"]["due_date"]
+        or round2_change["before_event"]["due_time"] != round2_change["after_event"]["due_time"]
+    )

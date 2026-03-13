@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:ece35-baseline-008
+DTSTART:20260309T120000Z
+DTEND:20260309T130000Z
+SUMMARY:EcE 35 weekly lecture block
+DESCRIPTION:Pair context: ics-pair-008 (before snapshot) with expected class DUE_CHANGED. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=ece_35-baseline-008, DTSTART=20260309T120000Z, DTEND=20260309T130000Z, SUMMARY=eCE-35 weekly lecture block. Reasoning context: timezone handling was surfaced because prior cohorts reported one-hour and date-boundary confusion. Execution guidance: verify section enrollment mapping, then apply this schedule decision to the exact UID-linked task only. FAQ: If cancellation language appears elsewhere, verify whether the UID was replaced versus removed for debounce evaluation.
+END:VEVENT
+BEGIN:VEVENT
+UID:ece35-task-008
+DTSTART:20260309T090000Z
+DTEND:20260309T100000Z
+SUMMARY:eCE-35 Assignment Deadline
+DESCRIPTION:Pair context: ics-pair-008 (before snapshot) with expected class DUE_CHANGED. This event carries the focal change semantics for the pair and contains the evidence needed to infer the expected diff class. Schedule anchor: UID=EcE35-task-008, DTSTART=20260309T090000Z, DTEND=20260309T100000Z, SUMMARY=ECE 35 Assignment Deadline. Reasoning context: fallback instructions are preserved so operational intent remains readable even without LMS UI metadata. Execution guidance: avoid assuming mirrored systems update simultaneously; rely on the published canonical statement first. FAQ: If another channel states a different time, use the value documented in the canonical course platform and report the mismatch.
+END:VEVENT
+END:VCALENDAR

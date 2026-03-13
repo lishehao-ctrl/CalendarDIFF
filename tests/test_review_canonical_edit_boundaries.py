@@ -8,16 +8,12 @@ def _read(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
-def test_canonical_edit_service_avoids_change_decision_dependency() -> None:
-    content = _read("app/modules/review_changes/canonical_edit_service.py")
+def test_canonical_edit_service_wrapper_removed() -> None:
+    assert not Path("app/modules/review_changes/canonical_edit_service.py").exists()
+
+def test_edit_service_avoids_change_decision_dependency() -> None:
+    content = _read("app/modules/review_changes/edit_service.py")
     assert "app.modules.review_changes.change_decision_service" not in content
-
-
-def test_canonical_edit_service_only_exposes_entrypoints() -> None:
-    path = Path("app/modules/review_changes/canonical_edit_service.py")
-    module = ast.parse(path.read_text(encoding="utf-8"))
-    function_names = [node.name for node in module.body if isinstance(node, ast.FunctionDef)]
-    assert function_names == ["preview_canonical_edit", "apply_canonical_edit"]
 
 
 def test_canonical_edit_modules_do_not_import_change_decision_service() -> None:

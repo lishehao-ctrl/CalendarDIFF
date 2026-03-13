@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:math20d-baseline-010
+DTSTART:20260311T120000Z
+DTEND:20260311T130000Z
+SUMMARY:MatH 20 D Weekly lecture session
+DESCRIPTION:Pair context: ics-pair-010 (after snapshot) with expected class DUE_CHANGED. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=MaTh20d-baseline-010, DTSTART=20260311T120000Z, DTEND=20260311T130000Z, SUMMARY=Math_20D Weekly lecture session. Reasoning context: scheduling adjustments were reviewed against dependency chains to minimize downstream collisions. Execution guidance: verify section enrollment mapping, then apply this schedule decision to the exact UID-linked task only. FAQ: If your local clock differs from server time, buffer your execution window and do not submit at the final minute.
+END:VEVENT
+BEGIN:VEVENT
+UID:math20d-task-010
+DTSTART:20260313T090000Z
+DTEND:20260313T100000Z
+SUMMARY:mATh 20-D Assignment Deadline
+DESCRIPTION:Pair context: ics-pair-010 (after snapshot) with expected class DUE_CHANGED. This event carries the focal change semantics for the pair and contains the evidence needed to infer the expected diff class. Schedule anchor: UID=mATh 20 d-task-010, DTSTART=20260313T090000Z, DTEND=20260313T100000Z, SUMMARY=Math20_D Assignment Deadline. Reasoning context: staff consolidated policy clarifications after seeing conflicting interpretations in discussion threads. Execution guidance: verify section enrollment mapping, then apply this schedule decision to the exact UID-linked task only.
+END:VEVENT
+END:VCALENDAR

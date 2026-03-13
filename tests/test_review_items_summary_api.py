@@ -3,11 +3,23 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.db.models.input import InputSource, SourceKind
-from app.db.models.review import Change, ChangeType, EventLinkAlert, EventLinkAlertReason, EventLinkAlertResolution, EventLinkAlertRiskLevel, EventLinkAlertStatus, EventLinkCandidate, EventLinkCandidateReason, EventLinkCandidateStatus, Input, InputType, ReviewStatus
+from app.db.models.review import (
+    Change,
+    ChangeOrigin,
+    ChangeType,
+    EventLinkAlert,
+    EventLinkAlertReason,
+    EventLinkAlertRiskLevel,
+    EventLinkAlertStatus,
+    EventLinkCandidate,
+    EventLinkCandidateReason,
+    EventLinkCandidateStatus,
+    ReviewStatus,
+)
 from app.db.models.shared import User
 
 
-def _create_onboarded_user_with_source(db_session, *, email: str, source_key: str) -> tuple[User, InputSource]:
+def _create_user_with_source(db_session, *, email: str) -> tuple[User, InputSource]:
     user = User(
         email=email,
         notify_email=email,
@@ -15,18 +27,16 @@ def _create_onboarded_user_with_source(db_session, *, email: str, source_key: st
     )
     db_session.add(user)
     db_session.flush()
-
     source = InputSource(
         user_id=user.id,
         source_kind=SourceKind.EMAIL,
         provider="gmail",
-        source_key=source_key,
-        display_name=f"Source {source_key}",
+        source_key=f"src-{user.id}",
+        display_name="Inbox",
         is_active=True,
         poll_interval_seconds=900,
     )
     db_session.add(source)
-    db_session.flush()
     db_session.commit()
     db_session.refresh(user)
     db_session.refresh(source)
@@ -34,163 +44,117 @@ def _create_onboarded_user_with_source(db_session, *, email: str, source_key: st
 
 
 def test_review_items_summary_counts_pending_only_for_current_user(client, db_session, auth_headers) -> None:
-    user, source = _create_onboarded_user_with_source(
-        db_session,
-        email="summary-owner@example.com",
-        source_key="summary-owner-source",
-    )
-    other_user, other_source = _create_onboarded_user_with_source(
-        db_session,
-        email="summary-other@example.com",
-        source_key="summary-other-source",
-    )
-
-    owner_input = Input(
-        user_id=user.id,
-        type=InputType.ICS,
-        identity_key="summary-owner-canonical",
-        is_active=True,
-    )
-    other_input = Input(
-        user_id=other_user.id,
-        type=InputType.ICS,
-        identity_key="summary-other-canonical",
-        is_active=True,
-    )
-    db_session.add(owner_input)
-    db_session.add(other_input)
-    db_session.flush()
+    user, source = _create_user_with_source(db_session, email="owner@example.com")
+    other_user, other_source = _create_user_with_source(db_session, email="other@example.com")
 
     now = datetime.now(timezone.utc)
-    db_session.add(
-        Change(
-            input_id=owner_input.id,
-            event_uid="summary-owner-change-pending",
-            change_type=ChangeType.CREATED,
-            detected_at=now,
-            before_json=None,
-            after_json={"title": "Owner pending"},
-            review_status=ReviewStatus.PENDING,
-        )
-    )
-    db_session.add(
-        Change(
-            input_id=owner_input.id,
-            event_uid="summary-owner-change-approved",
-            change_type=ChangeType.CREATED,
-            detected_at=now,
-            before_json=None,
-            after_json={"title": "Owner approved"},
-            review_status=ReviewStatus.APPROVED,
-        )
-    )
-    db_session.add(
-        Change(
-            input_id=other_input.id,
-            event_uid="summary-other-change-pending",
-            change_type=ChangeType.CREATED,
-            detected_at=now,
-            before_json=None,
-            after_json={"title": "Other pending"},
-            review_status=ReviewStatus.PENDING,
-        )
-    )
-
-    db_session.add(
-        EventLinkCandidate(
-            user_id=user.id,
-            source_id=source.id,
-            external_event_id="summary-owner-candidate-pending",
-            proposed_entity_uid="ent_owner_pending",
-            score=0.8,
-            score_breakdown_json={"rule_reason": "pending"},
-            reason_code=EventLinkCandidateReason.SCORE_BAND,
-            status=EventLinkCandidateStatus.PENDING,
-        )
-    )
-    db_session.add(
-        EventLinkCandidate(
-            user_id=user.id,
-            source_id=source.id,
-            external_event_id="summary-owner-candidate-approved",
-            proposed_entity_uid="ent_owner_approved",
-            score=0.8,
-            score_breakdown_json={"rule_reason": "approved"},
-            reason_code=EventLinkCandidateReason.SCORE_BAND,
-            status=EventLinkCandidateStatus.APPROVED,
-        )
-    )
-    db_session.add(
-        EventLinkCandidate(
-            user_id=other_user.id,
-            source_id=other_source.id,
-            external_event_id="summary-other-candidate-pending",
-            proposed_entity_uid="ent_other_pending",
-            score=0.8,
-            score_breakdown_json={"rule_reason": "pending"},
-            reason_code=EventLinkCandidateReason.SCORE_BAND,
-            status=EventLinkCandidateStatus.PENDING,
-        )
-    )
-
-    db_session.add(
-        EventLinkAlert(
-            user_id=user.id,
-            source_id=source.id,
-            external_event_id="summary-owner-alert-pending",
-            entity_uid="ent_owner_pending",
-            link_id=None,
-            risk_level=EventLinkAlertRiskLevel.MEDIUM,
-            reason_code=EventLinkAlertReason.AUTO_LINK_WITHOUT_CANONICAL_CHANGE,
-            status=EventLinkAlertStatus.PENDING,
-            resolution_code=None,
-            evidence_snapshot_json={"rule_reason": "pending"},
-            reviewed_by_user_id=None,
-            reviewed_at=None,
-            review_note=None,
-        )
-    )
-    db_session.add(
-        EventLinkAlert(
-            user_id=user.id,
-            source_id=source.id,
-            external_event_id="summary-owner-alert-resolved",
-            entity_uid="ent_owner_resolved",
-            link_id=None,
-            risk_level=EventLinkAlertRiskLevel.MEDIUM,
-            reason_code=EventLinkAlertReason.AUTO_LINK_WITHOUT_CANONICAL_CHANGE,
-            status=EventLinkAlertStatus.RESOLVED,
-            resolution_code=EventLinkAlertResolution.LINK_REMOVED,
-            evidence_snapshot_json={"rule_reason": "resolved"},
-            reviewed_by_user_id=None,
-            reviewed_at=now,
-            review_note="resolved",
-        )
-    )
-    db_session.add(
-        EventLinkAlert(
-            user_id=other_user.id,
-            source_id=other_source.id,
-            external_event_id="summary-other-alert-pending",
-            entity_uid="ent_other_pending",
-            link_id=None,
-            risk_level=EventLinkAlertRiskLevel.MEDIUM,
-            reason_code=EventLinkAlertReason.AUTO_LINK_WITHOUT_CANONICAL_CHANGE,
-            status=EventLinkAlertStatus.PENDING,
-            resolution_code=None,
-            evidence_snapshot_json={"rule_reason": "pending"},
-            reviewed_by_user_id=None,
-            reviewed_at=None,
-            review_note=None,
-        )
+    db_session.add_all(
+        [
+            Change(
+                user_id=user.id,
+                entity_uid="ent-owner-pending",
+                change_origin=ChangeOrigin.INGEST_PROPOSAL,
+                change_type=ChangeType.CREATED,
+                detected_at=now,
+                after_semantic_json={
+                    "uid": "ent-owner-pending",
+                    "course_dept": "CSE",
+                    "course_number": 100,
+                    "family_name": "Homework",
+                    "event_name": "Homework 1",
+                    "ordinal": 1,
+                    "due_date": "2026-03-15",
+                    "due_time": "23:59:00",
+                    "time_precision": "datetime",
+                },
+                review_status=ReviewStatus.PENDING,
+            ),
+            Change(
+                user_id=user.id,
+                entity_uid="ent-owner-approved",
+                change_origin=ChangeOrigin.MANUAL_CANONICAL_EDIT,
+                change_type=ChangeType.DUE_CHANGED,
+                detected_at=now,
+                after_semantic_json={
+                    "uid": "ent-owner-approved",
+                    "course_dept": "CSE",
+                    "course_number": 100,
+                    "family_name": "Homework",
+                    "event_name": "Homework 2",
+                    "ordinal": 2,
+                    "due_date": "2026-03-20",
+                    "due_time": "23:59:00",
+                    "time_precision": "datetime",
+                },
+                review_status=ReviewStatus.APPROVED,
+                reviewed_at=now,
+            ),
+            Change(
+                user_id=other_user.id,
+                entity_uid="ent-other-pending",
+                change_origin=ChangeOrigin.INGEST_PROPOSAL,
+                change_type=ChangeType.CREATED,
+                detected_at=now,
+                after_semantic_json={
+                    "uid": "ent-other-pending",
+                    "course_dept": "CSE",
+                    "course_number": 120,
+                    "family_name": "Quiz",
+                    "event_name": "Quiz 1",
+                    "ordinal": 1,
+                    "due_date": "2026-03-16",
+                    "due_time": "10:00:00",
+                    "time_precision": "datetime",
+                },
+                review_status=ReviewStatus.PENDING,
+            ),
+            EventLinkCandidate(
+                user_id=user.id,
+                source_id=source.id,
+                external_event_id="candidate-owner",
+                proposed_entity_uid="ent-owner-pending",
+                score=0.7,
+                score_breakdown_json={"rule_reason": "score_band"},
+                reason_code=EventLinkCandidateReason.SCORE_BAND,
+                status=EventLinkCandidateStatus.PENDING,
+            ),
+            EventLinkCandidate(
+                user_id=other_user.id,
+                source_id=other_source.id,
+                external_event_id="candidate-other",
+                proposed_entity_uid="ent-other-pending",
+                score=0.7,
+                score_breakdown_json={"rule_reason": "score_band"},
+                reason_code=EventLinkCandidateReason.SCORE_BAND,
+                status=EventLinkCandidateStatus.PENDING,
+            ),
+            EventLinkAlert(
+                user_id=user.id,
+                source_id=source.id,
+                external_event_id="alert-owner",
+                entity_uid="ent-owner-pending",
+                risk_level=EventLinkAlertRiskLevel.MEDIUM,
+                reason_code=EventLinkAlertReason.AUTO_LINK_WITHOUT_CANONICAL_CHANGE,
+                status=EventLinkAlertStatus.PENDING,
+                evidence_snapshot_json={"rule_reason": "auto_link"},
+            ),
+            EventLinkAlert(
+                user_id=other_user.id,
+                source_id=other_source.id,
+                external_event_id="alert-other",
+                entity_uid="ent-other-pending",
+                risk_level=EventLinkAlertRiskLevel.MEDIUM,
+                reason_code=EventLinkAlertReason.AUTO_LINK_WITHOUT_CANONICAL_CHANGE,
+                status=EventLinkAlertStatus.PENDING,
+                evidence_snapshot_json={"rule_reason": "auto_link"},
+            ),
+        ]
     )
     db_session.commit()
 
-    headers = auth_headers(client, user=user)
-    response = client.get("/review/summary", headers=headers)
+    response = client.get("/review/summary", headers=auth_headers(client, user=user))
     assert response.status_code == 200
     payload = response.json()
-
     assert payload["changes_pending"] == 1
     assert payload["link_candidates_pending"] == 1
     assert payload["link_alerts_pending"] == 1

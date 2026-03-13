@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta, timezone
 
+from app.modules.core_ingest.semantic_event_service import draft_from_course_and_semantic
+
 HW_PATTERN = re.compile(r"\b(?:hw|homework)[\s_\-]*([0-9]+)\b", re.I)
 PA_PATTERN = re.compile(r"\b(?:pa|programming assignment)[\s_\-]*([0-9]+)\b", re.I)
 PSET_PATTERN = re.compile(r"\b(?:pset|problem set)[\s_\-]*([0-9]+)\b", re.I)
@@ -29,6 +31,42 @@ def build_course_parse(
         "suffix": suffix,
         "quarter": quarter,
         "year2": year2,
+        "confidence": float(confidence),
+        "evidence": evidence,
+    }
+
+
+def build_semantic_parse(
+    *,
+    raw_type: str | None = None,
+    event_name: str | None = None,
+    ordinal: int | None = None,
+    due_at: datetime | None = None,
+    due_date: str | None = None,
+    due_time: str | None = None,
+    time_precision: str = "datetime",
+    confidence: float = 0.0,
+    evidence: str = "",
+) -> dict:
+    resolved_due_date = due_date
+    resolved_due_time = due_time
+    resolved_precision = time_precision
+    if due_at is not None:
+        utc_due = due_at.astimezone(timezone.utc) if due_at.tzinfo is not None else due_at.replace(tzinfo=timezone.utc)
+        resolved_due_date = utc_due.date().isoformat()
+        if time_precision == "date_only":
+            resolved_due_time = None
+            resolved_precision = "date_only"
+        else:
+            resolved_due_time = utc_due.timetz().replace(tzinfo=None).isoformat()
+            resolved_precision = "datetime"
+    return {
+        "raw_type": raw_type,
+        "event_name": event_name,
+        "ordinal": ordinal,
+        "due_date": resolved_due_date,
+        "due_time": resolved_due_time,
+        "time_precision": resolved_precision,
         "confidence": float(confidence),
         "evidence": evidence,
     }
@@ -91,15 +129,19 @@ def build_calendar_payload(
     location: str | None = None,
     organizer: str | None = None,
     course_parse: dict | None = None,
+    semantic_parse: dict | None = None,
     work_item_parse: dict | None = None,
     event_parts: dict | None = None,
     link_signals: dict | None = None,
 ) -> dict:
     resolved_end = end_at or (start_at + timedelta(hours=1))
-    resolved_event_parts = event_parts or build_event_parts(type="other", confidence=0.0)
-    resolved_work_item_parse = work_item_parse or _infer_work_item_parse(title=title, event_parts=resolved_event_parts)
+    resolved_semantic = semantic_parse or _infer_semantic_parse(title=title, due_at=start_at, work_item_parse=work_item_parse, event_parts=event_parts)
+    semantic_event_draft = draft_from_course_and_semantic(
+        course_parse=course_parse or build_course_parse(confidence=0.0),
+        semantic_parse=resolved_semantic,
+    )
     return {
-        "source_canonical": {
+        "source_facts": {
             "external_event_id": external_event_id,
             "source_title": title,
             "source_summary": title,
@@ -109,13 +151,8 @@ def build_calendar_payload(
             "location": location,
             "organizer": organizer,
         },
-        "enrichment": {
-            "course_parse": course_parse or build_course_parse(confidence=0.0),
-            "work_item_parse": resolved_work_item_parse,
-            "event_parts": resolved_event_parts,
-            "link_signals": link_signals or build_link_signals(),
-            "payload_schema_version": "obs_v3",
-        },
+        "semantic_event_draft": semantic_event_draft,
+        "link_signals": link_signals or build_link_signals(),
     }
 
 
@@ -129,16 +166,20 @@ def build_gmail_payload(
     internal_date: str | None = None,
     time_anchor_confidence: float = 0.0,
     course_parse: dict | None = None,
+    semantic_parse: dict | None = None,
     work_item_parse: dict | None = None,
     event_parts: dict | None = None,
     link_signals: dict | None = None,
 ) -> dict:
     end_at = (due_at + timedelta(hours=1)) if due_at is not None else None
-    resolved_event_parts = event_parts or build_event_parts(type="other", confidence=0.0)
-    resolved_work_item_parse = work_item_parse or _infer_work_item_parse(title=title, event_parts=resolved_event_parts)
+    resolved_semantic = semantic_parse or _infer_semantic_parse(title=title, due_at=due_at, work_item_parse=work_item_parse, event_parts=event_parts)
+    semantic_event_draft = draft_from_course_and_semantic(
+        course_parse=course_parse or build_course_parse(confidence=0.0),
+        semantic_parse=resolved_semantic,
+    )
     return {
         "message_id": message_id,
-        "source_canonical": {
+        "source_facts": {
             "external_event_id": message_id,
             "source_title": title,
             "source_summary": title,
@@ -149,18 +190,38 @@ def build_gmail_payload(
             "thread_id": thread_id,
             "internal_date": internal_date,
         },
-        "enrichment": {
-            "course_parse": course_parse or build_course_parse(confidence=0.0),
-            "work_item_parse": resolved_work_item_parse,
-            "event_parts": resolved_event_parts,
-            "link_signals": link_signals or build_link_signals(),
-            "payload_schema_version": "obs_v3",
-        },
+        "semantic_event_draft": semantic_event_draft,
+        "link_signals": link_signals or build_link_signals(),
     }
 
 
-def _infer_work_item_parse(*, title: str, event_parts: dict) -> dict:
-    source_text = f"{title} {(event_parts.get('evidence') or '')}".strip()
+def _infer_semantic_parse(*, title: str, due_at: datetime | None, work_item_parse: dict | None, event_parts: dict | None) -> dict:
+    explicit_raw_type = None
+    explicit_ordinal = None
+    explicit_confidence = 0.0
+    explicit_evidence = title
+    if isinstance(work_item_parse, dict):
+        explicit_raw_type = work_item_parse.get("raw_kind_label") if isinstance(work_item_parse.get("raw_kind_label"), str) else None
+        explicit_ordinal = work_item_parse.get("ordinal") if isinstance(work_item_parse.get("ordinal"), int) else None
+        explicit_confidence = float(work_item_parse.get("confidence") or 0.0)
+        explicit_evidence = str(work_item_parse.get("evidence") or explicit_evidence)
+    if explicit_raw_type is None and isinstance(event_parts, dict):
+        explicit_ordinal = explicit_ordinal if explicit_ordinal is not None else (event_parts.get("index") if isinstance(event_parts.get("index"), int) else None)
+        explicit_confidence = max(explicit_confidence, float(event_parts.get("confidence") or 0.0))
+        explicit_evidence = str(event_parts.get("evidence") or explicit_evidence)
+    if explicit_raw_type is None:
+        explicit_raw_type, explicit_ordinal = _infer_type_and_ordinal(title)
+    return build_semantic_parse(
+        raw_type=explicit_raw_type,
+        event_name=title,
+        ordinal=explicit_ordinal,
+        due_at=due_at,
+        confidence=explicit_confidence,
+        evidence=explicit_evidence[:160],
+    )
+
+
+def _infer_type_and_ordinal(title: str) -> tuple[str | None, int | None]:
     for label, pattern in (
         ("Homework", HW_PATTERN),
         ("Programming Assignment", PA_PATTERN),
@@ -171,22 +232,11 @@ def _infer_work_item_parse(*, title: str, event_parts: dict) -> dict:
         ("Lab", LAB_PATTERN),
         ("Paper", PAPER_PATTERN),
     ):
-        match = pattern.search(source_text)
+        match = pattern.search(title)
         if match:
-            ordinal = int(match.group(1)) if match.lastindex and match.group(1) and match.group(1).isdigit() else event_parts.get("index")
-            return build_work_item_parse(
-                raw_kind_label=label,
-                ordinal=ordinal if isinstance(ordinal, int) and ordinal > 0 else None,
-                confidence=float(event_parts.get("confidence") or 0.0),
-                evidence=(event_parts.get("evidence") or title)[:120],
-            )
-    ordinal = event_parts.get("index") if isinstance(event_parts.get("index"), int) else None
-    return build_work_item_parse(
-        raw_kind_label=None,
-        ordinal=ordinal,
-        confidence=float(event_parts.get("confidence") or 0.0),
-        evidence=(event_parts.get("evidence") or title)[:120],
-    )
+            ordinal = int(match.group(1)) if match.lastindex and match.group(1) and match.group(1).isdigit() else None
+            return label, ordinal
+    return None, None
 
 
 def _as_utc_iso(value: datetime) -> str:

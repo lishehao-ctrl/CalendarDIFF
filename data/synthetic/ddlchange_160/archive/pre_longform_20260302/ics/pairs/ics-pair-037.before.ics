@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:bild1-baseline-037
+DTSTART:20260407T120000Z
+DTEND:20260407T130000Z
+SUMMARY:BILD 1 Weekly Lecture
+DESCRIPTION:Baseline recurring item for stable context.
+END:VEVENT
+BEGIN:VEVENT
+UID:bild1-task-037-removed
+DTSTART:20260407T090000Z
+DTEND:20260407T100000Z
+SUMMARY:BILD 1 Assignment Deadline
+DESCRIPTION:Potentially removed event. Please verify final deadline on official site.
+END:VEVENT
+END:VCALENDAR

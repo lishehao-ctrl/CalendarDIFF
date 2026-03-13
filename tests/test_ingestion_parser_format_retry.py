@@ -43,13 +43,18 @@ def test_gmail_parser_retries_validation_error_then_succeeds(monkeypatch: pytest
                     "messages": [
                         {
                             "message_id": "msg-1",
-                            "due_at": "2026-03-05T23:59:00-08:00",
-                            "time_anchor_confidence": 0.9,
-                            "course_parse": "bad",
-                            "event_parts": {
-                                "type": "deadline",
-                                "index": 1,
-                                "qualifier": "hw",
+                            "semantic_event_draft": {
+                                "course_dept": "CSE",
+                                "course_number": "bad",
+                                "course_suffix": "A",
+                                "course_quarter": "WI",
+                                "course_year2": 26,
+                                "raw_type": "Homework",
+                                "event_name": "HW1",
+                                "ordinal": 1,
+                                "due_date": "2026-03-05",
+                                "due_time": "23:59:00",
+                                "time_precision": "datetime",
                                 "confidence": 0.9,
                                 "evidence": "Homework due",
                             },
@@ -64,36 +69,27 @@ def test_gmail_parser_retries_validation_error_then_succeeds(monkeypatch: pytest
                 }
             )
         return DummyInvokeResult(
-            json_object={
-                "messages": [
-                    {
-                        "message_id": "msg-1",
-                        "due_at": "2026-03-05T23:59:00-08:00",
-                        "time_anchor_confidence": 0.9,
-                        "course_parse": {
-                            "dept": "CSE",
-                            "number": 8,
-                            "suffix": "A",
-                            "quarter": "WI",
-                            "year2": 26,
-                            "confidence": 0.8,
-                            "evidence": "CSE 8A WI26",
-                        },
-                        "work_item_parse": {
-                            "raw_kind_label": "Homework",
-                            "ordinal": 1,
-                            "confidence": 0.9,
-                            "evidence": "Homework due",
-                        },
-                        "event_parts": {
-                            "type": "deadline",
-                            "index": 1,
-                            "qualifier": "hw",
-                            "confidence": 0.9,
-                            "evidence": "Homework due",
-                        },
-                        "link_signals": {
-                            "keywords": [],
+                json_object={
+                    "messages": [
+                        {
+                            "message_id": "msg-1",
+                            "semantic_event_draft": {
+                                "course_dept": "CSE",
+                                "course_number": 8,
+                                "course_suffix": "A",
+                                "course_quarter": "WI",
+                                "course_year2": 26,
+                                "raw_type": "Homework",
+                                "event_name": "HW1",
+                                "ordinal": 1,
+                                "due_date": "2026-03-05",
+                                "due_time": "23:59:00",
+                                "time_precision": "datetime",
+                                "confidence": 0.9,
+                                "evidence": "Homework due",
+                            },
+                            "link_signals": {
+                                "keywords": [],
                             "exam_sequence": None,
                             "location_text": None,
                             "instructor_hint": "staff@example.edu",
@@ -111,8 +107,8 @@ def test_gmail_parser_retries_validation_error_then_succeeds(monkeypatch: pytest
     assert len(parsed.records) == 1
     assert parsed.records[0]["record_type"] == "gmail.message.extracted"
     parsed_payload = parsed.records[0]["payload"]
-    assert set(parsed_payload.keys()) == {"message_id", "source_canonical", "enrichment"}
-    assert parsed_payload["enrichment"]["payload_schema_version"] == "obs_v3"
+    assert set(parsed_payload.keys()) == {"message_id", "source_facts", "semantic_event_draft", "link_signals"}
+    assert parsed_payload["semantic_event_draft"]["course_dept"] == "CSE"
 
 
 def test_calendar_parser_retries_validation_error_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -136,25 +132,18 @@ def test_calendar_parser_retries_validation_error_then_succeeds(monkeypatch: pyt
         if calls["count"] == 1:
             return DummyInvokeResult(
                 json_object={
-                    "course_parse": {
-                        "dept": "CSE",
-                        "number": "bad",
-                        "suffix": "A",
-                        "quarter": None,
-                        "year2": None,
-                        "confidence": 0.9,
-                        "evidence": "CSE 8A",
-                    },
-                    "work_item_parse": {
-                        "raw_kind_label": "Lab",
+                    "semantic_event_draft": {
+                        "course_dept": "CSE",
+                        "course_number": "bad",
+                        "course_suffix": "A",
+                        "course_quarter": None,
+                        "course_year2": None,
+                        "raw_type": "Lab",
+                        "event_name": "CSE 8A Lab",
                         "ordinal": 1,
-                        "confidence": 0.8,
-                        "evidence": "Lab",
-                    },
-                    "event_parts": {
-                        "type": "lecture",
-                        "index": 1,
-                        "qualifier": None,
+                        "due_date": "2026-03-05",
+                        "due_time": "18:00:00",
+                        "time_precision": "datetime",
                         "confidence": 0.8,
                         "evidence": "Lab",
                     },
@@ -168,25 +157,18 @@ def test_calendar_parser_retries_validation_error_then_succeeds(monkeypatch: pyt
             )
         return DummyInvokeResult(
             json_object={
-                "course_parse": {
-                    "dept": "CSE",
-                    "number": 8,
-                    "suffix": "A",
-                    "quarter": None,
-                    "year2": None,
-                    "confidence": 0.9,
-                    "evidence": "CSE 8A",
-                },
-                "work_item_parse": {
-                    "raw_kind_label": "Lab",
+                "semantic_event_draft": {
+                    "course_dept": "CSE",
+                    "course_number": 8,
+                    "course_suffix": "A",
+                    "course_quarter": None,
+                    "course_year2": None,
+                    "raw_type": "Lab",
+                    "event_name": "CSE 8A Lab",
                     "ordinal": 1,
-                    "confidence": 0.8,
-                    "evidence": "Lab",
-                },
-                "event_parts": {
-                    "type": "lecture",
-                    "index": 1,
-                    "qualifier": None,
+                    "due_date": "2026-03-05",
+                    "due_time": "18:00:00",
+                    "time_precision": "datetime",
                     "confidence": 0.8,
                     "evidence": "Lab",
                 },
@@ -207,10 +189,9 @@ def test_calendar_parser_retries_validation_error_then_succeeds(monkeypatch: pyt
     assert len(parsed.records) == 1
     assert parsed.records[0]["record_type"] == "calendar.event.extracted"
     payload = parsed.records[0]["payload"]
-    assert isinstance(payload.get("source_canonical"), dict)
-    assert isinstance(payload.get("enrichment"), dict)
-    assert payload["enrichment"]["course_parse"]["dept"] == "CSE"
-    assert payload["enrichment"]["payload_schema_version"] == "obs_v3"
+    assert isinstance(payload.get("source_facts"), dict)
+    assert isinstance(payload.get("semantic_event_draft"), dict)
+    assert payload["semantic_event_draft"]["course_dept"] == "CSE"
 
 
 def test_gmail_parser_exhausts_validation_retries(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -234,15 +215,9 @@ def test_gmail_parser_exhausts_validation_retries(monkeypatch: pytest.MonkeyPatc
                 "messages": [
                     {
                         "message_id": "msg-2",
-                        "due_at": None,
-                        "time_anchor_confidence": 0.8,
-                        "course_parse": "still-not-object",
-                        "event_parts": {
-                            "type": "exam",
-                            "index": 1,
-                            "qualifier": None,
-                            "confidence": 0.8,
-                            "evidence": "Exam reminder",
+                        "semantic_event_draft": {
+                            "course_dept": "CSE",
+                            "course_number": "bad",
                         },
                         "link_signals": {
                             "keywords": ["exam"],
@@ -285,19 +260,15 @@ def test_calendar_parser_exhausts_validation_retries_raises_schema_error(
         calls["count"] += 1
         return DummyInvokeResult(
             json_object={
-                "course_parse": {
-                    "dept": "CSE",
-                    "number": "bad",
-                    "suffix": None,
-                    "quarter": None,
-                    "year2": None,
-                    "confidence": 0.7,
-                    "evidence": "Project",
-                },
-                "event_parts": {
-                    "type": "project",
-                    "index": 1,
-                    "qualifier": None,
+                "semantic_event_draft": {
+                    "course_dept": "CSE",
+                    "course_number": "bad",
+                    "raw_type": "Project",
+                    "event_name": "Project update",
+                    "ordinal": 1,
+                    "due_date": "2026-03-10",
+                    "due_time": "18:00:00",
+                    "time_precision": "datetime",
                     "confidence": 0.8,
                     "evidence": "Project update",
                 },

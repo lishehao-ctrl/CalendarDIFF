@@ -1,0 +1,25 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:se101a-baseline-019
+DTSTART:20260320T120000Z
+DTEND:20260320T130000Z
+SUMMARY:se_101A weekly lecture block
+DESCRIPTION:Pair context: ics-pair-019 (after snapshot) with expected class CREATED. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=SE-101 A-baseline-019, DTSTART=20260320T120000Z, DTEND=20260320T130000Z, SUMMARY=sE101-A weekly lecture block. Reasoning context: this longform description is intentionally explicit to reduce parser brittleness under varied textual style. Execution guidance: retain screenshot evidence of final submission or attendance acknowledgement for reconciliation requests. FAQ: If accommodation or conflict applies, follow approved pathways; this text does not override formal accommodation workflows.
+END:VEVENT
+BEGIN:VEVENT
+UID:se101a-task-019
+DTSTART:20260320T090000Z
+DTEND:20260320T100000Z
+SUMMARY:Se_101 A current task item
+DESCRIPTION:Pair context: ics-pair-019 (after snapshot) with expected class CREATED. This event carries the focal change semantics for the pair and contains the evidence needed to infer the expected diff class. Schedule anchor: UID=Se101a-task-019, DTSTART=20260320T090000Z, DTEND=20260320T100000Z, SUMMARY=sE_101A current task item. Reasoning context: staff consolidated policy clarifications after seeing conflicting interpretations in discussion threads. Execution guidance: verify section enrollment mapping, then apply this schedule decision to the exact UID-linked task only. FAQ: If another channel states a different time, use the value documented in the canonical course platform and report the mismatch.
+END:VEVENT
+BEGIN:VEVENT
+UID:se101a-task-019-new
+DTSTART:20260322T090000Z
+DTEND:20260322T100000Z
+SUMMARY:se-101A Assignment DDL milestone
+DESCRIPTION:Pair context: ics-pair-019 (after snapshot) with expected class CREATED. This event appears as newly introduced content and supports created-event semantics without modifying baseline course cadence. Schedule anchor: UID=sE101a-task-019-new, DTSTART=20260322T090000Z, DTEND=20260322T100000Z, SUMMARY=Se 101-a Assignment DDL milestone. Reasoning context: this longform description is intentionally explicit to reduce parser brittleness under varied textual style. Execution guidance: retain screenshot evidence of final submission or attendance acknowledgement for reconciliation requests. FAQ: If another channel states a different time, use the value documented in the canonical course platform and report the mismatch.
+END:VEVENT
+END:VCALENDAR

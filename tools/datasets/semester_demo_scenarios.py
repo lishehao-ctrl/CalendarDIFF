@@ -29,7 +29,7 @@ class CourseAnchor:
 @dataclass(frozen=True)
 class IcsEventPlan:
     event_id: str
-    event_uid: str
+    entity_uid: str
     title: str
     due_iso: str
     event_type: EventType
@@ -273,7 +273,7 @@ def _build_ics_event(
     title = f"{course.label} {event_type.title()} {event_index} Deadline"
     return IcsEventPlan(
         event_id=event_id,
-        event_uid=f"{event_id}@calendar-diff.demo",
+        entity_uid=f"{event_id}@calendar-diff.demo",
         title=title,
         due_iso=due_at.isoformat(),
         event_type=event_type,

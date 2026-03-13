@@ -1,0 +1,49 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from app.db.models.shared import CourseRawTypeSuggestion, User
+from app.modules.common.course_identity import parse_course_display
+from app.modules.core_ingest.course_work_item_family_resolution import resolve_kind_resolution
+from app.modules.users.course_work_item_families_service import create_course_work_item_family
+from tests.support.payload_builders import build_course_parse, build_semantic_parse
+
+
+def test_resolve_kind_resolution_creates_suggestion_for_similar_raw_type(db_session, monkeypatch) -> None:
+    user = User(email=None, notify_email="suggest-user@example.com", password_hash="hash", onboarding_completed_at=datetime.now(timezone.utc))
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    course_identity = parse_course_display("CSE 8A")
+    create_course_work_item_family(
+        db_session,
+        user_id=user.id,
+        course_dept=course_identity["course_dept"],
+        course_number=course_identity["course_number"],
+        course_suffix=course_identity["course_suffix"],
+        course_quarter=course_identity["course_quarter"],
+        course_year2=course_identity["course_year2"],
+        canonical_label="Homework",
+        raw_types=[],
+    )
+
+    monkeypatch.setattr(
+        "app.modules.core_ingest.course_work_item_family_resolution.compare_raw_type_against_known_types",
+        lambda *args, **kwargs: {"matched_raw_type": "Homework", "confidence": 0.93, "evidence": "hw looks like homework"},
+    )
+
+    result = resolve_kind_resolution(
+        db_session,
+        user_id=user.id,
+        course_parse=build_course_parse(dept="CSE", number=8, suffix="A", confidence=0.95, evidence="CSE8A"),
+        semantic_parse=build_semantic_parse(raw_type="HW", event_name="HW1 reminder", ordinal=1, confidence=0.9, evidence="HW1"),
+        source_kind="email",
+        external_event_id="evt-1",
+    )
+    assert result["status"] == "suggested"
+    assert result["canonical_label"] == "HW"
+    suggestion = db_session.query(CourseRawTypeSuggestion).one()
+    assert suggestion.source_raw_type.raw_type == "HW"
+    assert suggestion.suggested_raw_type is not None
+    assert suggestion.suggested_raw_type.raw_type == "Homework"

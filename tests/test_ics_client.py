@@ -35,14 +35,14 @@ def test_fetch_sends_conditional_headers_and_handles_304(monkeypatch) -> None:
     client = ICSClient()
     result = client.fetch(
         "https://example.com/calendar.ics",
-        input_id=1,
-        if_none_match="etag-v1",
+        source_id=1,
+        if_none_match="etag-mainline",
         if_modified_since="Tue, 18 Feb 2026 20:31:10 GMT",
     )
 
     assert captured_headers == [
         {
-            "If-None-Match": "etag-v1",
+            "If-None-Match": "etag-mainline",
             "If-Modified-Since": "Tue, 18 Feb 2026 20:31:10 GMT",
         }
     ]
@@ -59,7 +59,7 @@ def test_fetch_returns_content_for_200(monkeypatch) -> None:
     captured_headers: list[dict[str, str] | None] = []
     response = httpx.Response(
         status_code=200,
-        headers={"etag": "etag-v1", "last-modified": "Wed, 19 Feb 2026 20:31:10 GMT"},
+        headers={"etag": "etag-mainline", "last-modified": "Wed, 19 Feb 2026 20:31:10 GMT"},
         content=b"BEGIN:VCALENDAR\nEND:VCALENDAR\n",
         request=httpx.Request("GET", "https://example.com/calendar.ics"),
     )
@@ -82,11 +82,11 @@ def test_fetch_returns_content_for_200(monkeypatch) -> None:
     monkeypatch.setattr("app.modules.sync.ics_client.httpx.Client", FakeClient)
 
     client = ICSClient()
-    result = client.fetch("https://example.com/calendar.ics", input_id=2)
+    result = client.fetch("https://example.com/calendar.ics", source_id=2)
 
     assert captured_headers == [None]
     assert result.not_modified is False
     assert result.status_code == 200
     assert result.content == b"BEGIN:VCALENDAR\nEND:VCALENDAR\n"
-    assert result.etag == "etag-v1"
+    assert result.etag == "etag-mainline"
     assert result.last_modified == "Wed, 19 Feb 2026 20:31:10 GMT"

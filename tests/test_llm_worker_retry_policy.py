@@ -71,7 +71,7 @@ def test_retry_policy_schedules_retry(db_session: Session, monkeypatch) -> None:
         llm_transitions.apply_llm_failure_transition(
             db_session,
             redis_client=object(),  # type: ignore[arg-type]
-            stream_key="llm:parse:stream:v1",
+            stream_key="llm:parse:stream",
             request_id=job.request_id,
             next_attempt=1,
             error_code="parse_llm_timeout",
@@ -101,7 +101,7 @@ def test_retry_policy_dead_letters_after_max_attempts(db_session: Session, monke
         llm_transitions.apply_llm_failure_transition(
             db_session,
             redis_client=object(),  # type: ignore[arg-type]
-            stream_key="llm:parse:stream:v1",
+            stream_key="llm:parse:stream",
             request_id=job.request_id,
             next_attempt=2,
             error_code="parse_llm_timeout",

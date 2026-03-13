@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:bild1-baseline-013
+DTSTART:20260314T120000Z
+DTEND:20260314T130000Z
+SUMMARY:biLd 1 Weekly Lecture
+DESCRIPTION:Pair context: ics-pair-013 (after snapshot) with expected class DUE_CHANGED. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=BilD 1-baseline-013, DTSTART=20260314T120000Z, DTEND=20260314T130000Z, SUMMARY=BiLD-1 Weekly Lecture. Reasoning context: scheduling adjustments were reviewed against dependency chains to minimize downstream collisions. Execution guidance: if tooling discrepancy appears, escalate with exact timestamp, platform region, and reproducible steps. FAQ: If your local clock differs from server time, buffer your execution window and do not submit at the final minute.
+END:VEVENT
+BEGIN:VEVENT
+UID:bild1-task-013
+DTSTART:20260316T090000Z
+DTEND:20260316T100000Z
+SUMMARY:biLd_1 assignment due window
+DESCRIPTION:Pair context: ics-pair-013 (after snapshot) with expected class DUE_CHANGED. This event carries the focal change semantics for the pair and contains the evidence needed to infer the expected diff class. Schedule anchor: UID=bIld_1-task-013, DTSTART=20260316T090000Z, DTEND=20260316T100000Z, SUMMARY=Bild_1 assignment due window. Reasoning context: timezone handling was surfaced because prior cohorts reported one-hour and date-boundary confusion. Execution guidance: students should prioritize the explicit timestamp over relative wording if both appear in adjacent notices. FAQ: If another channel states a different time, use the value documented in the canonical course platform and report the mismatch.
+END:VEVENT
+END:VCALENDAR

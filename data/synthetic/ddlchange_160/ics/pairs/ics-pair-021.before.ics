@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:mgt16-baseline-021
+DTSTART:20260322T120000Z
+DTEND:20260322T130000Z
+SUMMARY:mgt-16 Weekly Lecture
+DESCRIPTION:Pair context: ics-pair-021 (before snapshot) with expected class CREATED. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=mGT 16-baseline-021, DTSTART=20260322T120000Z, DTEND=20260322T130000Z, SUMMARY=Mgt-16 Weekly Lecture. Reasoning context: this longform description is intentionally explicit to reduce parser brittleness under varied textual style. Execution guidance: avoid assuming mirrored systems update simultaneously; rely on the published canonical statement first. FAQ: If a teammate sees stale metadata, refresh enrollment context before concluding that the event disappeared.
+END:VEVENT
+BEGIN:VEVENT
+UID:mgt16-task-021
+DTSTART:20260322T090000Z
+DTEND:20260322T100000Z
+SUMMARY:mGt-16 current task item
+DESCRIPTION:Pair context: ics-pair-021 (before snapshot) with expected class CREATED. This event carries the focal change semantics for the pair and contains the evidence needed to infer the expected diff class. Schedule anchor: UID=MGT16-task-021, DTSTART=20260322T090000Z, DTEND=20260322T100000Z, SUMMARY=mGT 16 current task item. Reasoning context: fallback instructions are preserved so operational intent remains readable even without LMS UI metadata. Execution guidance: verify section enrollment mapping, then apply this schedule decision to the exact UID-linked task only. FAQ: If cancellation language appears elsewhere, verify whether the UID was replaced versus removed for debounce evaluation.
+END:VEVENT
+END:VCALENDAR

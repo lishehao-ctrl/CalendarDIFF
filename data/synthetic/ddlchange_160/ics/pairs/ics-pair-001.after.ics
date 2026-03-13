@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Synthetic DDL Dataset//EN
+BEGIN:VEVENT
+UID:cse100-baseline-001
+DTSTART:20260302T120000Z
+DTEND:20260302T130000Z
+SUMMARY:cSe100 weekly lecture block
+DESCRIPTION:Pair context: ics-pair-001 (after snapshot) with expected class DUE_CHANGED. This baseline event anchors stable course cadence and should remain unaffected by the targeted change scenario in this pair. Schedule anchor: UID=CSE 100-baseline-001, DTSTART=20260302T120000Z, DTEND=20260302T130000Z, SUMMARY=cSE100 weekly lecture block. Reasoning context: scheduling adjustments were reviewed against dependency chains to minimize downstream collisions. Execution guidance: if tooling discrepancy appears, escalate with exact timestamp, platform region, and reproducible steps. FAQ: If accommodation or conflict applies, follow approved pathways; this text does not override formal accommodation workflows.
+END:VEVENT
+BEGIN:VEVENT
+UID:cse100-task-001
+DTSTART:20260304T090000Z
+DTEND:20260304T100000Z
+SUMMARY:Cse_100 作业DDL更新
+DESCRIPTION:Pair context: ics-pair-001 (after snapshot) with expected class DUE_CHANGED. This event carries the focal change semantics for the pair and contains the evidence needed to infer the expected diff class. Schedule anchor: UID=CsE100-task-001, DTSTART=20260304T090000Z, DTEND=20260304T100000Z, SUMMARY=csE 100 作业DDL更新. Reasoning context: fallback instructions are preserved so operational intent remains readable even without LMS UI metadata. Execution guidance: students should prioritize the explicit timestamp over relative wording if both appear in adjacent notices. FAQ: If accommodation or conflict applies, follow approved pathways; this text does not override formal accommodation workflows.
+END:VEVENT
+END:VCALENDAR
