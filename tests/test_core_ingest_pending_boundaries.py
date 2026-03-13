@@ -37,13 +37,11 @@ def test_unified_apply_module_imports_pending_modules_only() -> None:
     content = Path("app/modules/core_ingest/apply.py").read_text(encoding="utf-8")
     assert "app.modules.core_ingest.pending_rebuild" not in content
     assert "app.modules.core_ingest.pending_proposal_rebuild" in content
-    assert "app.modules.core_ingest.pending_auto_link_alerts" in content
 
 
 def test_pending_modules_do_not_import_review_links_alerts_service() -> None:
     pending_files = [
         Path("app/modules/core_ingest/pending_proposal_rebuild.py"),
-        Path("app/modules/core_ingest/pending_auto_link_alerts.py"),
         Path("app/modules/core_ingest/pending_change_store.py"),
         Path("app/modules/core_ingest/pending_review_outbox.py"),
     ]

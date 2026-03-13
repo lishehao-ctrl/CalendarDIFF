@@ -7,10 +7,6 @@ from app.db.models.review import (
     Change,
     ChangeOrigin,
     ChangeType,
-    EventLinkAlert,
-    EventLinkAlertReason,
-    EventLinkAlertRiskLevel,
-    EventLinkAlertStatus,
     EventLinkCandidate,
     EventLinkCandidateReason,
     EventLinkCandidateStatus,
@@ -128,26 +124,6 @@ def test_review_items_summary_counts_pending_only_for_current_user(client, db_se
                 reason_code=EventLinkCandidateReason.SCORE_BAND,
                 status=EventLinkCandidateStatus.PENDING,
             ),
-            EventLinkAlert(
-                user_id=user.id,
-                source_id=source.id,
-                external_event_id="alert-owner",
-                entity_uid="ent-owner-pending",
-                risk_level=EventLinkAlertRiskLevel.MEDIUM,
-                reason_code=EventLinkAlertReason.AUTO_LINK_WITHOUT_CANONICAL_CHANGE,
-                status=EventLinkAlertStatus.PENDING,
-                evidence_snapshot_json={"rule_reason": "auto_link"},
-            ),
-            EventLinkAlert(
-                user_id=other_user.id,
-                source_id=other_source.id,
-                external_event_id="alert-other",
-                entity_uid="ent-other-pending",
-                risk_level=EventLinkAlertRiskLevel.MEDIUM,
-                reason_code=EventLinkAlertReason.AUTO_LINK_WITHOUT_CANONICAL_CHANGE,
-                status=EventLinkAlertStatus.PENDING,
-                evidence_snapshot_json={"rule_reason": "auto_link"},
-            ),
         ]
     )
     db_session.commit()
@@ -157,5 +133,5 @@ def test_review_items_summary_counts_pending_only_for_current_user(client, db_se
     payload = response.json()
     assert payload["changes_pending"] == 1
     assert payload["link_candidates_pending"] == 1
-    assert payload["link_alerts_pending"] == 1
+    assert "link_alerts_pending" not in payload
     assert isinstance(payload["generated_at"], str)
