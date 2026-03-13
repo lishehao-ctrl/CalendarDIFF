@@ -143,7 +143,7 @@ Runtime responsibilities:
 Notes:
 
 1. review-service consumes `ingest.result.ready` and emits `review.pending.created`
-2. approve mutates canonical events; reject does not
+2. approve mutates approved semantic state in `event_entities`; reject does not
 3. unified edits split proposal edits (`mode=proposal`) from direct canonical edits (`mode=canonical`)
 4. link-candidate and link-alert flows are separate governance queues from canonical pending review
 5. `GET /review/summary` returns pending counts for `changes`, `link-candidates`, and `link-alerts`
@@ -182,7 +182,7 @@ All `/internal/*` endpoints require:
 1. parser implementation lives in shared modules used by ingest + llm flows
 2. parser runtime service is `llm-service`
 3. protocol is OpenAI-compatible `chat/completions`
-4. ICS parser contract uses `calendar_delta_v1` payloads for changed VEVENT components only
+4. ICS parser contract uses `calendar_delta` payloads for changed VEVENT components only
 5. canonical/enrichment split keeps canonical fields deterministic and enrichment LLM-derived
 6. parser payload contract is fixed at `obs_v3`
 7. env:

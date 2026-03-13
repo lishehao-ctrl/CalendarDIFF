@@ -65,17 +65,15 @@ Primary write ownership:
 1. consumes `ingest.result.ready`
 2. builds `source_event_observations` and pending `changes`
 3. approve/reject decision APIs
-4. canonical event projection (`events`)
+4. approved semantic projection (`event_entities`)
 5. read APIs: review-items
 
 Primary write ownership:
 
 1. `source_event_observations`
-2. `inputs` (canonical)
-3. `events`
-4. `changes`
-5. `snapshots` + `snapshot_events`
-6. `ingest_apply_log`
+2. `event_entities`
+3. `changes`
+4. `ingest_apply_log`
 
 ### notification-service
 
@@ -109,11 +107,17 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 ## 5) Canonical Data Rule
 
 1. ingestion only creates pending proposals
-2. `approve` mutates canonical `events`
-3. `reject` keeps canonical state unchanged
-4. unified edits (`/review/edits`) support both proposal edits and direct canonical edits
-5. canonical edit mode auto-rejects conflicting pending changes for the same `event_uid`
+2. `approve` mutates approved semantic state in `event_entities`
+3. `reject` keeps approved entity state unchanged
+4. unified edits (`/review/edits`) support both proposal edits and direct approved-entity edits (`mode=canonical` route name remains stable)
+5. canonical edit mode auto-rejects conflicting pending changes for the same `entity_uid`
 6. canonical edit mode continues to write `review.decision.approved` audit events with `decision_origin=canonical_edit`
+7. family label authority is explicit:
+   - `event_entities.family_id` is the stable authority
+   - `event_entities.family_name` is an approved snapshot only
+   - current approved-entity display resolves latest `course_work_item_label_families.canonical_label` by `family_id`
+   - `changes.family_name` stays frozen at detection/edit time
+   - review notifications and review history display the frozen `changes.family_name`, not the latest renamed label
 
 ## 6) LLM Runtime Placement
 
@@ -122,14 +126,14 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 3. queue backend is Redis stream + retry zset
 4. gateway protocol remains OpenAI-compatible `chat/completions`
 5. ICS path is delta-first (`UID + RECURRENCE-ID` component key); cancelled components map to removal records
-6. ICS canonical fields are deterministic from parser/source and persisted as `source_canonical`
+6. ICS source facts are deterministic from parser/source and persisted as `source_facts`
 7. LLM output is enrichment-only (`course_parse`, `event_parts`, `link_signals`), persisted under `enrichment`
 8. `course_parse` is LLM-only with strict schema validation; parser failures enter existing retry/dead-letter flow
-9. pending/review diff only evaluates canonical source fields, not enrichment drift
+9. pending/review diff only evaluates semantic source fields, not enrichment drift
 10. review-service maintains `event_entities` for strong/weak course naming (`course_best` + aliases) based on 5 parsed parts only (`dept/number/suffix/quarter/year2`)
 11. Parser payload contract is fixed at `obs_v3` envelope:
-   - calendar record payload: `source_canonical` + `enrichment(course_parse,event_parts,link_signals,payload_schema_version=obs_v3)`
-   - gmail record payload: `message_id` + `source_canonical` + `enrichment(course_parse,event_parts,link_signals,payload_schema_version=obs_v3)`
+   - calendar record payload: `source_facts` + `enrichment(course_parse,event_parts,link_signals,payload_schema_version=obs_v3)`
+   - gmail record payload: `message_id` + `source_facts` + `enrichment(course_parse,event_parts,link_signals,payload_schema_version=obs_v3)`
 12. Gmail-to-ICS linker is inventory-rule driven (no same-day window or score-band thresholds) and persists normalized link state in:
    - `event_entity_links` (auto/manual accepted links)
    - `event_link_candidates` (review queue for deterministic rule misses / low anchor confidence)
@@ -165,36 +169,41 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 
 ### core_ingest
 
-1. `apply_service.py`: orchestration only (`get_ingest_apply_status`, `apply_ingest_result_idempotent`)
-2. `apply_orchestrator.py`: `apply_records` + canonical input bootstrap + post-apply pending rebuild wiring
+1. `apply.py`: ingest apply status, semantic apply orchestration, and idempotent result application
 3. `calendar_apply.py`: calendar observation apply + component/external id resolution
 4. `gmail_apply.py`: gmail observation apply + link/candidate/auto-link decision flow
-5. `payload_extractors.py`: `source_canonical` / `enrichment` normalization
-6. `canonical_coercion.py`: strict canonical datetime/text coercion
-7. `entity_profile.py`: `event_entities` profile evolution
+5. `payload_extractors.py`: `source_facts` / `enrichment` normalization
+6. `source_facts_coercion.py`: strict source-facts datetime/text coercion
+7. `source_identity.py`: `entity_uid`-first source-scoped identity construction
 8. `linking_engine.py`: link candidate/link/block resolution primitives
 9. `observation_store.py`: observation upsert/deactivate/hash/title-guard
 10. `pending_proposal_rebuild.py`: pending proposal decision planner + rebuild orchestration
 11. `pending_change_store.py`: pending change upsert/reject templates
 12. `pending_review_outbox.py`: `review.pending.created` outbox emission
 13. `pending_auto_link_alerts.py`: auto-link alert emit for non-pending entities
-14. `serialization.py`: canonical diff serialization helpers
-15. `time_utils.py`: UTC normalization
+14. `time_utils.py`: UTC normalization
 
 ### review_changes
 
-1. `change_listing_service.py`: list/query/summary shape assembly
-2. `change_decision_service.py`: viewed/approve/reject state machine + canonical apply
-3. `evidence_preview_service.py`: evidence path resolution and preview
-4. `change_event_codec.py`: shared event payload parse/serialize/equivalence helpers
-5. `canonical_edit_service.py`: orchestration only (`preview_canonical_edit`, `apply_canonical_edit`)
-6. `canonical_edit_preview_flow.py`: preview response assembly and idempotent preview checks
-7. `canonical_edit_apply_txn.py`: canonical edit apply transaction body (lock/update/change/audit)
-8. `canonical_edit_target.py`: target event resolution + user/canonical input loading
-9. `canonical_edit_snapshot.py`: base snapshot and pending change reads
-10. `canonical_edit_builder.py`: patch build + timezone/datetime normalization
-11. `canonical_edit_audit.py`: conflicting pending rejection + audit outbox write
-12. `change_common.py`: cross-cutting lightweight helpers only
+1. `change_listing_service.py`: review list/get response assembly over the batched projection
+2. `change_decision_service.py`: viewed/approve/reject state machine + approved entity apply
+3. `evidence_preview_service.py`: frozen change evidence preview
+4. `edit_service.py`: review edit entrypoint for proposal/canonical flows
+5. `canonical_edit_preview_flow.py`: preview response assembly and idempotent preview checks
+6. `canonical_edit_apply_txn.py`: canonical edit apply transaction body (lock/update/change/audit)
+7. `canonical_edit_target.py`: target entity resolution + user loading
+8. `canonical_edit_snapshot.py`: approved semantic payload and pending change reads
+9. `canonical_edit_builder.py`: patch build + timezone/datetime normalization
+10. `canonical_edit_audit.py`: conflicting pending rejection + audit outbox write
+11. `review_projection.py`: batched source/observation projection for review list and summary display
+
+### common
+
+1. `course_identity.py`: normalized course identity parsing/display
+2. `event_display.py`: strict user-facing event display projection
+3. `family_labels.py`: family label authority resolution and equivalence rules
+4. `payload_schemas.py`: typed schemas for approved semantic payloads, source facts, frozen evidence, source refs, and review summaries
+5. `semantic_codec.py`: shared approved-entity semantic parse/serialize/equivalence primitives
 
 ### review_links
 
@@ -203,16 +212,15 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 3. `candidates_router.py`: `/review/link-candidates/*` endpoints
 4. `links_router.py`: `/review/links/*` endpoints
 5. `alerts_router.py`: `/review/link-alerts/*` endpoints
-6. `router_common.py`: shared query normalization and error mapping helpers
-7. `summary_service.py`: pending queue counters
-8. `candidates_query_service.py`: candidates/blocks read side
-9. `candidates_decision_service.py`: approve/reject and block deletion
-10. `links_service.py`: links list/delete/relink
-11. `alerts_upsert_service.py`: alert upsert and auto-resolution helpers
-12. `alerts_query_service.py`: alerts read model assembly
-13. `alerts_decision_service.py`: dismiss/mark-safe and batch decisions
-14. `alerts_errors.py`: alert domain exceptions
-15. `common.py`: shared note normalization, id dedupe, entity/observation preview, batch result builders
+6. `summary_service.py`: pending queue counters
+7. `candidates_query_service.py`: candidates/blocks read side
+8. `candidates_decision_service.py`: approve/reject and block deletion
+9. `links_service.py`: links list/delete/relink
+10. `alerts_upsert_service.py`: alert upsert and auto-resolution helpers
+11. `alerts_query_service.py`: alerts read model assembly
+12. `alerts_decision_service.py`: dismiss/mark-safe and batch decisions
+13. `alerts_errors.py`: alert domain exceptions
+14. `common.py`: shared note normalization, id dedupe, entity/observation preview, batch result builders
 
 ### llm_runtime
 
@@ -220,7 +228,7 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 2. `tick_runner.py`: worker tick orchestration + concurrent message fan-out + ack aggregation
 3. `message_preflight.py`: DB lock/context validation + `LLM_RUNNING` stage transition
 4. `message_processor.py`: single-message lifecycle (`preflight -> parse -> transition`)
-5. `parse_pipeline.py`: parse dispatch (`gmail`/`calendar`/`calendar_delta_v1`) + limiter wrapper
+5. `parse_pipeline.py`: parse dispatch (`gmail`/`calendar`/`calendar_delta`) + limiter wrapper
 6. `transitions.py`: failure/success state transitions and persistence template
 
 ### input_control_plane routers
@@ -245,8 +253,7 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
    - `shared.py` (`User`, `IntegrationOutbox`, `IntegrationInbox`, `OutboxStatus`)
    - `input.py` (`InputSource*`, `SyncRequest`, input-domain enums)
    - `ingestion.py` (`IngestJob*`, `IngestResult`, ingestion enums)
-   - `review.py` (`Input/Event/Change/Link*`, `SourceEventObservation`, `IngestApplyLog`, review enums)
+   - `review.py` (`EventEntity`, `Change`, link review tables, `SourceEventObservation`, `IngestApplyLog`, review enums)
    - `notify.py` (`Notification*`, `DigestSendLog`)
 2. `app/db/model_registry.py` is the only metadata bootstrap point for Alembic and table-ownership checks (`load_all_models()`)
 3. rule: `app.db.models` monolith module is removed; callers import from bounded context modules directly
-

@@ -15,8 +15,8 @@ Core flow:
 9. candidate review stays out of pending-notification chain; notify remains canonical-change-only
 10. link-candidate APIs: `GET /review/link-candidates`, `POST /review/link-candidates/{id}/decisions`, `GET/DELETE /review/link-candidates/blocks*`
 11. build pending review proposals from source canonical observations
-12. approve proposals into canonical events
-13. enqueue and send digest notifications
+12. approve proposals into approved semantic state in `event_entities`
+13. enqueue and send immediate review notifications
 14. allow manual due correction when parsed result is wrong
 
 ## Runtime Topology (Public Gateway + 5 Services + PostgreSQL + Redis)
@@ -194,7 +194,7 @@ Worker intervals (embedded in service processes):
 INGESTION_TICK_SECONDS=2
 LLM_SERVICE_ENABLE_WORKER=true
 REVIEW_APPLY_TICK_SECONDS=2
-NOTIFICATION_TICK_SECONDS=30
+NOTIFICATION_TICK_SECONDS=5
 ```
 
 Notification sink mode:
@@ -204,6 +204,43 @@ Notification sink mode:
 NOTIFY_SINK_MODE=smtp
 NOTIFY_JSONL_PATH=data/smoke/notify_sink.jsonl
 ```
+
+Real Gmail SMTP notifications (small-scale deploy with App Password):
+
+- If you only need outgoing reminder emails, Gmail OAuth is not required.
+- If you also want to connect a Gmail inbox as a source, keep the OAuth client secrets flow enabled separately; a Google App Password does not replace Gmail API OAuth.
+- Use `smtp.gmail.com:587` with `SMTP_USE_TLS=true`. The current notifier uses STARTTLS and does not use implicit SSL on port `465`.
+- Set `FRONTEND_APP_BASE_URL` (or at minimum `PUBLIC_WEB_ORIGINS`) to the public app URL so links inside reminder emails open the review box in the frontend instead of an internal backend host.
+
+```env
+ENABLE_NOTIFICATIONS=true
+NOTIFY_SINK_MODE=smtp
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USE_TLS=true
+SMTP_USERNAME=your-account@gmail.com
+SMTP_PASSWORD=<google-app-password>
+SMTP_FROM_NAME=CalendarDIFF
+SMTP_FROM_EMAIL=your-account@gmail.com
+# Optional fallback if a user record has no notify_email/email
+DEFAULT_NOTIFY_EMAIL=
+
+# Keep frontend-facing URLs on the public app/domain so digest links are correct.
+APP_BASE_URL=https://cal.shehao.app
+FRONTEND_APP_BASE_URL=https://cal.shehao.app
+PUBLIC_WEB_ORIGINS=https://cal.shehao.app
+
+# Poll interval for near-real-time review-box emails
+NOTIFICATION_TICK_SECONDS=5
+```
+
+Operational notes:
+
+1. The Gmail account must have 2-Step Verification enabled before Google will allow App Passwords.
+2. Use the same Gmail address for `SMTP_USERNAME` and `SMTP_FROM_EMAIL` unless you intentionally manage aliases on that account.
+3. `SMTP_FROM_NAME` controls the human-readable sender shown in most inboxes, for example `CalendarDIFF <lishehao@gmail.com>`.
+4. Turn on `ENABLE_NOTIFICATIONS=true` before expecting the notification worker to send anything.
+5. After deploy, validate by creating a real change and forcing a notification flush through the existing internal notify endpoint.
 
 Unified public API base URL (frontend / user-facing integration):
 
@@ -346,10 +383,10 @@ When the parser extracts an incorrect due time, review-service supports direct c
 
 Behavior:
 
-1. target can be provided by `change_id` or `event_uid`
+1. target can be provided by `change_id` or `entity_uid`
 2. `patch.due_at` accepts date-only, local datetime, or timezone-aware datetime
 3. date-only is normalized to `23:59` in `users.timezone_name` then converted to UTC
-4. conflicting pending changes for the same `event_uid` are auto-rejected
+4. conflicting pending changes for the same `entity_uid` are auto-rejected
 5. canonical edit writes an approved audit change and emits `review.decision.approved` with `decision_origin=canonical_edit`
 
 ## Canonical vs Enrichment (MVP)

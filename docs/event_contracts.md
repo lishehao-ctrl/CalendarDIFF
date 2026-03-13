@@ -1,11 +1,11 @@
 # Event Contracts (Postgres Outbox/Inbox)
 
-This document defines canonical event payloads used between microservices in shared PostgreSQL stage.
+This document defines runtime outbox/inbox payloads used between microservices in shared PostgreSQL stage.
 
 ## 1) `sync.requested` (input -> ingest)
 
 Producer: input-service  
-Consumer: ingest-service orchestrator (`orchestrator.sync_requested.v1`)
+Consumer: ingest-service orchestrator (`orchestrator.sync_requested`)
 
 ```json
 {
@@ -24,7 +24,7 @@ Consumer: ingest-service orchestrator (`orchestrator.sync_requested.v1`)
 ## 2) `ingest.result.ready` (llm -> review)
 
 Producer: llm-service worker  
-Consumer: review-service apply worker (`core.ingest.apply.v1`)
+Consumer: review-service apply worker (`core.ingest.apply`)
 
 ```json
 {
@@ -43,7 +43,7 @@ Consumer: review-service apply worker (`core.ingest.apply.v1`)
 ## 3) `review.pending.created` (review -> notification)
 
 Producer: review-service core apply  
-Consumer: notification-service enqueue consumer (`notification.review_pending_created.v1`)
+Consumer: notification-service enqueue consumer (`notification.review_pending_created`)
 
 ```json
 {
@@ -51,7 +51,7 @@ Consumer: notification-service enqueue consumer (`notification.review_pending_cr
   "aggregate_type": "change_batch",
   "aggregate_id": "<first_change_id>",
   "payload": {
-    "input_id": 88,
+    "user_id": 88,
     "change_ids": [901, 902],
     "deliver_after": "2026-03-02T12:34:56+00:00"
   }
@@ -70,7 +70,7 @@ Consumers: optional observability/audit services
   "aggregate_id": "901",
   "payload": {
     "change_id": 901,
-    "event_uid": "mk_...",
+    "entity_uid": "mk_...",
     "review_status": "approved",
     "reviewed_by_user_id": 1,
     "reviewed_at": "2026-03-02T12:34:56+00:00",
@@ -87,17 +87,20 @@ Consumers: optional observability/audit services
 2. Existing keys are immutable in meaning.
 3. Consumers must ignore unknown fields.
 4. Event type names are immutable once published.
+5. Family label authority is split on purpose:
+   - approved entity state uses `family_id` as authority and may resolve the latest canonical label at read time
+   - `changes.family_name` is frozen review/audit display text and does not rename retroactively
 
 ## Internal Ingest Record Envelope (Non-Outbox, additive)
 
 The `ingest_results.records[*].payload` envelope used between llm/review runtime keeps record types stable and adds layered fields:
 
 1. fixed parser schema version: `enrichment.payload_schema_version = "obs_v3"` (required).
-2. `source_canonical`: deterministic source fields used for canonical diff and pending generation.
+2. `source_facts`: deterministic source fields used for semantic proposal diff and pending generation.
 3. `enrichment`: LLM-derived metadata (`course_parse`, `event_parts`, `link_signals`). No local regex/raw-text fallback is used for these fields.
 4. additive linker signals:
-   - Gmail canonical signals: `from_header`, `thread_id`, `internal_date`
-   - ICS canonical signals: `organizer`
+   - Gmail source facts: `from_header`, `thread_id`, `internal_date`
+   - ICS source facts: `organizer`
    - enrichment signals: `enrichment.link_signals` (`keywords`, `exam_sequence`, `location_text`, `instructor_hint`)
 
 Parser note:
@@ -112,7 +115,7 @@ Example (`calendar.event.extracted`):
 ```json
 {
   "payload": {
-    "source_canonical": {
+    "source_facts": {
       "external_event_id": "uid#rid",
       "source_title": "CSE 151A exam 1",
       "source_dtstart_utc": "2026-03-10T20:00:00+00:00",
