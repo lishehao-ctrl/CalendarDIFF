@@ -16,7 +16,10 @@ from app.modules.core_ingest.linking_engine import (
     upsert_link_candidate,
     with_candidate_evidence,
 )
-from app.modules.core_ingest.observation_store import upsert_observation
+from app.modules.core_ingest.observation_store import (
+    retire_active_observation_for_unresolved_transition,
+    upsert_observation,
+)
 from app.modules.core_ingest.unresolved_store import (
     resolve_active_unresolved_records,
     upsert_active_unresolved_record,
@@ -80,6 +83,13 @@ def apply_gmail_observations(
             provider=source.provider,
         )
         if kind_resolution.get("status") == "unresolved":
+            retire_active_observation_for_unresolved_transition(
+                db=db,
+                source_id=source.id,
+                external_event_id=external_event_id,
+                applied_at=applied_at,
+                request_id=request_id,
+            )
             upsert_active_unresolved_record(
                 db=db,
                 user_id=source.user_id,

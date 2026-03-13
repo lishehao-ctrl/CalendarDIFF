@@ -302,6 +302,198 @@ def test_later_valid_ingest_resolves_active_unresolved_record(db_session: Sessio
     assert int(outbox_count or 0) == 1
 
 
+def test_calendar_valid_to_unresolved_retires_active_observation_without_semantic_side_effects(db_session: Session) -> None:
+    user, source = _create_source(
+        db_session,
+        source_kind=SourceKind.CALENDAR,
+        provider="ics",
+        source_key="transition-calendar-source",
+    )
+    due_at = datetime(2026, 3, 24, 22, 0, tzinfo=timezone.utc)
+    valid_payload = build_calendar_payload(
+        external_event_id="evt-transition-calendar",
+        title="Transition Homework",
+        start_at=due_at,
+        end_at=due_at + timedelta(hours=1),
+        course_parse=build_course_parse(dept="CSE", number=150, quarter="SP", year2=26, confidence=0.95, evidence="CSE150"),
+    )
+    _seed_result(
+        db_session,
+        source=source,
+        request_id="transition-calendar-valid",
+        records=[{"record_type": "calendar.event.extracted", "payload": valid_payload}],
+    )
+    apply_ingest_result_idempotent(db_session, request_id="transition-calendar-valid")
+
+    baseline_change_count = int(
+        db_session.scalar(select(func.count(Change.id)).where(Change.user_id == user.id)) or 0
+    )
+    baseline_outbox_count = int(
+        db_session.scalar(
+            select(func.count(IntegrationOutbox.id)).where(
+                IntegrationOutbox.event_type == "review.pending.created",
+                IntegrationOutbox.aggregate_type == "change_batch",
+            )
+        )
+        or 0
+    )
+
+    unresolved_payload = build_calendar_payload(
+        external_event_id="evt-transition-calendar",
+        title="Transition Homework Missing Course",
+        start_at=due_at,
+        end_at=due_at + timedelta(hours=1),
+        course_parse=build_course_parse(confidence=0.1, evidence="missing"),
+    )
+    _seed_result(
+        db_session,
+        source=source,
+        request_id="transition-calendar-unresolved",
+        records=[{"record_type": "calendar.event.extracted", "payload": unresolved_payload}],
+    )
+    second_apply = apply_ingest_result_idempotent(db_session, request_id="transition-calendar-unresolved")
+    assert second_apply["changes_created"] == 0
+
+    active_observation_count = int(
+        db_session.scalar(
+            select(func.count(SourceEventObservation.id)).where(
+                SourceEventObservation.source_id == source.id,
+                SourceEventObservation.external_event_id == "evt-transition-calendar",
+                SourceEventObservation.is_active.is_(True),
+            )
+        )
+        or 0
+    )
+    assert active_observation_count == 0
+
+    unresolved_active = db_session.scalar(
+        select(IngestUnresolvedRecord).where(
+            IngestUnresolvedRecord.source_id == source.id,
+            IngestUnresolvedRecord.external_event_id == "evt-transition-calendar",
+            IngestUnresolvedRecord.is_active.is_(True),
+        )
+    )
+    assert unresolved_active is not None
+    assert unresolved_active.reason_code == "missing_course_identity"
+
+    current_change_count = int(
+        db_session.scalar(select(func.count(Change.id)).where(Change.user_id == user.id)) or 0
+    )
+    current_outbox_count = int(
+        db_session.scalar(
+            select(func.count(IntegrationOutbox.id)).where(
+                IntegrationOutbox.event_type == "review.pending.created",
+                IntegrationOutbox.aggregate_type == "change_batch",
+            )
+        )
+        or 0
+    )
+    assert current_change_count == baseline_change_count
+    assert current_outbox_count == baseline_outbox_count
+
+
+def test_gmail_valid_to_unresolved_retires_active_observation_without_semantic_side_effects(db_session: Session) -> None:
+    user, source = _create_source(
+        db_session,
+        source_kind=SourceKind.EMAIL,
+        provider="gmail",
+        source_key="transition-gmail-source",
+    )
+    due_at = datetime(2026, 3, 25, 14, 0, tzinfo=timezone.utc)
+    valid_payload = build_gmail_payload(
+        message_id="msg-transition-gmail",
+        title="Transition Gmail Homework",
+        due_at=due_at,
+        course_parse=build_course_parse(dept="CSE", number=152, quarter="SP", year2=26, confidence=0.92, evidence="CSE152"),
+    )
+    _seed_result(
+        db_session,
+        source=source,
+        request_id="transition-gmail-valid",
+        records=[{"record_type": "gmail.message.extracted", "payload": valid_payload}],
+    )
+    apply_ingest_result_idempotent(db_session, request_id="transition-gmail-valid")
+
+    baseline_change_count = int(
+        db_session.scalar(select(func.count(Change.id)).where(Change.user_id == user.id)) or 0
+    )
+    baseline_outbox_count = int(
+        db_session.scalar(
+            select(func.count(IntegrationOutbox.id)).where(
+                IntegrationOutbox.event_type == "review.pending.created",
+                IntegrationOutbox.aggregate_type == "change_batch",
+            )
+        )
+        or 0
+    )
+    baseline_candidate_count = int(
+        db_session.scalar(select(func.count(EventLinkCandidate.id)).where(EventLinkCandidate.user_id == user.id)) or 0
+    )
+    baseline_link_count = int(
+        db_session.scalar(select(func.count(EventEntityLink.id)).where(EventEntityLink.user_id == user.id)) or 0
+    )
+
+    unresolved_payload = build_gmail_payload(
+        message_id="msg-transition-gmail",
+        title="Transition Gmail Homework Missing Course",
+        due_at=due_at,
+        course_parse=build_course_parse(confidence=0.1, evidence="missing"),
+    )
+    _seed_result(
+        db_session,
+        source=source,
+        request_id="transition-gmail-unresolved",
+        records=[{"record_type": "gmail.message.extracted", "payload": unresolved_payload}],
+    )
+    second_apply = apply_ingest_result_idempotent(db_session, request_id="transition-gmail-unresolved")
+    assert second_apply["changes_created"] == 0
+
+    active_observation_count = int(
+        db_session.scalar(
+            select(func.count(SourceEventObservation.id)).where(
+                SourceEventObservation.source_id == source.id,
+                SourceEventObservation.external_event_id == "msg-transition-gmail",
+                SourceEventObservation.is_active.is_(True),
+            )
+        )
+        or 0
+    )
+    assert active_observation_count == 0
+
+    unresolved_active = db_session.scalar(
+        select(IngestUnresolvedRecord).where(
+            IngestUnresolvedRecord.source_id == source.id,
+            IngestUnresolvedRecord.external_event_id == "msg-transition-gmail",
+            IngestUnresolvedRecord.is_active.is_(True),
+        )
+    )
+    assert unresolved_active is not None
+    assert unresolved_active.reason_code == "missing_course_identity"
+
+    current_change_count = int(
+        db_session.scalar(select(func.count(Change.id)).where(Change.user_id == user.id)) or 0
+    )
+    current_outbox_count = int(
+        db_session.scalar(
+            select(func.count(IntegrationOutbox.id)).where(
+                IntegrationOutbox.event_type == "review.pending.created",
+                IntegrationOutbox.aggregate_type == "change_batch",
+            )
+        )
+        or 0
+    )
+    current_candidate_count = int(
+        db_session.scalar(select(func.count(EventLinkCandidate.id)).where(EventLinkCandidate.user_id == user.id)) or 0
+    )
+    current_link_count = int(
+        db_session.scalar(select(func.count(EventEntityLink.id)).where(EventEntityLink.user_id == user.id)) or 0
+    )
+    assert current_change_count == baseline_change_count
+    assert current_outbox_count == baseline_outbox_count
+    assert current_candidate_count == baseline_candidate_count
+    assert current_link_count == baseline_link_count
+
+
 def test_calendar_removed_record_clears_active_unresolved_entry(db_session: Session) -> None:
     user, source = _create_source(
         db_session,
