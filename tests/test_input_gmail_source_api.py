@@ -75,6 +75,10 @@ def test_sources_list_includes_gmail_oauth_status(input_client, db_session, auth
     assert payload[0]["source_id"] == source.id
     assert payload[0]["oauth_connection_status"] == "connected"
     assert payload[0]["oauth_account_email"] == "student@example.edu"
+    assert payload[0]["lifecycle_state"] == "active"
+    assert payload[0]["sync_state"] == "idle"
+    assert payload[0]["config_state"] == "stable"
+    assert payload[0]["runtime_state"] == "active"
 
 
 def test_gmail_source_create_is_singleton_per_user(input_client, db_session, authenticate_client) -> None:
@@ -227,6 +231,10 @@ def test_gmail_term_rebind_queues_whole_config_when_sync_running(input_client, d
     assert pending["term_key"] == "SP26"
     assert pending["requested_config"]["label_id"] == "COURSE"
     assert pending["requested_config"]["subject_keywords"] == ["homework"]
+    assert payload["lifecycle_state"] == "active"
+    assert payload["sync_state"] == "running"
+    assert payload["config_state"] == "rebind_pending"
+    assert payload["runtime_state"] == "rebind_pending"
 
     db_session.expire_all()
     refreshed = db_session.scalar(select(InputSource).where(InputSource.id == source.id))

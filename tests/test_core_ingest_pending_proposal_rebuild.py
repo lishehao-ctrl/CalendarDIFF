@@ -354,3 +354,53 @@ def test_rebuild_removed_without_last_known_source_refs_fails_loudly(db_session)
             affected_entity_uids={"ent-missing-source-refs"},
             applied_at=datetime.now(timezone.utc),
         )
+
+
+def test_rebuild_preserves_manual_supported_entity_without_observations(db_session) -> None:
+    source = _seed_source(db_session)
+    family = CourseWorkItemLabelFamily(
+        user_id=source.user_id,
+        course_dept="CSE",
+        course_number=100,
+        course_quarter="WI",
+        course_year2=26,
+        normalized_course_identity="cse:100::wi:26",
+        canonical_label="Homework",
+        normalized_canonical_label="homework",
+    )
+    db_session.add(family)
+    db_session.flush()
+    due_at = datetime(2026, 3, 20, 18, 0, tzinfo=timezone.utc)
+    db_session.add(
+        EventEntity(
+            user_id=source.user_id,
+            entity_uid="ent-manual-supported",
+            lifecycle=EventEntityLifecycle.ACTIVE,
+            course_dept="CSE",
+            course_number=100,
+            course_quarter="WI",
+            course_year2=26,
+            family_id=family.id,
+            manual_support=True,
+            raw_type="Homework",
+            event_name="Homework 1",
+            ordinal=1,
+            due_date=due_at.date(),
+            due_time=due_at.timetz().replace(tzinfo=None),
+            time_precision="datetime",
+        )
+    )
+    db_session.commit()
+
+    created_count, pending_entity_uids = rebuild_pending_change_proposals(
+        db=db_session,
+        user_id=source.user_id,
+        source=source,
+        affected_entity_uids={"ent-manual-supported"},
+        applied_at=datetime.now(timezone.utc),
+    )
+    db_session.commit()
+
+    assert created_count == 0
+    assert pending_entity_uids == set()
+    assert db_session.scalar(select(Change).where(Change.entity_uid == "ent-manual-supported")) is None

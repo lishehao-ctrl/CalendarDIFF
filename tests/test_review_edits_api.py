@@ -177,5 +177,6 @@ def test_review_edit_canonical_applies_directly_to_entity_state(client, db_sessi
     assert entity is not None
     assert entity.event_name == "HW2 Updated"
     assert entity.due_date.isoformat() == "2026-03-11"
+    assert entity.manual_support is True
     assert audit_change is not None
     assert audit_change.review_status == ReviewStatus.APPROVED

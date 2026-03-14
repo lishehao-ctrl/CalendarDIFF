@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.db.models.ingestion import ConnectorResultStatus, IngestResult
 from app.db.models.input import InputSource, SourceKind, SyncRequest, SyncRequestStatus
 from app.db.models.review import IngestApplyLog
+from app.modules.core_ingest.apply_outcome import ApplyOutcome
 from app.modules.core_ingest.calendar_apply import apply_calendar_observations
 from app.modules.core_ingest.gmail_apply import apply_gmail_observations
 from app.modules.core_ingest.pending_proposal_rebuild import rebuild_pending_change_proposals
@@ -29,43 +30,43 @@ def apply_records(
         return 0
 
     previous_observation_payloads: dict[str, dict] | None = {} if source.source_kind == SourceKind.CALENDAR else None
+    outcome = ApplyOutcome()
 
     if source.source_kind == SourceKind.CALENDAR:
-        affected_entity_uids = apply_calendar_observations(
-            db=db,
-            source=source,
-            records=records,
-            applied_at=applied_at,
-            request_id=request_id,
-            previous_observation_payloads=previous_observation_payloads,
+        outcome = ApplyOutcome(
+            affected_entity_uids=apply_calendar_observations(
+                db=db,
+                source=source,
+                records=records,
+                applied_at=applied_at,
+                request_id=request_id,
+                previous_observation_payloads=previous_observation_payloads,
+            )
         )
-        directive_changes_created = 0
     elif source.source_kind == SourceKind.EMAIL:
-        gmail_outcome = apply_gmail_observations(
+        outcome = apply_gmail_observations(
             db=db,
             source=source,
             records=records,
             applied_at=applied_at,
             request_id=request_id,
         )
-        affected_entity_uids = gmail_outcome.affected_entity_uids
-        directive_changes_created = gmail_outcome.directive_changes_created
     else:
         return 0
 
-    if not affected_entity_uids:
-        return directive_changes_created
+    if not outcome.affected_entity_uids:
+        return outcome.direct_changes_created
 
     db.flush()
-    changes_created, pending_entity_uids = rebuild_pending_change_proposals(
+    changes_created, _pending_entity_uids = rebuild_pending_change_proposals(
         db=db,
         user_id=source.user_id,
         source=source,
-        affected_entity_uids=affected_entity_uids,
+        affected_entity_uids=outcome.affected_entity_uids,
         applied_at=applied_at,
         previous_observation_payloads=previous_observation_payloads,
     )
-    return changes_created + directive_changes_created
+    return changes_created + outcome.direct_changes_created
 
 
 def get_ingest_apply_status(db: Session, *, request_id: str) -> dict:

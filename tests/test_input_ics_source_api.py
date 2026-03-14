@@ -410,6 +410,10 @@ def test_ics_source_term_rebind_queues_when_sync_running_and_blocks_manual_sync(
     assert pending["term_from"] == "2026-02-01"
     assert pending["term_to"] == "2026-04-01"
     assert pending["requested_config"]["term_key"] == "WI26-R2"
+    assert payload["lifecycle_state"] == "active"
+    assert payload["sync_state"] == "running"
+    assert payload["config_state"] == "rebind_pending"
+    assert payload["runtime_state"] == "rebind_pending"
 
     db_session.expire_all()
     refreshed = db_session.scalar(select(InputSource).where(InputSource.id == source.id))

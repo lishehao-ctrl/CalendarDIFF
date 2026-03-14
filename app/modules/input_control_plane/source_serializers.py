@@ -5,9 +5,14 @@ import json
 from app.core.security import decrypt_secret
 from app.db.models.input import InputSource
 from app.modules.input_control_plane.provider_sources import CANVAS_ICS_DISPLAY_NAME, CANVAS_ICS_SOURCE_KEY
+from app.modules.input_control_plane.source_runtime_state import SourceRuntimeStateProjection
 
 
-def serialize_source(source: InputSource) -> dict:
+def serialize_source(
+    source: InputSource,
+    *,
+    runtime_state: SourceRuntimeStateProjection | None = None,
+) -> dict:
     oauth_connection_status = None
     oauth_account_email = None
     source_key = source.source_key
@@ -40,6 +45,10 @@ def serialize_source(source: InputSource) -> dict:
         "config": source.config.config_json if source.config is not None else {},
         "oauth_connection_status": oauth_connection_status,
         "oauth_account_email": oauth_account_email,
+        "lifecycle_state": runtime_state.lifecycle_state if runtime_state is not None else "active",
+        "sync_state": runtime_state.sync_state if runtime_state is not None else "idle",
+        "config_state": runtime_state.config_state if runtime_state is not None else "stable",
+        "runtime_state": runtime_state.runtime_state if runtime_state is not None else "active",
     }
 
 

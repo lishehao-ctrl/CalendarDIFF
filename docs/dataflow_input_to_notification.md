@@ -105,6 +105,8 @@ Use these files as implementation anchors when building detailed dataflow tables
 - Treat missing `family_id`/family-row label authority as an integrity bug (fail loudly), not a normal display fallback path.
 - Treat missing course identity as unresolved ingest isolation (`ingest_unresolved_records`), not as normal reviewable pending change input.
 - Treat source term window (`term_key` / `term_from` / `term_to`) as an ingest hard boundary with fixed runtime derivation: `bootstrap_from = term_from-30d`, `monitor_until = term_to+30d`; out-of-window content must not enter normal review flow.
+- Treat that term window as a `source-term binding`, not a UI-only filter: raw source data may be cached/shared, but `source_event_observations -> changes -> review.pending.created` only runs for data inside the active binding.
 - Treat term-window edits as a backend rescope workflow: no in-flight sync -> apply immediately; in-flight sync -> store single coalesced `pending_term_rebind`, block manual sync (`source_term_rebind_pending`), then apply on first terminal sync (`SUCCEEDED`/`FAILED`).
+- Treat manual canonical edits as strongest entity support: `event_entities.manual_support` survives source churn/rescope and blocks automatic `removed` proposals when no automatic observation remains.
 - Family lifecycle policy: no normal hard-delete path for family rows; manage via rename/relink workflows.
 - `course_work_item_family_rebuild` is observation-native: it updates active runtime observations and recomputes pending proposals without parser-payload replay.

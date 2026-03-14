@@ -11,6 +11,10 @@ TriggerTypeLiteral = Literal["manual", "scheduler", "webhook"]
 SyncRequestStatusLiteral = Literal["PENDING", "QUEUED", "RUNNING", "SUCCEEDED", "FAILED"]
 OAuthConnectionStatusLiteral = Literal["connected", "not_connected"]
 SourceListStatusLiteral = Literal["active", "archived", "all"]
+SourceLifecycleStateLiteral = Literal["active", "inactive", "archived"]
+SourceSyncStateLiteral = Literal["idle", "queued", "running"]
+SourceConfigStateLiteral = Literal["stable", "rebind_pending"]
+SourceRuntimeStateLiteral = Literal["active", "inactive", "archived", "queued", "running", "rebind_pending"]
 
 
 class InputSourceCreateRequest(BaseModel):
@@ -53,6 +57,10 @@ class InputSourceResponse(BaseModel):
     config: dict
     oauth_connection_status: OAuthConnectionStatusLiteral | None = None
     oauth_account_email: str | None = None
+    lifecycle_state: SourceLifecycleStateLiteral
+    sync_state: SourceSyncStateLiteral
+    config_state: SourceConfigStateLiteral
+    runtime_state: SourceRuntimeStateLiteral
 
 
 class SyncRequestCreateResponse(BaseModel):

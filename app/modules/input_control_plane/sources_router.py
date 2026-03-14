@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.modules.auth.deps import get_authenticated_user_or_401
 from app.modules.input_control_plane.router_common import require_owned_source_or_404
 from app.modules.input_control_plane.schemas import InputSourceCreateRequest, InputSourcePatchRequest, InputSourceResponse
+from app.modules.input_control_plane.source_runtime_state import derive_source_runtime_state, derive_source_runtime_states
 from app.modules.input_control_plane.source_serializers import serialize_source
 from app.modules.input_control_plane.sources_service import (
     GmailSourceAlreadyExistsError,
@@ -50,7 +51,9 @@ def create_source(
         ) from exc
     except Exception as exc:
         raise HTTPException(status_code=422, detail=sanitize_log_message(str(exc))) from exc
-    return InputSourceResponse.model_validate(serialize_source(source))
+    return InputSourceResponse.model_validate(
+        serialize_source(source, runtime_state=derive_source_runtime_state(db, source=source))
+    )
 
 
 @router.get("/sources", response_model=list[InputSourceResponse])
@@ -63,7 +66,8 @@ def list_sources(
     if normalized_status not in {"active", "archived", "all"}:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="status must be one of: active, archived, all")
     rows = list_input_sources(db, user_id=user.id, status=normalized_status)
-    return [InputSourceResponse.model_validate(serialize_source(row)) for row in rows]
+    projections = derive_source_runtime_states(db, sources=rows)
+    return [InputSourceResponse.model_validate(serialize_source(row, runtime_state=projections[row.id])) for row in rows]
 
 
 @router.patch("/sources/{source_id}", response_model=InputSourceResponse)
@@ -78,7 +82,9 @@ def patch_source(
         updated = update_input_source(db, source=source, payload=payload)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=sanitize_log_message(str(exc))) from exc
-    return InputSourceResponse.model_validate(serialize_source(updated))
+    return InputSourceResponse.model_validate(
+        serialize_source(updated, runtime_state=derive_source_runtime_state(db, source=updated))
+    )
 
 
 @router.delete("/sources/{source_id}", status_code=status.HTTP_200_OK)

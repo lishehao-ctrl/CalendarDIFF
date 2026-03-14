@@ -131,6 +131,8 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
    - unresolved records do not create pending `changes` and do not emit `review.pending.created`
    - later resolvable ingests for the same source/external record mark unresolved rows as resolved/superseded
 11. source term window is explicit and user-provided for active Gmail/ICS sources:
+   - `InputSource` is the provider/auth handle; `config.term_key + term_from + term_to` define the active source-term binding
+   - raw Gmail/ICS fetch cache may be shared over time, but runtime observations/pending proposals only stay in scope through the active source-term binding
    - `config.term_key`, `config.term_from`, and `config.term_to` are the only term-boundary inputs
    - backend derives fixed runtime bounds: `bootstrap_from = term_from - 30d`, `monitor_from = term_from`, `monitor_until = term_to + 30d`, `archive_after = monitor_until`
    - scheduler/manual sync treats `monitor_from` as start and `archive_after` as archive cutoff
@@ -140,6 +142,15 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
      - affected pending proposals are rebuilt against remaining in-scope observations
      - if the new term has already started and is not expired, a fresh `term_rescope` sync request is enqueued automatically
    - if term config is edited while source sync is `QUEUED`/`RUNNING`, backend stores a single coalesced `config.pending_term_rebind` and applies it on the first terminal status (`SUCCEEDED`/`FAILED`)
+12. source runtime state is an explicit backend projection:
+   - `lifecycle_state`: `active | inactive | archived`
+   - `sync_state`: `idle | queued | running`
+   - `config_state`: `stable | rebind_pending`
+   - API may expose a summarized `runtime_state`, but the projection remains the source of truth
+13. manual canonical edits create sticky strongest support on `event_entities`:
+   - canonical edit sets `event_entities.manual_support = true`
+   - source rescope/churn may remove source-scoped observations and links, but it must not auto-produce `removed` proposals for entities with manual support and no remaining automatic observations
+   - remaining automatic observations may still generate normal pending changes against the manually approved entity state
 
 ## 6) LLM Runtime Placement
 
@@ -166,7 +177,7 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
    - pass 1 planner emits `message_id + mode + segment_array` (`segment_type_hint`: `atomic|directive|unknown`)
    - pass 2 extracts `atomic` segments into `gmail.message.extracted` and `directive` segments into `gmail.directive.extracted`
    - directive records do not create fake observations; they apply deterministically into normal pending `changes`
-15. term window gating is source-wide and provider-specific:
+15. term window gating is source-term-binding-wide and provider-specific:
    - Gmail bootstrap/history fetch uses `[bootstrap_from, monitor_until]` as coarse message-time gate
    - ICS delta keeps only changed `VEVENT`s whose deterministic event date falls inside `[bootstrap_from, monitor_until]`
    - apply/runtime performs a second term gate and isolates out-of-scope records into `ingest_unresolved_records`

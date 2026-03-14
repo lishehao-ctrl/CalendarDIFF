@@ -733,6 +733,93 @@ def test_calendar_rescope_rebuild_keeps_remaining_gmail_support(db_session) -> N
     assert refreshed_entity.lifecycle == EventEntityLifecycle.ACTIVE
 
 
+def test_calendar_rescope_preserves_manual_supported_entity_without_remaining_sources(db_session) -> None:
+    user = _create_user(db_session, email="manual-support-rescope@example.com")
+    calendar_source = _create_source(
+        db_session,
+        user=user,
+        source_kind=SourceKind.CALENDAR,
+        provider="ics",
+        source_key="canvas_ics",
+        display_name="Canvas ICS",
+        config_json={"term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
+        secrets_payload={"url": "https://example.com/calendar.ics"},
+        cursor_json={"etag": "abc"},
+    )
+    family = _create_family(
+        db_session,
+        user=user,
+        dept="CSE",
+        number=120,
+        quarter="WI",
+        year2=26,
+    )
+    entity = EventEntity(
+        user_id=user.id,
+        entity_uid="entity-manual-preserved-1",
+        lifecycle=EventEntityLifecycle.ACTIVE,
+        course_dept="CSE",
+        course_number=120,
+        course_quarter="WI",
+        course_year2=26,
+        family_id=family.id,
+        manual_support=True,
+        raw_type="Homework",
+        event_name="HW1",
+        ordinal=1,
+        due_date=date(2026, 3, 1),
+        due_time=None,
+        time_precision="date_only",
+    )
+    db_session.add(entity)
+    db_session.flush()
+    db_session.add(
+        SourceEventObservation(
+            user_id=user.id,
+            source_id=calendar_source.id,
+            source_kind=calendar_source.source_kind,
+            provider=calendar_source.provider,
+            external_event_id="cal-manual-1",
+            entity_uid=entity.entity_uid,
+            event_payload=_runtime_observation_payload(
+                entity_uid=entity.entity_uid,
+                external_event_id="cal-manual-1",
+                due_date="2026-03-05",
+                family_id=family.id,
+                family_name=family.canonical_label,
+                event_name="HW1",
+            ),
+            event_hash="hash-cal-manual",
+            observed_at=datetime.now(timezone.utc),
+            is_active=True,
+            last_request_id="req-cal-manual",
+        )
+    )
+    db_session.commit()
+
+    update_input_source(
+        db_session,
+        source=calendar_source,
+        payload=InputSourcePatchRequest(
+            config={"term_key": "SP99", "term_from": "2099-04-01", "term_to": "2099-06-01"},
+        ),
+    )
+    db_session.expire_all()
+
+    refreshed_entity = db_session.scalar(select(EventEntity).where(EventEntity.entity_uid == entity.entity_uid))
+    assert refreshed_entity is not None
+    assert refreshed_entity.lifecycle == EventEntityLifecycle.ACTIVE
+    assert refreshed_entity.manual_support is True
+    assert db_session.scalar(
+        select(Change).where(
+            Change.user_id == user.id,
+            Change.entity_uid == entity.entity_uid,
+            Change.review_status == ReviewStatus.PENDING,
+            Change.change_type == ChangeType.REMOVED,
+        )
+    ) is None
+
+
 def test_gmail_directive_partial_apply_isolates_out_of_scope_matches(db_session) -> None:
     user = _create_user(db_session, email="directive-partial@example.com")
     source = _create_source(

@@ -155,6 +155,12 @@ def compute_pending_proposal_decision(
         )
 
     if primary is None:
+        if existing_entity is not None and existing_entity.manual_support:
+            return PendingProposalDecision(
+                mode="reject",
+                entity_uid=entity_uid,
+                reject_note="proposal_preserved_manual_support",
+            )
         assert existing_entity_payload is not None
         source_refs = require_non_empty_source_refs(
             source_refs=list(fallback_source_refs or []),

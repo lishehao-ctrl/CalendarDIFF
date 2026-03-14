@@ -53,6 +53,9 @@ def execute_canonical_edit_apply_txn(
     )
     idempotent = existing_entity is not None and semantic_payloads_equivalent(approved_payload, candidate_after)
     if idempotent:
+        if existing_entity is not None and not existing_entity.manual_support:
+            existing_entity.manual_support = True
+            db.commit()
         return {
             "applied": True,
             "idempotent": True,
@@ -82,13 +85,15 @@ def execute_canonical_edit_apply_txn(
         before_semantic_json = approved_payload
         delta_seconds = semantic_delta_seconds(before_payload=approved_payload, after_payload=candidate_after)
 
-    apply_approved_entity_state(
+    approved_entity = apply_approved_entity_state(
         db=db,
         user_id=user_id,
         entity_uid=resolved_entity_uid,
         change_type=change_type,
         semantic_payload=candidate_after,
     )
+    if approved_entity is not None:
+        approved_entity.manual_support = True
 
     reason_text = (reason or "").strip()
     edit_note = f"canonical_edit:{reason_text}" if reason_text else "canonical_edit"

@@ -119,6 +119,13 @@ The parser-stage `ingest_results.records[*].payload` envelope used between llm/r
    - no in-flight sync: source-scoped observations/unresolved/link/cursor state are reset immediately and pending proposals are rebuilt
    - in-flight sync (`QUEUED`/`RUNNING`): backend stores one coalesced `pending_term_rebind` and applies it on first terminal sync (`SUCCEEDED`/`FAILED`)
    - if the applied term is already active, input-service enqueues a `sync.requested` row with `metadata.kind = "term_rescope"`
+9. Treat the term config as a source-term binding:
+   - raw source fetch material may be shared/cached across time
+   - derived state (`source_event_observations`, pending `changes`, outbox events) is only valid inside the active binding
+10. `event_entities.manual_support = true` marks strongest manual support:
+   - canonical edit sets the flag
+   - source rescope/churn may not auto-generate `removed` proposals for manual-supported entities that lose automatic observations
+   - automatic observations may still generate normal pending changes against the manual-approved state
 
 Runtime observation envelope (`source_event_observations.event_payload`) is fixed to:
 
