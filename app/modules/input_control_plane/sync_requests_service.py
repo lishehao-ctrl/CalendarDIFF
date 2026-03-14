@@ -20,6 +20,28 @@ def enqueue_sync_request(
     metadata: dict | None = None,
     trace_id: str | None = None,
 ) -> SyncRequest:
+    row = enqueue_sync_request_in_txn(
+        db,
+        source=source,
+        trigger_type=trigger_type,
+        idempotency_key=idempotency_key,
+        metadata=metadata,
+        trace_id=trace_id,
+    )
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def enqueue_sync_request_in_txn(
+    db: Session,
+    *,
+    source: InputSource,
+    trigger_type: IngestTriggerType,
+    idempotency_key: str,
+    metadata: dict | None = None,
+    trace_id: str | None = None,
+) -> SyncRequest:
     request_id = uuid4().hex
     row = SyncRequest(
         request_id=request_id,
@@ -44,8 +66,6 @@ def enqueue_sync_request(
             "provider": source.provider,
         },
     )
-    db.commit()
-    db.refresh(row)
     return row
 
 
@@ -78,6 +98,33 @@ def enqueue_sync_request_idempotent(
         if existing is None:
             raise
         return existing
+
+
+def enqueue_sync_request_idempotent_in_txn(
+    db: Session,
+    *,
+    source: InputSource,
+    trigger_type: IngestTriggerType,
+    idempotency_key: str,
+    metadata: dict | None = None,
+    trace_id: str | None = None,
+) -> SyncRequest:
+    existing = db.scalar(
+        select(SyncRequest).where(
+            SyncRequest.source_id == source.id,
+            SyncRequest.idempotency_key == idempotency_key[:255],
+        )
+    )
+    if existing is not None:
+        return existing
+    return enqueue_sync_request_in_txn(
+        db,
+        source=source,
+        trigger_type=trigger_type,
+        idempotency_key=idempotency_key,
+        metadata=metadata,
+        trace_id=trace_id,
+    )
 
 
 def get_sync_request_status(db: Session, *, request_id: str) -> SyncRequest | None:
@@ -114,5 +161,7 @@ def _append_outbox_event(
 __all__ = [
     "enqueue_sync_request",
     "enqueue_sync_request_idempotent",
+    "enqueue_sync_request_idempotent_in_txn",
+    "enqueue_sync_request_in_txn",
     "get_sync_request_status",
 ]

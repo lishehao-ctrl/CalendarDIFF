@@ -130,13 +130,21 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
    - unresolved records do not upsert normal `source_event_observations`
    - unresolved records do not create pending `changes` and do not emit `review.pending.created`
    - later resolvable ingests for the same source/external record mark unresolved rows as resolved/superseded
+11. source term window is explicit and user-provided for active Gmail/ICS sources:
+   - `config.term_key`, `config.term_from`, and `config.term_to` are the only term-boundary inputs
+   - scheduler/manual sync treats `term_from` as monitoring start and `term_to` as monitoring/archive cutoff
+   - content outside `[term_from, term_to]` does not enter the normal observation/change flow
+   - changing term config is a source-scoped rescope operation, not a plain config edit:
+     - source observations, unresolved rows, source link state, and source cursor are cleared/reset
+     - affected pending proposals are rebuilt against remaining in-scope observations
+     - if the new term has already started and is not expired, a fresh `term_rescope` sync request is enqueued automatically
 
 ## 6) LLM Runtime Placement
 
 1. LLM parsing runtime runs in `llm-service`
 2. parser code remains in shared module `app/modules/ingestion/llm_parsers/*`
 3. queue backend is Redis stream + retry zset
-4. gateway protocol remains OpenAI-compatible `chat/completions`
+4. gateway protocol path follows `INGESTION_LLM_API_MODE` and supports both OpenAI-compatible `/responses` and `/chat/completions`
 5. ICS path is delta-first (`UID + RECURRENCE-ID` component key); cancelled components map to removal records
 6. ICS source facts are deterministic from parser/source and persisted as `source_facts`
 7. parser output is parser-stage only: `source_facts` + `semantic_event_draft` + `link_signals`
@@ -156,16 +164,21 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
    - pass 1 planner emits `message_id + mode + segment_array` (`segment_type_hint`: `atomic|directive|unknown`)
    - pass 2 extracts `atomic` segments into `gmail.message.extracted` and `directive` segments into `gmail.directive.extracted`
    - directive records do not create fake observations; they apply deterministically into normal pending `changes`
-15. Gmail-to-ICS linker is inventory-rule driven (no same-day window or score-band thresholds) and persists normalized link state in:
+15. term window gating is source-wide and provider-specific:
+   - Gmail bootstrap/history fetch uses `term_from`/`term_to` as coarse message-time gate
+   - ICS delta keeps only changed `VEVENT`s whose deterministic event date falls inside the term window
+   - apply/runtime performs a second term gate and isolates out-of-scope records into `ingest_unresolved_records`
+   - source patch/update that changes term window performs a full source rescope before any new fetch enters the pipeline
+16. Gmail-to-ICS linker is inventory-rule driven (no same-day window or score-band thresholds) and persists normalized link state in:
    - `event_entity_links` (auto/manual accepted links)
    - `event_link_candidates` (review queue for deterministic rule misses / low anchor confidence)
    - `event_link_blocks` (permanent rejected pairs)
-16. Auto-link rules are deterministic:
+17. Auto-link rules are deterministic:
    - require `dept+number` and `semantic_event.raw_type`
    - enforce suffix exact-match when inventory for that `dept+number` has any suffix
    - enforce `semantic_event.ordinal` exact-match when inventory for same course+raw_type has multiple ordinals
-17. blocked source/entity pairs are never auto-linked and never re-enter pending candidate flow until unblocked
-18. review API provides queue aggregation and bulk moderation helpers:
+18. blocked source/entity pairs are never auto-linked and never re-enter pending candidate flow until unblocked
+19. review API provides queue aggregation and bulk moderation helpers:
    - `GET /review/summary` (pending counts for `changes`, `link-candidates`)
    - `POST /review/link-candidates/batch/decisions` (`approve`/`reject`, partial success)
 

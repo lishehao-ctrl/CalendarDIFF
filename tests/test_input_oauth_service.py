@@ -44,7 +44,7 @@ def test_oauth_callback_preserves_existing_refresh_token_and_reactivates_source(
             source_kind="email",
             provider="gmail",
             display_name="Gmail Inbox",
-            config={"label_id": "INBOX"},
+            config={"label_id": "INBOX", "term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
             secrets={},
         ),
     )

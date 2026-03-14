@@ -199,7 +199,7 @@ def initialized_user(client: TestClient, db_session: Session) -> dict[str, objec
             provider="ics",
             source_key="initialized-user-calendar",
             display_name="Initialized User Calendar",
-            config={},
+            config={"term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
             secrets={"url": "https://example.com/initialized-user.ics"},
         ),
     )

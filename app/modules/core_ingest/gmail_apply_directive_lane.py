@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.db.models.input import InputSource
 from app.db.models.review import Change, ChangeType
 from app.modules.common.family_labels import load_latest_family_labels, require_latest_family_label
+from app.modules.common.source_term_window import parse_source_term_window, semantic_due_date_in_window, source_timezone_name
 from app.modules.common.semantic_codec import (
     approved_entity_to_semantic_payload,
     parse_semantic_payload,
@@ -98,6 +99,7 @@ def apply_gmail_directive_record(
 
     created_changes: list[Change] = []
     candidate_count = 0
+    out_of_scope_count = 0
     source_refs = [
         {
             "source_id": source.id,
@@ -107,6 +109,8 @@ def apply_gmail_directive_record(
             "confidence": confidence,
         }
     ]
+    term_window = parse_source_term_window(source, required=False)
+    timezone_name = source_timezone_name(source)
     for entity in matched_entities:
         family_name = require_latest_family_label(
             family_id=entity.family_id,
@@ -123,6 +127,22 @@ def apply_gmail_directive_record(
         )
         if after_payload is None:
             continue
+        if term_window is not None:
+            before_in_window = semantic_due_date_in_window(
+                semantic_payload=before_payload,
+                fallback_datetime=None,
+                term_window=term_window,
+                timezone_name=timezone_name,
+            )
+            after_in_window = semantic_due_date_in_window(
+                semantic_payload=after_payload,
+                fallback_datetime=None,
+                term_window=term_window,
+                timezone_name=timezone_name,
+            )
+            if not before_in_window or not after_in_window:
+                out_of_scope_count += 1
+                continue
         if semantic_payloads_equivalent(before_payload, after_payload):
             continue
         candidate_count += 1
@@ -154,7 +174,7 @@ def apply_gmail_directive_record(
             source=source,
             external_event_id=external_event_id,
             request_id=request_id,
-            reason_code="directive_unsupported_or_no_effect",
+            reason_code="directive_term_out_of_scope" if out_of_scope_count > 0 else "directive_unsupported_or_no_effect",
             source_facts=source_facts,
             payload=payload,
         )

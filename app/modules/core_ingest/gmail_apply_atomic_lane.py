@@ -7,6 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource, SourceKind
 from app.db.models.review import EventLinkOrigin
+from app.modules.common.source_term_window import (
+    parse_iso_datetime,
+    parse_source_term_window,
+    semantic_due_date_in_window,
+    source_timezone_name,
+)
 from app.modules.core_ingest.course_work_item_family_resolution import build_source_scoped_entity_uid, resolve_kind_resolution
 from app.modules.core_ingest.linking_engine import (
     find_existing_entity_link,
@@ -56,6 +62,35 @@ def apply_gmail_atomic_record(
         payload=payload,
         source_facts=source_facts,
     )
+    term_window = parse_source_term_window(source, required=False)
+    if term_window is not None and not semantic_due_date_in_window(
+        semantic_payload=semantic_draft,
+        fallback_datetime=parse_iso_datetime(source_facts.get("internal_date")),
+        term_window=term_window,
+        timezone_name=source_timezone_name(source),
+    ):
+        retire_active_observation_for_unresolved_transition(
+            db=db,
+            source_id=source.id,
+            external_event_id=external_event_id,
+            applied_at=applied_at,
+            request_id=request_id,
+        )
+        upsert_active_unresolved_record(
+            db=db,
+            user_id=source.user_id,
+            source_id=source.id,
+            source_kind=source.source_kind,
+            provider=source.provider,
+            external_event_id=external_event_id,
+            request_id=request_id,
+            reason_code="term_out_of_scope",
+            source_facts_json=source_facts,
+            semantic_event_draft_json=semantic_draft,
+            kind_resolution_json=None,
+            raw_payload_json=payload,
+        )
+        return set()
     kind_resolution = resolve_kind_resolution(
         db,
         user_id=source.user_id,

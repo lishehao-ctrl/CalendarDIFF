@@ -11,6 +11,7 @@ from app.contracts.events import new_event
 from app.db.models.ingestion import IngestJob, IngestJobStatus
 from app.db.models.input import IngestTriggerType, InputSource, SyncRequest, SyncRequestStatus
 from app.db.models.shared import IntegrationInbox, IntegrationOutbox, OutboxStatus
+from app.modules.common.source_term_window import parse_source_term_window, source_timezone_name
 
 ORCHESTRATOR_SYNC_REQUEST_CONSUMER = "orchestrator.sync_requested"
 OUTBOX_BATCH_SIZE = 200
@@ -40,6 +41,11 @@ def _enqueue_due_scheduler_requests(db: Session, *, worker_id: str) -> int:
     due_sources = db.scalars(due_stmt).all()
     created = 0
     for source in due_sources:
+        term_window = parse_source_term_window(source, required=False)
+        if term_window is not None and term_window.is_expired(now=now, timezone_name=source_timezone_name(source)):
+            source.is_active = False
+            source.next_poll_at = None
+            continue
         interval = max(int(source.poll_interval_seconds), 30)
         slot = int(now.timestamp()) // interval
         idempotency_key = f"scheduler:{source.id}:{slot}"

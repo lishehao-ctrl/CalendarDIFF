@@ -184,6 +184,43 @@ class GmailClient:
 
         return GmailHistoryResult(message_ids=message_ids, history_id=latest_history_id)
 
+    def list_message_ids(
+        self,
+        *,
+        access_token: str,
+        query: str | None = None,
+        label_ids: Sequence[str] | None = None,
+    ) -> list[str]:
+        message_ids: list[str] = []
+        seen_ids: set[str] = set()
+        page_token: str | None = None
+
+        while True:
+            params: dict[str, str | int | float | bool | None | Sequence[str]] = {
+                "maxResults": "500",
+            }
+            if query:
+                params["q"] = query
+            if label_ids:
+                params["labelIds"] = [label for label in label_ids if isinstance(label, str) and label.strip()]
+            if page_token is not None:
+                params["pageToken"] = page_token
+            payload = self._get_json("/messages", access_token=access_token, params=params)
+            for item in payload.get("messages", []) or []:
+                if not isinstance(item, dict):
+                    continue
+                message_id = item.get("id")
+                if isinstance(message_id, str) and message_id and message_id not in seen_ids:
+                    seen_ids.add(message_id)
+                    message_ids.append(message_id)
+
+            next_page_token = payload.get("nextPageToken")
+            if not isinstance(next_page_token, str) or not next_page_token:
+                break
+            page_token = next_page_token
+
+        return message_ids
+
     def get_message_metadata(self, *, access_token: str, message_id: str) -> GmailMessageMetadata:
         payload = self._get_json(
             f"/messages/{message_id}",

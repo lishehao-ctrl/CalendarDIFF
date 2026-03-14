@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.security import encrypt_secret
 from app.db.models.input import InputSource, InputSourceConfig, InputSourceCursor, InputSourceSecret
 from app.db.models.shared import User
+from app.modules.common.source_term_window import parse_source_term_window, parse_term_window_config, source_timezone_name
 from app.modules.input_control_plane.provider_sources import (
     CANVAS_ICS_DISPLAY_NAME,
     CANVAS_ICS_SOURCE_KEY,
@@ -21,6 +22,7 @@ from app.modules.input_control_plane.provider_sources import (
     normalize_source_patch_request,
 )
 from app.modules.input_control_plane.schemas import InputSourceCreateRequest, InputSourcePatchRequest
+from app.modules.input_control_plane.source_term_rescope import apply_source_term_rescope, term_window_changed
 
 
 def list_input_sources(db: Session, *, user_id: int, status: str = "active") -> list[InputSource]:
@@ -58,6 +60,10 @@ def create_input_source(db: Session, *, user: User, payload: InputSourceCreateRe
         ensure_provider_source_available(db, user_id=user.id, provider=normalized.provider)
 
     now = datetime.now(timezone.utc)
+    initial_next_poll_at = now
+    term_window = parse_term_window_config(normalized.config, required=False)
+    if term_window is not None:
+        initial_next_poll_at = max(now, term_window.monitor_start_at_utc(timezone_name=user.timezone_name))
     source = InputSource(
         user_id=user.id,
         source_kind=normalized.source_kind,
@@ -67,7 +73,7 @@ def create_input_source(db: Session, *, user: User, payload: InputSourceCreateRe
         is_active=True,
         poll_interval_seconds=normalized.poll_interval_seconds,
         last_polled_at=None,
-        next_poll_at=now,
+        next_poll_at=initial_next_poll_at,
     )
     db.add(source)
     db.flush()
@@ -105,6 +111,9 @@ def upsert_canvas_ics_source(
     *,
     user: User,
     url: str,
+    term_key: str,
+    term_from: str,
+    term_to: str,
     poll_interval_seconds: int = 900,
 ) -> InputSource:
     existing = get_canvas_ics_source_for_user(db, user_id=user.id)
@@ -112,6 +121,7 @@ def upsert_canvas_ics_source(
         payload = InputSourcePatchRequest(
             is_active=True,
             poll_interval_seconds=poll_interval_seconds,
+            config={"term_key": term_key, "term_from": term_from, "term_to": term_to},
             secrets={"url": url},
         )
         return update_input_source(db, source=existing, payload=payload)
@@ -123,7 +133,7 @@ def upsert_canvas_ics_source(
             source_kind="calendar",
             provider="ics",
             poll_interval_seconds=poll_interval_seconds,
-            config={},
+            config={"term_key": term_key, "term_from": term_from, "term_to": term_to},
             secrets={"url": url},
         ),
     )
@@ -137,6 +147,9 @@ def update_input_source(
 ) -> InputSource:
     now = datetime.now(timezone.utc)
     normalized = normalize_source_patch_request(source=source, payload=payload)
+    previous_term_window = parse_source_term_window(source, required=False)
+    next_term_window = previous_term_window
+    should_rescope_term_window = False
 
     if payload.display_name is not None and normalized.allow_display_name_update:
         source.display_name = normalized.display_name
@@ -151,6 +164,16 @@ def update_input_source(
             source.config = InputSourceConfig(source_id=source.id, schema_version=1, config_json=normalized.config)
         else:
             source.config.config_json = normalized.config
+        next_term_window = parse_source_term_window(source, required=False)
+        should_rescope_term_window = term_window_changed(previous=previous_term_window, current=next_term_window)
+        if source.is_active:
+            if next_term_window is not None and next_term_window.is_expired(now=now, timezone_name=source_timezone_name(source)):
+                source.is_active = False
+                source.next_poll_at = None
+            elif next_term_window is not None:
+                source.next_poll_at = max(now, next_term_window.monitor_start_at_utc(timezone_name=source_timezone_name(source)))
+            else:
+                source.next_poll_at = source.next_poll_at or now
     if normalized.secrets is not None:
         encrypted_payload = encrypt_secret(json.dumps(normalized.secrets, separators=(",", ":"), ensure_ascii=True))
         if source.secrets is None:
@@ -160,11 +183,34 @@ def update_input_source(
         if normalized.reactivate_on_secret_update and payload.is_active is None and not source.is_active:
             source.is_active = True
         if normalized.reactivate_on_secret_update and source.next_poll_at is None:
-            source.next_poll_at = now + timedelta(seconds=source.poll_interval_seconds)
+            term_window = next_term_window if next_term_window is not None else parse_source_term_window(source, required=False)
+            if term_window is not None:
+                source.next_poll_at = max(now, term_window.monitor_start_at_utc(timezone_name=source_timezone_name(source)))
+            else:
+                source.next_poll_at = now + timedelta(seconds=source.poll_interval_seconds)
     if normalized.force_source_key is not None:
         source.source_key = normalized.force_source_key
     if normalized.force_display_name is not None:
         source.display_name = normalized.force_display_name
+    if normalized.is_active is True and source.next_poll_at is None:
+        term_window = next_term_window if next_term_window is not None else parse_source_term_window(source, required=False)
+        if term_window is not None:
+            if term_window.is_expired(now=now, timezone_name=source_timezone_name(source)):
+                source.is_active = False
+                source.next_poll_at = None
+            else:
+                source.next_poll_at = max(now, term_window.monitor_start_at_utc(timezone_name=source_timezone_name(source)))
+        else:
+            source.next_poll_at = now + timedelta(seconds=source.poll_interval_seconds)
+    if normalized.is_active is False:
+        source.next_poll_at = None
+    if should_rescope_term_window and next_term_window is not None:
+        apply_source_term_rescope(
+            db=db,
+            source=source,
+            term_window=next_term_window,
+            applied_at=now,
+        )
     db.commit()
     db.refresh(source)
     return source

@@ -69,7 +69,7 @@ flowchart LR
 | 1 | input-service | user/scheduler/webhook sync trigger | `input_sources`, `input_source_configs`, `input_source_cursors` | `sync_requests`, `integration_outbox(sync.requested)` | `sync.requested` | ingest-orchestrator |
 | 2 | ingest-orchestrator | outbox `sync.requested` available | `integration_outbox`, `sync_requests` | `ingest_jobs`, `integration_inbox`, `sync_requests(status=QUEUED)` | none | ingest-connector |
 | 3 | ingest-connector | claimed pending ingest job | `ingest_jobs`, `sync_requests`, source config/secret/cursor | `ingest_jobs(status=CLAIMED/RUNNING payload)`, `input_source_cursors` | none | connector fetch |
-| 4 | ingest-connector | fetch result available | Gmail: provider incrementals; ICS: delta parser snapshot | `ingest_jobs(payload parse task)`, retry metadata | none | llm-service |
+| 4 | ingest-connector | fetch result available | Gmail: provider incrementals + term-window bootstrap/filter; ICS: delta parser snapshot + VEVENT term filter | `ingest_jobs(payload parse task)`, retry metadata | none | llm-service |
 | 5 | llm-service | Redis parse task consumed | parse payload (`gmail` / `calendar_delta`) | `ingest_results`, `ingest_jobs`, `sync_requests`, `integration_outbox` | `ingest.result.ready` | review-apply worker |
 | 6 | review-apply worker/service | outbox `ingest.result.ready` available | `ingest_results`, `source_event_observations`, `event_entities`, `changes`, `ingest_unresolved_records` | resolvable records: `source_event_observations`, `changes(pending)`, `integration_outbox`; unresolved records: `ingest_unresolved_records` only | `review.pending.created` (resolvable path only) | notification-consumer |
 | 7 | review decision APIs | user approve/reject/batch decision/unified edit | `changes`, `event_entities` | approved entity state updates on approve or canonical edit, proposal updates on proposal edit | `review.decision.approved/rejected` | audit consumers |
@@ -104,5 +104,7 @@ Use these files as implementation anchors when building detailed dataflow tables
 - Keep user-facing family label display aligned to latest label by `family_id`; do not treat frozen snapshot names as display authority.
 - Treat missing `family_id`/family-row label authority as an integrity bug (fail loudly), not a normal display fallback path.
 - Treat missing course identity as unresolved ingest isolation (`ingest_unresolved_records`), not as normal reviewable pending change input.
+- Treat source term window (`term_key` / `term_from` / `term_to`) as an ingest hard boundary for Gmail and ICS; out-of-term content must not enter normal review flow.
+- Treat term-window edits as a backend rescope workflow: clear source-scoped derived state first, rebuild affected pending proposals, then re-sync only if the new term is already active.
 - Family lifecycle policy: no normal hard-delete path for family rows; manage via rename/relink workflows.
 - `course_work_item_family_rebuild` is observation-native: it updates active runtime observations and recomputes pending proposals without parser-payload replay.

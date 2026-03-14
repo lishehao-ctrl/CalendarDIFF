@@ -32,7 +32,7 @@ def _create_gmail_source(db_session, *, user: User) -> InputSource:
             source_kind="email",
             provider="gmail",
             display_name="Gmail Inbox",
-            config={"label_id": "INBOX"},
+            config={"label_id": "INBOX", "term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
             secrets={},
         ),
     )
@@ -76,7 +76,7 @@ def test_gmail_source_create_is_singleton_per_user(input_client, db_session, aut
             "source_kind": "email",
             "provider": "gmail",
             "display_name": "Another Gmail",
-            "config": {"label_id": "INBOX"},
+            "config": {"label_id": "INBOX", "term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
             "secrets": {},
         },
     )
@@ -89,6 +89,26 @@ def test_gmail_source_create_is_singleton_per_user(input_client, db_session, aut
             "existing_source_id": existing.id,
         }
     }
+
+
+def test_gmail_source_create_requires_term_window_config(input_client, db_session, authenticate_client) -> None:
+    user = _create_registered_user(db_session)
+    authenticate_client(input_client, user=user)
+
+    response = input_client.post(
+        "/sources",
+        headers={"X-API-Key": "test-api-key"},
+        json={
+            "source_kind": "email",
+            "provider": "gmail",
+            "display_name": "Gmail Inbox",
+            "config": {"label_id": "INBOX"},
+            "secrets": {},
+        },
+    )
+
+    assert response.status_code == 422
+    assert "term_key" in str(response.json()["detail"])
 
 
 def test_delete_gmail_source_clears_connection_state(input_client, db_session, authenticate_client) -> None:

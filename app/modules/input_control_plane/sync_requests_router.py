@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
@@ -9,6 +10,7 @@ from app.db.models.input import IngestTriggerType
 from app.db.models.shared import User
 from app.db.session import get_db
 from app.modules.auth.deps import get_authenticated_user_or_401
+from app.modules.common.source_term_window import parse_source_term_window, source_timezone_name
 from app.modules.input_control_plane.router_common import require_owned_source_or_404
 from app.modules.input_control_plane.schemas import (
     SyncRequestCreateRequest,
@@ -30,6 +32,24 @@ def create_sync_request(
     user: User = Depends(get_authenticated_user_or_401),
 ) -> SyncRequestCreateResponse:
     source = require_owned_source_or_404(db=db, user_id=user.id, source_id=source_id)
+    term_window = parse_source_term_window(source, required=False)
+    now = datetime.now(timezone.utc)
+    if term_window is not None and not term_window.has_started(now=now, timezone_name=source_timezone_name(source)):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "source_term_not_started", "message": "source term has not started yet"},
+        )
+    if term_window is not None and term_window.is_expired(
+        now=now,
+        timezone_name=source_timezone_name(source),
+    ):
+        source.is_active = False
+        source.next_poll_at = None
+        db.commit()
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "source_term_archived", "message": "source term has ended and the source is archived"},
+        )
     if not source.is_active:
         raise HTTPException(
             status_code=409,

@@ -4,6 +4,7 @@ from typing import Any, cast
 
 from app.db.models.ingestion import ConnectorResultStatus
 from app.db.models.input import InputSource
+from app.modules.common.source_term_window import calendar_component_in_window, parse_source_term_window, source_timezone_name
 from app.modules.ingestion.connector_types import ConnectorFetchOutcome
 from app.modules.ingestion.ics_delta import ICS_COMPONENT_FINGERPRINT_HASH_KEY, IcsDeltaParseError, build_ics_delta
 from app.modules.ingestion.job_claiming import extract_ics_component_fingerprints
@@ -12,6 +13,7 @@ from app.modules.sync.ics_client import ICSClient
 
 
 def fetch_calendar_delta(*, source: Any) -> ConnectorFetchOutcome:
+    input_source = cast(InputSource, source)
     secrets = decode_source_secrets(cast(InputSource, source))
     url = secrets.get("url")
     if not isinstance(url, str) or not url:
@@ -23,14 +25,14 @@ def fetch_calendar_delta(*, source: Any) -> ConnectorFetchOutcome:
             error_message="missing calendar url in source secrets",
         )
 
-    source_cursor = getattr(source, "cursor", None)
+    source_cursor = getattr(input_source, "cursor", None)
     cursor_json = getattr(source_cursor, "cursor_json", None)
     cursor = cursor_json if isinstance(cursor_json, dict) else {}
     if_none_match = cursor.get("etag") if isinstance(cursor.get("etag"), str) else None
     if_modified_since = cursor.get("last_modified") if isinstance(cursor.get("last_modified"), str) else None
 
     client = ICSClient()
-    source_id = int(getattr(source, "id", 0))
+    source_id = int(getattr(input_source, "id", 0))
     fetched = client.fetch(url, source_id, if_none_match=if_none_match, if_modified_since=if_modified_since)
     if fetched.not_modified:
         return ConnectorFetchOutcome(
@@ -77,7 +79,22 @@ def fetch_calendar_delta(*, source: Any) -> ConnectorFetchOutcome:
         "ics_delta_removed_components": delta.removed_components_count,
         "ics_delta_invalid_components": delta.invalid_components,
     }
-    if delta.changed_components_count + delta.removed_components_count == 0:
+    term_window = parse_source_term_window(input_source, required=False)
+    if term_window is not None:
+        timezone_name = source_timezone_name(input_source)
+        filtered_changed_components = [
+            component
+            for component in delta.changed_components
+            if calendar_component_in_window(
+                component_ical_b64=component.get("component_ical_b64"),
+                term_window=term_window,
+                timezone_name=timezone_name,
+            )
+        ]
+    else:
+        filtered_changed_components = delta.changed_components
+
+    if len(filtered_changed_components) + delta.removed_components_count == 0:
         return ConnectorFetchOutcome(
             status=ConnectorResultStatus.NO_CHANGE,
             cursor_patch=cursor_patch,
@@ -88,7 +105,7 @@ def fetch_calendar_delta(*, source: Any) -> ConnectorFetchOutcome:
 
     parse_payload = {
         "kind": "calendar_delta",
-        "changed_components": delta.changed_components,
+        "changed_components": filtered_changed_components,
         "removed_component_keys": delta.removed_component_keys,
         "snapshot_meta": {
             "etag": fetched.etag,
