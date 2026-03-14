@@ -111,6 +111,26 @@ def test_gmail_source_create_requires_term_window_config(input_client, db_sessio
     assert "term_key" in str(response.json()["detail"])
 
 
+def test_gmail_source_create_rejects_inverted_term_window(input_client, db_session, authenticate_client) -> None:
+    user = _create_registered_user(db_session)
+    authenticate_client(input_client, user=user)
+
+    response = input_client.post(
+        "/sources",
+        headers={"X-API-Key": "test-api-key"},
+        json={
+            "source_kind": "email",
+            "provider": "gmail",
+            "display_name": "Gmail Inbox",
+            "config": {"label_id": "INBOX", "term_key": "WI26", "term_from": "2026-03-20", "term_to": "2026-01-05"},
+            "secrets": {},
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "invalid term window config: Value error, term_to must be on or after term_from"
+
+
 def test_delete_gmail_source_clears_connection_state(input_client, db_session, authenticate_client) -> None:
     user = _create_registered_user(db_session)
     source = _create_gmail_source(db_session, user=user)

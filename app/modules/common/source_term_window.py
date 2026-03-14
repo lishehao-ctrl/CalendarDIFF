@@ -101,10 +101,22 @@ def parse_term_window_config(config: Any, *, required: bool) -> SourceTermWindow
     try:
         model = SourceTermWindowModel.model_validate(subset)
     except ValidationError as exc:
-        detail = exc.errors()[0]
-        field = detail["loc"][-1]
-        raise SourceTermWindowConfigError(f"invalid term window config: {field}") from exc
+        raise SourceTermWindowConfigError(_term_window_validation_message(exc)) from exc
     return SourceTermWindow(term_key=model.term_key.strip(), term_from=model.term_from, term_to=model.term_to)
+
+
+def _term_window_validation_message(exc: ValidationError) -> str:
+    detail = exc.errors()[0] if exc.errors() else {}
+    location = detail.get("loc") or ()
+    message = detail.get("msg")
+    field = location[-1] if location else None
+    if isinstance(field, str) and field in TERM_WINDOW_KEYS:
+        if isinstance(message, str) and message.strip():
+            return f"invalid term window config: {field} ({message})"
+        return f"invalid term window config: {field}"
+    if isinstance(message, str) and message.strip():
+        return f"invalid term window config: {message}"
+    return "invalid term window config"
 
 
 def parse_source_term_window(source: Any, *, required: bool = False) -> SourceTermWindow | None:

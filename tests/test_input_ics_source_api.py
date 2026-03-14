@@ -119,6 +119,25 @@ def test_ics_source_create_requires_term_window_config(input_client, db_session,
     assert "term_key" in str(response.json()["detail"])
 
 
+def test_ics_source_create_rejects_inverted_term_window(input_client, db_session, authenticate_client) -> None:
+    user = _create_registered_user(db_session, notify_email="canvas-term-order@example.com")
+    authenticate_client(input_client, user=user)
+
+    response = input_client.post(
+        "/sources",
+        headers={"X-API-Key": "test-api-key"},
+        json={
+            "source_kind": "calendar",
+            "provider": "ics",
+            "config": {"term_key": "WI26", "term_from": "2026-03-20", "term_to": "2026-01-05"},
+            "secrets": {"url": "https://example.com/canvas-b.ics"},
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "invalid term window config: Value error, term_to must be on or after term_from"
+
+
 def test_ics_source_patch_updates_url_and_preserves_identity(input_client, db_session, authenticate_client) -> None:
     user = _create_registered_user(db_session, notify_email="canvas-patch@example.com")
     source = _create_ics_source(db_session, user=user, url="https://example.com/canvas-a.ics")
