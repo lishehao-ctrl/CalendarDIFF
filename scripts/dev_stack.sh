@@ -408,6 +408,7 @@ start_all() {
 stop_all() {
   local stop_infra="${1:-false}"
   stop_component frontend
+  stop_component public
   stop_component llm
   stop_component notification
   stop_component ingest
