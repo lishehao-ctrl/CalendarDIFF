@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, BellDot, Link2, Sparkles } from "lucide-react";
+import { ArrowRight, BellDot, CheckCircle2, GitCompareArrows, Link2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,23 +16,23 @@ import type { OnboardingStatus, ReviewSummary, SourceHealth } from "@/lib/types"
 const actionCards = [
   {
     href: "/sources",
-    eyebrow: "Source control",
-    title: "Manage intake",
-    description: "Connect your Canvas ICS link, maintain Gmail, and trigger manual syncs without leaving the console.",
+    eyebrow: "Sources",
+    title: "Connect intake",
+    description: "Add or maintain Canvas and Gmail sources, then trigger a sync when you need fresh signals.",
     icon: BellDot
   },
   {
     href: "/review/changes",
-    eyebrow: "Moderation",
-    title: "Work the inbox",
-    description: "Review detected changes, inspect evidence, and approve or reject from the same lane.",
-    icon: Sparkles
+    eyebrow: "Changes",
+    title: "Review detected updates",
+    description: "Approve, reject, or edit incoming deadline changes with evidence beside each decision.",
+    icon: GitCompareArrows
   },
   {
     href: "/review/links",
-    eyebrow: "Link governance",
-    title: "Resolve relationship risk",
-    description: "Clear pending link candidates and keep active links and alerts under control.",
+    eyebrow: "Links",
+    title: "Repair matching issues",
+    description: "Approve candidates, relink mismatches, and keep do-not-link safeguards tidy.",
     icon: Link2
   }
 ] as const;
@@ -96,26 +96,28 @@ export default function OverviewPage() {
 
   const stage = onboarding.data.stage || "unknown";
   const sourceHealth = onboarding.data.source_health || fallbackSourceHealth(stage);
+  const nextActionHref = stage === "ready" ? "/review/changes" : "/sources";
+  const nextActionLabel = stage === "ready" ? "Open changes queue" : "Connect a source";
   const summaryItems = [
     {
-      label: "Onboarding stage",
+      label: "Workspace",
       value: formatStatusLabel(stage),
-      detail: onboarding.data.message || "Workspace readiness snapshot"
+      detail: onboarding.data.message || "Current readiness state"
     },
     {
-      label: "Pending changes",
+      label: "Source health",
+      value: formatStatusLabel(sourceHealth.status),
+      detail: sourceHealth.message
+    },
+    {
+      label: "Changes",
       value: String(summary.data.changes_pending),
-      detail: "Items waiting for moderation in the review inbox"
+      detail: "Items waiting for review"
     },
     {
       label: "Link candidates",
       value: String(summary.data.link_candidates_pending),
-      detail: "Proposed event-to-entity matches still awaiting a decision"
-    },
-    {
-      label: "Link alerts",
-      value: String(summary.data.link_alerts_pending),
-      detail: `Summary generated ${formatDateTime(summary.data.generated_at, "recently")}`
+      detail: `Snapshot from ${formatDateTime(summary.data.generated_at, "recently")}`
     }
   ];
 
@@ -123,26 +125,48 @@ export default function OverviewPage() {
     <div className="space-y-5">
       <Card className="relative overflow-hidden px-6 py-7 md:px-8 md:py-8">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.16),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(215,90,45,0.14),transparent_28%)]" />
-        <div className="relative flex flex-wrap items-start justify-between gap-5">
+        <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="max-w-3xl">
-            <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">Overview hub</p>
-            <h1 className="mt-3 text-3xl font-semibold text-ink md:text-4xl">Run source intake, moderation, and link risk from one operational view.</h1>
+            <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">Overview</p>
+            <h1 className="mt-3 text-3xl font-semibold text-ink md:text-4xl">See what needs attention, then move straight into the right lane.</h1>
             <p className="mt-4 text-sm leading-7 text-[#596270]">
-              This landing page is the current-state summary for your workspace: readiness, pending moderation pressure, and the next action that keeps the queue healthy.
+              CalendarDIFF works best when the home page answers three questions quickly: are sources healthy, how much review is waiting, and what should you do next.
             </p>
+            <div className="relative mt-6 flex flex-wrap gap-3">
+              <Link href={nextActionHref}>
+                <Button>
+                  {nextActionLabel}
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+              <Link href="/review/links">
+                <Button variant="ghost">Open link review</Button>
+              </Link>
+            </div>
           </div>
-          <Badge tone={readinessTone(stage)}>{formatStatusLabel(stage)}</Badge>
-        </div>
-        <div className="relative mt-6 flex flex-wrap gap-3">
-          <Link href={stage === "ready" ? "/review/changes" : "/sources"}>
-            <Button>
-              {stage === "ready" ? "Open review inbox" : "Connect first source"}
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </Link>
-          <Link href="/review/links">
-            <Button variant="ghost">Inspect link review</Button>
-          </Link>
+          <Card className="relative border-white/40 bg-white/55 p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Today</p>
+                <h2 className="mt-3 text-xl font-semibold text-ink">Next best move</h2>
+              </div>
+              <Badge tone={readinessTone(stage)}>{formatStatusLabel(stage)}</Badge>
+            </div>
+            <div className="mt-4 space-y-3 text-sm text-[#314051]">
+              <p>{sourceHealth.message}</p>
+              <div className="rounded-[1.1rem] border border-line/80 bg-white/70 p-4">
+                <div className="flex items-center gap-2 text-ink">
+                  <CheckCircle2 className="h-4 w-4 text-moss" />
+                  <span className="font-medium">{summary.data.changes_pending > 0 ? "Start with the review inbox." : "No change backlog right now."}</span>
+                </div>
+                <p className="mt-2 text-[#596270]">
+                  {summary.data.changes_pending > 0
+                    ? `${summary.data.changes_pending} change${summary.data.changes_pending === 1 ? "" : "s"} are waiting for a decision.`
+                    : `${summary.data.link_candidates_pending} link candidate${summary.data.link_candidates_pending === 1 ? "" : "s"} still need attention.`}
+                </p>
+              </div>
+            </div>
+          </Card>
         </div>
       </Card>
       <SummaryGrid items={summaryItems} />
@@ -151,9 +175,9 @@ export default function OverviewPage() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Source health</p>
-              <h2 className="mt-3 text-2xl font-semibold">Operational readiness</h2>
+              <h2 className="mt-3 text-2xl font-semibold">Keep intake healthy</h2>
               <p className="mt-2 text-sm leading-6 text-[#596270]">
-                Source connectivity and queue shape determine whether moderation stays quiet or turns into a cleanup sprint.
+                Healthy intake keeps everything else quiet. When a source needs attention, fix it here before the review queue gets noisy.
               </p>
             </div>
             <Badge tone={sourceHealthTone(sourceHealth.status)}>{formatStatusLabel(sourceHealth.status)}</Badge>
@@ -165,7 +189,7 @@ export default function OverviewPage() {
           </div>
         </Card>
         <Card className="p-6 md:p-7">
-          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Primary actions</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Workflows</p>
           <div className="mt-4 grid gap-3">
             {actionCards.map(({ href, eyebrow, title, description, icon: Icon }) => (
               <Link key={href} href={href} className="rounded-[1.25rem] border border-line/80 bg-white/60 p-4 transition hover:-translate-y-0.5 hover:bg-white">

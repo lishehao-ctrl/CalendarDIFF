@@ -16,7 +16,6 @@ export type OnboardingStatus = {
 export type ReviewSummary = {
   changes_pending: number;
   link_candidates_pending: number;
-  link_alerts_pending: number;
   generated_at: string;
 };
 
@@ -286,25 +285,6 @@ export type LinkRow = {
   created_at?: string;
   updated_at?: string;
   signals?: Record<string, unknown> | null;
-  linked_entity?: {
-    entity_uid: string;
-    event_display?: EventDisplay | null;
-  } | null;
-};
-
-export type LinkAlert = {
-  id: number;
-  source_id: number;
-  external_event_id: string;
-  entity_uid: string;
-  link_id?: number | null;
-  status: string;
-  reason_code: string;
-  resolution_code?: string | null;
-  risk_level?: string | null;
-  evidence_snapshot?: Record<string, unknown> | null;
-  reviewed_at?: string | null;
-  review_note?: string | null;
   linked_entity?: {
     entity_uid: string;
     event_display?: EventDisplay | null;

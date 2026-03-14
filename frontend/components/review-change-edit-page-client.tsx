@@ -129,7 +129,7 @@ export function ReviewChangeEditPageClient({ mode, changeId }: { mode: ReviewEdi
       const payload = await applyReviewEdit(request);
       setBanner({
         tone: "info",
-        text: payload.mode === "proposal" ? "Proposal updated. Returning to review inbox..." : "Approved semantic state updated. Returning to review inbox..."
+        text: payload.mode === "proposal" ? "Proposal updated. Returning to review inbox..." : "Current event updated. Returning to review inbox..."
       });
       setTimeout(() => {
         router.push("/review/changes");
@@ -143,7 +143,7 @@ export function ReviewChangeEditPageClient({ mode, changeId }: { mode: ReviewEdi
   }
 
   if (loading) {
-    return <LoadingState label={mode === "proposal" ? "proposal edit" : "canonical edit"} />;
+    return <LoadingState label={mode === "proposal" ? "proposal edit" : "direct edit"} />;
   }
   if (error) {
     return <ErrorState message={error} />;
@@ -161,8 +161,8 @@ export function ReviewChangeEditPageClient({ mode, changeId }: { mode: ReviewEdi
             <h3 className="mt-3 text-2xl font-semibold text-ink">{pageTitle}</h3>
             <p className="mt-2 text-sm leading-6 text-[#596270]">
               {mode === "proposal"
-                ? "Adjust the pending proposal before it is approved into approved semantic state."
-                : "Apply a direct correction to approved semantic state for this review item."}
+                ? "Adjust the pending proposal before it is approved."
+                : "Apply a direct correction to the current approved event."}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -260,7 +260,7 @@ export function ReviewChangeEditPageClient({ mode, changeId }: { mode: ReviewEdi
                 </Button>
                 <Button variant="secondary" onClick={() => void applyEdit()} disabled={busy !== null || !form.due_date}>
                   <Save className="mr-2 h-4 w-4" />
-                  {busy === "apply" ? "Applying..." : mode === "proposal" ? "Apply proposal edit" : "Apply canonical edit"}
+                  {busy === "apply" ? "Applying..." : mode === "proposal" ? "Apply proposal edit" : "Apply direct edit"}
                 </Button>
               </div>
             </div>
@@ -281,7 +281,7 @@ export function ReviewChangeEditPageClient({ mode, changeId }: { mode: ReviewEdi
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Preview result</p>
-                    <p className="mt-2 text-sm text-[#596270]">{preview.idempotent ? "No canonical difference would be introduced." : "Review the edited payload before applying it."}</p>
+                    <p className="mt-2 text-sm text-[#596270]">{preview.idempotent ? "No visible difference would be introduced." : "Review the edited payload before applying it."}</p>
                   </div>
                   <Badge tone="info">{formatStatusLabel(preview.mode)}</Badge>
                 </div>

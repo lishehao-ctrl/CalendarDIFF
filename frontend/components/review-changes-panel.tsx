@@ -391,7 +391,7 @@ export function ReviewChangesPanel() {
             <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Moderation queue</p>
             <h3 className="mt-3 text-xl font-semibold">Review change inbox</h3>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[#596270]">
-              Select rows for batch decisions, or open a change drawer to inspect evidence and make a canonical-first edit.
+              Select rows for batch decisions, or open a change drawer to inspect evidence and make a direct edit before approving.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -478,7 +478,7 @@ export function ReviewChangesPanel() {
                             <Button asChild size="sm" variant="ghost">
                               <Link href={`/review/changes/${row.id}/canonical`} onClick={(event) => event.stopPropagation()}>
                                 <SquarePen className="mr-2 h-4 w-4" />
-                                Edit canonical
+                                Edit current event
                               </Link>
                             </Button>
                           </div>
@@ -594,7 +594,7 @@ export function ReviewChangesPanel() {
                     <Button asChild>
                       <Link href={`/review/changes/${selected.id}/canonical`}>
                         <SquarePen className="mr-2 h-4 w-4" />
-                        Edit canonical
+                        Edit current event
                       </Link>
                     </Button>
                     <Button onClick={() => void decide("approve")} disabled={decisionBusy !== null}>
@@ -689,7 +689,7 @@ export function ReviewChangesPanel() {
                   {selected.review_status === "pending" && selected.change_type !== "removed" ? (
                     <div className="mt-4 rounded-[1.1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#596270]">
                       <p className="font-medium text-ink">Advanced path</p>
-                      <p className="mt-2 leading-6">Need to keep the proposal-review workflow instead of applying a direct canonical correction? Use the lower-priority proposal editor.</p>
+                      <p className="mt-2 leading-6">Need to keep this as a proposal instead of changing the current event directly? Use the proposal editor.</p>
                       <div className="mt-3">
                         <Button asChild size="sm" variant="ghost">
                           <Link href={`/review/changes/${selected.id}/proposal`}>

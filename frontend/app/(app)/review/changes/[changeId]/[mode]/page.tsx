@@ -5,12 +5,12 @@ import type { ReviewEditMode } from "@/lib/types";
 
 const EDIT_MODE_COPY: Record<ReviewEditMode, { title: string; description: string }> = {
   canonical: {
-    title: "Canonical Edit",
-    description: "Apply a direct correction to approved semantic state for this review item using the unified edit flow.",
+    title: "Direct Edit",
+    description: "Update the current approved event for this review item using the unified edit flow.",
   },
   proposal: {
     title: "Proposal Edit",
-    description: "Adjust a pending proposal before approving it into approved semantic state.",
+    description: "Adjust a pending proposal before approving it into the current schedule.",
   },
 };
 

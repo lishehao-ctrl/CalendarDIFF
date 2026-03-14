@@ -1,6 +1,5 @@
 import { apiDelete, apiGet, apiPatch, apiPost, buildQuery } from "@/lib/api/client";
 import type {
-  LinkAlert,
   LinkBlock,
   LinkCandidate,
   LinkRow,
@@ -79,18 +78,6 @@ export async function relinkObservation(payload: { source_id: number; external_e
 export async function deleteReviewLink(linkId: number, params?: { block?: boolean; note?: string }) {
   const query = buildQuery({ block: params?.block, note: params?.note });
   return apiDelete(`/review/links/${linkId}${query}`);
-}
-
-export async function listLinkAlerts(params: { status: string; limit?: number; offset?: number }) {
-  return apiGet<LinkAlert[]>(`/review/link-alerts${buildQuery(params)}`);
-}
-
-export async function batchDecideLinkAlerts(payload: { ids: number[]; decision: "dismiss" | "mark_safe"; note?: string | null }) {
-  return apiPost("/review/link-alerts/batch/decisions", payload);
-}
-
-export async function decideLinkAlert(alertId: number, action: "dismiss" | "mark-safe", payload: { note?: string | null }) {
-  return apiPost(`/review/link-alerts/${alertId}/${action}`, payload);
 }
 
 export async function listLinkBlocks(params: { limit?: number; offset?: number; source_id?: number | null }) {

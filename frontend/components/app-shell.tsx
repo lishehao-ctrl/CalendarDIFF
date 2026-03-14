@@ -30,10 +30,10 @@ type SessionUser = {
 };
 
 const items = [
-  { href: "/", label: "Overview", icon: LayoutDashboard, description: "Health, onboarding, queue pressure" },
-  { href: "/sources", label: "Sources", icon: BellDot, description: "Canvas ICS, sync controls, source health" },
-  { href: "/review/changes", label: "Review Inbox", icon: GitCompareArrows, description: "Canonical change moderation" },
-  { href: "/review/links", label: "Link Review", icon: Link2, description: "Candidates, links, alerts" },
+  { href: "/", label: "Overview", icon: LayoutDashboard, description: "Status, queues, next step" },
+  { href: "/sources", label: "Sources", icon: BellDot, description: "Connect and sync intake" },
+  { href: "/review/changes", label: "Changes", icon: GitCompareArrows, description: "Approve detected updates" },
+  { href: "/review/links", label: "Links", icon: Link2, description: "Match, relink, and block" },
   { href: "/settings", label: "Settings", icon: Settings2, description: "Timezone and notifications" }
 ] as const;
 
@@ -47,11 +47,11 @@ function NavContent({ pathname, onNavigate }: { pathname: string; onNavigate?: (
           </div>
           <div>
             <p className="text-xs uppercase tracking-[0.24em] text-[#425061]">CalendarDIFF</p>
-            <h1 className="mt-1 text-2xl font-semibold">Editorial Ops Console</h1>
+            <h1 className="mt-1 text-2xl font-semibold">Deadline Ops Console</h1>
           </div>
         </div>
         <p className="mt-4 text-sm leading-6 text-[#314051]">
-          A modern control room for source intake, review operations, link governance, and deadline confidence.
+          Keep intake, review, and deadline fixes in one calm workspace instead of spreading them across email and calendars.
         </p>
       </div>
       <nav className="flex flex-1 flex-col gap-2">
@@ -82,7 +82,7 @@ function NavContent({ pathname, onNavigate }: { pathname: string; onNavigate?: (
       </nav>
       <div className="mt-6 space-y-3">
         <div className="rounded-[1.25rem] border border-line/80 bg-white/55 p-4 text-sm text-[#596270]">
-          Gmail OAuth is available from Sources. Connect one Gmail mailbox, keep your Canvas ICS link alongside it, and review everything from one console.
+          Connect Canvas and Gmail from Sources, then work the resulting changes and link fixes from the two review lanes.
         </div>
         <LogoutButton />
       </div>
@@ -142,7 +142,7 @@ export function AppShell({
         <div className="flex items-center justify-between rounded-[1.45rem] border border-line/70 bg-card px-4 py-3 shadow-[var(--shadow-panel)] xl:hidden">
           <div>
             <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">CalendarDIFF</p>
-            <p className="mt-1 text-lg font-semibold">Ops Console</p>
+            <p className="mt-1 text-lg font-semibold">Deadline Ops</p>
           </div>
           <div className="flex items-center gap-2">
             <LogoutButton />
