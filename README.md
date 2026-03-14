@@ -198,11 +198,16 @@ PUBLIC_WEB_ORIGINS=http://localhost:8200,http://127.0.0.1:8200
 ```env
 APP_LLM_OPENAI_MODEL=
 INGESTION_LLM_MODEL=
+INGESTION_LLM_API_MODE=responses
 INGESTION_LLM_BASE_URL=
 INGESTION_LLM_API_KEY=
+INGESTION_LLM_EXTRA_BODY_JSON=
+INGESTION_LLM_TIMEOUT_SECONDS=
+INGESTION_LLM_MAX_RETRIES=
+INGESTION_LLM_MAX_INPUT_CHARS=
 ```
 
-Under `docker compose`, `INGESTION_LLM_MODEL`, `INGESTION_LLM_BASE_URL`, and `INGESTION_LLM_API_KEY` are required. Compose will fail fast if any are blank.
+CalendarDIFF's LLM gateway follows `INGESTION_LLM_API_MODE` and can talk to either `/responses` or `/chat/completions`. Under `docker compose`, `INGESTION_LLM_MODEL`, `INGESTION_LLM_BASE_URL`, and `INGESTION_LLM_API_KEY` are required. `INGESTION_LLM_EXTRA_BODY_JSON` is available for provider-specific passthrough options such as `{\"enable_thinking\":false}`, and the timeout / retry knobs can be tuned with `INGESTION_LLM_TIMEOUT_SECONDS`, `INGESTION_LLM_MAX_RETRIES`, and `INGESTION_LLM_MAX_INPUT_CHARS`.
 
 
 ### OAuth Runtime Config

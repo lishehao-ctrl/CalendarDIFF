@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     ingestion_llm_base_url: str | None = None
     ingestion_llm_api_key: str | None = None
     ingestion_llm_model: str = ""
+    ingestion_llm_api_mode: str = "responses"
+    ingestion_llm_extra_body_json: str | None = None
+    ingestion_llm_timeout_seconds: float | None = None
+    ingestion_llm_max_retries: int | None = None
+    ingestion_llm_max_input_chars: int | None = None
 
     redis_url: str | None = None
     llm_queue_stream_key: str = "llm:parse:stream"

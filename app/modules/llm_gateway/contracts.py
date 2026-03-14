@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 
-LlmApiModeLiteral = Literal["chat_completions"]
+LlmApiModeLiteral = Literal["chat_completions", "responses"]
 
 
 class LlmGatewayError(RuntimeError):
@@ -61,3 +61,4 @@ class ResolvedLlmProfile:
     timeout_seconds: float
     max_retries: int
     max_input_chars: int
+    extra_body: dict = field(default_factory=dict)

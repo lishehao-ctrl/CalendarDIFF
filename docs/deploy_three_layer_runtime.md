@@ -60,11 +60,16 @@ LLM config (ingest-service / llm-service):
 
 ```env
 INGESTION_LLM_MODEL=...
+INGESTION_LLM_API_MODE=responses
 INGESTION_LLM_BASE_URL=...
 INGESTION_LLM_API_KEY=...
+INGESTION_LLM_EXTRA_BODY_JSON=
+INGESTION_LLM_TIMEOUT_SECONDS=
+INGESTION_LLM_MAX_RETRIES=
+INGESTION_LLM_MAX_INPUT_CHARS=
 ```
 
-Default compose treats those three variables as required and fails fast during `docker compose config/up` if any are blank.
+Default compose treats `INGESTION_LLM_MODEL`, `INGESTION_LLM_BASE_URL`, and `INGESTION_LLM_API_KEY` as required and fails fast during `docker compose config/up` if any are blank. `INGESTION_LLM_API_MODE` selects whether the gateway talks to `/responses` or `/chat/completions`.
 
 Worker tuning:
 

@@ -177,14 +177,19 @@ All `/internal/*` endpoints require:
 
 1. parser implementation lives in shared modules used by ingest + llm flows
 2. parser runtime service is `llm-service`
-3. protocol is OpenAI-compatible `chat/completions`
+3. protocol path follows `INGESTION_LLM_API_MODE` and supports both OpenAI-compatible `/responses` and `/chat/completions`
 4. ICS parser contract uses `calendar_delta` payloads for changed VEVENT components only
 5. parser output stays parser-stage (`semantic_event_draft`) and is normalized into runtime observation `semantic_event`
 6. parser payload contract is fixed at `obs_v3`
 7. env:
    - `INGESTION_LLM_MODEL`
+   - `INGESTION_LLM_API_MODE`
    - `INGESTION_LLM_BASE_URL`
    - `INGESTION_LLM_API_KEY`
+   - optional `INGESTION_LLM_EXTRA_BODY_JSON`
+   - optional `INGESTION_LLM_TIMEOUT_SECONDS`
+   - optional `INGESTION_LLM_MAX_RETRIES`
+   - optional `INGESTION_LLM_MAX_INPUT_CHARS`
    - `REDIS_URL`
    - `LLM_RATE_LIMIT_TARGET_RPS`
    - `LLM_RATE_LIMIT_HARD_RPS`

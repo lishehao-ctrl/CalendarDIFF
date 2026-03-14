@@ -8,6 +8,10 @@ from app.modules.llm_gateway.adapters.chat_completions import (
     build_chat_completions_payload,
     extract_chat_completions_json,
 )
+from app.modules.llm_gateway.adapters.responses import (
+    build_responses_payload,
+    extract_responses_json,
+)
 from app.modules.llm_gateway.contracts import (
     LlmApiModeLiteral,
     LlmGatewayError,
@@ -18,6 +22,7 @@ from app.modules.llm_gateway.contracts import (
 from app.modules.llm_gateway.json_contract import truncate_user_payload, validate_schema
 from app.modules.llm_gateway.registry import resolve_llm_profile
 from app.modules.llm_gateway.retry_policy import LLM_FORMAT_MAX_ATTEMPTS, is_format_retryable_code
+from app.modules.llm_gateway.timeout_policy import with_dynamic_timeout
 from app.modules.llm_gateway.transport_openai_compat import OpenAICompatTransport
 
 logger = logging.getLogger(__name__)
@@ -127,41 +132,46 @@ class LlmGateway:
             user_payload=invoke_request.user_payload,
             profile=profile,
         )
-        request_payload = build_chat_completions_payload(
-            invoke_request=invoke_request,
+        effective_profile = with_dynamic_timeout(
             profile=profile,
+            invoke_request=invoke_request,
+            truncated_input_json=truncated_input_json,
+        )
+        request_payload = _build_request_payload(
+            invoke_request=invoke_request,
+            profile=effective_profile,
             truncated_input_json=truncated_input_json,
         )
         response_json, latency_ms, upstream_request_id = self._transport.post_json(
-            profile=profile,
+            profile=effective_profile,
             payload=request_payload,
             request_context={
                 "request_id": invoke_request.request_id or "-",
                 "source_id": invoke_request.source_id if invoke_request.source_id is not None else "-",
                 "task_name": invoke_request.task_name,
-                "model": profile.model,
-                "provider_id": profile.provider_id,
+                "model": effective_profile.model,
+                "provider_id": effective_profile.provider_id,
             },
         )
-        extracted_json, raw_usage = _extract_chat_result(
+        extracted_json, raw_usage = _extract_result(
             response_json=response_json,
-            provider_id=profile.provider_id,
-            api_mode=profile.api_mode,
+            provider_id=effective_profile.provider_id,
+            api_mode=effective_profile.api_mode,
         )
 
         validate_schema(
             payload=extracted_json,
             schema=invoke_request.output_schema_json,
             schema_name=invoke_request.output_schema_name,
-            provider_id=profile.provider_id,
-            api_mode=profile.api_mode,
+            provider_id=effective_profile.provider_id,
+            api_mode=effective_profile.api_mode,
         )
 
         return LlmInvokeResult(
             json_object=extracted_json,
-            provider_id=profile.provider_id,
-            model=profile.model,
-            api_mode=profile.api_mode,
+            provider_id=effective_profile.provider_id,
+            model=effective_profile.model,
+            api_mode=effective_profile.api_mode,
             latency_ms=latency_ms,
             upstream_request_id=upstream_request_id,
             raw_usage=raw_usage,
@@ -175,12 +185,37 @@ def invoke_llm_json(db: Session, *, invoke_request: LlmInvokeRequest) -> LlmInvo
     return _GLOBAL_GATEWAY.invoke_json(db, invoke_request=invoke_request)
 
 
-def _extract_chat_result(
+def _build_request_payload(
+    *,
+    invoke_request: LlmInvokeRequest,
+    profile: ResolvedLlmProfile,
+    truncated_input_json: str,
+) -> dict:
+    if profile.api_mode == "responses":
+        return build_responses_payload(
+            invoke_request=invoke_request,
+            profile=profile,
+            truncated_input_json=truncated_input_json,
+        )
+    return build_chat_completions_payload(
+        invoke_request=invoke_request,
+        profile=profile,
+        truncated_input_json=truncated_input_json,
+    )
+
+
+def _extract_result(
     *,
     response_json: dict,
     provider_id: str,
     api_mode: LlmApiModeLiteral,
 ) -> tuple[dict, dict]:
+    if api_mode == "responses":
+        return extract_responses_json(
+            response_json=response_json,
+            provider_id=provider_id,
+            api_mode=api_mode,
+        )
     try:
         return extract_chat_completions_json(
             response_json=response_json,

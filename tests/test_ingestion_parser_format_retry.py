@@ -16,7 +16,7 @@ class DummyInvokeResult:
     json_object: dict
     model: str = "test-model"
     provider_id: str = "env-default"
-    api_mode: str = "chat_completions"
+    api_mode: str = "responses"
     latency_ms: int = 1
     upstream_request_id: str | None = None
     raw_usage: dict = field(default_factory=dict)

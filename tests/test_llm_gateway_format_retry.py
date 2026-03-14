@@ -29,7 +29,7 @@ def _profile() -> ResolvedLlmProfile:
         provider_id="env-default",
         vendor="openai-compatible",
         base_url="https://example.com/v1",
-        api_mode="chat_completions",
+        api_mode="responses",
         model="test-model",
         api_key="test-key",
         timeout_seconds=12.0,
@@ -57,18 +57,25 @@ def _gateway_error(*, code: str, retryable: bool = False) -> LlmGatewayError:
         message=code,
         retryable=retryable,
         provider_id="env-default",
-        api_mode="chat_completions",
+        api_mode="responses",
     )
 
 
 def _success_response() -> tuple[dict, int, str | None]:
     return (
         {
-            "choices": [
+            "output": [
                 {
-                    "message": {
-                        "content": "{\"ok\":true}",
-                    }
+                    "id": "rs_1",
+                    "type": "reasoning",
+                    "summary": [],
+                },
+                {
+                    "id": "msg_1",
+                    "type": "message",
+                    "role": "assistant",
+                    "status": "completed",
+                    "content": [{"type": "output_text", "text": "{\"ok\":true}", "annotations": []}],
                 }
             ],
             "usage": {"total_tokens": 1},

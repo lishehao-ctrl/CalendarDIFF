@@ -6,7 +6,7 @@ from collections.abc import Mapping
 
 import httpx
 
-from app.modules.llm_gateway.contracts import LlmGatewayError, ResolvedLlmProfile
+from app.modules.llm_gateway.contracts import LlmApiModeLiteral, LlmGatewayError, ResolvedLlmProfile
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class OpenAICompatTransport:
         payload: dict,
         request_context: Mapping[str, object] | None,
     ) -> tuple[dict, int, str | None]:
-        endpoint = build_openai_compat_endpoint(base_url=profile.base_url)
+        endpoint = build_openai_compat_endpoint(base_url=profile.base_url, api_mode=profile.api_mode)
         headers = {
             "Authorization": f"Bearer {profile.api_key}",
             "Content-Type": "application/json",
@@ -66,7 +66,7 @@ class OpenAICompatTransport:
         started = time.perf_counter()
         try:
             with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-                response = client.post(endpoint, headers=headers, json=payload)
+                response = client.post(endpoint, headers=headers, json=_merge_extra_body(payload=payload, profile=profile))
             response.raise_for_status()
         except httpx.TimeoutException as exc:
             logger.warning(
@@ -188,16 +188,18 @@ class OpenAICompatTransport:
         return response_json, latency_ms, upstream_request_id
 
 
-def build_openai_compat_endpoint(*, base_url: str) -> str:
+def build_openai_compat_endpoint(*, base_url: str, api_mode: LlmApiModeLiteral) -> str:
     normalized = base_url.strip().rstrip("/")
     if not normalized:
         raise ValueError("base_url is required")
-    endpoint_suffix = "chat/completions"
+    endpoint_suffix = "responses" if api_mode == "responses" else "chat/completions"
 
     if normalized.endswith(f"/{endpoint_suffix}"):
         return normalized
     if normalized.endswith("/chat/completions"):
         normalized = normalized[: -len("/chat/completions")]
+    if normalized.endswith("/responses"):
+        normalized = normalized[: -len("/responses")]
     if normalized.endswith("/v1"):
         return f"{normalized}/{endpoint_suffix}"
     return f"{normalized}/v1/{endpoint_suffix}"
@@ -208,3 +210,11 @@ def _ctx(context: Mapping[str, object] | None, key: str) -> object:
         return "-"
     value = context.get(key)
     return value if value is not None else "-"
+
+
+def _merge_extra_body(*, payload: dict, profile: ResolvedLlmProfile) -> dict:
+    if not profile.extra_body:
+        return payload
+    merged = dict(profile.extra_body)
+    merged.update(payload)
+    return merged
