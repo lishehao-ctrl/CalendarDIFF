@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.models.ingestion import ConnectorResultStatus, IngestJobStatus
 from app.db.models.input import SyncRequestStatus
+from app.modules.input_control_plane.source_term_rebind import apply_pending_term_rebind_if_terminal
 from app.modules.runtime_kernel import (
     apply_dead_letter_transition,
     apply_retry_transition,
@@ -48,6 +49,13 @@ def apply_llm_failure_transition(
             clear_claim=False,
             attempt_mode="max",
         )
+        if context.source is not None:
+            apply_pending_term_rebind_if_terminal(
+                db=db,
+                source=context.source,
+                terminal_status=SyncRequestStatus.FAILED,
+                applied_at=now,
+            )
         db.commit()
         return
 
@@ -80,6 +88,13 @@ def apply_llm_failure_transition(
                 clear_claim=False,
                 attempt_mode="max",
             )
+            if context.source is not None:
+                apply_pending_term_rebind_if_terminal(
+                    db=db,
+                    source=context.source,
+                    terminal_status=SyncRequestStatus.FAILED,
+                    applied_at=now,
+                )
             db.commit()
             return
 
@@ -112,6 +127,13 @@ def apply_llm_failure_transition(
         clear_claim=False,
         attempt_mode="max",
     )
+    if context.source is not None:
+        apply_pending_term_rebind_if_terminal(
+            db=db,
+            source=context.source,
+            terminal_status=SyncRequestStatus.FAILED,
+            applied_at=now,
+        )
     db.commit()
 
 

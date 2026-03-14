@@ -78,7 +78,7 @@ def test_gmail_fetcher_bootstraps_term_window_messages(monkeypatch) -> None:
 
         def list_message_ids(self, *, access_token: str, query: str | None = None, label_ids=None):
             assert access_token == "token"
-            assert query == "after:2026/01/05 before:2026/03/21"
+            assert query == "after:2025/12/06 before:2026/04/20"
             assert label_ids == ["COURSE"]
             return ["m1", "m2"]
 
@@ -86,7 +86,7 @@ def test_gmail_fetcher_bootstraps_term_window_messages(monkeypatch) -> None:
             assert access_token == "token"
             internal_date = {
                 "m1": "2026-02-01T15:00:00+00:00",
-                "m2": "2026-04-01T15:00:00+00:00",
+                "m2": "2026-05-01T15:00:00+00:00",
             }[message_id]
             return SimpleNamespace(
                 message_id=message_id,
@@ -149,8 +149,8 @@ SUMMARY:In term
 END:VEVENT
 BEGIN:VEVENT
 UID:evt-out
-DTSTART:20260401T180000Z
-DTEND:20260401T190000Z
+DTSTART:20260501T180000Z
+DTEND:20260501T190000Z
 SUMMARY:Out of term
 END:VEVENT
 END:VCALENDAR

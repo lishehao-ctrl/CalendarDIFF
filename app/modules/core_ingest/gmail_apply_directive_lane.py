@@ -100,6 +100,8 @@ def apply_gmail_directive_record(
     created_changes: list[Change] = []
     candidate_count = 0
     out_of_scope_count = 0
+    unsupported_or_no_effect_count = 0
+    partial_out_of_scope_external_event_id = f"{external_event_id}#directive:term_out_of_scope"
     source_refs = [
         {
             "source_id": source.id,
@@ -126,6 +128,7 @@ def apply_gmail_directive_record(
             mutation=mutation,
         )
         if after_payload is None:
+            unsupported_or_no_effect_count += 1
             continue
         if term_window is not None:
             before_in_window = semantic_due_date_in_window(
@@ -144,6 +147,7 @@ def apply_gmail_directive_record(
                 out_of_scope_count += 1
                 continue
         if semantic_payloads_equivalent(before_payload, after_payload):
+            unsupported_or_no_effect_count += 1
             continue
         candidate_count += 1
         if parse_semantic_payload(entity.entity_uid, after_payload) is None:
@@ -172,7 +176,7 @@ def apply_gmail_directive_record(
         isolate_directive_record(
             db=db,
             source=source,
-            external_event_id=external_event_id,
+            external_event_id=partial_out_of_scope_external_event_id if out_of_scope_count > 0 else external_event_id,
             request_id=request_id,
             reason_code="directive_term_out_of_scope" if out_of_scope_count > 0 else "directive_unsupported_or_no_effect",
             source_facts=source_facts,
@@ -187,6 +191,24 @@ def apply_gmail_directive_record(
         external_event_id=external_event_id,
         resolved_at=applied_at,
     )
+    if out_of_scope_count > 0 or unsupported_or_no_effect_count > 0:
+        isolate_directive_record(
+            db=db,
+            source=source,
+            external_event_id=partial_out_of_scope_external_event_id if out_of_scope_count > 0 else external_event_id,
+            request_id=request_id,
+            reason_code="directive_term_out_of_scope_partial" if out_of_scope_count > 0 else "directive_unsupported_or_no_effect",
+            source_facts=source_facts,
+            payload=payload,
+        )
+    else:
+        resolve_active_unresolved_records(
+            db=db,
+            user_id=source.user_id,
+            source_id=source.id,
+            external_event_id=partial_out_of_scope_external_event_id,
+            resolved_at=applied_at,
+        )
     return created_changes
 
 

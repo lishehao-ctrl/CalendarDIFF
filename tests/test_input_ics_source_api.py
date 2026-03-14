@@ -5,9 +5,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from app.db.models.ingestion import IngestUnresolvedRecord
+from app.contracts.events import new_event
+from app.db.models.ingestion import ConnectorResultStatus, IngestResult, IngestUnresolvedRecord
 from app.core.security import decrypt_secret
-from app.db.models.input import InputSource, InputSourceCursor, SyncRequest
+from app.db.models.input import IngestTriggerType, InputSource, InputSourceCursor, SyncRequest, SyncRequestStatus
 from app.db.models.review import (
     Change,
     ChangeSourceRef,
@@ -20,7 +21,9 @@ from app.db.models.review import (
     ReviewStatus,
     SourceEventObservation,
 )
-from app.db.models.shared import User
+from app.db.models.shared import IntegrationOutbox, OutboxStatus, User
+from app.modules.core_ingest.apply import apply_ingest_result_idempotent
+from app.modules.core_ingest.worker import run_core_apply_tick
 from app.modules.input_control_plane.schemas import InputSourceCreateRequest
 from app.modules.input_control_plane.sources_service import create_input_source
 
@@ -48,6 +51,26 @@ def _create_ics_source(db_session, *, user: User, url: str) -> InputSource:
             secrets={"url": url},
         ),
     )
+
+
+def _seed_sync_request(
+    db_session,
+    *,
+    source: InputSource,
+    request_id: str,
+    status: SyncRequestStatus,
+) -> SyncRequest:
+    row = SyncRequest(
+        request_id=request_id,
+        source_id=source.id,
+        trigger_type=IngestTriggerType.MANUAL,
+        status=status,
+        idempotency_key=f"idemp:{request_id}",
+        metadata_json={"kind": "test"},
+    )
+    db_session.add(row)
+    db_session.commit()
+    return row
 
 
 def test_ics_source_create_normalizes_to_canvas_identity(input_client, db_session, authenticate_client) -> None:
@@ -340,6 +363,261 @@ def test_ics_source_term_rebind_to_expired_window_archives_source(input_client, 
             SyncRequest.idempotency_key.like("term_rescope:%"),
         )
     ) is None
+
+
+def test_ics_source_term_rebind_queues_when_sync_running_and_blocks_manual_sync(
+    input_client, db_session, authenticate_client
+) -> None:
+    user = _create_registered_user(db_session, notify_email="canvas-queued-rebind@example.com")
+    source = _create_ics_source(db_session, user=user, url="https://example.com/canvas-a.ics")
+    db_session.add(
+        SourceEventObservation(
+            user_id=user.id,
+            source_id=source.id,
+            source_kind=source.source_kind,
+            provider=source.provider,
+            external_event_id="evt-running",
+            entity_uid="entity-running-1",
+            event_payload={"semantic_event": {"family_id": 123, "event_name": "HW1", "due_date": "2026-03-01"}},
+            event_hash="hash-running",
+            observed_at=datetime.now(timezone.utc),
+            is_active=True,
+            last_request_id="req-running",
+        )
+    )
+    db_session.commit()
+    _seed_sync_request(
+        db_session,
+        source=source,
+        request_id="sync-running-for-rebind",
+        status=SyncRequestStatus.RUNNING,
+    )
+    authenticate_client(input_client, user=user)
+
+    response = input_client.patch(
+        f"/sources/{source.id}",
+        headers={"X-API-Key": "test-api-key"},
+        json={"config": {"term_key": "WI26-R2", "term_from": "2026-02-01", "term_to": "2026-04-01"}},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["config"]["term_key"] == "WI26"
+    assert payload["config"]["term_from"] == "2026-01-05"
+    assert payload["config"]["term_to"] == "2026-03-20"
+    pending = payload["config"]["pending_term_rebind"]
+    assert pending["term_key"] == "WI26-R2"
+    assert pending["term_from"] == "2026-02-01"
+    assert pending["term_to"] == "2026-04-01"
+    assert pending["requested_config"]["term_key"] == "WI26-R2"
+
+    db_session.expire_all()
+    refreshed = db_session.scalar(select(InputSource).where(InputSource.id == source.id))
+    assert refreshed is not None
+    assert refreshed.config is not None
+    assert refreshed.config.config_json["term_key"] == "WI26"
+    assert refreshed.config.config_json["pending_term_rebind"]["term_key"] == "WI26-R2"
+    assert db_session.scalar(
+        select(SourceEventObservation).where(SourceEventObservation.source_id == source.id)
+    ) is not None
+    assert db_session.scalar(
+        select(SyncRequest).where(
+            SyncRequest.source_id == source.id,
+            SyncRequest.idempotency_key.like("term_rescope:%"),
+        )
+    ) is None
+
+    sync_response = input_client.post(
+        f"/sources/{source.id}/sync-requests",
+        headers={"X-API-Key": "test-api-key"},
+        json={"metadata": {"kind": "manual"}},
+    )
+    assert sync_response.status_code == 409
+    assert sync_response.json()["detail"]["code"] == "source_term_rebind_pending"
+
+
+def test_ics_source_term_rebind_pending_coalesces_latest_request(input_client, db_session, authenticate_client) -> None:
+    user = _create_registered_user(db_session, notify_email="canvas-rebind-coalesce@example.com")
+    source = _create_ics_source(db_session, user=user, url="https://example.com/canvas-a.ics")
+    _seed_sync_request(
+        db_session,
+        source=source,
+        request_id="sync-running-coalesce",
+        status=SyncRequestStatus.RUNNING,
+    )
+    authenticate_client(input_client, user=user)
+
+    response_one = input_client.patch(
+        f"/sources/{source.id}",
+        headers={"X-API-Key": "test-api-key"},
+        json={"config": {"term_key": "WI26-R2", "term_from": "2026-02-01", "term_to": "2026-04-01"}},
+    )
+    assert response_one.status_code == 200
+
+    response_two = input_client.patch(
+        f"/sources/{source.id}",
+        headers={"X-API-Key": "test-api-key"},
+        json={"config": {"term_key": "WI26-R3", "term_from": "2026-02-05", "term_to": "2026-04-05"}},
+    )
+    assert response_two.status_code == 200
+
+    payload = response_two.json()
+    assert payload["config"]["term_key"] == "WI26"
+    pending = payload["config"]["pending_term_rebind"]
+    assert pending["term_key"] == "WI26-R3"
+    assert pending["term_from"] == "2026-02-05"
+    assert pending["term_to"] == "2026-04-05"
+    assert pending["requested_config"]["term_key"] == "WI26-R3"
+
+
+def test_ics_source_pending_rebind_applies_on_sync_success_terminal(input_client, db_session, authenticate_client) -> None:
+    user = _create_registered_user(db_session, notify_email="canvas-rebind-success@example.com")
+    source = _create_ics_source(db_session, user=user, url="https://example.com/canvas-a.ics")
+    db_session.add(
+        SourceEventObservation(
+            user_id=user.id,
+            source_id=source.id,
+            source_kind=source.source_kind,
+            provider=source.provider,
+            external_event_id="evt-success",
+            entity_uid="entity-success-1",
+            event_payload={"semantic_event": {"family_id": 123, "event_name": "HW1", "due_date": "2026-03-01"}},
+            event_hash="hash-success",
+            observed_at=datetime.now(timezone.utc),
+            is_active=True,
+            last_request_id="req-success",
+        )
+    )
+    _seed_sync_request(
+        db_session,
+        source=source,
+        request_id="sync-rebind-success",
+        status=SyncRequestStatus.RUNNING,
+    )
+    db_session.commit()
+    authenticate_client(input_client, user=user)
+    response = input_client.patch(
+        f"/sources/{source.id}",
+        headers={"X-API-Key": "test-api-key"},
+        json={"config": {"term_key": "WI26-R2", "term_from": "2026-02-01", "term_to": "2026-04-01"}},
+    )
+    assert response.status_code == 200
+
+    db_session.add(
+        IngestResult(
+            request_id="sync-rebind-success",
+            source_id=source.id,
+            provider=source.provider,
+            status=ConnectorResultStatus.NO_CHANGE,
+            cursor_patch={},
+            records=[],
+            fetched_at=datetime.now(timezone.utc),
+            error_code=None,
+            error_message=None,
+        )
+    )
+    db_session.commit()
+
+    result = apply_ingest_result_idempotent(db_session, request_id="sync-rebind-success")
+    assert result["applied"] is True
+
+    db_session.expire_all()
+    refreshed = db_session.scalar(select(InputSource).where(InputSource.id == source.id))
+    assert refreshed is not None
+    assert refreshed.config is not None
+    assert refreshed.config.config_json["term_key"] == "WI26-R2"
+    assert "pending_term_rebind" not in refreshed.config.config_json
+    assert db_session.scalar(
+        select(SourceEventObservation).where(SourceEventObservation.source_id == source.id)
+    ) is None
+
+    sync_request = db_session.scalar(select(SyncRequest).where(SyncRequest.request_id == "sync-rebind-success"))
+    assert sync_request is not None
+    assert sync_request.status == SyncRequestStatus.SUCCEEDED
+    rescope_request = db_session.scalar(
+        select(SyncRequest)
+        .where(SyncRequest.source_id == source.id, SyncRequest.idempotency_key.like("term_rescope:%"))
+        .order_by(SyncRequest.id.desc())
+    )
+    assert rescope_request is not None
+    assert rescope_request.metadata_json["kind"] == "term_rescope"
+
+
+def test_ics_source_pending_rebind_applies_on_sync_failed_terminal(input_client, db_session, authenticate_client) -> None:
+    user = _create_registered_user(db_session, notify_email="canvas-rebind-failed@example.com")
+    source = _create_ics_source(db_session, user=user, url="https://example.com/canvas-a.ics")
+    db_session.add(
+        SourceEventObservation(
+            user_id=user.id,
+            source_id=source.id,
+            source_kind=source.source_kind,
+            provider=source.provider,
+            external_event_id="evt-failed",
+            entity_uid="entity-failed-1",
+            event_payload={"semantic_event": {"family_id": 123, "event_name": "HW1", "due_date": "2026-03-01"}},
+            event_hash="hash-failed",
+            observed_at=datetime.now(timezone.utc),
+            is_active=True,
+            last_request_id="req-failed",
+        )
+    )
+    _seed_sync_request(
+        db_session,
+        source=source,
+        request_id="sync-rebind-failed",
+        status=SyncRequestStatus.RUNNING,
+    )
+    db_session.commit()
+    authenticate_client(input_client, user=user)
+    response = input_client.patch(
+        f"/sources/{source.id}",
+        headers={"X-API-Key": "test-api-key"},
+        json={"config": {"term_key": "WI26-R2", "term_from": "2026-02-01", "term_to": "2026-04-01"}},
+    )
+    assert response.status_code == 200
+
+    event = new_event(
+        event_type="ingest.result.ready",
+        aggregate_type="ingest_result",
+        aggregate_id="sync-rebind-failed",
+        payload={"request_id": "sync-rebind-failed"},
+    )
+    db_session.add(
+        IntegrationOutbox(
+            event_id=event.event_id,
+            event_type=event.event_type,
+            aggregate_type=event.aggregate_type,
+            aggregate_id=event.aggregate_id,
+            payload_json=event.payload,
+            status=OutboxStatus.PENDING,
+            available_at=event.available_at,
+        )
+    )
+    db_session.commit()
+
+    processed = run_core_apply_tick(db_session)
+    assert processed == 1
+
+    db_session.expire_all()
+    refreshed = db_session.scalar(select(InputSource).where(InputSource.id == source.id))
+    assert refreshed is not None
+    assert refreshed.config is not None
+    assert refreshed.config.config_json["term_key"] == "WI26-R2"
+    assert "pending_term_rebind" not in refreshed.config.config_json
+    assert db_session.scalar(
+        select(SourceEventObservation).where(SourceEventObservation.source_id == source.id)
+    ) is None
+
+    sync_request = db_session.scalar(select(SyncRequest).where(SyncRequest.request_id == "sync-rebind-failed"))
+    assert sync_request is not None
+    assert sync_request.status == SyncRequestStatus.FAILED
+    rescope_request = db_session.scalar(
+        select(SyncRequest)
+        .where(SyncRequest.source_id == source.id, SyncRequest.idempotency_key.like("term_rescope:%"))
+        .order_by(SyncRequest.id.desc())
+    )
+    assert rescope_request is not None
+    assert rescope_request.metadata_json["kind"] == "term_rescope"
 
 
 def test_ics_source_archive_moves_row_to_archived_listing(input_client, db_session, authenticate_client) -> None:

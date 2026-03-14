@@ -17,6 +17,7 @@ from app.modules.input_control_plane.schemas import (
     SyncRequestCreateResponse,
     SyncRequestStatusResponse,
 )
+from app.modules.input_control_plane.source_term_rebind import has_pending_term_rebind
 from app.modules.input_control_plane.status_projection import build_sync_request_status_payload
 from app.modules.input_control_plane.sync_requests_service import enqueue_sync_request_idempotent, get_sync_request_status
 
@@ -32,6 +33,11 @@ def create_sync_request(
     user: User = Depends(get_authenticated_user_or_401),
 ) -> SyncRequestCreateResponse:
     source = require_owned_source_or_404(db=db, user_id=user.id, source_id=source_id)
+    if has_pending_term_rebind(source):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "source_term_rebind_pending", "message": "source term rebind is pending"},
+        )
     term_window = parse_source_term_window(source, required=False)
     now = datetime.now(timezone.utc)
     if term_window is not None and not term_window.has_started(now=now, timezone_name=source_timezone_name(source)):

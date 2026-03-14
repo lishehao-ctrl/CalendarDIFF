@@ -132,12 +132,14 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
    - later resolvable ingests for the same source/external record mark unresolved rows as resolved/superseded
 11. source term window is explicit and user-provided for active Gmail/ICS sources:
    - `config.term_key`, `config.term_from`, and `config.term_to` are the only term-boundary inputs
-   - scheduler/manual sync treats `term_from` as monitoring start and `term_to` as monitoring/archive cutoff
-   - content outside `[term_from, term_to]` does not enter the normal observation/change flow
+   - backend derives fixed runtime bounds: `bootstrap_from = term_from - 30d`, `monitor_from = term_from`, `monitor_until = term_to + 30d`, `archive_after = monitor_until`
+   - scheduler/manual sync treats `monitor_from` as start and `archive_after` as archive cutoff
+   - content outside `[bootstrap_from, monitor_until]` does not enter the normal observation/change flow
    - changing term config is a source-scoped rescope operation, not a plain config edit:
      - source observations, unresolved rows, source link state, and source cursor are cleared/reset
      - affected pending proposals are rebuilt against remaining in-scope observations
      - if the new term has already started and is not expired, a fresh `term_rescope` sync request is enqueued automatically
+   - if term config is edited while source sync is `QUEUED`/`RUNNING`, backend stores a single coalesced `config.pending_term_rebind` and applies it on the first terminal status (`SUCCEEDED`/`FAILED`)
 
 ## 6) LLM Runtime Placement
 
@@ -165,10 +167,10 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
    - pass 2 extracts `atomic` segments into `gmail.message.extracted` and `directive` segments into `gmail.directive.extracted`
    - directive records do not create fake observations; they apply deterministically into normal pending `changes`
 15. term window gating is source-wide and provider-specific:
-   - Gmail bootstrap/history fetch uses `term_from`/`term_to` as coarse message-time gate
-   - ICS delta keeps only changed `VEVENT`s whose deterministic event date falls inside the term window
+   - Gmail bootstrap/history fetch uses `[bootstrap_from, monitor_until]` as coarse message-time gate
+   - ICS delta keeps only changed `VEVENT`s whose deterministic event date falls inside `[bootstrap_from, monitor_until]`
    - apply/runtime performs a second term gate and isolates out-of-scope records into `ingest_unresolved_records`
-   - source patch/update that changes term window performs a full source rescope before any new fetch enters the pipeline
+   - source patch/update that changes term window performs immediate rescope when no in-flight sync exists; otherwise it queues one pending rebind and applies after terminal sync completion
 16. Gmail-to-ICS linker is inventory-rule driven (no same-day window or score-band thresholds) and persists normalized link state in:
    - `event_entity_links` (auto/manual accepted links)
    - `event_link_candidates` (review queue for deterministic rule misses / low anchor confidence)

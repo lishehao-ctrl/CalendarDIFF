@@ -22,6 +22,10 @@ from app.modules.input_control_plane.provider_sources import (
     normalize_source_patch_request,
 )
 from app.modules.input_control_plane.schemas import InputSourceCreateRequest, InputSourcePatchRequest
+from app.modules.input_control_plane.source_term_rebind import (
+    has_active_sync_requests,
+    queue_pending_term_rebind,
+)
 from app.modules.input_control_plane.source_term_rescope import apply_source_term_rescope, term_window_changed
 
 
@@ -150,6 +154,7 @@ def update_input_source(
     previous_term_window = parse_source_term_window(source, required=False)
     next_term_window = previous_term_window
     should_rescope_term_window = False
+    config_term_rebind_queued = False
 
     if payload.display_name is not None and normalized.allow_display_name_update:
         source.display_name = normalized.display_name
@@ -160,20 +165,40 @@ def update_input_source(
         if source.next_poll_at is None:
             source.next_poll_at = now + timedelta(seconds=normalized.poll_interval_seconds)
     if normalized.config is not None:
-        if source.config is None:
-            source.config = InputSourceConfig(source_id=source.id, schema_version=1, config_json=normalized.config)
+        requested_config = dict(normalized.config)
+        requested_term_window = parse_term_window_config(requested_config, required=False)
+        requested_term_changed = term_window_changed(previous=previous_term_window, current=requested_term_window)
+        if requested_term_changed and has_active_sync_requests(db=db, source_id=source.id):
+            queue_pending_term_rebind(
+                source=source,
+                requested_config=requested_config,
+                requested_at=now,
+                requested_by_user_id=source.user_id,
+            )
+            next_term_window = previous_term_window
+            should_rescope_term_window = False
+            config_term_rebind_queued = True
         else:
-            source.config.config_json = normalized.config
-        next_term_window = parse_source_term_window(source, required=False)
-        should_rescope_term_window = term_window_changed(previous=previous_term_window, current=next_term_window)
-        if source.is_active:
-            if next_term_window is not None and next_term_window.is_expired(now=now, timezone_name=source_timezone_name(source)):
-                source.is_active = False
-                source.next_poll_at = None
-            elif next_term_window is not None:
-                source.next_poll_at = max(now, next_term_window.monitor_start_at_utc(timezone_name=source_timezone_name(source)))
+            if source.config is None:
+                source.config = InputSourceConfig(source_id=source.id, schema_version=1, config_json=requested_config)
             else:
-                source.next_poll_at = source.next_poll_at or now
+                source.config.config_json = requested_config
+            next_term_window = parse_source_term_window(source, required=False)
+            should_rescope_term_window = term_window_changed(previous=previous_term_window, current=next_term_window)
+            if source.is_active:
+                if next_term_window is not None and next_term_window.is_expired(
+                    now=now,
+                    timezone_name=source_timezone_name(source),
+                ):
+                    source.is_active = False
+                    source.next_poll_at = None
+                elif next_term_window is not None:
+                    source.next_poll_at = max(
+                        now,
+                        next_term_window.monitor_start_at_utc(timezone_name=source_timezone_name(source)),
+                    )
+                else:
+                    source.next_poll_at = source.next_poll_at or now
     if normalized.secrets is not None:
         encrypted_payload = encrypt_secret(json.dumps(normalized.secrets, separators=(",", ":"), ensure_ascii=True))
         if source.secrets is None:
@@ -204,7 +229,7 @@ def update_input_source(
             source.next_poll_at = now + timedelta(seconds=source.poll_interval_seconds)
     if normalized.is_active is False:
         source.next_poll_at = None
-    if should_rescope_term_window and next_term_window is not None:
+    if should_rescope_term_window and next_term_window is not None and not config_term_rebind_queued:
         apply_source_term_rescope(
             db=db,
             source=source,

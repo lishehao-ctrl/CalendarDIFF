@@ -34,6 +34,22 @@ class SourceTermWindow:
     term_from: date
     term_to: date
 
+    @property
+    def bootstrap_from(self) -> date:
+        return self.term_from - timedelta(days=30)
+
+    @property
+    def monitor_from(self) -> date:
+        return self.term_from
+
+    @property
+    def monitor_until(self) -> date:
+        return self.term_to + timedelta(days=30)
+
+    @property
+    def archive_after(self) -> date:
+        return self.monitor_until
+
     def to_config_json(self) -> dict[str, str]:
         return {
             "term_key": self.term_key,
@@ -44,7 +60,7 @@ class SourceTermWindow:
     def contains_local_date(self, value: date | None) -> bool:
         if value is None:
             return False
-        return self.term_from <= value <= self.term_to
+        return self.bootstrap_from <= value <= self.monitor_until
 
     def contains_datetime(self, value: datetime | None, *, timezone_name: str | None) -> bool:
         local_date = datetime_to_local_date(value, timezone_name=timezone_name)
@@ -52,20 +68,20 @@ class SourceTermWindow:
 
     def is_expired(self, *, now: datetime, timezone_name: str | None) -> bool:
         local_date = datetime_to_local_date(now, timezone_name=timezone_name)
-        return local_date is not None and local_date > self.term_to
+        return local_date is not None and local_date > self.archive_after
 
     def has_started(self, *, now: datetime, timezone_name: str | None) -> bool:
         local_date = datetime_to_local_date(now, timezone_name=timezone_name)
-        return local_date is not None and local_date >= self.term_from
+        return local_date is not None and local_date >= self.monitor_from
 
     def monitor_start_at_utc(self, *, timezone_name: str | None) -> datetime:
         zone = _resolve_timezone(timezone_name)
-        local_start = datetime.combine(self.term_from, time.min, tzinfo=zone)
+        local_start = datetime.combine(self.monitor_from, time.min, tzinfo=zone)
         return local_start.astimezone(timezone.utc)
 
     def gmail_query_bounds(self) -> tuple[str, str]:
-        start = self.term_from.strftime("%Y/%m/%d")
-        end_exclusive = (self.term_to + timedelta(days=1)).strftime("%Y/%m/%d")
+        start = self.bootstrap_from.strftime("%Y/%m/%d")
+        end_exclusive = (self.monitor_until + timedelta(days=1)).strftime("%Y/%m/%d")
         return start, end_exclusive
 
 

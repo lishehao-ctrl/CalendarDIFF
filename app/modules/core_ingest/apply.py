@@ -12,6 +12,7 @@ from app.db.models.review import IngestApplyLog
 from app.modules.core_ingest.calendar_apply import apply_calendar_observations
 from app.modules.core_ingest.gmail_apply import apply_gmail_observations
 from app.modules.core_ingest.pending_proposal_rebuild import rebuild_pending_change_proposals
+from app.modules.input_control_plane.source_term_rebind import apply_pending_term_rebind_if_terminal
 
 
 def apply_records(
@@ -121,6 +122,12 @@ def apply_ingest_result_idempotent(db: Session, *, request_id: str) -> dict:
             sync_request.status = SyncRequestStatus.SUCCEEDED
             sync_request.error_code = None
             sync_request.error_message = None
+        apply_pending_term_rebind_if_terminal(
+            db=db,
+            source=source,
+            terminal_status=SyncRequestStatus.SUCCEEDED,
+            applied_at=now,
+        )
         db.commit()
         return {
             "request_id": request_id,

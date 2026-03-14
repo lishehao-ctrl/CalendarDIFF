@@ -67,6 +67,7 @@ def process_claimed_job(db: Session, *, job_id: int) -> bool:
             error_message=outcome.error_message,
         )
         apply_failure(
+            db,
             context=context,
             decision=failure,
             max_retry_attempts=int(settings.llm_max_retry_attempts),

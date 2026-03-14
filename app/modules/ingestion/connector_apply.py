@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.db.models.ingestion import ConnectorResultStatus, IngestJobStatus
 from app.db.models.input import SyncRequestStatus
 from app.modules.ingestion.connector_types import ConnectorFailureDecision
+from app.modules.input_control_plane.source_term_rebind import apply_pending_term_rebind_if_terminal
 from app.modules.runtime_kernel import (
     JobContext,
     apply_dead_letter_transition,
@@ -44,9 +45,17 @@ def apply_success_without_llm(
         completed_at=fetched_at,
         cursor_patch=cursor_patch,
     )
+    if context.source is not None:
+        apply_pending_term_rebind_if_terminal(
+            db=db,
+            source=context.source,
+            terminal_status=SyncRequestStatus.SUCCEEDED,
+            applied_at=fetched_at,
+        )
 
 
 def apply_failure(
+    db: Session,
     *,
     context: JobContext,
     decision: ConnectorFailureDecision,
@@ -91,6 +100,13 @@ def apply_failure(
         clear_claim=True,
         attempt_mode="set",
     )
+    if context.source is not None:
+        apply_pending_term_rebind_if_terminal(
+            db=db,
+            source=context.source,
+            terminal_status=SyncRequestStatus.FAILED,
+            applied_at=now,
+        )
 
 
 def mark_llm_enqueue_pending(

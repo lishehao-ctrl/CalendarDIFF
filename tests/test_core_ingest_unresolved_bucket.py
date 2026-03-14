@@ -189,7 +189,7 @@ def test_calendar_term_out_of_scope_isolated_to_unresolved_bucket(db_session: Se
         source_key="calendar-term-gated-source",
         config_json={"term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
     )
-    due_at = datetime(2026, 4, 2, 18, 0, tzinfo=timezone.utc)
+    due_at = datetime(2026, 5, 2, 18, 0, tzinfo=timezone.utc)
     payload = build_calendar_payload(
         external_event_id="evt-calendar-off-term",
         title="Late Homework",
@@ -287,7 +287,7 @@ def test_gmail_term_out_of_scope_isolated_to_unresolved_bucket(db_session: Sessi
         source_key="gmail-term-gated-source",
         config_json={"term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
     )
-    due_at = datetime(2026, 4, 5, 12, 0, tzinfo=timezone.utc)
+    due_at = datetime(2026, 5, 5, 12, 0, tzinfo=timezone.utc)
     payload = build_gmail_payload(
         message_id="msg-gmail-off-term",
         title="Future Homework",

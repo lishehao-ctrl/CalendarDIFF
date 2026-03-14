@@ -113,11 +113,12 @@ The parser-stage `ingest_results.records[*].payload` envelope used between llm/r
    - `term_key`
    - `term_from`
    - `term_to`
-   Only records inside that window are allowed into the normal observation/change path.
+   Backend derives fixed runtime bounds: `bootstrap_from = term_from-30d`, `monitor_until = term_to+30d`.
+   Only records inside `[bootstrap_from, monitor_until]` are allowed into the normal observation/change path.
 8. Updating that term config is treated as a source rescope:
-   - source-scoped observations, unresolved rows, link rows, and cursor state are reset
-   - pending proposals for affected entities are recomputed before new sync data is fetched
-   - if the new term is already active, input-service enqueues a `sync.requested` row with `metadata.kind = "term_rescope"`
+   - no in-flight sync: source-scoped observations/unresolved/link/cursor state are reset immediately and pending proposals are rebuilt
+   - in-flight sync (`QUEUED`/`RUNNING`): backend stores one coalesced `pending_term_rebind` and applies it on first terminal sync (`SUCCEEDED`/`FAILED`)
+   - if the applied term is already active, input-service enqueues a `sync.requested` row with `metadata.kind = "term_rescope"`
 
 Runtime observation envelope (`source_event_observations.event_payload`) is fixed to:
 
