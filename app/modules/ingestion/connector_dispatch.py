@@ -8,6 +8,11 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.models.ingestion import IngestJob, IngestJobStatus
 from app.db.models.input import InputSource, SyncRequest, SyncRequestStatus
+from app.modules.ingestion.calendar_component_tasks import upsert_calendar_component_tasks
+from app.modules.ingestion.calendar_fanout_contract import (
+    CALENDAR_REDUCE_REASON,
+    build_calendar_component_reason,
+)
 from app.modules.ingestion.job_claiming import CONNECTOR_BATCH_SIZE
 from app.modules.runtime_kernel import (
     JobContext,
@@ -69,6 +74,49 @@ def dispatch_pending_llm_enqueues(db: Session) -> int:
             continue
 
         try:
+            if _is_calendar_delta_payload(parse_payload=parse_payload):
+                changed_components = parse_payload.get("changed_components")
+                changed_component_rows = changed_components if isinstance(changed_components, list) else []
+                component_tasks = upsert_calendar_component_tasks(
+                    db,
+                    request_id=sync_request.request_id,
+                    source_id=source.id,
+                    changed_components=changed_component_rows,
+                )
+                db.flush()
+                for component_task in component_tasks:
+                    enqueue_parse_task(
+                        redis_client=redis_client,
+                        request_id=sync_request.request_id,
+                        source_id=source.id,
+                        attempt=0,
+                        reason=build_calendar_component_reason(component_task.component_key),
+                    )
+                enqueue_parse_task(
+                    redis_client=redis_client,
+                    request_id=sync_request.request_id,
+                    source_id=source.id,
+                    attempt=0,
+                    reason=CALENDAR_REDUCE_REASON,
+                )
+                payload["workflow_stage"] = "LLM_CALENDAR_FANOUT_QUEUED"
+                payload["llm_enqueued_at"] = now.isoformat()
+                payload["calendar_child_task_count"] = len(component_tasks)
+                payload["calendar_removed_component_count"] = len(
+                    parse_payload.get("removed_component_keys")
+                    if isinstance(parse_payload.get("removed_component_keys"), list)
+                    else []
+                )
+                payload.pop("llm_enqueue_last_error", None)
+                payload.pop("llm_enqueue_last_failed_at", None)
+                job.payload_json = payload
+                job.next_retry_at = now + timedelta(seconds=max(30, int(settings.llm_claim_timeout_seconds)))
+                sync_request.status = SyncRequestStatus.RUNNING
+                sync_request.error_code = None
+                sync_request.error_message = None
+                dispatched += 1
+                continue
+
             enqueue_parse_task(
                 redis_client=redis_client,
                 request_id=sync_request.request_id,
@@ -137,6 +185,11 @@ def dispatch_pending_llm_enqueues(db: Session) -> int:
             )
     db.commit()
     return dispatched
+
+
+def _is_calendar_delta_payload(*, parse_payload: dict) -> bool:
+    kind = parse_payload.get("kind")
+    return isinstance(kind, str) and kind.strip().lower() == "calendar_delta"
 
 
 __all__ = ["dispatch_pending_llm_enqueues"]

@@ -45,6 +45,14 @@ class ConnectorResultStatus(str, Enum):
     RATE_LIMITED = "RATE_LIMITED"
 
 
+class CalendarComponentParseStatus(str, Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    UNRESOLVED = "UNRESOLVED"
+    FAILED = "FAILED"
+
+
 class IngestJob(Base):
     __tablename__ = "ingest_jobs"
     __table_args__ = (
@@ -154,7 +162,46 @@ class IngestUnresolvedRecord(Base):
     user: Mapped["User"] = relationship("User")
 
 
+class CalendarComponentParseTask(Base):
+    __tablename__ = "calendar_component_parse_tasks"
+    __table_args__ = (
+        UniqueConstraint("request_id", "component_key", name="uq_calendar_component_parse_tasks_request_component"),
+        Index("ix_calendar_component_parse_tasks_request_status", "request_id", "status"),
+        Index("ix_calendar_component_parse_tasks_source_request", "source_id", "request_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    request_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), nullable=False)
+    component_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    external_event_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    vevent_uid: Mapped[str] = mapped_column(String(255), nullable=False)
+    recurrence_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    fingerprint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    component_ical_b64: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[CalendarComponentParseStatus] = mapped_column(
+        SAEnum(CalendarComponentParseStatus, name="calendar_component_parse_status", native_enum=False),
+        nullable=False,
+        default=CalendarComponentParseStatus.PENDING,
+        server_default=CalendarComponentParseStatus.PENDING.value,
+    )
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    parsed_record_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    source: Mapped["InputSource"] = relationship("InputSource")
+
+
 __all__ = [
+    "CalendarComponentParseStatus",
+    "CalendarComponentParseTask",
     "ConnectorResultStatus",
     "IngestJob",
     "IngestJobStatus",

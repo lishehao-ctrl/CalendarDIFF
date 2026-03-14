@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import redis
 from sqlalchemy.orm import Session, sessionmaker
@@ -25,6 +26,14 @@ class RateLimitRejected(RuntimeError):
     def __init__(self, *, reason: str) -> None:
         self.reason = reason
         super().__init__(reason)
+
+
+@dataclass(frozen=True)
+class CalendarChangedComponentInput:
+    component_key: str
+    external_event_id: str
+    component_ical_b64: str
+    fingerprint: str | None = None
 
 
 def parse_with_llm(
@@ -190,75 +199,17 @@ def parse_calendar_delta_with_llm(
             request_id=request_id,
         )
         for item in changed_components:
-            if not isinstance(item, dict):
+            normalized = normalize_calendar_changed_component_input(item)
+            if normalized is None:
                 continue
-            component_key_raw = item.get("component_key")
-            component_ical_b64 = item.get("component_ical_b64")
-            if not isinstance(component_key_raw, str) or not component_key_raw.strip():
-                continue
-            if not isinstance(component_ical_b64, str) or not component_ical_b64:
-                continue
-            component_key = component_key_raw.strip()
-            external_event_id_raw = item.get("external_event_id")
-            if isinstance(external_event_id_raw, str) and external_event_id_raw.strip():
-                external_event_id = external_event_id_raw.strip()
-            else:
-                external_event_id = external_event_id_from_component_key(component_key)
-
-            try:
-                component_bytes = base64.b64decode(component_ical_b64.encode("utf-8"), validate=True)
-            except Exception as exc:
-                raise LlmParseError(
-                    code="llm_calendar_delta_payload_invalid",
-                    message=f"invalid calendar delta component_ical_b64: {exc}",
-                    retryable=False,
-                    provider=provider,
-                    parser_version="mainline",
-                ) from exc
-
-            try:
-                component_text = component_bytes.decode("utf-8")
-            except Exception as exc:
-                raise LlmParseError(
-                    code="llm_calendar_delta_payload_invalid",
-                    message=f"calendar delta component is not utf-8: {exc}",
-                    retryable=False,
-                    provider=provider,
-                    parser_version="mainline",
-                ) from exc
-
-            calendar_text = build_minimal_calendar_text(component_text)
-
-            def _parse_calendar_item() -> object:
-                return parse_calendar_content(
-                    db=db,
-                    content=calendar_text.encode("utf-8"),
-                    context=context,
-                )
-
-            parser_output = invoke_parser_with_limit(
+            parsed_records = parse_calendar_changed_component_with_llm(
+                db=db,
                 redis_client=redis_client,
                 stream_key=stream_key,
-                parse_call=_parse_calendar_item,
+                provider=provider,
+                context=context,
+                component=normalized,
             )
-            parsed_records = attach_parser_metadata(records=parser_output.records, parser_output=parser_output)
-            for record in parsed_records:
-                if not isinstance(record, dict) or record.get("record_type") != "calendar.event.extracted":
-                    continue
-                payload = record.get("payload")
-                if not isinstance(payload, dict):
-                    continue
-                payload["raw_ics_component_b64"] = component_ical_b64
-                source_facts_raw = payload.get("source_facts")
-                source_facts = source_facts_raw if isinstance(source_facts_raw, dict) else {}
-                payload["source_facts"] = SourceFacts.model_validate(
-                    {
-                        **source_facts,
-                        "external_event_id": external_event_id,
-                        "component_key": component_key,
-                    }
-                ).model_dump(mode="json")
-                payload["component_key"] = component_key
             records.extend(parsed_records)
 
     status = ConnectorResultStatus.CHANGED if records else ConnectorResultStatus.NO_CHANGE
@@ -285,6 +236,96 @@ def build_minimal_calendar_text(component_ical_text: str) -> str:
             "",
         ]
     )
+
+
+def normalize_calendar_changed_component_input(item: dict) -> CalendarChangedComponentInput | None:
+    if not isinstance(item, dict):
+        return None
+    component_key_raw = item.get("component_key")
+    component_ical_b64 = item.get("component_ical_b64")
+    if not isinstance(component_key_raw, str) or not component_key_raw.strip():
+        return None
+    if not isinstance(component_ical_b64, str) or not component_ical_b64:
+        return None
+    component_key = component_key_raw.strip()
+    external_event_id_raw = item.get("external_event_id")
+    if isinstance(external_event_id_raw, str) and external_event_id_raw.strip():
+        external_event_id = external_event_id_raw.strip()
+    else:
+        external_event_id = external_event_id_from_component_key(component_key)
+    fingerprint = item.get("fingerprint") if isinstance(item.get("fingerprint"), str) and item.get("fingerprint").strip() else None
+    return CalendarChangedComponentInput(
+        component_key=component_key,
+        external_event_id=external_event_id,
+        component_ical_b64=component_ical_b64,
+        fingerprint=fingerprint,
+    )
+
+
+def parse_calendar_changed_component_with_llm(
+    *,
+    db: Session,
+    redis_client: redis.Redis,
+    stream_key: str,
+    provider: str,
+    context: ParserContext,
+    component: CalendarChangedComponentInput,
+) -> list[dict]:
+    try:
+        component_bytes = base64.b64decode(component.component_ical_b64.encode("utf-8"), validate=True)
+    except Exception as exc:
+        raise LlmParseError(
+            code="llm_calendar_delta_payload_invalid",
+            message=f"invalid calendar delta component_ical_b64: {exc}",
+            retryable=False,
+            provider=provider,
+            parser_version="mainline",
+        ) from exc
+
+    try:
+        component_text = component_bytes.decode("utf-8")
+    except Exception as exc:
+        raise LlmParseError(
+            code="llm_calendar_delta_payload_invalid",
+            message=f"calendar delta component is not utf-8: {exc}",
+            retryable=False,
+            provider=provider,
+            parser_version="mainline",
+        ) from exc
+
+    calendar_text = build_minimal_calendar_text(component_text)
+
+    def _parse_calendar_item() -> object:
+        return parse_calendar_content(
+            db=db,
+            content=calendar_text.encode("utf-8"),
+            context=context,
+        )
+
+    parser_output = invoke_parser_with_limit(
+        redis_client=redis_client,
+        stream_key=stream_key,
+        parse_call=_parse_calendar_item,
+    )
+    parsed_records = attach_parser_metadata(records=parser_output.records, parser_output=parser_output)
+    for record in parsed_records:
+        if not isinstance(record, dict) or record.get("record_type") != "calendar.event.extracted":
+            continue
+        payload = record.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        payload["raw_ics_component_b64"] = component.component_ical_b64
+        source_facts_raw = payload.get("source_facts")
+        source_facts = source_facts_raw if isinstance(source_facts_raw, dict) else {}
+        payload["source_facts"] = SourceFacts.model_validate(
+            {
+                **source_facts,
+                "external_event_id": component.external_event_id,
+                "component_key": component.component_key,
+            }
+        ).model_dump(mode="json")
+        payload["component_key"] = component.component_key
+    return parsed_records
 
 
 def invoke_parser_with_limit(*, redis_client: redis.Redis, stream_key: str, parse_call: Callable[[], object]):
@@ -321,8 +362,11 @@ def is_rate_limited_llm_error(exc: LlmParseError) -> bool:
 
 
 __all__ = [
+    "CalendarChangedComponentInput",
     "RateLimitRejected",
     "build_minimal_calendar_text",
+    "normalize_calendar_changed_component_input",
+    "parse_calendar_changed_component_with_llm",
     "invoke_parser_with_limit",
     "is_rate_limited_llm_error",
     "parse_calendar_delta_with_llm",

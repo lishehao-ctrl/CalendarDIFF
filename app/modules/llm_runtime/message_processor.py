@@ -4,6 +4,7 @@ import redis
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.modules.ingestion.llm_parsers import LlmParseError
+from app.modules.llm_runtime.calendar_fanout import is_calendar_fanout_reason, process_calendar_fanout_message
 from app.modules.llm_runtime.message_preflight import prepare_message_for_processing
 from app.modules.llm_runtime.parse_pipeline import RateLimitRejected, is_rate_limited_llm_error, parse_with_llm
 from app.modules.llm_runtime.transitions import apply_llm_failure_transition, mark_llm_success
@@ -26,6 +27,15 @@ def process_parse_task_message(
         )
     if not preflight.should_parse:
         return bool(preflight.ack_on_skip)
+
+    if is_calendar_fanout_reason(message.reason):
+        return process_calendar_fanout_message(
+            message=message,
+            preflight=preflight,
+            redis_client=redis_client,
+            stream_key=stream_key,
+            session_factory=session_factory,
+        )
 
     try:
         records, final_status = parse_with_llm(

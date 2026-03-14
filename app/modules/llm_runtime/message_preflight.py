@@ -66,7 +66,7 @@ def prepare_message_for_processing(
     if job.status == IngestJobStatus.SUCCEEDED:
         return MessagePreflight(
             should_parse=False,
-            ack_on_skip=False,
+            ack_on_skip=True,
             parse_payload={},
             cursor_patch={},
             provider_hint="",
@@ -74,7 +74,7 @@ def prepare_message_for_processing(
     if job.status in {IngestJobStatus.FAILED, IngestJobStatus.DEAD_LETTER}:
         return MessagePreflight(
             should_parse=False,
-            ack_on_skip=False,
+            ack_on_skip=True,
             parse_payload={},
             cursor_patch={},
             provider_hint="",
