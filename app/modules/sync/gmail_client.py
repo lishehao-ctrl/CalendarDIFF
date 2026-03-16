@@ -12,6 +12,7 @@ from urllib.parse import urlencode
 import httpx
 
 from app.core.config import get_settings
+from app.modules.common.text_sanitize import sanitize_markup_text
 from app.core.oauth_config import build_oauth_runtime_config
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -228,7 +229,7 @@ class GmailClient:
             params={"format": "full"},
         )
         thread_id = str(payload.get("threadId") or "") or None
-        snippet = str(payload.get("snippet") or "")
+        snippet = sanitize_markup_text(str(payload.get("snippet") or ""), max_length=1024) or ""
         internal_date_raw = payload.get("internalDate")
         internal_date = _internal_date_ms_to_iso8601(internal_date_raw)
 
@@ -248,9 +249,9 @@ class GmailClient:
                 name = str(header.get("name") or "")
                 value = str(header.get("value") or "")
                 if name.lower() == "subject":
-                    subject = value
+                    subject = sanitize_markup_text(value, max_length=512) or value
                 if name.lower() == "from":
-                    from_header = value
+                    from_header = sanitize_markup_text(value, max_length=512) or value
             body_text = _extract_plain_text_from_payload(payload_obj)
 
         return GmailMessageMetadata(
@@ -461,10 +462,10 @@ def _extract_plain_text_from_payload(payload: dict) -> str | None:
     text = _extract_plain_text_from_part(payload)
     if text is None:
         return None
-    cleaned = text.strip()
-    if not cleaned:
+    cleaned = sanitize_markup_text(text, max_length=20000)
+    if cleaned is None:
         return None
-    return cleaned[:20000]
+    return cleaned
 
 
 def _extract_plain_text_from_part(part: dict) -> str | None:

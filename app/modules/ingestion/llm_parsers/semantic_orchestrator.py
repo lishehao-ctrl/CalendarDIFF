@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from html import unescape
 import logging
 import re
 from typing import Any, TypeVar, cast
@@ -10,6 +9,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
 from app.modules.common.payload_schemas import SourceFacts
+from app.modules.common.text_sanitize import sanitize_markup_text
 from app.modules.core_ingest.semantic_event_service import normalize_semantic_event, split_due_parts
 from app.modules.ingestion.ics_delta.fingerprint import build_component_key, build_external_event_id
 from app.modules.ingestion.llm_parsers.contracts import LlmParseError, ParserContext, ParserOutput
@@ -37,11 +37,6 @@ GMAIL_UPSTREAM_ERROR_CODE = "parse_llm_gmail_upstream_error"
 CALENDAR_SCHEMA_INVALID_CODE = "parse_llm_calendar_schema_invalid"
 CALENDAR_UPSTREAM_ERROR_CODE = "parse_llm_calendar_upstream_error"
 
-_HTML_BREAK_RE = re.compile(r"(?i)<(?:br|/p|/div|/li|/tr|/h[1-6])[^>]*>")
-_HTML_TAG_RE = re.compile(r"(?s)<[^>]+>")
-_HTML_SCRIPT_STYLE_RE = re.compile(r"(?is)<(script|style)\b[^>]*>.*?</\1>")
-_WHITESPACE_RE = re.compile(r"[ \t\r\f\v]+")
-_BLANK_LINE_RE = re.compile(r"\n{3,}")
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -133,7 +128,7 @@ def _run_gmail_workflow(*, db: Session, payload: dict, context: ParserContext) -
     synthetic_segment = GmailPlannerSegment(
         segment_index=0,
         anchor=None,
-        snippet=_first_non_empty_text(payload.get("snippet"), payload.get("body_text"), payload.get("subject")),
+        snippet=_first_non_empty_text(_sanitize_gmail_text(payload.get("snippet")), _sanitize_gmail_text(payload.get("body_text")), _sanitize_gmail_text(payload.get("subject"))),
         segment_type_hint="directive" if mode.mode == "directive" else "atomic",
     )
 
@@ -624,10 +619,10 @@ def _build_gmail_cache_prefix(*, payload: dict) -> dict[str, Any]:
         "policy_text": GMAIL_CACHE_POLICY_TEXT,
         "source_message": {
             "message_id": payload.get("message_id"),
-            "subject": payload.get("subject"),
-            "snippet": payload.get("snippet"),
-            "body_text": payload.get("body_text"),
-            "from_header": payload.get("from_header"),
+            "subject": _sanitize_gmail_text(payload.get("subject")),
+            "snippet": _sanitize_gmail_text(payload.get("snippet")),
+            "body_text": _sanitize_gmail_text(payload.get("body_text"), max_length=12000),
+            "from_header": _sanitize_gmail_text(payload.get("from_header")),
             "thread_id": payload.get("thread_id"),
             "internal_date": payload.get("internal_date"),
         },
@@ -703,21 +698,13 @@ def _component_datetime(value: object):
 
 
 def _sanitize_calendar_text(value: str | None) -> str | None:
+    return sanitize_markup_text(value, max_length=1024)
+
+
+def _sanitize_gmail_text(value: object, *, max_length: int | None = 2048) -> str | None:
     if not isinstance(value, str):
         return None
-    text = value.strip()
-    if not text:
-        return None
-    text = _HTML_SCRIPT_STYLE_RE.sub(" ", text)
-    text = _HTML_BREAK_RE.sub("\n", text)
-    text = _HTML_TAG_RE.sub(" ", text)
-    text = unescape(text)
-    text = text.replace("\r\n", "\n").replace("\r", "\n")
-    text = _WHITESPACE_RE.sub(" ", text)
-    text = re.sub(r" *\n *", "\n", text)
-    text = _BLANK_LINE_RE.sub("\n\n", text)
-    cleaned = text.strip()
-    return cleaned or None
+    return sanitize_markup_text(value, max_length=max_length)
 
 
 def _parse_optional_datetime(value: object):

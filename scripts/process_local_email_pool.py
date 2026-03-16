@@ -29,7 +29,6 @@ FIXTURE_ROOT = REPO_ROOT / "tests" / "fixtures" / "private" / "email_pool"
 DERIVED_SET_ROOT = FIXTURE_ROOT / "derived_sets"
 OUTPUT_ROOT = REPO_ROOT / "output"
 VALID_BUCKETS = ("synthetic_ddlchange", "oauth_filtered_150", "oauth_random_300")
-DEFAULT_BUCKET = "synthetic_ddlchange"
 ATOMIC_FIELDS = [
     "course_dept",
     "course_number",
@@ -125,7 +124,7 @@ def parse_args() -> argparse.Namespace:
         action="append",
         choices=["all", *VALID_BUCKETS],
         default=None,
-        help="Bucket(s) to process. Repeatable. Defaults to synthetic_ddlchange.",
+        help="Bucket(s) to process. Repeatable. Defaults to all three Gmail local buckets.",
     )
     parser.add_argument(
         "--sample-id",
@@ -139,10 +138,10 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Derived-set name(s) under tests/fixtures/private/email_pool/derived_sets. Repeatable.",
     )
-    parser.add_argument("--limit", type=int, default=8, help="Samples per selected bucket when not using sample_id or derived_set. Use -1 for all.")
+    parser.add_argument("--limit", type=int, default=4, help="Samples per selected bucket when not using sample_id or derived_set. Use -1 for all.")
     parser.add_argument("--seed", type=int, default=20260316, help="Deterministic sampling seed.")
     parser.add_argument("--source-id", type=int, default=2, help="Source id used in parser context only.")
-    parser.add_argument("--parallel", type=int, default=1, help="How many samples to process concurrently.")
+    parser.add_argument("--parallel", type=int, default=12, help="How many samples to process concurrently.")
     parser.add_argument(
         "--cache-mode",
         choices=["enable", "disable"],
@@ -217,7 +216,7 @@ def main() -> None:
 
 def resolve_selected_buckets(raw_buckets: list[str] | None) -> list[str]:
     if not raw_buckets:
-        return [DEFAULT_BUCKET]
+        return list(VALID_BUCKETS)
     if "all" in raw_buckets:
         return list(VALID_BUCKETS)
     seen: set[str] = set()

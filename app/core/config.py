@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     llm_queue_stream_key: str = "llm:parse:stream"
     llm_queue_group: str = "llm-parse-workers"
     llm_queue_consumer_poll_ms: int = 500
-    llm_worker_concurrency: int = 24
+    llm_worker_concurrency: int = 12
     llm_rate_limit_target_rps: int = 40
     llm_rate_limit_hard_rps: int = 50
     llm_rate_limit_burst: int = 50
