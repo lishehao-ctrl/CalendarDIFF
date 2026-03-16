@@ -29,3 +29,6 @@
 - For tasks involving GitHub remotes, AWS release/sync, live `.env`, Gmail OAuth deployment, or host nginx changes, read `skills/aws-release/SKILL.md` before making changes.
 - Prefer `scripts/release_aws_main.sh` for the normal push -> AWS sync -> verify workflow.
 - If a host-only fix is applied on AWS, mirror the intended architecture back into repo docs before ending the task.
+
+## Project semantic workflow
+- For tasks involving CalendarDIFF semantic logic, review flows, canonical event state, route/docs/contracts cleanup, or other work that must stay aligned with the project purpose, read `skills/calendardiff-entity-first/SKILL.md` before making changes.

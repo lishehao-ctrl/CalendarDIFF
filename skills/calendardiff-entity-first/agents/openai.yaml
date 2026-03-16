@@ -1,0 +1,4 @@
+interface:
+  display_name: "CalendarDIFF Entity First"
+  short_description: "Entity-first guidance for CalendarDIFF semantic work"
+  default_prompt: "Use $calendardiff-entity-first to keep CalendarDIFF changes aligned with entity-first semantics and the monolith runtime."
