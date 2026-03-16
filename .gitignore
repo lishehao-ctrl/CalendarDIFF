@@ -28,11 +28,9 @@ tools/labeling/.env
 !/data/synthetic/ddlchange_160/**
 !/data/synthetic/ddlchange_160/ics/pairs/*.ics
 .playwright-cli/
-output/dev-stack/
-output/playwright/
+output/*
+!output/README.md
 frontend/tsconfig.typecheck.tsbuildinfo
-output/.DS_Store
-output/frontend-logs/
 .cache/
 frontend/.next-dev/
 frontend/.next-prod/
