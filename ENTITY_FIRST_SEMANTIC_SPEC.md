@@ -207,12 +207,21 @@
 
 ### 7.1 稳定路由族
 
-这次清理不要求改动主 route family：
+当前默认 public route family 固定为：
 
+- `/auth/*`
+- `/profile/me`
 - `/sources`
-- `/sync-requests`
+- `/onboarding/*`
 - `/review/*`
-- `/users/*`
+- `/events/manual*`
+- `/health`
+
+补充约束：
+
+- family/raw-type 管理归到 `/review/course-work-item-*`
+- manual event 管理归到 `/events/manual*`
+- `/users/*` 不再是活跃 public route family
 
 ### 7.2 review DTO 原则
 
@@ -265,13 +274,16 @@
 - `user/canonical input loading`
 - 将 `inputs/events/snapshots/snapshot_events` 描述成活跃主模型
 - 从 `app.db.models.review` 导入旧 `Input` / `InputType` / `Event` / `Snapshot`
+- 将 `/users/*` 描述成当前活跃 public route family
+- 将 split-service topology 描述成当前默认 runtime
 
 ## 8.3 允许保留的合法词
 
 下面这些词虽然长得像旧表达，但仍然是合法的：
 
 - `input_sources`
-- `input-service`
+- `input source`
+- `source input`
 - `sync input source` 这类字面描述外部连接器的文本
 - 通用英语里的 `event`，只要不是在描述旧 `events` 表
 - ICS delta/parser 领域里的 `snapshot`，只要不是旧 `snapshots` 表
@@ -320,7 +332,7 @@
 建议至少执行：
 
 ```bash
-PYTHONPATH=. python -m pytest -q \
+python -m pytest -q \
   tests/test_review_items_summary_api.py \
   tests/test_core_ingest_pending_proposal_rebuild.py \
   tests/test_review_change_evidence_preview_api.py \
@@ -337,7 +349,7 @@ PYTHONPATH=. python -m pytest -q \
 如有改动 OpenAPI：
 
 ```bash
-PYTHONPATH=. python scripts/update_openapi_snapshots.py
+python scripts/update_openapi_snapshots.py
 ```
 
 如有改动 Python runtime：

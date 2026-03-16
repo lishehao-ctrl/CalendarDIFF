@@ -61,12 +61,6 @@ SERVICE_NAME=backend RUN_MIGRATIONS=true PORT=8200 ./scripts/start_service.sh
 - `/onboarding/*`
 - `/health`
 
-Removed public paths:
-- `/users/me`
-- `/users/me/manual-events*`
-- `/users/me/course-work-item-families*`
-- `/users/me/course-work-item-raw-types*`
-
 ## OpenAPI
 A single canonical snapshot is maintained at:
 

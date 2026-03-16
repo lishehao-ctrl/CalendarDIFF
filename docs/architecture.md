@@ -37,13 +37,6 @@ There is no default split runtime entrypoint set anymore.
 ## Internal execution
 Worker loops for ingestion, review apply, notification dispatch, and llm parsing run inside the monolith as background tasks. They still use their existing enable/tick env vars, but they are no longer separate deployable services.
 
-## Removed default paths
-These legacy public routes are intentionally absent:
-- `/users/me`
-- `/users/me/manual-events*`
-- `/users/me/course-work-item-families*`
-- `/users/me/course-work-item-raw-types*`
-
 ## Contracts
 - Canonical OpenAPI snapshot: `contracts/openapi/public-service.json`
 - Runtime flow and module ownership docs live in:
