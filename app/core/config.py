@@ -11,12 +11,6 @@ class Settings(BaseSettings):
 
     app_api_key: str = "dev-api-key-change-me"
     app_secret_key: str = "7J2Btjj4GW8jIP5MErM81QOZeK4c7xYknVxKsgKMnmk="
-    internal_service_token_input: str = "dev-internal-token-input"
-    internal_service_token_ingest: str = "dev-internal-token-ingest"
-    internal_service_token_review: str = "dev-internal-token-review"
-    internal_service_token_notification: str = "dev-internal-token-notification"
-    internal_service_token_llm: str = "dev-internal-token-llm"
-    internal_service_token_ops: str = "dev-internal-token-ops"
     public_web_origins: str = "http://localhost:8200,http://127.0.0.1:8200"
     frontend_app_base_url: str | None = None
 

@@ -11,12 +11,14 @@ from app.modules.onboarding.router import router as onboarding_router
 from app.modules.profile.router import router as profile_router
 from app.modules.review_changes.router import router as review_changes_router
 from app.modules.review_links.router import router as review_links_router
-from app.modules.users.router import router as users_router
+from app.modules.review_taxonomy.router import router as review_taxonomy_router
+from app.runtime.monolith_workers import (
+    run_ingest_worker,
+    run_llm_worker,
+    run_notification_worker,
+    run_review_apply_worker,
+)
 from app.service_app import create_service_app
-from services.ingest_api.main import _run_ingest_worker
-from services.llm_api.main import _run_llm_worker
-from services.notification_api.main import _run_notification_worker
-from services.review_api.main import _run_review_apply_worker
 
 app = create_service_app(
     title="CalendarDIFF API",
@@ -26,19 +28,19 @@ app = create_service_app(
         health_router,
         auth_router,
         profile_router,
-        users_router,
         events_router,
         onboarding_router,
         input_public_router,
         input_control_plane_router,
+        review_taxonomy_router,
         review_changes_router,
         review_links_router,
     ],
     worker_tasks=[
-        _run_ingest_worker,
-        _run_llm_worker,
-        _run_review_apply_worker,
-        _run_notification_worker,
+        run_ingest_worker,
+        run_llm_worker,
+        run_review_apply_worker,
+        run_notification_worker,
     ],
     startup_hooks=[log_input_oauth_startup, bootstrap_env_admin_user],
 )

@@ -80,12 +80,6 @@ def configure_test_environment(test_database_url: str) -> Generator[None, None, 
 
     os.environ["APP_API_KEY"] = "test-api-key"
     os.environ["APP_SECRET_KEY"] = "7J2Btjj4GW8jIP5MErM81QOZeK4c7xYknVxKsgKMnmk="
-    os.environ["INTERNAL_SERVICE_TOKEN_INPUT"] = "test-internal-token-input"
-    os.environ["INTERNAL_SERVICE_TOKEN_INGEST"] = "test-internal-token-ingest"
-    os.environ["INTERNAL_SERVICE_TOKEN_REVIEW"] = "test-internal-token-review"
-    os.environ["INTERNAL_SERVICE_TOKEN_NOTIFICATION"] = "test-internal-token-notification"
-    os.environ["INTERNAL_SERVICE_TOKEN_LLM"] = "test-internal-token-llm"
-    os.environ["INTERNAL_SERVICE_TOKEN_OPS"] = "test-internal-token-ops"
     os.environ["DEFAULT_NOTIFY_EMAIL"] = "notify@example.com"
     os.environ["DATABASE_URL"] = test_database_url
     os.environ["SCHEMA_GUARD_ENABLED"] = "true"

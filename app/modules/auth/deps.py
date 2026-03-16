@@ -27,6 +27,8 @@ def get_onboarded_authenticated_user_or_409(
     user: User = Depends(get_authenticated_user_or_401),
     db: Session = Depends(get_db),
 ) -> User:
+    if user.onboarding_completed_at is not None:
+        return user
     status_payload = get_onboarding_status_for_user(db, user=user)
     if status_payload.stage != "ready":
         raise HTTPException(

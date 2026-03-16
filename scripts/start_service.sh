@@ -7,7 +7,7 @@ PORT="${PORT:-8000}"
 RUN_MIGRATIONS="${RUN_MIGRATIONS:-false}"
 
 if [ -z "${SERVICE_NAME}" ]; then
-  echo "SERVICE_NAME is required (backend|public|input|ingest|review|notification|llm)" >&2
+  echo "SERVICE_NAME is required (backend)" >&2
   exit 1
 fi
 
@@ -15,26 +15,8 @@ case "${SERVICE_NAME}" in
   backend)
     APP_MODULE="services.app_api.main:app"
     ;;
-  public)
-    APP_MODULE="services.app_api.main:app"
-    ;;
-  input)
-    APP_MODULE="services.input_api.main:app"
-    ;;
-  ingest)
-    APP_MODULE="services.ingest_api.main:app"
-    ;;
-  review)
-    APP_MODULE="services.review_api.main:app"
-    ;;
-  notification)
-    APP_MODULE="services.notification_api.main:app"
-    ;;
-  llm)
-    APP_MODULE="services.llm_api.main:app"
-    ;;
   *)
-    echo "invalid SERVICE_NAME='${SERVICE_NAME}' (expected backend|public|input|ingest|review|notification|llm)" >&2
+    echo "invalid SERVICE_NAME='${SERVICE_NAME}' (expected backend)" >&2
     exit 1
     ;;
 esac

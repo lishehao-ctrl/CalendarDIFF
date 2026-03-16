@@ -37,7 +37,7 @@ def test_gmail_client_honors_endpoint_overrides(monkeypatch) -> None:
 
 
 def test_gmail_client_uses_runtime_oauth_parameters(monkeypatch) -> None:
-    monkeypatch.setenv("OAUTH_PUBLIC_BASE_URL", "http://localhost:8201")
+    monkeypatch.setenv("OAUTH_PUBLIC_BASE_URL", "http://localhost:8200")
     monkeypatch.setenv("GMAIL_OAUTH_SCOPE", "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email")
     monkeypatch.setenv("GMAIL_OAUTH_ACCESS_TYPE", "online")
     monkeypatch.setenv("GMAIL_OAUTH_PROMPT", "select_account")
@@ -51,14 +51,14 @@ def test_gmail_client_uses_runtime_oauth_parameters(monkeypatch) -> None:
         lambda: GmailOAuthClientSecrets(
             client_id="client-id",
             client_secret="client-secret",
-            redirect_uris=("http://localhost:8201/oauth/callbacks/gmail",),
+            redirect_uris=("http://localhost:8200/oauth/callbacks/gmail",),
         ),
     )
 
     authorization_url = client.build_authorization_url(state="state-123")
     query = parse_qs(urlparse(authorization_url).query)
 
-    assert query["redirect_uri"] == ["http://localhost:8201/oauth/callbacks/gmail"]
+    assert query["redirect_uri"] == ["http://localhost:8200/oauth/callbacks/gmail"]
     assert query["scope"] == ["https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email"]
     assert query["access_type"] == ["online"]
     assert query["prompt"] == ["select_account"]
@@ -67,7 +67,7 @@ def test_gmail_client_uses_runtime_oauth_parameters(monkeypatch) -> None:
 
 
 def test_gmail_client_rejects_redirect_uri_not_registered(monkeypatch) -> None:
-    monkeypatch.setenv("OAUTH_PUBLIC_BASE_URL", "http://localhost:8201")
+    monkeypatch.setenv("OAUTH_PUBLIC_BASE_URL", "http://localhost:8200")
     get_settings.cache_clear()
 
     client = GmailClient()

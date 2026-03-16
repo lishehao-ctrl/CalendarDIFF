@@ -7,8 +7,8 @@ from app.core.security import require_public_api_key
 from app.db.models.shared import User
 from app.db.session import get_db
 from app.modules.auth.deps import get_authenticated_user_or_401
-from app.modules.users.router import _to_user_response
 from app.modules.users.schemas import UserResponse, UserUpdateRequest
+from app.modules.users.serializers import to_user_response
 from app.modules.users.service import update_current_user
 
 router = APIRouter(prefix="/profile", tags=["profile"], dependencies=[Depends(require_public_api_key)])
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/profile", tags=["profile"], dependencies=[Depends(re
 
 @router.get("/me", response_model=UserResponse)
 def get_profile(user: User = Depends(get_authenticated_user_or_401)) -> UserResponse:
-    return _to_user_response(user)
+    return to_user_response(user)
 
 
 @router.patch("/me", response_model=UserResponse)
@@ -39,7 +39,7 @@ def patch_profile(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return _to_user_response(updated)
+    return to_user_response(updated)
 
 
 __all__ = ["router"]

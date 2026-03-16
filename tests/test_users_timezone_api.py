@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.db.models.shared import User
 
 
+
 def test_get_user_returns_timezone_name(input_client, db_session, auth_headers) -> None:
     user = User(
         email="tz-user@example.com",
@@ -17,11 +18,12 @@ def test_get_user_returns_timezone_name(input_client, db_session, auth_headers) 
     db_session.commit()
 
     headers = auth_headers(input_client, user=user)
-    response = input_client.get("/users/me", headers=headers)
+    response = input_client.get("/profile/me", headers=headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["timezone_name"] == "UTC"
     assert payload["timezone_source"] == "auto"
+
 
 
 def test_patch_user_timezone_name_validates_iana_name(input_client, db_session, auth_headers) -> None:
@@ -36,7 +38,7 @@ def test_patch_user_timezone_name_validates_iana_name(input_client, db_session, 
     headers = auth_headers(input_client, user=user)
 
     patch_response = input_client.patch(
-        "/users/me",
+        "/profile/me",
         headers=headers,
         json={"timezone_name": "America/Los_Angeles", "timezone_source": "manual"},
     )
@@ -51,12 +53,13 @@ def test_patch_user_timezone_name_validates_iana_name(input_client, db_session, 
     assert refreshed.timezone_source == "manual"
 
     invalid_response = input_client.patch(
-        "/users/me",
+        "/profile/me",
         headers=headers,
         json={"timezone_name": "Mars/Olympus"},
     )
     assert invalid_response.status_code == 422
     assert "timezone_name must be a valid IANA timezone" in str(invalid_response.json()["detail"])
+
 
 
 def test_patch_user_auto_timezone_preserves_auto_mode(input_client, db_session, auth_headers) -> None:
@@ -70,7 +73,7 @@ def test_patch_user_auto_timezone_preserves_auto_mode(input_client, db_session, 
 
     headers = auth_headers(input_client, user=user)
     patch_response = input_client.patch(
-        "/users/me",
+        "/profile/me",
         headers=headers,
         json={"timezone_name": "America/New_York", "timezone_source": "auto"},
     )
