@@ -7,6 +7,7 @@ from collections.abc import Mapping
 import httpx
 
 from app.modules.llm_gateway.contracts import LlmApiModeLiteral, LlmGatewayError, ResolvedLlmProfile
+from app.modules.llm_gateway.request_limiter import get_global_request_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ class OpenAICompatTransport:
         payload: dict,
         request_context: Mapping[str, object] | None,
     ) -> tuple[dict, int, str | None]:
+        acquire_result = get_global_request_limiter().acquire()
         endpoint = build_openai_compat_endpoint(base_url=profile.base_url, api_mode=profile.api_mode)
         headers = {
             "Authorization": f"Bearer {profile.api_key}",
@@ -69,6 +71,20 @@ class OpenAICompatTransport:
                 pool=max(profile.timeout_seconds, 1.0),
             )
         )
+        if acquire_result.waited_ms > 0:
+            logger.info(
+                "llm_transport.window_wait request_id=%s source_id=%s task_name=%s provider_id=%s model=%s "
+                "waited_ms=%s in_window=%s window_seconds=%s max_requests=%s",
+                _ctx(request_context, "request_id"),
+                _ctx(request_context, "source_id"),
+                _ctx(request_context, "task_name"),
+                profile.provider_id,
+                profile.model,
+                acquire_result.waited_ms,
+                acquire_result.in_window,
+                acquire_result.window_seconds,
+                acquire_result.max_requests,
+            )
         started = time.perf_counter()
         try:
             with httpx.Client(timeout=timeout, follow_redirects=True) as client:

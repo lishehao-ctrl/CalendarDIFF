@@ -20,6 +20,10 @@ from app.modules.llm_gateway.contracts import (
     LlmInvokeResult,
     ResolvedLlmProfile,
 )
+from app.modules.llm_gateway.runtime_control import (
+    get_llm_invoke_observer,
+    get_session_cache_mode_override,
+)
 from app.modules.llm_gateway.json_contract import truncate_user_payload, validate_schema
 from app.modules.llm_gateway.registry import resolve_llm_profile
 from app.modules.llm_gateway.retry_policy import LLM_FORMAT_MAX_ATTEMPTS, is_format_retryable_code
@@ -143,7 +147,13 @@ class LlmGateway:
                 effective_profile,
                 api_mode=invoke_request.api_mode_override,
             )
-        if invoke_request.session_cache_mode != "inherit":
+        session_cache_mode_override = get_session_cache_mode_override()
+        if session_cache_mode_override in {"enable", "disable"}:
+            effective_profile = replace(
+                effective_profile,
+                session_cache_enabled=(session_cache_mode_override == "enable"),
+            )
+        elif invoke_request.session_cache_mode != "inherit":
             effective_profile = replace(
                 effective_profile,
                 session_cache_enabled=(invoke_request.session_cache_mode == "enable"),
@@ -178,7 +188,7 @@ class LlmGateway:
             api_mode=effective_profile.api_mode,
         )
 
-        return LlmInvokeResult(
+        result = LlmInvokeResult(
             json_object=extracted_json,
             provider_id=effective_profile.provider_id,
             model=effective_profile.model,
@@ -188,6 +198,10 @@ class LlmGateway:
             upstream_request_id=upstream_request_id,
             raw_usage=raw_usage,
         )
+        observer = get_llm_invoke_observer()
+        if observer is not None:
+            observer(invoke_request, result)
+        return result
 
 
 _GLOBAL_GATEWAY = LlmGateway()

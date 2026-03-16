@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     ingestion_llm_timeout_seconds: float | None = None
     ingestion_llm_max_retries: int | None = None
     ingestion_llm_max_input_chars: int | None = None
+    llm_request_window_seconds: int = 60
+    llm_max_requests_per_window: int = 480
 
     redis_url: str | None = None
     llm_queue_stream_key: str = "llm:parse:stream"
