@@ -11,7 +11,7 @@ Use this skill for CalendarDIFF work that changes product semantics or repo trut
 
 - Gmail / ICS detection logic
 - proposal generation and review flows
-- `event_entities`, `changes`, `source_event_observations`, link tables
+- `event_entities`, `changes`, `source_event_observations`, and link tables
 - manual event, family, raw-type, or notification behavior
 - API / OpenAPI / docs cleanup that must match the current product model
 
@@ -29,6 +29,8 @@ Read these when relevant:
 - API surface or route changes: `docs/api_surface_current.md`
 - Runtime/module boundary changes: `docs/architecture.md`
 - Monolith deploy/runtime defaults: `docs/deploy_three_layer_runtime.md`
+- File locations and test targets: [references/file-map.md](references/file-map.md)
+- Validation commands by change type: [references/validation.md](references/validation.md)
 
 ## Product frame
 
@@ -58,7 +60,7 @@ Keep these invariants intact:
 - Projection layer: user-facing display should prefer `course + family + ordinal`, but that is display only.
 - Evidence: review evidence must be frozen on `changes`; do not make preview depend on files, secrets, cursors, or live observations.
 
-## Current runtime and route assumptions
+## Current runtime assumptions
 
 Default runtime is one monolith backend process.
 
@@ -110,33 +112,4 @@ Stop and call it out if a change would reintroduce any of these patterns:
 
 ## Validation
 
-Run the smallest relevant checks first. For core semantic changes, prefer targeted backend tests before broad suites.
-
-Useful baselines:
-
-```bash
-pytest tests/test_review_*.py \
-  tests/test_manual_events_api.py \
-  tests/test_course_work_item_families_api.py \
-  tests/test_course_raw_types_api.py \
-  tests/test_users_timezone_api.py \
-  tests/test_openapi_contract_snapshots.py \
-  tests/test_runtime_entrypoints.py
-```
-
-If parser/apply logic changed, add the relevant Gmail / ICS tests.
-
-If frontend DTO consumption or routes changed:
-
-```bash
-cd frontend
-npm run typecheck
-npm run lint
-NEXT_DIST_DIR=.next-prod npm run build
-```
-
-If OpenAPI changed:
-
-```bash
-python scripts/update_openapi_snapshots.py
-```
+Run the smallest relevant checks first. Use [references/validation.md](references/validation.md) to select the command set for the layer you changed.
