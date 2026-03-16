@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
-import { createSource, deleteSource, listSources, updateSource } from "@/lib/api/sources";
+import { SourceSyncProgress } from "@/components/source-sync-progress";
+import { deleteSource, listSources, updateSource } from "@/lib/api/sources";
 import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime } from "@/lib/presenters";
 import type { SourceRow } from "@/lib/types";
@@ -23,6 +24,16 @@ export function CanvasIcsSetupPanel() {
   const source = useMemo(() => (data || []).find((row) => row.provider === "ics") || null, [data]);
 
   useEffect(() => {
+    if (!source || (source.runtime_state !== "running" && source.runtime_state !== "queued" && source.runtime_state !== "rebind_pending" && !source.sync_progress)) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      void refresh();
+    }, 2000);
+    return () => window.clearInterval(intervalId);
+  }, [refresh, source]);
+
+  useEffect(() => {
     if (!source) {
       return;
     }
@@ -32,16 +43,18 @@ export function CanvasIcsSetupPanel() {
   async function save() {
     const normalizedUrl = canvasIcsUrl.trim();
     if (!normalizedUrl) return;
+    if (!source) {
+      setBanner({
+        tone: "error",
+        text: "Canvas ICS is created during required setup. Go back to onboarding if this workspace no longer has its Canvas source.",
+      });
+      return;
+    }
     setSubmitting(true);
     setBanner(null);
     try {
-      if (source) {
-        await updateSource(source.source_id, { is_active: true, secrets: { url: normalizedUrl } });
-        setBanner({ tone: "info", text: source.is_active ? "Canvas ICS link updated." : "Canvas ICS link reactivated and updated." });
-      } else {
-        await createSource({ source_kind: "calendar", provider: "ics", config: {}, secrets: { url: normalizedUrl } });
-        setBanner({ tone: "info", text: "Canvas ICS link connected." });
-      }
+      await updateSource(source.source_id, { is_active: true, secrets: { url: normalizedUrl } });
+      setBanner({ tone: "info", text: source.is_active ? "Canvas ICS link updated." : "Canvas ICS link reactivated and updated." });
       setCanvasIcsUrl("");
       await refresh();
     } catch (err) {
@@ -113,6 +126,7 @@ export function CanvasIcsSetupPanel() {
               <p className="mt-2">Source: {source ? `#${source.source_id}` : "Will be created on first save"}</p>
               <p className="mt-2">Last polled: {formatDateTime(source?.last_polled_at, "Never")}</p>
             </div>
+            <SourceSyncProgress className="mt-4" progress={source?.sync_progress} />
             {source ? (
               <div className="mt-5">
                 <Button variant="ghost" onClick={() => void archive()} disabled={busyArchive}>
@@ -150,9 +164,18 @@ export function CanvasIcsSetupPanel() {
               <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="canvas-ics-url">Canvas ICS URL</label>
               <Input id="canvas-ics-url" placeholder="https://canvas.example.edu/feeds/calendars/user_12345.ics" value={canvasIcsUrl} onChange={(event) => setCanvasIcsUrl(event.target.value)} />
               <p className="mt-2 text-xs leading-5 text-[#6d7885]">Paste the full calendar subscription URL from Canvas here. Saving a new URL replaces the current Canvas ICS link for this workspace.</p>
+              {!source ? (
+                <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/70 px-4 py-3 text-sm text-[#314051]">
+                  This workspace does not currently have a Canvas source record. Re-run setup from{" "}
+                  <Link href="/setup" className="font-medium text-cobalt underline-offset-4 hover:underline">
+                    setup
+                  </Link>{" "}
+                  if you need to reconnect the required calendar intake.
+                </div>
+              ) : null}
               <div className="mt-5">
-                <Button className="w-full" disabled={submitting || !canvasIcsUrl.trim()} onClick={() => void save()}>
-                  {submitting ? "Saving Canvas ICS..." : source ? "Update Canvas ICS link" : "Connect Canvas ICS"}
+                <Button className="w-full" disabled={submitting || !canvasIcsUrl.trim() || !source} onClick={() => void save()}>
+                  {submitting ? "Saving Canvas ICS..." : "Update Canvas ICS link"}
                 </Button>
               </div>
             </Card>

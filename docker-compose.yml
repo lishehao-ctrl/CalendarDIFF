@@ -32,8 +32,9 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
+      REDIS_URL: redis://redis:6379/0
       APP_BASE_URL: http://localhost:8000
-      SERVICE_NAME: public
+      SERVICE_NAME: backend
       RUN_MIGRATIONS: "true"
       PORT: "8000"
     volumes:
@@ -42,11 +43,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     command: /app/scripts/start_service.sh
     ports:
       - "8000:8000"
 
   input-service:
+    profiles: ["legacy"]
     build: .
     env_file:
       - .env
@@ -64,6 +68,7 @@ services:
     command: /app/scripts/start_service.sh
 
   ingest-service:
+    profiles: ["legacy"]
     build: .
     env_file:
       - .env
@@ -89,6 +94,7 @@ services:
     command: /app/scripts/start_service.sh
 
   review-service:
+    profiles: ["legacy"]
     build: .
     env_file:
       - .env
@@ -107,6 +113,7 @@ services:
     command: /app/scripts/start_service.sh
 
   notification-service:
+    profiles: ["legacy"]
     build: .
     env_file:
       - .env
@@ -125,6 +132,7 @@ services:
     command: /app/scripts/start_service.sh
 
   llm-service:
+    profiles: ["legacy"]
     build: .
     env_file:
       - .env

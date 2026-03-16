@@ -1,12 +1,12 @@
-import { apiGet, apiPatch, apiPost, buildQuery } from "@/lib/api/client";
-import type { CourseIdentity, CourseWorkItemFamily, CourseWorkItemFamilyStatus, UserProfile } from "@/lib/types";
+import { apiDelete, apiGet, apiPatch, apiPost, buildQuery } from "@/lib/api/client";
+import type { CourseIdentity, CourseWorkItemFamily, CourseWorkItemFamilyStatus, ManualEvent, ManualEventMutationResponse, UserProfile } from "@/lib/types";
 
 export async function getCurrentUser() {
-  return apiGet<UserProfile>("/users/me");
+  return apiGet<UserProfile>("/profile/me");
 }
 
 export async function updateCurrentUser(payload: { timezone_name?: string | null; timezone_source?: string | null; notify_email?: string | null }) {
-  return apiPatch<UserProfile>("/users/me", payload);
+  return apiPatch<UserProfile>("/profile/me", payload);
 }
 
 export async function listCourseWorkItemFamilies(params?: {
@@ -49,4 +49,39 @@ export async function getCourseWorkItemFamilyStatus() {
 
 export async function listKnownCourseKeys() {
   return apiGet<{ courses: CourseIdentity[] }>("/users/me/course-work-item-families/courses");
+}
+
+export async function listManualEvents(params?: { include_removed?: boolean }) {
+  return apiGet<ManualEvent[]>(`/events/manual${buildQuery(params || {})}`);
+}
+
+export async function createManualEvent(payload: {
+  family_id: number;
+  event_name: string;
+  raw_type?: string | null;
+  ordinal?: number | null;
+  due_date: string;
+  due_time?: string | null;
+  time_precision: "date_only" | "datetime";
+  reason?: string | null;
+}) {
+  return apiPost<ManualEventMutationResponse>("/events/manual", payload);
+}
+
+export async function updateManualEvent(entityUid: string, payload: {
+  family_id: number;
+  event_name: string;
+  raw_type?: string | null;
+  ordinal?: number | null;
+  due_date: string;
+  due_time?: string | null;
+  time_precision: "date_only" | "datetime";
+  reason?: string | null;
+}) {
+  return apiPatch<ManualEventMutationResponse>(`/events/manual/${encodeURIComponent(entityUid)}`, payload);
+}
+
+export async function deleteManualEvent(entityUid: string, reason?: string | null) {
+  const query = buildQuery({ reason: reason || undefined });
+  return apiDelete<ManualEventMutationResponse>(`/events/manual/${encodeURIComponent(entityUid)}${query}`);
 }

@@ -85,7 +85,7 @@ def resolve_llm_profile(
     api_mode = (settings.ingestion_llm_api_mode or "").strip().lower() or DEFAULT_API_MODE
     extra_body = _parse_extra_body(settings.ingestion_llm_extra_body_json)
     timeout_seconds = (
-        max(float(settings.ingestion_llm_timeout_seconds), 1.0)
+        _normalize_timeout_seconds(settings.ingestion_llm_timeout_seconds)
         if settings.ingestion_llm_timeout_seconds is not None
         else float(_runtime_defaults["timeout_seconds"])
     )
@@ -143,6 +143,7 @@ def resolve_llm_profile(
         api_mode=api_mode,
         model=model,
         api_key=api_key,
+        session_cache_enabled=bool(settings.ingestion_llm_session_cache_enabled),
         timeout_seconds=timeout_seconds,
         max_retries=max_retries,
         max_input_chars=max_input_chars,
@@ -173,3 +174,12 @@ def _parse_extra_body(raw_value: str | None) -> dict:
             api_mode=DEFAULT_API_MODE,
         )
     return parsed
+
+
+def _normalize_timeout_seconds(raw_value: float | int | None) -> float:
+    if raw_value is None:
+        return float(_runtime_defaults["timeout_seconds"])
+    parsed = float(raw_value)
+    if parsed <= 0:
+        return 0.0
+    return max(parsed, 1.0)

@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
 from app.db.models.ingestion import ConnectorResultStatus
+from app.db.models.review import EventEntity, EventEntityLifecycle
+from app.db.models.shared import User
 from app.modules.ingestion.calendar_fetcher import fetch_calendar_delta
-from app.modules.ingestion.gmail_fetcher import fetch_gmail_changes, matches_gmail_source_filters
+from app.modules.ingestion.gmail_fetcher import (
+    _known_course_tokens_for_source,
+    fetch_gmail_changes,
+    matches_gmail_source_filters,
+)
+from app.modules.input_control_plane.schemas import InputSourceCreateRequest
+from app.modules.input_control_plane.sources_service import create_input_source
+from app.modules.users.course_work_item_families_service import create_course_work_item_family
 
 
 def test_gmail_fetcher_missing_access_token_fails_auth(monkeypatch) -> None:
@@ -36,6 +46,8 @@ def test_gmail_filter_contract_honors_subject_and_sender() -> None:
         label_ids=["INBOX", "COURSE"],
         from_header="professor@school.edu",
         subject="Homework deadline reminder",
+        snippet="Assignment due Friday",
+        body_text="Please note the homework deadline has moved.",
     )
     assert (
         matches_gmail_source_filters(
@@ -54,6 +66,140 @@ def test_gmail_filter_contract_honors_subject_and_sender() -> None:
             config={"subject_keywords": ["quiz"], "from_contains": "school.edu"},
         )
         is False
+    )
+
+
+def test_gmail_filter_defaults_to_inbox_and_conservative_metadata_gate() -> None:
+    inbox_metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="notifications@instructure.com",
+        subject="Assignment due date changed",
+        snippet="Canvas assignment reminder",
+        body_text="The due date has changed.",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+    archive_metadata = SimpleNamespace(
+        label_ids=["IMPORTANT"],
+        from_header="notifications@instructure.com",
+        subject="Assignment due date changed",
+        snippet="Canvas assignment reminder",
+        body_text="The due date has changed.",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+    non_course_metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="friend@example.com",
+        subject="Weekend brunch",
+        snippet="See you there",
+        body_text="Not a school message.",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+    generic_edu_metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="Office of Student Affairs <vcsacl@ucsd.edu>",
+        subject="Time to DANCE, Tritons!",
+        snippet="Student life event announcement",
+        body_text="Join us for campus programming this weekend.",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    assert matches_gmail_source_filters(metadata=inbox_metadata, config={}) is True
+    assert matches_gmail_source_filters(metadata=archive_metadata, config={}) is False
+    assert matches_gmail_source_filters(metadata=non_course_metadata, config={}) is False
+    assert matches_gmail_source_filters(metadata=generic_edu_metadata, config={}) is False
+
+
+def test_gmail_filter_allows_sender_only_signal_in_inbox() -> None:
+    metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="announcements@canvas.ucsd.edu",
+        subject="Course update",
+        snippet="Please review the update",
+        body_text="General course notice",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    assert matches_gmail_source_filters(metadata=metadata, config={}) is True
+
+
+def test_gmail_filter_allows_high_frequency_lms_sender_only_signal_in_inbox() -> None:
+    metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="no-reply@brightspace.example.edu",
+        subject="Course update",
+        snippet="Please review the update",
+        body_text="General course notice",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    assert matches_gmail_source_filters(metadata=metadata, config={}) is True
+
+
+def test_gmail_filter_does_not_treat_slack_as_sender_only_strong_signal() -> None:
+    metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="notifications@slack.com",
+        subject="Slack digest",
+        snippet="Workspace activity",
+        body_text="A teammate mentioned you in a channel.",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    assert matches_gmail_source_filters(metadata=metadata, config={}) is False
+
+
+def test_gmail_filter_allows_keyword_only_signal_in_inbox() -> None:
+    metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="friend@example.com",
+        subject="Homework due tonight",
+        snippet="deadline update",
+        body_text="Your homework deadline changed",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    assert matches_gmail_source_filters(metadata=metadata, config={}) is True
+
+
+def test_gmail_filter_excludes_lab_and_discussion_keyword_only_messages() -> None:
+    lab_metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="friend@example.com",
+        subject="Lab moved to Thursday",
+        snippet="lab update",
+        body_text="The lab section has a room change.",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+    discussion_metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="friend@example.com",
+        subject="Discussion section moved",
+        snippet="discussion section update",
+        body_text="The discussion section moved to a different time.",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    assert matches_gmail_source_filters(metadata=lab_metadata, config={}) is False
+    assert matches_gmail_source_filters(metadata=discussion_metadata, config={}) is False
+
+
+def test_gmail_filter_allows_known_course_token_even_without_edu_sender() -> None:
+    metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="no-reply@gradescope.com",
+        subject="CSE 120 HW1 available",
+        snippet="Your assignment is now available",
+        body_text="CSE120 homework posted",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    assert (
+        matches_gmail_source_filters(
+            metadata=metadata,
+            config={},
+            known_course_tokens={"cse 120", "cse120"},
+        )
+        is True
     )
 
 
@@ -108,6 +254,335 @@ def test_gmail_fetcher_bootstraps_term_window_messages(monkeypatch) -> None:
     assert outcome.cursor_patch == {"history_id": "200"}
     assert outcome.parse_payload is not None
     assert outcome.parse_payload["kind"] == "gmail"
+    assert [row["message_id"] for row in outcome.parse_payload["messages"]] == ["m1"]
+
+
+def test_gmail_fetcher_bootstrap_defaults_to_inbox_when_label_missing(monkeypatch) -> None:
+    source = SimpleNamespace(
+        config=SimpleNamespace(
+            config_json={
+                "term_key": "WI26",
+                "term_from": "2026-01-05",
+                "term_to": "2026-03-20",
+            }
+        ),
+        cursor=SimpleNamespace(cursor_json={}),
+        user=SimpleNamespace(timezone_name="America/Los_Angeles"),
+        user_id=1,
+    )
+
+    class _FakeGmailClient:
+        def get_profile(self, *, access_token: str):
+            assert access_token == "token"
+            return SimpleNamespace(email_address="student@example.edu", history_id="200")
+
+        def list_message_ids(self, *, access_token: str, query: str | None = None, label_ids=None):
+            assert access_token == "token"
+            assert query == "after:2025/12/06 before:2026/04/20"
+            assert label_ids == ["INBOX"]
+            return ["m1"]
+
+        def get_message_metadata(self, *, access_token: str, message_id: str):
+            assert access_token == "token"
+            return SimpleNamespace(
+                message_id=message_id,
+                thread_id=f"thread-{message_id}",
+                snippet="Assignment due tomorrow",
+                body_text="The homework due date changed.",
+                from_header="professor@school.edu",
+                subject="Homework reminder",
+                internal_date="2026-02-01T15:00:00+00:00",
+                label_ids=["INBOX"],
+            )
+
+    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher.decode_source_secrets", lambda _source: {"access_token": "token"})
+    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher.GmailClient", _FakeGmailClient)
+    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher._known_course_tokens_for_source", lambda _source: set())
+
+    outcome = fetch_gmail_changes(source=source, request_id="req-bootstrap-default-inbox")
+
+    assert outcome.status == ConnectorResultStatus.CHANGED
+    assert outcome.parse_payload is not None
+    assert [row["message_id"] for row in outcome.parse_payload["messages"]] == ["m1"]
+
+
+def test_gmail_fetcher_emits_bootstrap_progress(monkeypatch) -> None:
+    source = SimpleNamespace(
+        config=SimpleNamespace(
+            config_json={
+                "label_id": "COURSE",
+                "term_key": "WI26",
+                "term_from": "2026-01-05",
+                "term_to": "2026-03-20",
+            }
+        ),
+        cursor=SimpleNamespace(cursor_json={}),
+        user=SimpleNamespace(timezone_name="America/Los_Angeles"),
+    )
+    progress_events: list[dict] = []
+
+    class _FakeGmailClient:
+        def get_profile(self, *, access_token: str):
+            assert access_token == "token"
+            return SimpleNamespace(email_address="student@example.edu", history_id="200")
+
+        def list_message_ids(self, *, access_token: str, query: str | None = None, label_ids=None):
+            assert access_token == "token"
+            assert query == "after:2025/12/06 before:2026/04/20"
+            assert label_ids == ["COURSE"]
+            return ["m1", "m2"]
+
+        def get_message_metadata(self, *, access_token: str, message_id: str):
+            return SimpleNamespace(
+                message_id=message_id,
+                thread_id=f"thread-{message_id}",
+                snippet=f"snippet-{message_id}",
+                body_text=f"body-{message_id}",
+                from_header="professor@school.edu",
+                subject="Homework reminder",
+                internal_date="2026-02-01T15:00:00+00:00",
+                label_ids=["COURSE"],
+            )
+
+    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher.decode_source_secrets", lambda _source: {"access_token": "token"})
+    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher.GmailClient", _FakeGmailClient)
+
+    outcome = fetch_gmail_changes(
+        source=source,
+        request_id="req-bootstrap-progress",
+        emit_progress=lambda payload: progress_events.append(payload),
+    )
+
+    assert outcome.status == ConnectorResultStatus.CHANGED
+    assert len(progress_events) >= 2
+    assert progress_events[0]["phase"] == "gmail_bootstrap_fetch"
+    assert progress_events[0]["current"] == 0
+    assert progress_events[0]["total"] == 2
+    assert progress_events[-1]["current"] == 2
+    assert progress_events[-1]["total"] == 2
+
+
+def test_known_course_tokens_for_source_include_current_term_family_mappings(db_session) -> None:
+    user = User(
+        email=None,
+        notify_email="tokens@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    source = create_input_source(
+        db_session,
+        user=user,
+        payload=InputSourceCreateRequest(
+            source_kind="email",
+            provider="gmail",
+            display_name="Gmail Inbox",
+            config={"label_id": "INBOX", "term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
+            secrets={},
+        ),
+    )
+
+    create_course_work_item_family(
+        db_session,
+        user_id=user.id,
+        course_dept="CSE",
+        course_number=100,
+        course_quarter="WI",
+        course_year2=26,
+        canonical_label="Homework",
+        raw_types=["hw"],
+    )
+    create_course_work_item_family(
+        db_session,
+        user_id=user.id,
+        course_dept="MATH",
+        course_number=20,
+        course_suffix="C",
+        course_quarter="WI",
+        course_year2=26,
+        canonical_label="Quiz",
+        raw_types=["quiz"],
+    )
+    create_course_work_item_family(
+        db_session,
+        user_id=user.id,
+        course_dept="CHEM",
+        course_number=6,
+        course_suffix="A",
+        course_quarter="FA",
+        course_year2=25,
+        canonical_label="Homework",
+        raw_types=["hw"],
+    )
+
+    tokens = _known_course_tokens_for_source(source)
+
+    assert "cse 100" in tokens
+    assert "cse100" in tokens
+    assert "math 20c" in tokens
+    assert "math20c" in tokens
+    assert "chem 6a" not in tokens
+    assert "chem6a" not in tokens
+
+
+def test_known_course_tokens_for_source_uses_current_term_entities_to_scope_mappings(db_session) -> None:
+    user = User(
+        email=None,
+        notify_email="tokens-entities@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    source = create_input_source(
+        db_session,
+        user=user,
+        payload=InputSourceCreateRequest(
+            source_kind="email",
+            provider="gmail",
+            display_name="Gmail Inbox",
+            config={
+                "label_id": "INBOX",
+                "term_key": "2026-01-05__2026-03-20",
+                "term_from": "2026-01-05",
+                "term_to": "2026-03-20",
+            },
+            secrets={},
+        ),
+    )
+
+    create_course_work_item_family(
+        db_session,
+        user_id=user.id,
+        course_dept="CSE",
+        course_number=120,
+        canonical_label="Homework",
+        raw_types=["hw"],
+    )
+    create_course_work_item_family(
+        db_session,
+        user_id=user.id,
+        course_dept="HIST",
+        course_number=10,
+        canonical_label="Discussion",
+        raw_types=["discussion"],
+    )
+    db_session.add(
+        EventEntity(
+            user_id=user.id,
+            entity_uid="entity-cse120",
+            lifecycle=EventEntityLifecycle.ACTIVE,
+            course_dept="CSE",
+            course_number=120,
+            raw_type="Homework",
+            event_name="HW1",
+            due_date=date(2026, 2, 10),
+            time_precision="date_only",
+        )
+    )
+    db_session.add(
+        EventEntity(
+            user_id=user.id,
+            entity_uid="entity-hist10-old",
+            lifecycle=EventEntityLifecycle.ACTIVE,
+            course_dept="HIST",
+            course_number=10,
+            raw_type="Discussion",
+            event_name="Week 1",
+            due_date=date(2025, 11, 10),
+            time_precision="date_only",
+        )
+    )
+    db_session.commit()
+
+    tokens = _known_course_tokens_for_source(source)
+
+    assert "cse 120" in tokens
+    assert "cse120" in tokens
+    assert "hist 10" not in tokens
+    assert "hist10" not in tokens
+
+
+def test_gmail_fetcher_bootstrap_uses_current_term_course_mapping_tokens(monkeypatch, db_session) -> None:
+    user = User(
+        email=None,
+        notify_email="tokens-bootstrap@example.com",
+        onboarding_completed_at=datetime.now(timezone.utc),
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    source = create_input_source(
+        db_session,
+        user=user,
+        payload=InputSourceCreateRequest(
+            source_kind="email",
+            provider="gmail",
+            display_name="Gmail Inbox",
+            config={"label_id": "INBOX", "term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
+            secrets={},
+        ),
+    )
+    create_course_work_item_family(
+        db_session,
+        user_id=user.id,
+        course_dept="CSE",
+        course_number=100,
+        course_quarter="WI",
+        course_year2=26,
+        canonical_label="Homework",
+        raw_types=["hw"],
+    )
+    create_course_work_item_family(
+        db_session,
+        user_id=user.id,
+        course_dept="CHEM",
+        course_number=6,
+        course_suffix="A",
+        course_quarter="FA",
+        course_year2=25,
+        canonical_label="Homework",
+        raw_types=["hw"],
+    )
+
+    class _FakeGmailClient:
+        def get_profile(self, *, access_token: str):
+            assert access_token == "token"
+            return SimpleNamespace(email_address="student@example.edu", history_id="200")
+
+        def list_message_ids(self, *, access_token: str, query: str | None = None, label_ids=None):
+            assert access_token == "token"
+            assert query == "after:2025/12/06 before:2026/04/20"
+            assert label_ids == ["INBOX"]
+            return ["m1", "m2"]
+
+        def get_message_metadata(self, *, access_token: str, message_id: str):
+            body_text = {
+                "m1": "CSE100 announcement and logistics update",
+                "m2": "CHEM6A announcement and logistics update",
+            }[message_id]
+            return SimpleNamespace(
+                message_id=message_id,
+                thread_id=f"thread-{message_id}",
+                snippet="general update",
+                body_text=body_text,
+                from_header="student-forum@example.com",
+                subject="Course note",
+                internal_date="2026-02-01T15:00:00+00:00",
+                label_ids=["INBOX"],
+            )
+
+    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher.decode_source_secrets", lambda _source: {"access_token": "token"})
+    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher.GmailClient", _FakeGmailClient)
+
+    outcome = fetch_gmail_changes(source=source, request_id="req-bootstrap-course-token")
+
+    assert outcome.status == ConnectorResultStatus.CHANGED
+    assert outcome.parse_payload is not None
     assert [row["message_id"] for row in outcome.parse_payload["messages"]] == ["m1"]
 
 

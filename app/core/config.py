@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     ingestion_llm_model: str = ""
     ingestion_llm_api_mode: str = "responses"
     ingestion_llm_extra_body_json: str | None = None
+    ingestion_llm_session_cache_enabled: bool = False
     ingestion_llm_timeout_seconds: float | None = None
     ingestion_llm_max_retries: int | None = None
     ingestion_llm_max_input_chars: int | None = None
@@ -94,6 +95,9 @@ class Settings(BaseSettings):
 
     default_changes_limit: int = 50
     max_changes_limit: int = 200
+    bootstrap_admin_notify_email: str | None = None
+    bootstrap_admin_password: str | None = None
+    bootstrap_admin_timezone_name: str = "America/Los_Angeles"
 
 
 @lru_cache(maxsize=1)

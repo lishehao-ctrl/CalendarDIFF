@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.modules.common.course_identity import course_display_name
 from app.modules.common.payload_schemas import SourceFacts
@@ -31,8 +31,12 @@ def coerce_calendar_payload(*, payload: dict) -> CanonicalEventInput:
     end_value = source_facts.source_dtend_utc
     start_at = parse_iso_datetime(start_value, field="start_at", uid=uid)
     end_at = parse_iso_datetime(end_value, field="end_at", uid=uid)
-    if end_at <= start_at:
-        raise RuntimeError(f"calendar record uid={uid} has end_at <= start_at")
+    if end_at < start_at:
+        raise RuntimeError(f"calendar record uid={uid} has end_at < start_at")
+    if end_at == start_at:
+        # Canvas assignment feeds can emit zero-duration due events where DTSTART == DTEND.
+        # Treat those as due-only events and normalize them to the standard one-hour window.
+        end_at = start_at + timedelta(hours=1)
 
     return CanonicalEventInput(
         uid=uid,

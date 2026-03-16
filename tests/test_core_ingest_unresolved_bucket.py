@@ -96,17 +96,17 @@ def test_valid_calendar_ingest_assigns_non_null_family_id(db_session: Session) -
     due_at = datetime(2026, 3, 20, 23, 59, tzinfo=timezone.utc)
     payload = build_calendar_payload(
         external_event_id="evt-valid-family",
-        title="Reading Reflection",
+        title="Homework 1",
         start_at=due_at,
         end_at=due_at + timedelta(hours=1),
         course_parse=build_course_parse(dept="CSE", number=120, quarter="WI", year2=26, confidence=0.9, evidence="CSE120"),
         semantic_parse=build_semantic_parse(
-            raw_type=None,
-            event_name="Reading Reflection",
+            raw_type="Homework",
+            event_name="Homework 1",
             ordinal=1,
             due_at=due_at,
             confidence=0.8,
-            evidence="reflection",
+            evidence="homework",
         ),
     )
     _seed_result(
@@ -321,6 +321,97 @@ def test_gmail_term_out_of_scope_isolated_to_unresolved_bucket(db_session: Sessi
     )
     assert unresolved is not None
     assert unresolved.reason_code == "term_out_of_scope"
+    assert int(db_session.scalar(select(func.count(SourceEventObservation.id)).where(SourceEventObservation.source_id == source.id)) or 0) == 0
+    assert int(db_session.scalar(select(func.count(Change.id)).where(Change.user_id == user.id)) or 0) == 0
+
+
+def test_gmail_lab_update_isolated_as_product_scope_excluded(db_session: Session) -> None:
+    user, source = _create_source(
+        db_session,
+        source_kind=SourceKind.EMAIL,
+        provider="gmail",
+        source_key="gmail-scope-filter-source",
+    )
+    due_at = datetime(2026, 2, 12, 20, 0, tzinfo=timezone.utc)
+    payload = build_gmail_payload(
+        message_id="msg-gmail-lab",
+        title="Lab 3 moved to Thursday",
+        due_at=due_at,
+        course_parse=build_course_parse(dept="CSE", number=120, quarter="WI", year2=26, confidence=0.9, evidence="CSE120"),
+        semantic_parse=build_semantic_parse(
+            raw_type="Lab",
+            event_name="Lab 3 moved to Thursday",
+            ordinal=3,
+            due_at=due_at,
+            confidence=0.8,
+            evidence="lab move",
+        ),
+    )
+    _seed_result(
+        db_session,
+        source=source,
+        request_id="gmail-scope-filter-1",
+        records=[{"record_type": "gmail.message.extracted", "payload": payload}],
+    )
+
+    apply_result = apply_ingest_result_idempotent(db_session, request_id="gmail-scope-filter-1")
+    assert apply_result["changes_created"] == 0
+
+    unresolved = db_session.scalar(
+        select(IngestUnresolvedRecord).where(
+            IngestUnresolvedRecord.source_id == source.id,
+            IngestUnresolvedRecord.external_event_id == "msg-gmail-lab",
+            IngestUnresolvedRecord.is_active.is_(True),
+        )
+    )
+    assert unresolved is not None
+    assert unresolved.reason_code == "product_scope_excluded"
+    assert int(db_session.scalar(select(func.count(SourceEventObservation.id)).where(SourceEventObservation.source_id == source.id)) or 0) == 0
+    assert int(db_session.scalar(select(func.count(Change.id)).where(Change.user_id == user.id)) or 0) == 0
+
+
+def test_calendar_discussion_update_isolated_as_product_scope_excluded(db_session: Session) -> None:
+    user, source = _create_source(
+        db_session,
+        source_kind=SourceKind.CALENDAR,
+        provider="ics",
+        source_key="calendar-scope-filter-source",
+    )
+    due_at = datetime(2026, 2, 13, 20, 0, tzinfo=timezone.utc)
+    payload = build_calendar_payload(
+        external_event_id="evt-calendar-discussion",
+        title="Discussion section moved",
+        start_at=due_at,
+        end_at=due_at + timedelta(hours=1),
+        course_parse=build_course_parse(dept="CSE", number=120, quarter="WI", year2=26, confidence=0.9, evidence="CSE120"),
+        semantic_parse=build_semantic_parse(
+            raw_type="Discussion",
+            event_name="Discussion section moved",
+            ordinal=None,
+            due_at=due_at,
+            confidence=0.8,
+            evidence="discussion move",
+        ),
+    )
+    _seed_result(
+        db_session,
+        source=source,
+        request_id="calendar-scope-filter-1",
+        records=[{"record_type": "calendar.event.extracted", "payload": payload}],
+    )
+
+    apply_result = apply_ingest_result_idempotent(db_session, request_id="calendar-scope-filter-1")
+    assert apply_result["changes_created"] == 0
+
+    unresolved = db_session.scalar(
+        select(IngestUnresolvedRecord).where(
+            IngestUnresolvedRecord.source_id == source.id,
+            IngestUnresolvedRecord.external_event_id == "evt-calendar-discussion",
+            IngestUnresolvedRecord.is_active.is_(True),
+        )
+    )
+    assert unresolved is not None
+    assert unresolved.reason_code == "product_scope_excluded"
     assert int(db_session.scalar(select(func.count(SourceEventObservation.id)).where(SourceEventObservation.source_id == source.id)) or 0) == 0
     assert int(db_session.scalar(select(func.count(Change.id)).where(Change.user_id == user.id)) or 0) == 0
 

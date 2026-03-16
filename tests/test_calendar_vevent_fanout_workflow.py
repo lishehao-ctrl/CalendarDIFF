@@ -19,6 +19,7 @@ from app.db.models.shared import User
 from app.modules.ingestion.calendar_fanout_contract import CALENDAR_REDUCE_REASON
 from app.modules.ingestion.connector_dispatch import dispatch_pending_llm_enqueues
 from app.modules.llm_runtime.message_processor import process_parse_task_message
+from app.modules.llm_runtime.parse_pipeline import RateLimitRejected
 from app.modules.runtime_kernel.parse_task_queue import ParseTaskMessage
 
 
@@ -263,7 +264,61 @@ def test_calendar_fanout_end_to_end_component_success_then_reduce(db_session: Se
     assert any(row.get("record_type") == "calendar.event.removed" for row in result.records)
     assert any(row.get("record_type") == "calendar.event.extracted" for row in result.records)
     db_session.refresh(sync_request)
-    assert sync_request.status == SyncRequestStatus.SUCCEEDED
+    assert sync_request.status == SyncRequestStatus.RUNNING
+    db_session.refresh(source)
+    assert source.cursor is None
+
+
+def test_calendar_fanout_rate_limited_component_requeues_without_failing(db_session: Session, db_session_factory: sessionmaker, monkeypatch) -> None:
+    parse_payload = {
+        "kind": "calendar_delta",
+        "changed_components": [_vevent_component(uid="evt-rate", recurrence_id=None, summary="HW3")],
+        "removed_component_keys": [],
+    }
+    source, _sync_request, _job, enqueued = _dispatch_calendar_job(
+        db_session,
+        monkeypatch,
+        request_id="fanout-rate-limit-1",
+        parse_payload=parse_payload,
+    )
+    component_reason = next(row["reason"] for row in enqueued if str(row["reason"]).startswith("calendar_component:"))
+    scheduled: list[dict] = []
+
+    monkeypatch.setattr(
+        "app.modules.llm_runtime.calendar_fanout.parse_calendar_changed_component_with_llm",
+        lambda **_kwargs: (_ for _ in ()).throw(RateLimitRejected(reason="target_cap")),
+    )
+    monkeypatch.setattr(
+        "app.modules.llm_runtime.calendar_fanout.schedule_parse_retry",
+        lambda **kwargs: scheduled.append(dict(kwargs)),
+    )
+
+    component_ack = process_parse_task_message(
+        message=ParseTaskMessage(
+            message_id="msg-component-rate-1",
+            request_id="fanout-rate-limit-1",
+            source_id=source.id,
+            attempt=0,
+            reason=component_reason,
+        ),
+        redis_client=object(),  # type: ignore[arg-type]
+        session_factory=db_session_factory,
+        worker_id="llm-worker-test",
+        stream_key="llm:parse:stream",
+    )
+    assert component_ack is True
+
+    task_row = db_session.scalar(
+        select(CalendarComponentParseTask).where(
+            CalendarComponentParseTask.request_id == "fanout-rate-limit-1",
+            CalendarComponentParseTask.component_key == "evt-rate#",
+        )
+    )
+    assert task_row is not None
+    assert task_row.status == CalendarComponentParseStatus.PENDING
+    assert task_row.attempt == 0
+    assert task_row.error_code == "llm_rate_limited"
+    assert scheduled and scheduled[0]["request_id"] == "fanout-rate-limit-1"
 
 
 def test_calendar_fanout_removed_only_skips_child_and_reducer_commits(db_session: Session, db_session_factory: sessionmaker, monkeypatch) -> None:
@@ -312,7 +367,9 @@ def test_calendar_fanout_removed_only_skips_child_and_reducer_commits(db_session
         }
     ]
     db_session.refresh(sync_request)
-    assert sync_request.status == SyncRequestStatus.SUCCEEDED
+    assert sync_request.status == SyncRequestStatus.RUNNING
+    db_session.refresh(source)
+    assert source.cursor is None
 
 
 def test_calendar_fanout_component_unresolved_is_persisted_and_reducer_waits_for_terminal(

@@ -6,9 +6,10 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.core.oauth_config import build_frontend_sources_return_url, build_oauth_runtime_config
+from app.core.oauth_config import build_frontend_oauth_return_url, build_frontend_sources_return_url, build_oauth_runtime_config
 from app.core.security import decrypt_secret, encrypt_secret
 from app.db.models.input import IngestTriggerType, InputSource, InputSourceCursor, InputSourceSecret, SyncRequest
+from app.modules.common.source_term_window import parse_source_term_window
 from app.modules.input_control_plane.sync_requests_service import enqueue_sync_request_idempotent
 from app.modules.sync.gmail_client import GmailClient, GmailOAuthTokens
 
@@ -26,6 +27,7 @@ def build_gmail_oauth_start_for_source(
     db: Session,
     *,
     source: InputSource,
+    return_to: str = "sources",
     now: datetime | None = None,
     gmail_client: GmailClient | None = None,
 ) -> tuple[str, datetime]:
@@ -36,6 +38,7 @@ def build_gmail_oauth_start_for_source(
     state_payload = {
         "source_id": source.id,
         "provider": source.provider,
+        "return_to": return_to,
         "exp": expires_at.isoformat(),
     }
     state_token = encrypt_secret(json.dumps(state_payload, separators=(",", ":"), ensure_ascii=True))
@@ -50,11 +53,12 @@ def handle_gmail_oauth_callback(
     state: str,
     now: datetime | None = None,
     gmail_client: GmailClient | None = None,
-) -> tuple[InputSource, SyncRequest]:
+) -> tuple[InputSource, SyncRequest | None, str]:
     current = now or datetime.now(timezone.utc)
     state_payload = _parse_oauth_state(state)
     source_id = int(state_payload["source_id"])
     provider = str(state_payload["provider"])
+    return_to = str(state_payload.get("return_to") or "sources").strip().lower() or "sources"
     if provider != "gmail":
         raise RuntimeError("Unsupported oauth provider in state payload")
     expires_raw = state_payload.get("exp")
@@ -93,12 +97,20 @@ def handle_gmail_oauth_callback(
 
     if source.cursor is None:
         source.cursor = InputSourceCursor(source_id=source.id, version=1, cursor_json={})
+    source.last_error_code = None
+    source.last_error_message = None
+    term_window = parse_source_term_window(source, required=False)
+    if term_window is None:
+        source.cursor.cursor_json = {}
+        source.is_active = False
+        source.next_poll_at = None
+        db.commit()
+        db.refresh(source)
+        return source, None, return_to
+
     source.cursor.cursor_json = {"history_id": profile.history_id}
     source.is_active = True
     source.next_poll_at = current
-    source.last_error_code = None
-    source.last_error_message = None
-
     request = enqueue_sync_request_idempotent(
         db,
         source=source,
@@ -106,7 +118,7 @@ def handle_gmail_oauth_callback(
         idempotency_key=f"oauth:init:{source.id}",
         metadata={"reason": "oauth_callback"},
     )
-    return source, request
+    return source, request, return_to
 
 
 def build_oauth_browser_callback_redirect_url(
@@ -116,13 +128,23 @@ def build_oauth_browser_callback_redirect_url(
     source_id: int | None = None,
     request_id: str | None = None,
     message: str | None = None,
+    destination: str = "sources",
 ) -> str:
-    return build_frontend_sources_return_url(
+    if destination == "sources":
+        return build_frontend_sources_return_url(
+            oauth_provider=provider,
+            oauth_status=status,
+            source_id=source_id,
+            request_id=request_id,
+            message=message,
+        )
+    return build_frontend_oauth_return_url(
         oauth_provider=provider,
         oauth_status=status,
         source_id=source_id,
         request_id=request_id,
         message=message,
+        destination=destination,
     )
 
 

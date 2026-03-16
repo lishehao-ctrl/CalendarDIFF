@@ -7,7 +7,11 @@ from app.modules.ingestion.llm_parsers import LlmParseError
 from app.modules.llm_runtime.calendar_fanout import is_calendar_fanout_reason, process_calendar_fanout_message
 from app.modules.llm_runtime.message_preflight import prepare_message_for_processing
 from app.modules.llm_runtime.parse_pipeline import RateLimitRejected, is_rate_limited_llm_error, parse_with_llm
-from app.modules.llm_runtime.transitions import apply_llm_failure_transition, mark_llm_success
+from app.modules.llm_runtime.transitions import (
+    apply_llm_backpressure_transition,
+    apply_llm_failure_transition,
+    mark_llm_success,
+)
 from app.modules.runtime_kernel.parse_task_queue import ParseTaskMessage, increment_parse_metric_counter
 
 
@@ -46,16 +50,14 @@ def process_parse_task_message(
             parse_payload=preflight.parse_payload,
             request_id=message.request_id,
         )
-    except RateLimitRejected as exc:
+    except RateLimitRejected:
         with session_factory() as db:
-            apply_llm_failure_transition(
+            apply_llm_backpressure_transition(
                 db,
                 redis_client=redis_client,
-                stream_key=stream_key,
                 request_id=message.request_id,
-                next_attempt=max(message.attempt, 0) + 1,
-                error_code="llm_rate_limited",
-                error_message=f"llm limiter rejected: {exc.reason}",
+                source_id=message.source_id,
+                attempt=max(message.attempt, 0),
                 reason="rate_limit",
             )
         return True

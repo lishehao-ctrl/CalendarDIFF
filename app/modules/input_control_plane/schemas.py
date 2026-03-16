@@ -61,6 +61,8 @@ class InputSourceResponse(BaseModel):
     sync_state: SourceSyncStateLiteral
     config_state: SourceConfigStateLiteral
     runtime_state: SourceRuntimeStateLiteral
+    active_request_id: str | None = None
+    sync_progress: dict | None = None
 
 
 class SyncRequestCreateResponse(BaseModel):
@@ -94,6 +96,7 @@ class SyncRequestStatusResponse(BaseModel):
     connector_result: dict | None = None
     applied: bool = False
     applied_at: datetime | None = None
+    progress: dict | None = None
 
 
 class OAuthStartResponse(BaseModel):

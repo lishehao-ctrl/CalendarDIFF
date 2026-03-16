@@ -60,7 +60,9 @@ def validate_calendar_payload(*, payload: dict[str, Any], record_index: int) -> 
             )
         )
     _validate_semantic_event_draft(payload=payload, record_index=record_index, record_type="calendar.event.extracted")
-    _validate_link_signals(payload=payload, record_index=record_index, record_type="calendar.event.extracted")
+    raw_link_signals = payload.get("link_signals")
+    if raw_link_signals is not None:
+        _validate_link_signals(payload=payload, record_index=record_index, record_type="calendar.event.extracted")
 
 
 def validate_gmail_payload(*, payload: dict[str, Any], record_index: int) -> None:

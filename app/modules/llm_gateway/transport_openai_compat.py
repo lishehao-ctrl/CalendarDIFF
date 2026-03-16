@@ -57,11 +57,17 @@ class OpenAICompatTransport:
             "Authorization": f"Bearer {profile.api_key}",
             "Content-Type": "application/json",
         }
-        timeout = httpx.Timeout(
-            connect=max(profile.timeout_seconds, 1.0),
-            read=max(profile.timeout_seconds, 1.0),
-            write=max(profile.timeout_seconds, 1.0),
-            pool=max(profile.timeout_seconds, 1.0),
+        if profile.api_mode == "responses" and profile.session_cache_enabled:
+            headers["x-dashscope-session-cache"] = "enable"
+        timeout = (
+            None
+            if profile.timeout_seconds <= 0
+            else httpx.Timeout(
+                connect=max(profile.timeout_seconds, 1.0),
+                read=max(profile.timeout_seconds, 1.0),
+                write=max(profile.timeout_seconds, 1.0),
+                pool=max(profile.timeout_seconds, 1.0),
+            )
         )
         started = time.perf_counter()
         try:

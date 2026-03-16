@@ -8,7 +8,7 @@ Current user flow:
 
 1. `/login`
 2. `/register`
-3. `/onboarding`
+3. `/setup`
 4. `/`
 5. `/sources`
 6. `/review/changes`
@@ -34,6 +34,8 @@ Required for the current multi-service backend:
 - `BACKEND_BASE_URL`
 - `BACKEND_API_KEY`
 
+Default local runtime now expects a single backend API at `http://127.0.0.1:8200`.
+
 ## Preferred Startup
 
 Use the repo launcher for the active local stack:
@@ -52,7 +54,7 @@ Manual frontend-only startup is still available if backend services are already 
 
 ## Proxy Routing
 
-The browser never talks directly to the Python services. All requests go through `app/api/backend/[...path]/route.ts`, which proxies to the unified public API defined by `BACKEND_BASE_URL`.
+The browser never talks directly to Python services. All requests go through `app/api/backend/[...path]/route.ts`, which proxies to the single backend API defined by `BACKEND_BASE_URL`.
 
 ## Commands
 

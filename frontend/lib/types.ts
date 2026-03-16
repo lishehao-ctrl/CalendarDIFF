@@ -5,12 +5,50 @@ export type SourceHealth = {
   affected_provider: string | null;
 };
 
+export type OnboardingStage =
+  | "needs_user"
+  | "needs_canvas_ics"
+  | "needs_gmail_or_skip"
+  | "needs_term_binding"
+  | "needs_term_renewal"
+  | "ready";
+
+export type OnboardingTermBinding = {
+  term_key: string;
+  term_from: string;
+  term_to: string;
+};
+
+export type SyncProgress = {
+  phase: string;
+  label: string;
+  detail?: string | null;
+  current?: number | null;
+  total?: number | null;
+  percent?: number | null;
+  unit?: string | null;
+};
+
+export type OnboardingSource = {
+  source_id: number;
+  provider: "ics" | "gmail";
+  connected: boolean;
+  has_term_binding: boolean;
+  runtime_state: "active" | "inactive" | "archived" | "queued" | "running" | "rebind_pending";
+  oauth_account_email?: string | null;
+  term_binding: OnboardingTermBinding | null;
+};
+
 export type OnboardingStatus = {
-  stage: string;
+  stage: OnboardingStage;
   message: string;
   registered_user_id: number | null;
   first_source_id: number | null;
   source_health: SourceHealth | null;
+  canvas_source: OnboardingSource | null;
+  gmail_source: OnboardingSource | null;
+  gmail_skipped: boolean;
+  term_binding: OnboardingTermBinding | null;
 };
 
 export type ReviewSummary = {
@@ -36,6 +74,12 @@ export type SourceRow = {
   config: Record<string, unknown>;
   oauth_connection_status?: "connected" | "not_connected" | null;
   oauth_account_email?: string | null;
+  lifecycle_state?: "active" | "inactive" | "archived";
+  sync_state?: "idle" | "queued" | "running";
+  config_state?: "stable" | "rebind_pending";
+  runtime_state?: "active" | "inactive" | "archived" | "queued" | "running" | "rebind_pending";
+  active_request_id?: string | null;
+  sync_progress?: SyncProgress | null;
 };
 
 export type SyncStatus = {
@@ -50,6 +94,7 @@ export type SyncStatus = {
     error_code?: string | null;
     error_message?: string | null;
   } | null;
+  progress?: SyncProgress | null;
 };
 
 export type EventDisplay = {
@@ -318,6 +363,38 @@ export type CourseWorkItemFamilyStatus = {
   state: string;
   last_rebuilt_at: string | null;
   last_error: string | null;
+};
+
+export type ManualEvent = {
+  entity_uid: string;
+  lifecycle: "active" | "removed";
+  manual_support: boolean;
+  family_id: number | null;
+  family_name: string;
+  course_display: string;
+  course_dept: string;
+  course_number: number;
+  course_suffix?: string | null;
+  course_quarter?: string | null;
+  course_year2?: number | null;
+  raw_type?: string | null;
+  event_name?: string | null;
+  ordinal?: number | null;
+  due_date?: string | null;
+  due_time?: string | null;
+  time_precision: "date_only" | "datetime" | string;
+  event: UserFacingEvent | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ManualEventMutationResponse = {
+  applied: boolean;
+  idempotent: boolean;
+  change_id: number | null;
+  entity_uid: string;
+  lifecycle: "active" | "removed";
+  event: ManualEvent | null;
 };
 
 export type UserProfile = {

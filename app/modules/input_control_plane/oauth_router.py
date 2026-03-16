@@ -91,13 +91,18 @@ def oauth_callback(
         return _finalize_oauth_callback_response(request=request, format=format, payload=payload)
 
     try:
-        source, sync_request = handle_gmail_oauth_callback(db, code=code, state=state)
+        callback_result = handle_gmail_oauth_callback(db, code=code, state=state)
+        if len(callback_result) == 2:
+            source, sync_request = callback_result
+            redirect_destination = "sources"
+        else:
+            source, sync_request, redirect_destination = callback_result
         payload = OAuthCallbackResponse(
             provider=normalized_provider,
             status="success",
             source_id=source.id,
-            request_id=sync_request.request_id,
-            sync_request_status=sync_request.status.value,  # type: ignore[arg-type]
+            request_id=sync_request.request_id if sync_request is not None else None,
+            sync_request_status=sync_request.status.value if sync_request is not None else None,  # type: ignore[arg-type]
             message="oauth callback processed",
         )
     except Exception as exc:
@@ -107,7 +112,14 @@ def oauth_callback(
             message=sanitize_log_message(str(exc)),
         )
 
-    return _finalize_oauth_callback_response(request=request, format=format, payload=payload)
+        redirect_destination = "sources"
+
+    return _finalize_oauth_callback_response(
+        request=request,
+        format=format,
+        payload=payload,
+        redirect_destination=redirect_destination,
+    )
 
 
 def _finalize_oauth_callback_response(
@@ -115,6 +127,7 @@ def _finalize_oauth_callback_response(
     request: Request,
     format: str | None,
     payload: OAuthCallbackResponse,
+    redirect_destination: str = "sources",
 ):
     if _prefers_json_response(request=request, format=format):
         return payload
@@ -126,6 +139,7 @@ def _finalize_oauth_callback_response(
             source_id=payload.source_id,
             request_id=payload.request_id,
             message=payload.message,
+            destination=redirect_destination,
         )
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=sanitize_log_message(str(exc))) from exc

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models.ingestion import ConnectorResultStatus, IngestResult
-from app.db.models.input import InputSource, SourceKind, SyncRequest, SyncRequestStatus
+from app.db.models.input import InputSource, InputSourceCursor, SourceKind, SyncRequest, SyncRequestStatus
 from app.db.models.review import IngestApplyLog
 from app.modules.core_ingest.apply_outcome import ApplyOutcome
 from app.modules.core_ingest.calendar_apply import apply_calendar_observations
@@ -119,6 +119,7 @@ def apply_ingest_result_idempotent(db: Session, *, request_id: str) -> dict:
             applied_at=now,
             request_id=request_id,
         )
+        _apply_source_success_state(db=db, source=source, result=result, completed_at=now)
         if sync_request is not None and sync_request.status != SyncRequestStatus.FAILED:
             sync_request.status = SyncRequestStatus.SUCCEEDED
             sync_request.error_code = None
@@ -139,6 +140,31 @@ def apply_ingest_result_idempotent(db: Session, *, request_id: str) -> dict:
     except Exception:
         db.rollback()
         raise
+
+
+def _apply_source_success_state(
+    *,
+    db: Session,
+    source: InputSource,
+    result: IngestResult,
+    completed_at: datetime,
+) -> None:
+    cursor_patch = result.cursor_patch if isinstance(result.cursor_patch, dict) else {}
+    if cursor_patch:
+        if source.cursor is None:
+            source.cursor = InputSourceCursor(source_id=source.id, version=1, cursor_json={})
+            db.flush()
+        merged = dict(source.cursor.cursor_json or {})
+        merged.update(cursor_patch)
+        source.cursor.cursor_json = merged
+        source.cursor.version += 1
+
+    source.last_polled_at = result.fetched_at
+    source.next_poll_at = completed_at.astimezone(timezone.utc).replace(microsecond=0) + timedelta(
+        seconds=max(int(source.poll_interval_seconds), 30)
+    )
+    source.last_error_code = None
+    source.last_error_message = None
 
 
 __all__ = [

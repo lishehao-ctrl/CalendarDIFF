@@ -1,7 +1,10 @@
 import { PageHeader } from "@/components/page-header";
 import { CanvasIcsSetupPanel } from "@/components/canvas-ics-setup-panel";
+import { requireReadyServerSession } from "@/lib/server-auth";
 
-export default function CanvasIcsConnectPage() {
+export default async function CanvasIcsConnectPage() {
+  await requireReadyServerSession();
+
   return (
     <div className="space-y-5">
       <PageHeader

@@ -40,6 +40,7 @@ class User(Base):
     timezone_source: Mapped[str] = mapped_column(String(16), nullable=False, default="auto", server_default="auto")
     calendar_delay_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=120, server_default="120")
     onboarding_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    gmail_onboarding_skipped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     work_item_mappings_state: Mapped[str] = mapped_column(String(32), nullable=False, default="idle", server_default="idle")
     work_item_mappings_last_rebuilt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     work_item_mappings_last_error: Mapped[str | None] = mapped_column(Text, nullable=True)

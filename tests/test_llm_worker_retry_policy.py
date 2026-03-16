@@ -118,3 +118,32 @@ def test_retry_policy_dead_letters_after_max_attempts(db_session: Session, monke
         assert sync.error_code == "parse_llm_timeout"
     finally:
         get_settings.cache_clear()
+
+
+def test_backpressure_transition_requeues_without_burning_attempt(db_session: Session, monkeypatch) -> None:
+    job, sync = _seed_claimed_context(db_session, request_id="retry-backpressure")
+    captured: dict[str, object] = {}
+
+    def _capture_retry(*_args, **kwargs):  # noqa: ANN002, ANN003 - test hook
+        captured.update(kwargs)
+
+    monkeypatch.setattr(llm_transitions, "schedule_parse_retry", _capture_retry)
+
+    llm_transitions.apply_llm_backpressure_transition(
+        db_session,
+        redis_client=object(),  # type: ignore[arg-type]
+        request_id=job.request_id,
+        source_id=job.source_id,
+        attempt=0,
+        reason="rate_limit",
+    )
+
+    db_session.refresh(job)
+    db_session.refresh(sync)
+    assert job.status == IngestJobStatus.CLAIMED
+    assert job.attempt == 0
+    assert job.next_retry_at is not None
+    assert sync.status == SyncRequestStatus.RUNNING
+    assert sync.error_code is None
+    assert captured["request_id"] == job.request_id
+    assert captured["attempt"] == 0

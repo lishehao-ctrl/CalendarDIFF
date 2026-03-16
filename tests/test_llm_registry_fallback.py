@@ -35,6 +35,32 @@ def test_build_openai_compat_endpoint_uses_responses_path() -> None:
         )
         == "https://dashscope-us.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1/responses"
     )
+
+
+def test_resolve_llm_profile_allows_zero_timeout_to_disable_transport_timeout(monkeypatch) -> None:
+    monkeypatch.setenv("INGESTION_LLM_BASE_URL", "https://example.com/v1")
+    monkeypatch.setenv("INGESTION_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("INGESTION_LLM_MODEL", "test-model")
+    monkeypatch.setenv("INGESTION_LLM_TIMEOUT_SECONDS", "0")
+    get_settings.cache_clear()
+    try:
+        profile = resolve_llm_profile(None, source_id=None)
+        assert profile.timeout_seconds == 0.0
+    finally:
+        get_settings.cache_clear()
+
+
+def test_resolve_llm_profile_reads_session_cache_flag(monkeypatch) -> None:
+    monkeypatch.setenv("INGESTION_LLM_BASE_URL", "https://example.com/v1")
+    monkeypatch.setenv("INGESTION_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("INGESTION_LLM_MODEL", "test-model")
+    monkeypatch.setenv("INGESTION_LLM_SESSION_CACHE_ENABLED", "true")
+    get_settings.cache_clear()
+    try:
+        profile = resolve_llm_profile(None, source_id=None)
+        assert profile.session_cache_enabled is True
+    finally:
+        get_settings.cache_clear()
     assert (
         build_openai_compat_endpoint(
             base_url="https://dashscope-us.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1/chat/completions",

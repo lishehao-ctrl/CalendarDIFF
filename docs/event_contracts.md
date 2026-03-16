@@ -101,28 +101,32 @@ Consumers: optional observability/audit services
 
 ## Internal Ingest Record Envelope (Non-Outbox, additive)
 
-The parser-stage `ingest_results.records[*].payload` envelope used between llm/review runtime keeps record types stable:
+The parser-stage `ingest_results.records[*].payload` envelope used between llm/review runtime keeps record types stable, but it is source-specific:
 
 1. `source_facts`: deterministic source fields used for semantic proposal diff and pending generation.
 2. `semantic_event_draft`: parser-stage semantic payload (required on extracted records).
-3. `link_signals`: parser-stage linking signals (required on extracted records).
+3. `link_signals`: parser-stage linking signals are required for gmail extracted records and omitted for calendar extracted records.
 4. Gmail extracted records also include `message_id` (required).
 5. parser-stage `semantic_event_draft` is normalized in apply/runtime into observation `semantic_event`.
 6. Gmail directive records (`record_type = "gmail.directive.extracted"`) carry schema-validated `directive` payload (`selector + mutation + confidence + evidence`) and are applied without creating `source_event_observations`.
-7. Active Gmail/ICS sources carry explicit term config in `input_source_configs.config_json`:
+7. Calendar parser is two-pass:
+   - pass 1 emits `relevant|unknown`
+   - pass 2 emits only minimal semantic classification
+   - backend derives calendar time fields deterministically from source facts
+8. Active Gmail/ICS sources carry explicit term config in `input_source_configs.config_json`:
    - `term_key`
    - `term_from`
    - `term_to`
    Backend derives fixed runtime bounds: `bootstrap_from = term_from-30d`, `monitor_until = term_to+30d`.
    Only records inside `[bootstrap_from, monitor_until]` are allowed into the normal observation/change path.
-8. Updating that term config is treated as a source rescope:
+9. Updating that term config is treated as a source rescope:
    - no in-flight sync: source-scoped observations/unresolved/link/cursor state are reset immediately and pending proposals are rebuilt
    - in-flight sync (`QUEUED`/`RUNNING`): backend stores one coalesced `pending_term_rebind` and applies it on first terminal sync (`SUCCEEDED`/`FAILED`)
    - if the applied term is already active, input-service enqueues a `sync.requested` row with `metadata.kind = "term_rescope"`
-9. Treat the term config as a source-term binding:
+10. Treat the term config as a source-term binding:
    - raw source fetch material may be shared/cached across time
    - derived state (`source_event_observations`, pending `changes`, outbox events) is only valid inside the active binding
-10. `event_entities.manual_support = true` marks strongest manual support:
+11. `event_entities.manual_support = true` marks strongest manual support:
    - canonical edit sets the flag
    - source rescope/churn may not auto-generate `removed` proposals for manual-supported entities that lose automatic observations
    - automatic observations may still generate normal pending changes against the manual-approved state
@@ -131,8 +135,8 @@ Runtime observation envelope (`source_event_observations.event_payload`) is fixe
 
 1. `source_facts`
 2. `semantic_event`
-3. `link_signals`
-4. `kind_resolution`
+3. `kind_resolution`
+4. optional `link_signals` for sources that provide them (gmail)
 
 Unresolved note:
 
@@ -142,7 +146,7 @@ Unresolved note:
 Parser note:
 
 1. `semantic_event_draft` must be schema-valid from parser output; invalid/missing objects are treated as parser failures (retry/dead-letter path), not downgraded by local inference.
-2. `link_signals` is required and schema-validated; missing/invalid objects fail parser output.
+2. gmail `link_signals` is required and schema-validated; calendar extracted records do not require it.
 3. link-candidate review flow is storage/API-only (`event_link_candidates` + `/review/link-candidates*`) and does not emit outbox notification events.
 4. accepted links are persisted in `event_entity_links`; uncertain linking decisions are persisted in `event_link_candidates`.
 5. directive records never masquerade as `gmail.message.extracted`; unsupported/unmatched directives are isolated and do not create guessed pending changes.
@@ -173,12 +177,6 @@ Example (`calendar.event.extracted`):
       "time_precision": "datetime",
       "confidence": 0.95,
       "evidence": "CSE 151A exam 1"
-    },
-    "link_signals": {
-      "keywords": ["exam"],
-      "exam_sequence": 1,
-      "location_text": "Center Hall 101",
-      "instructor_hint": "Prof Alice"
     }
   }
 }

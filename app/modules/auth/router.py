@@ -84,6 +84,6 @@ def _to_auth_session_user(db: Session, *, user: User) -> AuthSessionUserResponse
         timezone_name=user.timezone_name,
         timezone_source=user.timezone_source,
         created_at=user.created_at,
-        onboarding_stage=status_payload.stage if status_payload.stage in {"needs_source_connection", "ready"} else "needs_source_connection",
+        onboarding_stage=status_payload.stage,  # type: ignore[arg-type]
         first_source_id=status_payload.first_source_id,
     )

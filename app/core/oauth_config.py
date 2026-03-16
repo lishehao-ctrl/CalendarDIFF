@@ -105,8 +105,32 @@ def build_frontend_sources_return_url(
     message: str | None = None,
     settings: Settings | None = None,
 ) -> str:
+    return build_frontend_oauth_return_url(
+        oauth_provider=oauth_provider,
+        oauth_status=oauth_status,
+        source_id=source_id,
+        request_id=request_id,
+        message=message,
+        destination="sources",
+        settings=settings,
+    )
+
+
+def build_frontend_oauth_return_url(
+    *,
+    oauth_provider: str,
+    oauth_status: str,
+    source_id: int | None = None,
+    request_id: str | None = None,
+    message: str | None = None,
+    destination: str = "sources",
+    settings: Settings | None = None,
+) -> str:
     base_url = resolve_frontend_app_base_url(settings=settings)
-    sources_url = urljoin(f"{base_url}/", "sources")
+    normalized_destination = destination.strip().lower() if isinstance(destination, str) else "sources"
+    if normalized_destination not in {"sources", "onboarding"}:
+        raise RuntimeError("OAuth frontend destination must be either 'sources' or 'onboarding'")
+    destination_url = urljoin(f"{base_url}/", normalized_destination)
     query: dict[str, str] = {
         "oauth_provider": oauth_provider,
         "oauth_status": oauth_status,
@@ -117,7 +141,7 @@ def build_frontend_sources_return_url(
         query["request_id"] = request_id
     if message:
         query["message"] = message
-    return f"{sources_url}?{urlencode(query)}"
+    return f"{destination_url}?{urlencode(query)}"
 
 
 def log_input_oauth_startup(app: FastAPI) -> None:
@@ -219,6 +243,7 @@ def _is_non_empty(value: str | None) -> bool:
 
 __all__ = [
     "OAuthRuntimeConfig",
+    "build_frontend_oauth_return_url",
     "build_frontend_sources_return_url",
     "build_oauth_runtime_config",
     "log_input_oauth_startup",

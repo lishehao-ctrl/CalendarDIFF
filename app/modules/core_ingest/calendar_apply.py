@@ -29,10 +29,10 @@ from app.modules.core_ingest.unresolved_store import (
 from app.modules.core_ingest.payload_contracts import PayloadContractError, validate_calendar_payload
 from app.modules.core_ingest.payload_extractors import (
     extract_course_parse,
-    extract_link_signals,
     extract_semantic_event_draft,
     extract_source_facts_from_calendar_payload,
 )
+from app.modules.core_ingest.product_scope import is_monitored_assignment_or_exam_event
 from app.modules.core_ingest.course_work_item_family_resolution import build_source_scoped_entity_uid, resolve_kind_resolution
 from app.modules.ingestion.ics_delta import external_event_id_from_component_key
 
@@ -129,7 +129,7 @@ def apply_calendar_observations(
             previous_observation_payloads.setdefault(existing_row.entity_uid, dict(existing_row.event_payload))
         course_parse = extract_course_parse(payload=payload, source_facts=source_facts)
         semantic_draft = extract_semantic_event_draft(payload=payload, source_facts=source_facts)
-        link_signals = extract_link_signals(payload=payload, source_facts=source_facts)
+        link_signals: dict = {}
         term_window = parse_source_term_window(source, required=False)
         if term_window is not None and not semantic_due_date_in_window(
             semantic_payload=semantic_draft,
@@ -153,6 +153,32 @@ def apply_calendar_observations(
                 external_event_id=external_event_id,
                 request_id=request_id,
                 reason_code="term_out_of_scope",
+                source_facts_json=source_facts,
+                semantic_event_draft_json=semantic_draft,
+                kind_resolution_json=None,
+                raw_payload_json=payload,
+            )
+            continue
+        if not is_monitored_assignment_or_exam_event(
+            semantic_draft=semantic_draft,
+            source_facts=source_facts,
+        ):
+            retire_active_observation_for_unresolved_transition(
+                db=db,
+                source_id=source.id,
+                external_event_id=external_event_id,
+                applied_at=applied_at,
+                request_id=request_id,
+            )
+            upsert_active_unresolved_record(
+                db=db,
+                user_id=source.user_id,
+                source_id=source.id,
+                source_kind=source.source_kind,
+                provider=source.provider,
+                external_event_id=external_event_id,
+                request_id=request_id,
+                reason_code="product_scope_excluded",
                 source_facts_json=source_facts,
                 semantic_event_draft_json=semantic_draft,
                 kind_resolution_json=None,

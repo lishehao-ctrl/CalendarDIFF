@@ -86,6 +86,9 @@ def normalize_observation_payload(payload: dict) -> dict:
     normalized: dict[str, object] = {}
     for key in _RUNTIME_OBSERVATION_KEYS:
         value = payload.get(key)
+        if key == "link_signals" and value is None:
+            normalized[key] = {}
+            continue
         if not isinstance(value, dict):
             raise RuntimeError(f"core_ingest_payload_invalid: observation payload missing {key}")
         normalized[key] = dict(value)

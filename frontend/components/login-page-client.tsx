@@ -28,7 +28,7 @@ export function LoginPageClient({ mode }: { mode: "login" | "register" }) {
       } else {
         await register({ notify_email: notifyEmail, password });
       }
-      router.replace("/");
+      router.replace("/setup");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : `Unable to ${mode}`);
@@ -75,7 +75,13 @@ export function LoginPageClient({ mode }: { mode: "login" | "register" }) {
                 <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="password-auth">
                   Password
                 </label>
-                <Input id="password-auth" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 8 characters" />
+                <Input
+                  id="password-auth"
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder={mode === "register" ? "At least 8 characters" : "Enter your password"}
+                />
               </div>
               {mode === "register" ? (
                 <div>

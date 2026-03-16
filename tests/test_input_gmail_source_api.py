@@ -126,7 +126,7 @@ def test_gmail_source_create_requires_term_window_config(input_client, db_sessio
     )
 
     assert response.status_code == 422
-    assert "term_key" in str(response.json()["detail"])
+    assert response.json()["detail"] == "config must include term_from and term_to"
 
 
 def test_gmail_source_create_rejects_inverted_term_window(input_client, db_session, authenticate_client) -> None:

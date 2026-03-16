@@ -12,6 +12,7 @@ def _profile(*, timeout_seconds: float = 30.0) -> ResolvedLlmProfile:
         api_mode="responses",
         model="test-model",
         api_key="test-key",
+        session_cache_enabled=False,
         timeout_seconds=timeout_seconds,
         max_retries=1,
         max_input_chars=12000,
@@ -69,3 +70,13 @@ def test_unknown_task_uses_base_timeout_plus_small_padding() -> None:
 
     assert profile.timeout_seconds > 18.0
     assert profile.timeout_seconds < 25.0
+
+
+def test_no_timeout_profile_bypasses_dynamic_timeout_padding() -> None:
+    profile = with_dynamic_timeout(
+        profile=_profile(timeout_seconds=0.0),
+        invoke_request=_invoke_request("gmail_segment_atomic_extract"),
+        truncated_input_json="x" * 400,
+    )
+
+    assert profile.timeout_seconds == 0.0

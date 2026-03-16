@@ -1,11 +1,22 @@
 from __future__ import annotations
 
+from datetime import date, datetime
 from email.utils import parseaddr
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.modules.input_control_plane.schemas import SourceRuntimeStateLiteral
+
 SourceHealthStatusLiteral = Literal["healthy", "attention", "disconnected"]
+OnboardingStageLiteral = Literal[
+    "needs_user",
+    "needs_canvas_ics",
+    "needs_gmail_or_skip",
+    "needs_term_binding",
+    "needs_term_renewal",
+    "ready",
+]
 
 
 class OnboardingRegisterRequest(BaseModel):
@@ -31,19 +42,95 @@ class SourceHealthSummaryResponse(BaseModel):
     affected_provider: str | None = None
 
 
+class OnboardingTermBindingResponse(BaseModel):
+    term_key: str
+    term_from: date
+    term_to: date
+
+
+class OnboardingSourceResponse(BaseModel):
+    source_id: int
+    provider: Literal["ics", "gmail"]
+    connected: bool
+    has_term_binding: bool
+    runtime_state: SourceRuntimeStateLiteral
+    oauth_account_email: str | None = None
+    term_binding: OnboardingTermBindingResponse | None = None
+
+
 class OnboardingStatusResponse(BaseModel):
-    stage: Literal["needs_user", "needs_source_connection", "ready"]
+    stage: OnboardingStageLiteral
     message: str
     registered_user_id: int | None = None
     first_source_id: int | None = None
     source_health: SourceHealthSummaryResponse | None = None
+    canvas_source: OnboardingSourceResponse | None = None
+    gmail_source: OnboardingSourceResponse | None = None
+    gmail_skipped: bool = False
+    term_binding: OnboardingTermBindingResponse | None = None
 
 
 class OnboardingRegisterResponse(BaseModel):
     status: Literal["accepted"]
     user_id: int
-    stage: Literal["needs_source_connection", "ready"]
+    stage: OnboardingStageLiteral
     first_source_id: int | None = None
+
+
+class OnboardingCanvasIcsRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=4096)
+
+    model_config = {"extra": "forbid"}
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("url must not be blank")
+        return stripped
+
+
+class OnboardingGmailOAuthRequest(BaseModel):
+    label_id: str | None = Field(default="INBOX", max_length=128)
+    return_to: Literal["onboarding", "sources"] = "onboarding"
+
+    model_config = {"extra": "forbid"}
+
+    @field_validator("label_id")
+    @classmethod
+    def validate_label_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+
+class OnboardingGmailSkipRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+
+class OnboardingTermBindingRequest(BaseModel):
+    term_key: str | None = Field(default=None, max_length=64)
+    term_from: date
+    term_to: date
+
+    model_config = {"extra": "forbid"}
+
+    @field_validator("term_key")
+    @classmethod
+    def validate_term_key(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+
+class OnboardingOAuthSessionCreateResponse(BaseModel):
+    source_id: int
+    provider: Literal["gmail"]
+    authorization_url: str
+    expires_at: datetime
 
 
 def _is_valid_email_address(value: str | None) -> bool:

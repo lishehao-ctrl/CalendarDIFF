@@ -7,6 +7,16 @@ from app.modules.ingestion.llm_parsers.gmail_parser_llm import LlmInvokeCallable
 from app.modules.ingestion.llm_parsers.schemas import GmailPlannerResponse
 from app.modules.llm_gateway import LlmInvokeRequest
 
+GMAIL_SHARED_PREFIX_PROMPT = (
+    "You are a Gmail course-work/test parser. "
+    "Focus only on homework-like course work or test-like assessments. "
+    "Homework-like means any required deliverable or submission. "
+    "Test-like means quizzes, exams, midterms, finals, or similar assessments. "
+    "Ignore lab, discussion, section, grade-only, newsletter, campus admin, marketing, competition, recruiting, memo, "
+    "study-note, solutions, meeting, voting, corporate, and other non-course content unless it clearly changes "
+    "homework-like work or test-like assessment requirements. "
+)
+
 
 def plan_gmail_segments(
     *,
@@ -24,33 +34,32 @@ def plan_gmail_segments(
     invoke_request = LlmInvokeRequest(
         task_name="gmail_message_segment_plan",
         system_prompt=(
-            "You are pass-1 planner for Gmail deadline parsing. "
+            f"{GMAIL_SHARED_PREFIX_PROMPT}"
             "Classify message text into extraction segments. "
+            "Only use atomic or directive when there is clear course context, such as a course identifier, "
+            "class context, LMS sender, or unmistakable course-specific wording. "
             'Return JSON: {"message_id":string|null,"mode":string,"segment_array":[{"segment_index":number,'
             '"anchor":string|null,"snippet":string|null,"segment_type_hint":"atomic"|"directive"|"unknown"}]}. '
-            "Use segment_type_hint=atomic for independent deadline-change statements. "
-            "Use directive when the text is instruction-like/meta without direct event extraction. "
-            "Use unknown when classification is uncertain."
+            "Use segment_type_hint=atomic for independent homework-like or test-like change statements. "
+            "Use directive when the text is a batch rule or instruction targeting homework-like work or test-like assessments. "
+            "Use unknown for anything outside the monitored work/test scope or when relevance is genuinely unclear."
         ),
-        user_payload={
-            "source_id": context.source_id,
-            "provider": context.provider,
-            "source_kind": context.source_kind,
-            "message": {
-                "message_id": source_message_id,
-                "subject": source_subject,
-                "snippet": source_snippet,
-                "body_text": source_body_text,
-                "from_header": source_from_header,
-                "thread_id": source_thread_id,
-                "internal_date": source_internal_date,
-            },
+        user_payload={"stage": "planner"},
+        shared_user_payload={
+            "message_id": source_message_id,
+            "subject": source_subject,
+            "snippet": source_snippet,
+            "body_text": source_body_text,
+            "from_header": source_from_header,
+            "thread_id": source_thread_id,
+            "internal_date": source_internal_date,
         },
         output_schema_name="GmailPlannerResponse",
         output_schema_json=GmailPlannerResponse.model_json_schema(),
         source_id=context.source_id,
         source_provider=context.provider,
         request_id=context.request_id,
+        session_cache_mode="enable",
     )
     return invoke_schema_validated(
         db=db,

@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.db.models.shared import User
+from app.modules.auth.service import _hash_password
 
 
 def test_register_login_session_logout_flow(input_client, db_session) -> None:
@@ -22,7 +23,7 @@ def test_register_login_session_logout_flow(input_client, db_session) -> None:
     assert session_response.status_code == 200
     assert session_response.json()["user"]["notify_email"] == "owner@example.com"
     assert session_response.json()["user"]["timezone_name"] == "America/Los_Angeles"
-    assert session_response.json()["user"]["onboarding_stage"] == "needs_source_connection"
+    assert session_response.json()["user"]["onboarding_stage"] == "needs_canvas_ics"
 
     logout_response = input_client.post("/auth/logout", headers={"X-API-Key": "test-api-key"})
     assert logout_response.status_code == 200
@@ -62,6 +63,29 @@ def test_login_invalid_password_returns_401(input_client, db_session) -> None:
         json={"notify_email": "owner@example.com", "password": "wrong-pass"},
     )
     assert response.status_code == 401
+
+
+def test_login_allows_existing_bootstrap_short_password(input_client, db_session) -> None:
+    user = User(
+        email="lishehao@gmail.com",
+        notify_email="lishehao@gmail.com",
+        password_hash=_hash_password("123456"),
+        timezone_name="America/Los_Angeles",
+        timezone_source="manual",
+        onboarding_completed_at=None,
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    response = input_client.post(
+        "/auth/login",
+        headers={"X-API-Key": "test-api-key"},
+        json={"notify_email": "lishehao@gmail.com", "password": "123456"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["authenticated"] is True
+    assert response.json()["user"]["notify_email"] == "lishehao@gmail.com"
 
 
 def test_login_does_not_override_manual_timezone(input_client, db_session) -> None:

@@ -5,6 +5,7 @@ from typing import Literal
 
 
 LlmApiModeLiteral = Literal["chat_completions", "responses"]
+SessionCacheModeLiteral = Literal["inherit", "enable", "disable"]
 
 
 class LlmGatewayError(RuntimeError):
@@ -37,6 +38,11 @@ class LlmInvokeRequest:
     request_id: str | None = None
     source_provider: str | None = None
     temperature: float = 0.0
+    shared_user_payload: dict | None = None
+    cache_prefix_payload: dict | None = None
+    previous_response_id: str | None = None
+    api_mode_override: LlmApiModeLiteral | None = None
+    session_cache_mode: SessionCacheModeLiteral = "inherit"
 
 
 @dataclass(frozen=True)
@@ -46,6 +52,7 @@ class LlmInvokeResult:
     model: str
     api_mode: LlmApiModeLiteral
     latency_ms: int
+    response_id: str | None = None
     upstream_request_id: str | None = None
     raw_usage: dict = field(default_factory=dict)
 
@@ -58,6 +65,7 @@ class ResolvedLlmProfile:
     api_mode: LlmApiModeLiteral
     model: str
     api_key: str
+    session_cache_enabled: bool
     timeout_seconds: float
     max_retries: int
     max_input_chars: int

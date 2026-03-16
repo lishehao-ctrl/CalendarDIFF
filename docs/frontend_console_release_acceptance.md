@@ -7,7 +7,7 @@ This guide covers the current local development and acceptance path for Calendar
 It assumes the active runtime shape:
 
 1. frontend at `http://127.0.0.1:3000`
-2. backend services at `8200 / 8201 / 8202 / 8203 / 8204 / 8205`
+2. backend API at `8200`
 3. login-first dashboard access with session auth
 4. Sources page using a single Canvas ICS link plus a single Gmail OAuth source per user
 
@@ -58,7 +58,7 @@ Behavior:
 
 1. `up` starts `postgres` and `redis` through `docker compose`
 2. `up` applies schema with `python -m alembic upgrade head`
-3. `up` starts `public`, `input`, `review`, `ingest`, `notification`, `llm`, and `frontend`
+3. `up` starts `backend` and `frontend`
 4. frontend readiness is checked through `/login`, not `/`, because `/` redirects unauthenticated users
 5. `status` reports infra reachability plus per-process health, pid, and log path
 6. `down` stops only the app layer
@@ -73,7 +73,7 @@ Required before acceptance:
 2. `frontend/node_modules` exists
 3. `docker compose` is available
 4. local launcher ports are free unless already owned by this stack:
-   - `3000`, `8200`, `8201`, `8202`, `8203`, `8204`, `8205`, `5432`, `6379`
+   - `3000`, `8200`, `5432`, `6379`
 
 Recommended bootstrap:
 
@@ -98,7 +98,7 @@ Expected result:
 
 1. command exits successfully
 2. it prints frontend URL and backend health URLs
-3. `scripts/dev_stack.sh status` shows all six applications as `healthy`
+3. `scripts/dev_stack.sh status` shows backend and frontend as `healthy`
 
 ### 2. Verify runtime reachability
 
@@ -106,13 +106,8 @@ Expected result:
 
 1. `http://127.0.0.1:3000/login` returns `200`
 2. unauthenticated `http://127.0.0.1:3000/` redirects to `/login`
-3. backend health endpoints return `200`:
+3. backend health endpoint returns `200`:
    - `http://127.0.0.1:8200/health`
-   - `http://127.0.0.1:8201/health`
-   - `http://127.0.0.1:8202/health`
-   - `http://127.0.0.1:8203/health`
-   - `http://127.0.0.1:8204/health`
-   - `http://127.0.0.1:8205/health`
 
 ### 3. Frontend walkthrough
 
@@ -137,7 +132,7 @@ Validate:
 ```bash
 scripts/dev_stack.sh status
 scripts/dev_stack.sh logs frontend
-scripts/dev_stack.sh logs input
+scripts/dev_stack.sh logs backend
 ```
 
 For browser flow checks, use the repo-local Playwright wrapper:
@@ -167,11 +162,6 @@ Then verify app ports are released:
 
 1. `3000`
 2. `8200`
-3. `8201`
-4. `8202`
-5. `8203`
-6. `8204`
-7. `8205`
 
 Optional infra shutdown:
 
@@ -185,8 +175,8 @@ The release is accepted when all of the following are true:
 
 1. `scripts/dev_stack.sh up` brings the full local stack to a usable state from a clean shell
 2. frontend UI is reachable at `http://127.0.0.1:3000`
-3. public-service and internal runtime services return healthy status
-4. frontend can proxy successfully through `public-service`
+3. backend API returns healthy status
+4. frontend can proxy successfully through the backend API
 5. `scripts/dev_stack.sh status` reports healthy application state during runtime
 6. `/sources` uses the single Canvas ICS link workflow
 7. `/` shows source health rather than raw backend error output

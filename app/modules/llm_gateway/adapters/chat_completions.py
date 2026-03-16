@@ -12,6 +12,38 @@ def build_chat_completions_payload(
     profile: ResolvedLlmProfile,
     truncated_input_json: str,
 ) -> dict:
+    if isinstance(invoke_request.cache_prefix_payload, dict):
+        return {
+            "model": profile.model,
+            "temperature": invoke_request.temperature,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {
+                    "role": "system",
+                    "content": _build_constant_system_prompt(),
+                },
+                {
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": _build_cache_prefix(
+                                invoke_request=invoke_request,
+                                profile=profile,
+                            ),
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": _build_task_prompt(
+                        invoke_request=invoke_request,
+                        input_json=truncated_input_json,
+                    ),
+                },
+            ],
+        }
     return {
         "model": profile.model,
         "temperature": invoke_request.temperature,
@@ -28,7 +60,7 @@ def extract_chat_completions_json(
     response_json: dict,
     provider_id: str,
     api_mode: LlmApiModeLiteral,
-) -> tuple[dict, dict]:
+) -> tuple[dict, dict, str | None]:
     choices = response_json.get("choices")
     if not isinstance(choices, list) or not choices:
         raise ValueError("chat completions response missing choices")
@@ -48,7 +80,7 @@ def extract_chat_completions_json(
     usage = response_json.get("usage")
     if not isinstance(usage, dict):
         usage = {}
-    return payload, usage
+    return payload, usage, None
 
 
 def _build_system_prompt(*, invoke_request: LlmInvokeRequest) -> str:
@@ -61,16 +93,69 @@ def _build_system_prompt(*, invoke_request: LlmInvokeRequest) -> str:
     )
 
 
+def _build_constant_system_prompt() -> str:
+    return "You must return one JSON object only. Do not output markdown, code fences, or prose."
+
+
+def _build_cache_prefix(*, invoke_request: LlmInvokeRequest, profile: ResolvedLlmProfile) -> str:
+    payload = _truncate_prefix_payload(
+        payload=invoke_request.cache_prefix_payload or {},
+        max_chars=profile.max_input_chars,
+    )
+    return "\n".join(
+        [
+            "SOURCE_PREFIX_JSON:",
+            payload,
+        ]
+    )
+
+
+def _build_task_prompt(*, invoke_request: LlmInvokeRequest, input_json: str) -> str:
+    return "\n".join(
+        [
+            "TASK_INSTRUCTIONS:",
+            invoke_request.system_prompt.strip(),
+            f"Output schema name: {invoke_request.output_schema_name}",
+            "Schema JSON:",
+            json.dumps(invoke_request.output_schema_json, ensure_ascii=True),
+            "TASK_INPUT_JSON:",
+            input_json,
+        ]
+    )
+
+
 def _build_user_prompt(*, invoke_request: LlmInvokeRequest, input_json: str) -> str:
+    if isinstance(invoke_request.shared_user_payload, dict):
+        return "\n".join(
+            [
+                "INPUT_JSON:",
+                json.dumps(
+                    {
+                        "message_context": invoke_request.shared_user_payload,
+                        "task_input": invoke_request.user_payload,
+                    },
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                ),
+            ]
+        )
     lines = [
         f"TASK: {invoke_request.task_name}",
-        f"REQUEST_ID: {invoke_request.request_id or 'n/a'}",
-        f"SOURCE_ID: {invoke_request.source_id if invoke_request.source_id is not None else 'n/a'}",
-        f"SOURCE_PROVIDER: {invoke_request.source_provider or 'n/a'}",
         "INPUT_JSON:",
         input_json,
     ]
     return "\n".join(lines)
+
+
+def _truncate_prefix_payload(*, payload: dict, max_chars: int) -> str:
+    serialized = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+    if max_chars <= 0 or len(serialized) <= max_chars:
+        return serialized
+    if max_chars <= 64:
+        return serialized[:max_chars]
+    head = max_chars // 2
+    tail = max_chars - head - 1
+    return f"{serialized[:head]}\n{serialized[-tail:]}"
 
 
 def _extract_text_content(content: object) -> str:

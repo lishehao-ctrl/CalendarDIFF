@@ -103,14 +103,22 @@ def apply_success_transition(
     payload_updates: dict | None = None,
     payload_remove_keys: list[str] | None = None,
     min_poll_interval_seconds: int = 30,
+    apply_cursor_patch: bool = True,
+    touch_source_success_state: bool = True,
+    sync_status: SyncRequestStatus | None = SyncRequestStatus.SUCCEEDED,
 ) -> None:
-    if context.source is not None and context.source.cursor is not None and cursor_patch:
+    if (
+        apply_cursor_patch
+        and context.source is not None
+        and context.source.cursor is not None
+        and cursor_patch
+    ):
         merged = dict(context.source.cursor.cursor_json or {})
         merged.update(cursor_patch)
         context.source.cursor.cursor_json = merged
         context.source.cursor.version += 1
 
-    if context.source is not None:
+    if touch_source_success_state and context.source is not None:
         context.source.last_polled_at = completed_at
         context.source.next_poll_at = completed_at + timedelta(
             seconds=max(int(context.source.poll_interval_seconds), min_poll_interval_seconds)
@@ -130,10 +138,11 @@ def apply_success_transition(
     context.job.payload_json = payload
     context.job.status = IngestJobStatus.SUCCEEDED
     context.job.next_retry_at = None
-    if context.sync_request is not None:
-        context.sync_request.status = SyncRequestStatus.SUCCEEDED
-        context.sync_request.error_code = None
-        context.sync_request.error_message = None
+    if context.sync_request is not None and sync_status is not None:
+        context.sync_request.status = sync_status
+        if sync_status == SyncRequestStatus.SUCCEEDED:
+            context.sync_request.error_code = None
+            context.sync_request.error_message = None
 
 
 __all__ = [

@@ -1,23 +1,19 @@
-# CalendarDIFF Architecture (Shared PostgreSQL Runtime)
+# CalendarDIFF Architecture (Modular Monolith Runtime)
 
 ## 1) Runtime Topology
 
-Current target runtime is a unified public gateway + 5 service APIs + PostgreSQL + Redis:
+Current default runtime is a modular monolith backend + frontend + PostgreSQL + Redis:
 
-1. `public-service` (`services.public_api.main:app`)
-2. `input-service` (`services.input_api.main:app`, internal metrics/runtime only)
-3. `ingest-service` (`services.ingest_api.main:app`)
-4. `llm-service` (`services.llm_api.main:app`)
-5. `review-service` (`services.review_api.main:app`, internal apply/runtime only)
-6. `notification-service` (`services.notification_api.main:app`)
-7. `postgres`
-8. `redis`
+1. `backend-service` (`services.app_api.main:app`)
+2. `frontend`
+3. `postgres`
+4. `redis`
 
-The public-service is the only user-facing gateway. Internal services continue to run as independent processes and own bounded domains.
+The backend-service is the only default API process. Domain boundaries are preserved at the module/service layer, not the HTTP process layer.
 
-## 2) Service Responsibilities
+## 2) Module Responsibilities
 
-### input-service
+### sources / onboarding / auth
 
 1. input source lifecycle APIs
 2. oauth session/callback
@@ -33,12 +29,12 @@ Primary write ownership:
 4. `input_source_cursors`
 5. `sync_requests`
 
-### ingest-service
+### ingest / llm / runtime
 
 1. orchestrator tick
 2. connector fetch runtime tick (Gmail incremental fetch, ICS RFC delta parse)
 3. enqueue llm parse tasks only for changed records/components
-3. dead-letter replay internal APIs
+4. consume parse queue and persist ingest results
 
 Primary write ownership:
 
@@ -46,21 +42,7 @@ Primary write ownership:
 2. `ingest_results`
 3. ingest-related outbox/inbox rows
 
-### llm-service
-
-1. consumes Redis LLM parse queue
-2. enforces global LLM limiter (target/hard RPS)
-3. executes parser calls (`calendar_parser` / `gmail_parser`) for changed payloads
-4. writes deterministic removed records for ICS delta removals
-5. writes `ingest_results` + emits `ingest.result.ready`
-
-Primary write ownership:
-
-1. `ingest_results` (idempotent by `request_id`)
-2. `ingest_jobs` runtime state for llm stage
-3. ingest-related outbox events (`ingest.result.ready`)
-
-### review-service
+### review / links / edits
 
 1. consumes `ingest.result.ready`
 2. builds `source_event_observations` and pending `changes` for resolvable records only
@@ -76,7 +58,7 @@ Primary write ownership:
 4. `ingest_apply_log`
 5. `ingest_unresolved_records` (ingest-side unresolved isolation bucket)
 
-### notification-service
+### notification
 
 1. consumes `review.pending.created`
 2. writes `notifications`
@@ -160,55 +142,57 @@ See `docs/service_table_ownership.md` and `scripts/check_table_ownership.py`.
 4. gateway protocol path follows `INGESTION_LLM_API_MODE` and supports both OpenAI-compatible `/responses` and `/chat/completions`
 5. ICS path is delta-first (`UID + RECURRENCE-ID` component key); cancelled components map to removal records
 6. ICS source facts are deterministic from parser/source and persisted as `source_facts`
-7. parser output is parser-stage only: `source_facts` + `semantic_event_draft` + `link_signals`
+7. parser output is parser-stage only and source-specific:
+   - gmail parser payload: `message_id` + `source_facts` + `semantic_event_draft` + `link_signals`
+   - calendar parser payload: `source_facts` + `semantic_event_draft`
 8. apply/runtime normalizes parser-stage payloads into observation runtime envelope:
    - `source_facts`
    - `semantic_event`
-   - `link_signals`
    - `kind_resolution`
+   - optional `link_signals` for sources that actually provide them (gmail)
 9. `semantic_event` is the only active runtime semantic field; `semantic_event_draft` is parser-stage only
 10. `enrichment` is not an active runtime observation contract
 11. pending/review diff evaluates normalized semantic fields from runtime `semantic_event`
 12. review-service maintains `event_entities` for strong/weak course naming (`course_best` + aliases) based on 5 parsed parts only (`dept/number/suffix/quarter/year2`)
-13. parser contract remains additive and parser-stage:
-   - calendar parser payload: `source_facts` + `semantic_event_draft` + `link_signals`
-   - gmail parser payload: `message_id` + `source_facts` + `semantic_event_draft` + `link_signals`
+13. source-aware parser routing is centralized:
+   - shared `source_orchestrator` decides provider route before source-specific parsing
+   - gmail path uses sender-family aware routing
+   - calendar path uses deterministic `VEVENT` normalization plus two-pass classification
 14. gmail parser workflow is two-pass in backend runtime:
    - pass 1 planner emits `message_id + mode + segment_array` (`segment_type_hint`: `atomic|directive|unknown`)
    - pass 2 extracts `atomic` segments into `gmail.message.extracted` and `directive` segments into `gmail.directive.extracted`
    - directive records do not create fake observations; they apply deterministically into normal pending `changes`
-15. term window gating is source-term-binding-wide and provider-specific:
+15. calendar parser workflow is two-pass in backend runtime:
+   - pass 1 classifies each `VEVENT` as `relevant|unknown`
+   - pass 2 runs only for relevant items and extracts minimal semantic classification (`course identity + raw_type + event_name + ordinal + confidence + evidence`)
+   - calendar time fields are derived deterministically from `DTSTART/DTEND/DUE`, not by LLM
+   - calendar runtime path does not depend on LLM-produced `link_signals`
+16. term window gating is source-term-binding-wide and provider-specific:
    - Gmail bootstrap/history fetch uses `[bootstrap_from, monitor_until]` as coarse message-time gate
    - ICS delta keeps only changed `VEVENT`s whose deterministic event date falls inside `[bootstrap_from, monitor_until]`
    - apply/runtime performs a second term gate and isolates out-of-scope records into `ingest_unresolved_records`
    - source patch/update that changes term window performs immediate rescope when no in-flight sync exists; otherwise it queues one pending rebind and applies after terminal sync completion
-16. Gmail-to-ICS linker is inventory-rule driven (no same-day window or score-band thresholds) and persists normalized link state in:
+17. Gmail-to-ICS linker is inventory-rule driven (no same-day window or score-band thresholds) and persists normalized link state in:
    - `event_entity_links` (auto/manual accepted links)
    - `event_link_candidates` (review queue for deterministic rule misses / low anchor confidence)
    - `event_link_blocks` (permanent rejected pairs)
-17. Auto-link rules are deterministic:
+18. Auto-link rules are deterministic:
    - require `dept+number` and `semantic_event.raw_type`
    - enforce suffix exact-match when inventory for that `dept+number` has any suffix
    - enforce `semantic_event.ordinal` exact-match when inventory for same course+raw_type has multiple ordinals
-18. blocked source/entity pairs are never auto-linked and never re-enter pending candidate flow until unblocked
-19. review API provides queue aggregation and bulk moderation helpers:
+19. blocked source/entity pairs are never auto-linked and never re-enter pending candidate flow until unblocked
+20. review API provides queue aggregation and bulk moderation helpers:
    - `GET /review/summary` (pending counts for `changes`, `link-candidates`)
    - `POST /review/link-candidates/batch/decisions` (`approve`/`reject`, partial success)
 
 ## 7) Operational Notes
 
-1. service APIs are independent; no single BFF gateway in target topology
-2. default exposure is `input-service + review-service` only
-3. `ingest-service + llm-service + notification-service` are internal-only in default compose
-4. internal APIs use service token auth, not `X-API-Key`
-5. required internal headers:
-   - `X-Service-Name`
-   - `X-Service-Token`
-6. replay APIs belong to ingest-service internal surface (`/internal/ingest/jobs/*`)
-7. each service exposes `GET /internal/metrics` for minimal SLO checks
-8. SLO runbook: `docs/ops_microservice_slo.md`
-9. worker lifecycle is unified under FastAPI lifespan + AnyIO task groups via shared runtime helper (`app/runtime/worker_loop.py`)
-10. worker tick failures are non-fatal by policy: log and continue next round
+1. default local and compose runtime starts one backend API process
+2. background workers run inside that same backend process under FastAPI lifespan
+3. PostgreSQL and Redis remain shared infrastructure dependencies
+4. worker lifecycle stays unified under FastAPI lifespan + AnyIO task groups via shared runtime helper
+5. worker tick failures remain non-fatal by policy: log and continue next round
+6. legacy split-service entrypoints remain only as migration/debug artifacts and are not the default runtime path
 
 ## 8) Module Boundaries (Service Decomposition)
 

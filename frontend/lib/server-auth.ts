@@ -2,6 +2,7 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import type { OnboardingStage } from "@/lib/types";
 
 const SESSION_COOKIE_NAME = "calendardiff_session";
 
@@ -13,7 +14,7 @@ export type ServerSession = {
     timezone_name: string;
     timezone_source: "auto" | "manual";
     created_at: string;
-    onboarding_stage: "needs_source_connection" | "ready";
+    onboarding_stage: OnboardingStage;
     first_source_id: number | null;
   };
 };
@@ -54,6 +55,14 @@ export async function requireServerSession(): Promise<ServerSession> {
   const session = await getServerSession();
   if (!session) {
     redirect("/login");
+  }
+  return session;
+}
+
+export async function requireReadyServerSession(): Promise<ServerSession> {
+  const session = await requireServerSession();
+  if (session.user.onboarding_stage !== "ready") {
+    redirect("/setup");
   }
   return session;
 }

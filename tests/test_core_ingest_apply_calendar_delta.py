@@ -63,6 +63,7 @@ def _create_request_and_result(
     request_id: str,
     records: list[dict],
     status: ConnectorResultStatus = ConnectorResultStatus.CHANGED,
+    cursor_patch: dict | None = None,
 ) -> None:
     db_session.add(
         SyncRequest(
@@ -80,7 +81,7 @@ def _create_request_and_result(
             source_id=source.id,
             provider=source.provider,
             status=status,
-            cursor_patch={},
+            cursor_patch=cursor_patch or {},
             records=records,
             fetched_at=datetime.now(timezone.utc),
             error_code=None,
@@ -175,7 +176,7 @@ def test_calendar_removed_record_deactivates_target_observation(db_session: Sess
         db_session,
         source=source,
         request_id="calendar-delta-remove-1",
-        records=[_calendar_record(uid="evt-remove", title="Lab", start_at=t0, end_at=t0 + timedelta(hours=1))],
+        records=[_calendar_record(uid="evt-remove", title="Homework 1", start_at=t0, end_at=t0 + timedelta(hours=1))],
     )
     apply_ingest_result_idempotent(db_session, request_id="calendar-delta-remove-1")
 
@@ -203,3 +204,35 @@ def test_calendar_removed_record_deactivates_target_observation(db_session: Sess
     )
     assert row is not None
     assert row.is_active is False
+
+
+def test_calendar_zero_duration_event_is_normalized_and_cursor_advances_on_apply(db_session: Session) -> None:
+    source = _create_calendar_source(db_session)
+    t0 = datetime(2026, 2, 18, 6, 0, tzinfo=timezone.utc)
+    _create_request_and_result(
+        db_session,
+        source=source,
+        request_id="calendar-zero-duration-1",
+        cursor_patch={"etag": "etag-zero-duration"},
+        records=[_calendar_record(uid="evt-zero", title="Canvas HW", start_at=t0, end_at=t0)],
+    )
+
+    result = apply_ingest_result_idempotent(db_session, request_id="calendar-zero-duration-1")
+    assert result["applied"] is True
+
+    observation = db_session.scalar(
+        select(SourceEventObservation).where(
+            SourceEventObservation.source_id == source.id,
+            SourceEventObservation.external_event_id == "evt-zero",
+        )
+    )
+    assert observation is not None
+    payload = observation.event_payload if isinstance(observation.event_payload, dict) else {}
+    source_facts = payload.get("source_facts") if isinstance(payload.get("source_facts"), dict) else {}
+    assert str(source_facts.get("source_dtstart_utc") or "").startswith("2026-02-18T06:00:00")
+    assert str(source_facts.get("source_dtend_utc") or "").startswith("2026-02-18T06:00:00")
+
+    refreshed_source = db_session.get(InputSource, source.id)
+    assert refreshed_source is not None
+    assert refreshed_source.cursor is not None
+    assert refreshed_source.cursor.cursor_json.get("etag") == "etag-zero-duration"

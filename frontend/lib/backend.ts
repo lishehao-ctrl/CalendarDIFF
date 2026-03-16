@@ -59,13 +59,16 @@ function humanizeErrorPayload(path: string, status: number, payload: unknown) {
       : null;
 
     if (code === "user_onboarding_incomplete") {
+      if (message) {
+        return message;
+      }
       if (path.startsWith("/review/changes")) {
-        return "Connect at least one active source in Sources before opening Review Inbox.";
+        return "Finish onboarding before opening the review inbox.";
       }
       if (path.startsWith("/review/links") || path.startsWith("/review/link")) {
-        return "Connect at least one active source in Sources before opening Link Review.";
+        return "Finish onboarding before opening the family workspace.";
       }
-      return "Connect at least one active source in Sources before continuing.";
+      return "Finish onboarding before continuing.";
     }
 
     if (code === "gmail_source_exists") {

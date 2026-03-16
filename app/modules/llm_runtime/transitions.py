@@ -14,6 +14,7 @@ from app.modules.runtime_kernel import (
     apply_retry_transition,
     apply_success_transition,
     compute_retry_delay_seconds,
+    copy_job_payload,
     load_job_context,
     upsert_ingest_result_and_outbox_once,
     utcnow,
@@ -137,6 +138,36 @@ def apply_llm_failure_transition(
     db.commit()
 
 
+def apply_llm_backpressure_transition(
+    db: Session,
+    *,
+    redis_client: redis.Redis,
+    request_id: str,
+    source_id: int,
+    attempt: int,
+    reason: str,
+) -> None:
+    now = utcnow()
+    due_at = now + timedelta(seconds=1)
+    context = load_job_context(db, request_id=request_id, lock_job=True)
+    if context is None:
+        return
+    schedule_parse_retry(
+        redis_client,
+        request_id=request_id,
+        source_id=source_id,
+        attempt=max(attempt, 0),
+        reason=reason,
+        available_at=due_at,
+    )
+    payload = copy_job_payload(context.job)
+    payload["workflow_stage"] = "LLM_RATE_LIMIT_BACKPRESSURE"
+    payload["llm_backpressure_until"] = due_at.isoformat()
+    context.job.payload_json = payload
+    context.job.next_retry_at = due_at
+    db.commit()
+
+
 def mark_llm_success(
     db: Session,
     *,
@@ -180,11 +211,15 @@ def mark_llm_success(
         payload_workflow_stage="LLM_SUCCEEDED",
         payload_updates={"llm_finished_at": now.isoformat()},
         payload_remove_keys=["llm_parse_payload"],
+        apply_cursor_patch=False,
+        touch_source_success_state=False,
+        sync_status=SyncRequestStatus.RUNNING,
     )
     db.commit()
 
 
 __all__ = [
+    "apply_llm_backpressure_transition",
     "apply_llm_failure_transition",
     "mark_llm_success",
 ]

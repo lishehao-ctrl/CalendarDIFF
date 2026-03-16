@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 
 from sqlalchemy.orm import Session
 
@@ -137,6 +138,16 @@ class LlmGateway:
             invoke_request=invoke_request,
             truncated_input_json=truncated_input_json,
         )
+        if invoke_request.api_mode_override is not None:
+            effective_profile = replace(
+                effective_profile,
+                api_mode=invoke_request.api_mode_override,
+            )
+        if invoke_request.session_cache_mode != "inherit":
+            effective_profile = replace(
+                effective_profile,
+                session_cache_enabled=(invoke_request.session_cache_mode == "enable"),
+            )
         request_payload = _build_request_payload(
             invoke_request=invoke_request,
             profile=effective_profile,
@@ -153,7 +164,7 @@ class LlmGateway:
                 "provider_id": effective_profile.provider_id,
             },
         )
-        extracted_json, raw_usage = _extract_result(
+        extracted_json, raw_usage, response_id = _extract_result(
             response_json=response_json,
             provider_id=effective_profile.provider_id,
             api_mode=effective_profile.api_mode,
@@ -173,6 +184,7 @@ class LlmGateway:
             model=effective_profile.model,
             api_mode=effective_profile.api_mode,
             latency_ms=latency_ms,
+            response_id=response_id,
             upstream_request_id=upstream_request_id,
             raw_usage=raw_usage,
         )
@@ -209,7 +221,7 @@ def _extract_result(
     response_json: dict,
     provider_id: str,
     api_mode: LlmApiModeLiteral,
-) -> tuple[dict, dict]:
+) -> tuple[dict, dict, str | None]:
     if api_mode == "responses":
         return extract_responses_json(
             response_json=response_json,

@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Mailbox, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
-import { createOAuthSession, createSource, deleteSource, listSources } from "@/lib/api/sources";
+import { SourceSyncProgress } from "@/components/source-sync-progress";
+import { startOnboardingGmailOAuth } from "@/lib/api/onboarding";
+import { createOAuthSession, deleteSource, listSources } from "@/lib/api/sources";
 import { useApiResource } from "@/lib/use-api-resource";
 import type { SourceRow } from "@/lib/types";
 
@@ -18,22 +20,23 @@ export function GmailSourceSetupPanel() {
   const [disconnecting, setDisconnecting] = useState(false);
   const source = useMemo(() => (data || []).find((row) => row.provider === "gmail") || null, [data]);
 
+  useEffect(() => {
+    if (!source || (source.runtime_state !== "running" && source.runtime_state !== "queued" && source.runtime_state !== "rebind_pending" && !source.sync_progress)) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      void refresh();
+    }, 2000);
+    return () => window.clearInterval(intervalId);
+  }, [refresh, source]);
+
   async function connect() {
     setConnecting(true);
     setBanner(null);
     try {
-      let current = source;
-      if (!current) {
-        current = await createSource({
-          source_kind: "email",
-          provider: "gmail",
-          display_name: "Gmail Inbox",
-          config: { label_id: "INBOX" },
-          secrets: {}
-        });
-        await refresh();
-      }
-      const session = await createOAuthSession(current.source_id, { provider: "gmail" });
+      const session = source
+        ? await createOAuthSession(source.source_id, { provider: "gmail" })
+        : await startOnboardingGmailOAuth({ label_id: "INBOX", return_to: "sources" });
       window.location.assign(session.authorization_url);
     } catch (err) {
       setConnecting(false);
@@ -102,6 +105,7 @@ export function GmailSourceSetupPanel() {
               <p className="mt-2">Label: INBOX</p>
               {source?.oauth_account_email ? <p className="mt-2">Account: {source.oauth_account_email}</p> : null}
             </div>
+            <SourceSyncProgress className="mt-4" progress={source?.sync_progress} />
             {source ? (
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button variant="ghost" onClick={() => void archive()} disabled={disconnecting}>

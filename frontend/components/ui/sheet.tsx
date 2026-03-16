@@ -10,35 +10,47 @@ export const SheetTrigger = Dialog.Trigger;
 export const SheetClose = Dialog.Close;
 export const SheetPortal = Dialog.Portal;
 
-export function SheetOverlay({ className, ...props }: React.ComponentPropsWithoutRef<typeof Dialog.Overlay>) {
-  return <Dialog.Overlay className={cn("fixed inset-0 z-40 bg-[rgba(20,32,44,0.38)] backdrop-blur-sm", className)} {...props} />;
-}
+export const SheetOverlay = React.forwardRef<
+  React.ElementRef<typeof Dialog.Overlay>,
+  React.ComponentPropsWithoutRef<typeof Dialog.Overlay>
+>(function SheetOverlay({ className, ...props }, ref) {
+  return <Dialog.Overlay ref={ref} className={cn("fixed inset-0 z-40 bg-[rgba(20,32,44,0.38)] backdrop-blur-sm", className)} {...props} />;
+});
 
-export function SheetContent({ className, children, side = "right", ...props }: React.ComponentPropsWithoutRef<typeof Dialog.Content> & { side?: "right" | "bottom" }) {
+export const SheetContent = React.forwardRef<
+  React.ElementRef<typeof Dialog.Content>,
+  React.ComponentPropsWithoutRef<typeof Dialog.Content> & { side?: "right" | "bottom" }
+>(function SheetContent({ className, children, side = "right", ...props }, ref) {
   const sideClassName = side === "bottom"
     ? "fixed inset-x-0 bottom-0 z-50 max-h-[85vh] rounded-t-[1.7rem] border-t border-line bg-card p-5 shadow-[var(--shadow-panel)]"
     : "fixed inset-y-0 right-0 z-50 h-full w-full max-w-2xl border-l border-line bg-card p-5 shadow-[var(--shadow-panel)]";
   return (
     <Dialog.Portal>
       <SheetOverlay />
-      <Dialog.Content className={cn(sideClassName, className)} {...props}>
+      <Dialog.Content ref={ref} className={cn(sideClassName, className)} {...props}>
         {children}
       </Dialog.Content>
     </Dialog.Portal>
   );
-}
+});
 
 export function SheetHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("flex items-start justify-between gap-4", className)} {...props} />;
 }
 
-export function SheetTitle({ className, ...props }: React.ComponentPropsWithoutRef<typeof Dialog.Title>) {
-  return <Dialog.Title className={cn("text-2xl font-semibold text-ink", className)} {...props} />;
-}
+export const SheetTitle = React.forwardRef<
+  React.ElementRef<typeof Dialog.Title>,
+  React.ComponentPropsWithoutRef<typeof Dialog.Title>
+>(function SheetTitle({ className, ...props }, ref) {
+  return <Dialog.Title ref={ref} className={cn("text-2xl font-semibold text-ink", className)} {...props} />;
+});
 
-export function SheetDescription({ className, ...props }: React.ComponentPropsWithoutRef<typeof Dialog.Description>) {
-  return <Dialog.Description className={cn("mt-2 text-sm leading-6 text-[#596270]", className)} {...props} />;
-}
+export const SheetDescription = React.forwardRef<
+  React.ElementRef<typeof Dialog.Description>,
+  React.ComponentPropsWithoutRef<typeof Dialog.Description>
+>(function SheetDescription({ className, ...props }, ref) {
+  return <Dialog.Description ref={ref} className={cn("mt-2 text-sm leading-6 text-[#596270]", className)} {...props} />;
+});
 
 export function SheetDismissButton() {
   return (

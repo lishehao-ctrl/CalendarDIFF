@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, cast
 
 from app.db.models.ingestion import ConnectorResultStatus
@@ -12,7 +13,7 @@ from app.modules.input_control_plane.source_secrets import decode_source_secrets
 from app.modules.sync.ics_client import ICSClient
 
 
-def fetch_calendar_delta(*, source: Any) -> ConnectorFetchOutcome:
+def fetch_calendar_delta(*, source: Any, emit_progress: Callable[[dict], None] | None = None) -> ConnectorFetchOutcome:
     input_source = cast(InputSource, source)
     secrets = decode_source_secrets(cast(InputSource, source))
     url = secrets.get("url")
@@ -93,6 +94,22 @@ def fetch_calendar_delta(*, source: Any) -> ConnectorFetchOutcome:
         ]
     else:
         filtered_changed_components = delta.changed_components
+
+    if emit_progress is not None:
+        emit_progress(
+            {
+                "phase": "calendar_delta_ready",
+                "label": "Calendar delta fetched",
+                "detail": (
+                    f"{len(filtered_changed_components)} changed calendar events and "
+                    f"{delta.removed_components_count} removals are ready for intake."
+                ),
+                "current": 0,
+                "total": len(filtered_changed_components),
+                "percent": 0 if filtered_changed_components else (100 if delta.removed_components_count > 0 else None),
+                "unit": "events" if (filtered_changed_components or delta.removed_components_count) else None,
+            }
+        )
 
     if len(filtered_changed_components) + delta.removed_components_count == 0:
         return ConnectorFetchOutcome(

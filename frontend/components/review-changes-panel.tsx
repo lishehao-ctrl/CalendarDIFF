@@ -7,11 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { applyLabelLearning, batchDecideReviewChanges, decideReviewChange, listReviewChanges, markReviewChangeViewed, previewLabelLearning, previewReviewChangeEvidence } from "@/lib/api/review";
 import { formatDateTime, formatSemanticDue, formatStatusLabel, sourceDescriptor, sourceKindDescriptor, summarizeChange } from "@/lib/presenters";
-import type { EvidencePreviewResponse, LabelLearningPreview, ReviewBatchDecisionResponse, ReviewChange } from "@/lib/types";
+import type { EvidencePreviewResponse, LabelLearningPreview, ReviewChange } from "@/lib/types";
 import { useApiResource } from "@/lib/use-api-resource";
 
 const statusOptions = ["pending", "approved", "rejected"] as const;
@@ -169,6 +170,112 @@ function useResponsiveSheetSide() {
     return () => window.removeEventListener("resize", update);
   }, []);
   return side;
+}
+
+function changeTypeTone(changeType: string | null | undefined) {
+  if (changeType === "removed") {
+    return "error";
+  }
+  if (changeType === "created") {
+    return "approved";
+  }
+  if (changeType === "updated") {
+    return "pending";
+  }
+  return "info";
+}
+
+function priorityTone(priorityLabel: string | null | undefined) {
+  if (!priorityLabel) {
+    return "default";
+  }
+  const normalized = priorityLabel.toLowerCase();
+  if (normalized.includes("high") || normalized.includes("urgent")) {
+    return "error";
+  }
+  if (normalized.includes("normal") || normalized.includes("medium")) {
+    return "pending";
+  }
+  return "info";
+}
+
+function ChangeQueueRow({
+  row,
+  selected,
+  checked,
+  onToggleSelection,
+  onOpen,
+}: {
+  row: ReviewChange;
+  selected: boolean;
+  checked: boolean;
+  onToggleSelection: (checked: boolean) => void;
+  onOpen: () => void;
+}) {
+  const summary = summarizeChange(row);
+  const primarySource = row.primary_source ? sourceDescriptor(row.primary_source) : row.proposal_sources[0] ? sourceDescriptor(row.proposal_sources[0]) : "Needs source confirmation";
+  const dueLabel = summary.subtitle || "Needs manual date review";
+
+  return (
+    <Card className={selected ? "border-[rgba(31,94,255,0.35)] bg-white p-5 shadow-[0_18px_38px_rgba(20,32,44,0.12)]" : "bg-white/72 p-5 transition hover:-translate-y-0.5 hover:bg-white"}>
+      <div className="flex items-start gap-4">
+        <div className="pt-1">
+          <Checkbox
+            aria-label={`Select review change ${row.id}`}
+            checked={checked}
+            onChange={(event) => onToggleSelection(event.currentTarget.checked)}
+          />
+        </div>
+        <div className="min-w-0 flex-1 space-y-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={row.review_status}>{formatStatusLabel(row.review_status)}</Badge>
+              <Badge tone={row.viewed_at ? "info" : "pending"}>{row.viewed_at ? "Viewed" : "New"}</Badge>
+              <Badge tone={changeTypeTone(row.change_type)}>{formatStatusLabel(row.change_type)}</Badge>
+              {row.priority_label ? <Badge tone={priorityTone(row.priority_label)}>{formatStatusLabel(row.priority_label)}</Badge> : null}
+            </div>
+            <h4 className="mt-3 text-lg font-semibold text-ink">{summary.title}</h4>
+            <p className="mt-2 text-sm leading-6 text-[#596270]">{dueLabel}</p>
+            <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[#6d7885]">
+              <span>Detected {formatDateTime(row.detected_at, "Unknown")}</span>
+              <span>•</span>
+              <span>{primarySource}</span>
+              <span>•</span>
+              <span>{row.proposal_sources.length} source candidate{row.proposal_sources.length === 1 ? "" : "s"}</span>
+              <span>•</span>
+              <span>{row.viewed_at ? `Opened ${formatDateTime(row.viewed_at)}` : "Not opened yet"}</span>
+            </div>
+          </div>
+
+          {row.proposal_sources.length > 0 ? (
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.18em] text-[#6d7885]">Attached sources</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {row.proposal_sources.map((source) => (
+                  <Badge key={`${row.id}-${source.source_id}-${source.external_event_id || "none"}`} tone="info">
+                    {sourceDescriptor(source)}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant={selected ? "secondary" : "soft"} onClick={onOpen}>
+              <Eye className="mr-2 h-4 w-4" />
+              {selected ? "Details open" : "Open details"}
+            </Button>
+            <Button asChild size="sm" variant="ghost">
+              <Link href={`/review/changes/${row.id}/canonical`}>
+                <SquarePen className="mr-2 h-4 w-4" />
+                Edit current event
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
 }
 
 export function ReviewChangesPanel() {
@@ -356,146 +463,89 @@ export function ReviewChangesPanel() {
     });
   }
 
+  const unviewedCount = rows.filter((row) => !row.viewed_at).length;
+
   if (loading) return <LoadingState label="review changes" />;
   if (error) return <ReviewInboxError message={error} />;
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card className="p-5 md:col-span-2">
-          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Current lane</p>
-          <p className="mt-3 text-3xl font-semibold">{formatStatusLabel(statusFilter)}</p>
-          <p className="mt-2 text-sm text-[#596270]">Filter changes by moderation state. Pending is the primary operational queue.</p>
-        </Card>
-        <Card className="p-5">
-          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Visible rows</p>
-          <p className="mt-3 text-3xl font-semibold">{rows.length}</p>
-          <p className="mt-2 text-sm text-[#596270]">Current window size for the selected moderation lane.</p>
-        </Card>
-        <Card className="p-5">
-          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Evidence mode</p>
-          <p className="mt-3 text-3xl font-semibold">{formatStatusLabel(currentEvidenceSide)}</p>
-          <p className="mt-2 text-sm text-[#596270]">Default drawer preview opens in Summary mode with the most recent evidence side.</p>
-        </Card>
-      </div>
+        <Card className="relative overflow-hidden p-6 md:p-7">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.14),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(215,90,45,0.12),transparent_28%)]" />
+          <div className="relative space-y-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-3xl">
+                <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">Moderation queue</p>
+                <h3 className="mt-3 text-3xl font-semibold text-ink">Review change inbox</h3>
+                <p className="mt-3 text-sm leading-7 text-[#596270]">
+                  Work the live queue, keep batch actions nearby, and open the detail drawer only when a row needs real inspection.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {statusOptions.map((status) => (
+                  <Button key={status} variant={statusFilter === status ? "primary" : "ghost"} size="sm" onClick={() => setStatusFilter(status)}>
+                    {formatStatusLabel(status)}
+                  </Button>
+                ))}
+              </div>
+            </div>
 
-      {banner ? (
-        <Card className={banner.tone === "error" ? "border-[#efc4b5] bg-[#fff3ef] p-4" : "border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] p-4"}>
-          <p className="text-sm text-[#314051]">{banner.text}</p>
-        </Card>
-      ) : null}
+            {banner ? (
+              <Card className={banner.tone === "error" ? "border-[#efc4b5] bg-[#fff3ef] p-4" : "border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] p-4"}>
+                <p className="text-sm text-[#314051]">{banner.text}</p>
+              </Card>
+            ) : null}
 
-      <Card className="p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Moderation queue</p>
-            <h3 className="mt-3 text-xl font-semibold">Review change inbox</h3>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-[#596270]">
-              Select rows for batch decisions, or open a change drawer to inspect evidence and make a direct edit before approving.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {statusOptions.map((status) => (
-              <Button key={status} variant={statusFilter === status ? "primary" : "ghost"} size="sm" onClick={() => setStatusFilter(status)}>
-                {formatStatusLabel(status)}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-4 rounded-[1.2rem] border border-line/80 bg-white/60 p-4">
-          <div className="flex items-center gap-3">
-            <Checkbox aria-label="Select all visible review changes" checked={allVisibleSelected} onChange={(event) => toggleVisibleSelection(event.currentTarget.checked)} />
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Batch actions</p>
-              <p className="mt-1 text-sm text-[#314051]">{selectedIds.length} selected</p>
+            <div className="flex flex-wrap items-center gap-3 text-sm text-[#596270]">
+              <Badge tone="info">{formatStatusLabel(statusFilter)} lane</Badge>
+              <span>{rows.length} rows</span>
+              <span>•</span>
+              <span>{unviewedCount} unopened</span>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="ghost" disabled={selectedIds.length === 0 || batchBusy === "reject"} onClick={() => void decideBatch("reject")}>
-              <XCircle className="mr-2 h-4 w-4" />
-              {batchBusy === "reject" ? "Rejecting..." : "Reject selected"}
-            </Button>
-            <Button size="sm" disabled={selectedIds.length === 0 || batchBusy === "approve"} onClick={() => void decideBatch("approve")}>
-              <CheckCheck className="mr-2 h-4 w-4" />
-              {batchBusy === "approve" ? "Approving..." : "Approve selected"}
-            </Button>
-          </div>
-        </div>
+        </Card>
 
-        <div className="mt-5 space-y-3">
-          {rows.length === 0 ? (
-            <EmptyState title="Nothing in this lane" description="Switch filters or run another sync to generate review work." />
-          ) : (
-            rows.map((row) => {
-              const summary = summarizeChange(row);
-              return (
-                <Card key={row.id} className={selectedChangeId === row.id ? "border-[rgba(31,94,255,0.35)] bg-white p-5" : "bg-white/60 p-5 transition hover:-translate-y-0.5 hover:bg-white"}>
-                  <div className="flex items-start gap-4">
-                    <div className="pt-1">
-                      <Checkbox
-                        aria-label={`Select review change ${row.id}`}
-                        checked={selectedIdsSet.has(row.id)}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={(event) => toggleRowSelection(row.id, event.currentTarget.checked)}
-                      />
-                    </div>
-                    <button
-                      className="min-w-0 flex-1 text-left"
-                      onClick={() => {
-                        setSelectedChangeId(row.id);
-                        setCurrentEvidenceSide("after");
-                      }}
-                      type="button"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-3">
-                            <h4 className="text-lg font-semibold text-ink">{summary.title}</h4>
-                            <Badge tone={row.review_status}>{formatStatusLabel(row.review_status)}</Badge>
-                            {row.viewed_at ? <Badge tone="info">Viewed</Badge> : <Badge tone="pending">New</Badge>}
-                          </div>
-                          {summary.subtitle ? <p className="mt-2 text-sm text-[#314051]">{summary.subtitle}</p> : null}
-                          <div className="mt-3 flex flex-wrap gap-2 text-xs text-[#6d7885]">
-                            <span>{formatStatusLabel(row.change_type)}</span>
-                            <span>•</span>
-                            <span>Detected {formatDateTime(row.detected_at, "Unknown")}</span>
-                            {row.priority_label ? <><span>•</span><span>{formatStatusLabel(row.priority_label)}</span></> : null}
-                          </div>
-                          {row.proposal_sources.length > 0 ? (
-                            <div className="mt-4">
-                              <p className="text-[11px] uppercase tracking-[0.18em] text-[#6d7885]">Sources</p>
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {row.proposal_sources.map((source) => (
-                                  <Badge key={`${row.id}-${source.source_id}-${source.external_event_id || "none"}`} tone="info">
-                                    {sourceDescriptor(source)}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            <Button asChild size="sm" variant="ghost">
-                              <Link href={`/review/changes/${row.id}/canonical`} onClick={(event) => event.stopPropagation()}>
-                                <SquarePen className="mr-2 h-4 w-4" />
-                                Edit current event
-                              </Link>
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-[#6d7885]">
-                          <Eye className="h-4 w-4" />
-                          {row.viewed_at ? formatDateTime(row.viewed_at, "Viewed") : "Unviewed"}
-                        </div>
-                      </div>
-                    </button>
-                  </div>
-                </Card>
-              );
-            })
-          )}
-        </div>
-      </Card>
+        <Card className="p-5">
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-[1.2rem] border border-line/80 bg-white/60 p-4">
+            <div className="flex items-center gap-3">
+              <Checkbox aria-label="Select all visible review changes" checked={allVisibleSelected} onChange={(event) => toggleVisibleSelection(event.currentTarget.checked)} />
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Batch actions</p>
+                <p className="mt-1 text-sm text-[#314051]">{selectedIds.length} selected</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="ghost" disabled={selectedIds.length === 0 || batchBusy === "reject"} onClick={() => void decideBatch("reject")}>
+                <XCircle className="mr-2 h-4 w-4" />
+                {batchBusy === "reject" ? "Rejecting..." : "Reject selected"}
+              </Button>
+              <Button size="sm" disabled={selectedIds.length === 0 || batchBusy === "approve"} onClick={() => void decideBatch("approve")}>
+                <CheckCheck className="mr-2 h-4 w-4" />
+                {batchBusy === "approve" ? "Approving..." : "Approve selected"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-5 space-y-4">
+            {rows.length === 0 ? (
+              <EmptyState title="Nothing in this lane" description="Switch filters or run another sync to generate review work." />
+            ) : (
+              rows.map((row) => (
+                <ChangeQueueRow
+                  key={row.id}
+                  row={row}
+                  selected={selectedChangeId === row.id}
+                  checked={selectedIdsSet.has(row.id)}
+                  onToggleSelection={(checked) => toggleRowSelection(row.id, checked)}
+                  onOpen={() => {
+                    setSelectedChangeId(row.id);
+                    setCurrentEvidenceSide("after");
+                  }}
+                />
+              ))
+            )}
+          </div>
+        </Card>
 
       <Sheet open={selected !== null} onOpenChange={(open) => {
         if (!open) {
@@ -510,30 +560,51 @@ export function ReviewChangesPanel() {
               <SheetHeader>
                 <div>
                   <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Selected change</p>
-                  <SheetTitle className="mt-3">{summarizeChange(selected).title}</SheetTitle>
+                  <SheetTitle className="mt-3 leading-tight">{summarizeChange(selected).title}</SheetTitle>
                   <SheetDescription>
                     {formatSemanticDue((selected.after_event || selected.before_event || {}) as unknown as Record<string, unknown>, "Event")}
                   </SheetDescription>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Badge tone={selected.review_status}>{formatStatusLabel(selected.review_status)}</Badge>
+                    <Badge tone={changeTypeTone(selected.change_type)}>{formatStatusLabel(selected.change_type)}</Badge>
+                    {selected.viewed_at ? <Badge tone="info">Viewed {formatDateTime(selected.viewed_at)}</Badge> : <Badge tone="pending">New in queue</Badge>}
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Badge tone={selected.review_status}>{formatStatusLabel(selected.review_status)}</Badge>
                   <SheetDismissButton />
                 </div>
               </SheetHeader>
 
               <div className="mt-6 space-y-5">
                 <Card className="bg-white/60 p-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Summary</p>
-                  <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Decision context</p>
+                      <h4 className="mt-3 text-xl font-semibold text-ink">Summary before you decide</h4>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-[#596270]">Review the timing, source lineage, and evidence posture first, then decide whether the canonical event should change.</p>
+                    </div>
+                    <Badge tone={selected.review_status}>{formatStatusLabel(selected.review_status)}</Badge>
+                  </div>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <div className="rounded-[1.2rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
-                      <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Timeline</p>
-                      <p className="mt-2">Detected {formatDateTime(selected.detected_at)}</p>
-                      <p className="mt-1">Deliver after {formatDateTime(selected.deliver_after, "Not scheduled")}</p>
+                      <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Detected</p>
+                      <p className="mt-2 font-medium text-ink">{formatDateTime(selected.detected_at)}</p>
+                      <p className="mt-1 text-xs text-[#596270]">Deliver after {formatDateTime(selected.deliver_after, "Not scheduled")}</p>
                     </div>
                     <div className="rounded-[1.2rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
                       <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Change type</p>
                       <p className="mt-2 font-medium text-ink">{formatStatusLabel(selected.change_type)}</p>
-                      <p className="mt-1 text-sm text-[#596270]">This change is currently in the {formatStatusLabel(selected.review_status)} lane.</p>
+                      <p className="mt-1 text-xs text-[#596270]">This row is currently in the {formatStatusLabel(selected.review_status)} lane.</p>
+                    </div>
+                    <div className="rounded-[1.2rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
+                      <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Attached sources</p>
+                      <p className="mt-2 font-medium text-ink">{selected.proposal_sources.length}</p>
+                      <p className="mt-1 text-xs text-[#596270]">Potential source records tied to this change.</p>
+                    </div>
+                    <div className="rounded-[1.2rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
+                      <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Evidence side</p>
+                      <p className="mt-2 font-medium text-ink">{formatStatusLabel(currentEvidenceSide)}</p>
+                      <p className="mt-1 text-xs text-[#596270]">Summary mode is still the default reading view.</p>
                     </div>
                   </div>
                   <div className="mt-4 grid gap-3 lg:grid-cols-2">
@@ -657,8 +728,8 @@ export function ReviewChangesPanel() {
                             ))}
                           </div>
                           <div className="mt-3 flex flex-wrap gap-3">
-                            <input
-                              className="h-10 rounded-2xl border border-line bg-white/80 px-4 text-sm text-ink outline-none transition placeholder:text-[#7d8794] focus:border-cobalt focus:bg-white"
+                            <Input
+                              className="max-w-sm"
                               value={newFamilyLabel}
                               onChange={(event) => setNewFamilyLabel(event.target.value)}
                               placeholder="New family label"

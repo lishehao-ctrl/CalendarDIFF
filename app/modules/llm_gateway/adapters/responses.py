@@ -17,7 +17,7 @@ def build_responses_payload(
     profile: ResolvedLlmProfile,
     truncated_input_json: str,
 ) -> dict:
-    return {
+    payload = {
         "model": profile.model,
         "temperature": invoke_request.temperature,
         "instructions": _build_system_prompt(invoke_request=invoke_request),
@@ -31,6 +31,9 @@ def build_responses_payload(
             }
         },
     }
+    if isinstance(invoke_request.previous_response_id, str) and invoke_request.previous_response_id.strip():
+        payload["previous_response_id"] = invoke_request.previous_response_id.strip()
+    return payload
 
 
 def extract_responses_json(
@@ -38,7 +41,7 @@ def extract_responses_json(
     response_json: dict,
     provider_id: str,
     api_mode: LlmApiModeLiteral,
-) -> tuple[dict, dict]:
+) -> tuple[dict, dict, str | None]:
     error_payload = response_json.get("error")
     if isinstance(error_payload, dict):
         message = str(error_payload.get("message") or "responses api returned error")
@@ -63,7 +66,9 @@ def extract_responses_json(
     usage = response_json.get("usage")
     if not isinstance(usage, dict):
         usage = {}
-    return payload, usage
+    response_id = response_json.get("id")
+    response_id_text = response_id.strip() if isinstance(response_id, str) and response_id.strip() else None
+    return payload, usage, response_id_text
 
 
 def _extract_output_text(output: list[object]) -> str:
@@ -114,11 +119,36 @@ def _build_system_prompt(*, invoke_request: LlmInvokeRequest) -> str:
 
 
 def _build_user_prompt(*, invoke_request: LlmInvokeRequest, input_json: str) -> str:
+    if isinstance(invoke_request.cache_prefix_payload, dict):
+        return "\n".join(
+            [
+                "INPUT_JSON:",
+                json.dumps(
+                    {
+                        "cache_prefix": invoke_request.cache_prefix_payload,
+                        "task_input": invoke_request.user_payload,
+                    },
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                ),
+            ]
+        )
+    if isinstance(invoke_request.shared_user_payload, dict):
+        return "\n".join(
+            [
+                "INPUT_JSON:",
+                json.dumps(
+                    {
+                        "message_context": invoke_request.shared_user_payload,
+                        "task_input": invoke_request.user_payload,
+                    },
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                ),
+            ]
+        )
     lines = [
         f"TASK: {invoke_request.task_name}",
-        f"REQUEST_ID: {invoke_request.request_id or 'n/a'}",
-        f"SOURCE_ID: {invoke_request.source_id if invoke_request.source_id is not None else 'n/a'}",
-        f"SOURCE_PROVIDER: {invoke_request.source_provider or 'n/a'}",
         "INPUT_JSON:",
         input_json,
     ]

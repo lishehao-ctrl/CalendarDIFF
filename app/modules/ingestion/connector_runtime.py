@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,7 +15,8 @@ from app.modules.ingestion.connector_types import ConnectorFetchOutcome
 from app.modules.ingestion.failure_policy import decide_failure
 from app.modules.ingestion.gmail_fetcher import fetch_gmail_changes
 from app.modules.ingestion.job_claiming import claim_jobs, requeue_stale_claimed_jobs
-from app.modules.runtime_kernel import JobContext, apply_dead_letter_transition, utcnow
+from app.modules.ingestion.source_orchestrator import route_source_provider
+from app.modules.runtime_kernel import JobContext, apply_dead_letter_transition, copy_job_payload, utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +56,13 @@ def process_claimed_job(db: Session, *, job_id: int) -> bool:
         db.commit()
         return True
 
-    outcome = dispatch_provider_fetch(source_provider=source.provider, source=source, request_id=sync_request.request_id)
+    progress_callback = _build_progress_callback(db=db, context=context)
+    outcome = dispatch_provider_fetch(
+        source_provider=source.provider,
+        source=source,
+        request_id=sync_request.request_id,
+        emit_progress=progress_callback,
+    )
     if outcome.status in {
         ConnectorResultStatus.FETCH_FAILED,
         ConnectorResultStatus.PARSE_FAILED,
@@ -104,12 +112,14 @@ def dispatch_provider_fetch(
     source_provider: str,
     source,
     request_id: str,
+    emit_progress: Callable[[dict], None] | None = None,
 ) -> ConnectorFetchOutcome:
     try:
-        if source_provider == "gmail":
-            return fetch_gmail_changes(source=source, request_id=request_id)
-        if source_provider in {"ics", "calendar"}:
-            return fetch_calendar_delta(source=source)
+        processor = route_source_provider(source_provider=source_provider)
+        if processor == "gmail":
+            return fetch_gmail_changes(source=source, request_id=request_id, emit_progress=emit_progress)
+        if processor == "calendar":
+            return fetch_calendar_delta(source=source, emit_progress=emit_progress)
         return ConnectorFetchOutcome(
             status=ConnectorResultStatus.FETCH_FAILED,
             cursor_patch={},
@@ -126,6 +136,20 @@ def dispatch_provider_fetch(
             error_code="connector_exception",
             error_message=str(exc),
         )
+
+
+def _build_progress_callback(*, db: Session, context: JobContext) -> Callable[[dict], None]:
+    def emit(progress: dict) -> None:
+        if context.sync_request is None or context.source is None:
+            return
+        payload = copy_job_payload(context.job)
+        payload["provider"] = context.source.provider
+        payload["sync_progress"] = progress
+        payload["sync_progress_updated_at"] = utcnow().isoformat()
+        context.job.payload_json = payload
+        db.commit()
+
+    return emit
 
 
 __all__ = ["dispatch_provider_fetch", "process_claimed_job", "run_connector_tick"]

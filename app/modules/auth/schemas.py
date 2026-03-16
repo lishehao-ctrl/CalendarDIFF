@@ -7,6 +7,8 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.modules.onboarding.schemas import OnboardingStageLiteral
+
 
 class AuthRegisterRequest(BaseModel):
     notify_email: str = Field(min_length=3, max_length=255)
@@ -34,7 +36,7 @@ class AuthRegisterRequest(BaseModel):
 
 
 class AuthLoginRequest(AuthRegisterRequest):
-    pass
+    password: str = Field(min_length=1, max_length=128)
 
 
 class AuthSessionUserResponse(BaseModel):
@@ -43,7 +45,7 @@ class AuthSessionUserResponse(BaseModel):
     timezone_name: str
     timezone_source: str
     created_at: datetime
-    onboarding_stage: Literal["needs_source_connection", "ready"]
+    onboarding_stage: OnboardingStageLiteral
     first_source_id: int | None
 
 

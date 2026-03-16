@@ -19,6 +19,7 @@ from app.modules.core_ingest.gmail_directive_mutation import apply_directive_mut
 from app.modules.core_ingest.gmail_directive_selector import entity_matches_directive_selector, load_directive_candidates
 from app.modules.core_ingest.payload_contracts import PayloadContractError, validate_gmail_directive_payload
 from app.modules.core_ingest.pending_change_store import upsert_pending_change
+from app.modules.core_ingest.product_scope import is_monitored_assignment_or_exam_directive
 from app.modules.core_ingest.review_evidence import freeze_semantic_evidence
 from app.modules.core_ingest.unresolved_store import resolve_active_unresolved_records
 
@@ -49,6 +50,21 @@ def apply_gmail_directive_record(
     mutation = directive.get("mutation") if isinstance(directive.get("mutation"), dict) else {}
     confidence_raw = directive.get("confidence")
     confidence = float(confidence_raw) if isinstance(confidence_raw, (int, float)) else 0.0
+
+    if not is_monitored_assignment_or_exam_directive(
+        selector=selector,
+        source_facts=source_facts,
+    ):
+        isolate_directive_record(
+            db=db,
+            source=source,
+            external_event_id=external_event_id,
+            request_id=request_id,
+            reason_code="directive_product_scope_excluded",
+            source_facts=source_facts,
+            payload=payload,
+        )
+        return []
 
     selector_dept = selector.get("course_dept")
     selector_number = selector.get("course_number")

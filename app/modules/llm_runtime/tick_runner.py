@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 
 import redis
@@ -28,44 +28,73 @@ def run_llm_worker_tick(
 ) -> int:
     settings = get_settings()
     concurrency = max(1, int(settings.llm_worker_concurrency))
+    poll_ms = max(1, int(settings.llm_queue_consumer_poll_ms))
     stream_key, _group_name, messages = consume_parse_tasks(
         redis_client=redis_client,
         worker_id=worker_id,
         batch_size=concurrency,
-        poll_ms=max(1, int(settings.llm_queue_consumer_poll_ms)),
+        poll_ms=poll_ms,
     )
     if not messages:
         return 0
 
-    outcomes: list[_TaskOutcome] = []
-    max_workers = max(1, min(concurrency, len(messages)))
+    total_consumed = 0
+    max_workers = max(1, concurrency)
     if max_workers == 1:
-        for message in messages:
-            ack = process_parse_task_message(
-                message=message,
-                redis_client=redis_client,
-                session_factory=session_factory,
-                worker_id=worker_id,
-                stream_key=stream_key,
-            )
-            outcomes.append(_TaskOutcome(message_id=message.message_id, ack=ack))
-    else:
-        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="llm-runtime") as pool:
-            future_map = {
-                pool.submit(
-                    process_parse_task_message,
+        current_messages = messages
+        while current_messages:
+            total_consumed += len(current_messages)
+            ack_ids: list[str] = []
+            for message in current_messages:
+                ack = process_parse_task_message(
                     message=message,
                     redis_client=redis_client,
                     session_factory=session_factory,
                     worker_id=worker_id,
                     stream_key=stream_key,
-                ): message
-                for message in messages
-            }
-            for future in as_completed(future_map):
-                message = future_map[future]
+                )
+                if ack:
+                    ack_ids.append(message.message_id)
+            ack_parse_tasks(
+                redis_client=redis_client,
+                message_ids=ack_ids,
+            )
+            _stream_key, _group_name, current_messages = consume_parse_tasks(
+                redis_client=redis_client,
+                worker_id=worker_id,
+                batch_size=1,
+                poll_ms=1,
+            )
+        return total_consumed
+
+    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="llm-runtime") as pool:
+        future_map = {}
+
+        def submit_batch(batch_messages) -> None:
+            nonlocal total_consumed
+            total_consumed += len(batch_messages)
+            for message in batch_messages:
+                future_map[
+                    pool.submit(
+                        process_parse_task_message,
+                        message=message,
+                        redis_client=redis_client,
+                        session_factory=session_factory,
+                        worker_id=worker_id,
+                        stream_key=stream_key,
+                    )
+                ] = message
+
+        submit_batch(messages)
+
+        while future_map:
+            done, _pending = wait(set(future_map.keys()), return_when=FIRST_COMPLETED)
+            ack_ids: list[str] = []
+            for future in done:
+                message = future_map.pop(future)
                 try:
-                    outcomes.append(_TaskOutcome(message_id=message.message_id, ack=bool(future.result())))
+                    if bool(future.result()):
+                        ack_ids.append(message.message_id)
                 except Exception as exc:  # pragma: no cover - defensive worker guard
                     logger.error(
                         "llm worker task crashed request_id=%s source_id=%s error=%s",
@@ -73,14 +102,24 @@ def run_llm_worker_tick(
                         message.source_id,
                         str(exc),
                     )
-                    outcomes.append(_TaskOutcome(message_id=message.message_id, ack=False))
+            ack_parse_tasks(
+                redis_client=redis_client,
+                message_ids=ack_ids,
+            )
 
-    ack_ids = [row.message_id for row in outcomes if row.ack]
-    ack_parse_tasks(
-        redis_client=redis_client,
-        message_ids=ack_ids,
-    )
-    return len(messages)
+            available_slots = max_workers - len(future_map)
+            if available_slots <= 0:
+                continue
+            _stream_key, _group_name, more_messages = consume_parse_tasks(
+                redis_client=redis_client,
+                worker_id=worker_id,
+                batch_size=available_slots,
+                poll_ms=1,
+            )
+            if more_messages:
+                submit_batch(more_messages)
+
+    return total_consumed
 
 
 __all__ = ["run_llm_worker_tick"]

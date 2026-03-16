@@ -12,6 +12,8 @@ def serialize_source(
     source: InputSource,
     *,
     runtime_state: SourceRuntimeStateProjection | None = None,
+    active_request_id: str | None = None,
+    sync_progress: dict | None = None,
 ) -> dict:
     oauth_connection_status = None
     oauth_account_email = None
@@ -49,6 +51,8 @@ def serialize_source(
         "sync_state": runtime_state.sync_state if runtime_state is not None else "idle",
         "config_state": runtime_state.config_state if runtime_state is not None else "stable",
         "runtime_state": runtime_state.runtime_state if runtime_state is not None else "active",
+        "active_request_id": active_request_id,
+        "sync_progress": sync_progress,
     }
 
 

@@ -1,12 +1,34 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models.input import InputSource
+from app.core.security import encrypt_secret
+from app.db.models.input import InputSource, InputSourceConfig, InputSourceCursor, InputSourceSecret, SourceKind
 from app.db.models.shared import User
+from app.modules.common.source_term_window import (
+    SourceTermWindow,
+    normalize_term_window_config,
+    parse_source_term_window,
+    parse_term_window_config,
+    source_timezone_name,
+)
+from app.modules.input_control_plane.oauth_service import build_gmail_oauth_start_for_source
+from app.modules.input_control_plane.provider_sources import (
+    CANVAS_ICS_DISPLAY_NAME,
+    CANVAS_ICS_SOURCE_KEY,
+    get_canvas_ics_source_for_user,
+    get_gmail_source_for_user,
+)
+from app.modules.input_control_plane.source_runtime_state import derive_source_runtime_state
+from app.modules.input_control_plane.source_secrets import decode_source_secrets
+from app.modules.input_control_plane.schemas import InputSourcePatchRequest
+from app.modules.input_control_plane.source_serializers import serialize_source
+from app.modules.input_control_plane.sources_service import update_input_source
 
 
 class OnboardingRegisterError(RuntimeError):
@@ -24,12 +46,27 @@ class SourceHealthSummary:
 
 
 @dataclass(frozen=True)
+class OnboardingSourceSummary:
+    source_id: int
+    provider: str
+    connected: bool
+    has_term_binding: bool
+    runtime_state: str
+    oauth_account_email: str | None
+    term_binding: SourceTermWindow | None
+
+
+@dataclass(frozen=True)
 class OnboardingStatus:
     stage: str
     message: str
     registered_user_id: int | None
     first_source_id: int | None
     source_health: SourceHealthSummary
+    canvas_source: OnboardingSourceSummary | None
+    gmail_source: OnboardingSourceSummary | None
+    gmail_skipped: bool
+    term_binding: SourceTermWindow | None
 
 
 @dataclass(frozen=True)
@@ -40,35 +77,42 @@ class OnboardingRegisterResult:
 
 
 def get_onboarding_status_for_user(db: Session, *, user: User) -> OnboardingStatus:
-    active_sources = list(
+    all_sources = list(
         db.scalars(
             select(InputSource)
-            .where(
-                InputSource.user_id == user.id,
-                InputSource.is_active.is_(True),
-            )
-            .order_by(InputSource.id.asc())
+            .where(InputSource.user_id == user.id)
+            .order_by(InputSource.created_at.asc(), InputSource.id.asc())
         ).all()
     )
-    first_source = active_sources[0] if active_sources else None
+    active_sources = [source for source in all_sources if source.is_active]
     first_error_source = next((source for source in active_sources if source.last_error_message), None)
     source_health = _derive_source_health(active_sources=active_sources, first_error_source=first_error_source)
 
-    if first_source is None:
-        return OnboardingStatus(
-            stage="needs_source_connection",
-            message="Connect at least one active input source.",
-            registered_user_id=user.id,
-            first_source_id=None,
-            source_health=source_health,
-        )
+    canvas_source = get_canvas_ics_source_for_user(db, user_id=user.id)
+    gmail_source = get_gmail_source_for_user(db, user_id=user.id)
+    canvas_summary = _build_onboarding_source_summary(db, source=canvas_source)
+    gmail_summary = _build_onboarding_source_summary(db, source=gmail_source)
+    gmail_skipped = user.gmail_onboarding_skipped_at is not None
+    first_source_id = all_sources[0].id if all_sources else None
+    term_binding = _preferred_term_binding(canvas_summary=canvas_summary, gmail_summary=gmail_summary)
+
+    stage, message = _derive_stage_and_message(
+        user=user,
+        canvas_source=canvas_summary,
+        gmail_source=gmail_summary,
+        gmail_skipped=gmail_skipped,
+    )
 
     return OnboardingStatus(
-        stage="ready",
-        message="Onboarding complete.",
+        stage=stage,
+        message=message,
         registered_user_id=user.id,
-        first_source_id=first_source.id,
+        first_source_id=first_source_id,
         source_health=source_health,
+        canvas_source=canvas_summary,
+        gmail_source=gmail_summary,
+        gmail_skipped=gmail_skipped,
+        term_binding=term_binding,
     )
 
 
@@ -94,6 +138,214 @@ def register_onboarding(
     )
 
 
+def upsert_onboarding_canvas_ics(
+    db: Session,
+    *,
+    user: User,
+    url: str,
+) -> OnboardingStatus:
+    source = get_canvas_ics_source_for_user(db, user_id=user.id)
+    if source is None:
+        source = InputSource(
+            user_id=user.id,
+            source_kind=SourceKind.CALENDAR,
+            provider="ics",
+            source_key=CANVAS_ICS_SOURCE_KEY,
+            display_name=CANVAS_ICS_DISPLAY_NAME,
+            is_active=False,
+            poll_interval_seconds=900,
+            next_poll_at=None,
+        )
+        db.add(source)
+        db.flush()
+        source.config = InputSourceConfig(source_id=source.id, schema_version=1, config_json={})
+        source.cursor = InputSourceCursor(source_id=source.id, version=1, cursor_json={})
+    if source.secrets is None:
+        source.secrets = InputSourceSecret(
+            source_id=source.id,
+            encrypted_payload=encrypt_secret(json.dumps({"url": url}, separators=(",", ":"), ensure_ascii=True)),
+        )
+    else:
+        source.secrets.encrypted_payload = encrypt_secret(json.dumps({"url": url}, separators=(",", ":"), ensure_ascii=True))
+
+    current_term = parse_source_term_window(source, required=False)
+    if current_term is None:
+        source.is_active = False
+        source.next_poll_at = None
+    db.commit()
+    return get_onboarding_status_for_user(db, user=user)
+
+
+def start_onboarding_gmail_oauth(
+    db: Session,
+    *,
+    user: User,
+    label_id: str | None = "INBOX",
+    return_to: str = "onboarding",
+) -> tuple[InputSource, str, datetime]:
+    source = _ensure_onboarding_gmail_source(db, user=user, label_id=label_id)
+    authorization_url, expires_at = build_gmail_oauth_start_for_source(db, source=source, return_to=return_to)
+    return source, authorization_url, expires_at
+
+
+def skip_onboarding_gmail(
+    db: Session,
+    *,
+    user: User,
+    now: datetime | None = None,
+) -> OnboardingStatus:
+    user.gmail_onboarding_skipped_at = now or datetime.now(timezone.utc)
+    db.commit()
+    return get_onboarding_status_for_user(db, user=user)
+
+
+def apply_onboarding_term_binding(
+    db: Session,
+    *,
+    user: User,
+    term_key: str | None,
+    term_from: str,
+    term_to: str,
+) -> OnboardingStatus:
+    normalized_config = normalize_term_window_config(
+        config={"term_key": term_key, "term_from": term_from, "term_to": term_to},
+        required=True,
+    )
+    window = parse_term_window_config(normalized_config, required=True)
+    current = datetime.now(timezone.utc)
+
+    canvas_source = get_canvas_ics_source_for_user(db, user_id=user.id)
+    if canvas_source is None or not _source_has_canvas_url(canvas_source):
+        raise OnboardingRegisterError("Connect Canvas ICS before saving the term window", status_code=409)
+
+    gmail_source = get_gmail_source_for_user(db, user_id=user.id)
+    connected_sources = [canvas_source]
+    if gmail_source is not None and _source_has_gmail_connection(gmail_source):
+        connected_sources.append(gmail_source)
+
+    user.onboarding_completed_at = current
+    for source in connected_sources:
+        requested_config = _merge_source_config_with_term(source=source, window=window)
+        update_input_source(
+            db,
+            source=source,
+            payload=InputSourcePatchRequest(
+                is_active=True,
+                config=requested_config,
+            ),
+        )
+
+    db.refresh(user)
+    return get_onboarding_status_for_user(db, user=user)
+
+
+def _ensure_onboarding_gmail_source(
+    db: Session,
+    *,
+    user: User,
+    label_id: str | None,
+) -> InputSource:
+    normalized_label_id = (label_id or "INBOX").strip() or "INBOX"
+    existing_binding = _preferred_term_binding(
+        canvas_summary=_build_onboarding_source_summary(db, source=get_canvas_ics_source_for_user(db, user_id=user.id)),
+        gmail_summary=None,
+    )
+    source = get_gmail_source_for_user(db, user_id=user.id)
+    if source is None:
+        config_json: dict[str, object] = {"label_id": normalized_label_id}
+        if existing_binding is not None:
+            config_json.update(existing_binding.to_config_json())
+        source = InputSource(
+            user_id=user.id,
+            source_kind=SourceKind.EMAIL,
+            provider="gmail",
+            source_key="gmail_inbox",
+            display_name="Gmail Inbox",
+            is_active=existing_binding is not None,
+            poll_interval_seconds=900,
+            next_poll_at=existing_binding.monitor_start_at_utc(timezone_name=user.timezone_name) if existing_binding is not None else None,
+        )
+        db.add(source)
+        db.flush()
+        source.config = InputSourceConfig(source_id=source.id, schema_version=1, config_json=config_json)
+        source.cursor = InputSourceCursor(source_id=source.id, version=1, cursor_json={})
+    else:
+        config_json = dict(source.config.config_json if source.config is not None else {})
+        config_json["label_id"] = normalized_label_id
+        if existing_binding is not None and parse_source_term_window(source, required=False) is None:
+            config_json.update(existing_binding.to_config_json())
+        if source.config is None:
+            source.config = InputSourceConfig(source_id=source.id, schema_version=1, config_json=config_json)
+        else:
+            source.config.config_json = config_json
+
+    user.gmail_onboarding_skipped_at = None
+    db.commit()
+    db.refresh(source)
+    return source
+
+
+def _build_onboarding_source_summary(db: Session, *, source: InputSource | None) -> OnboardingSourceSummary | None:
+    if source is None:
+        return None
+    runtime_state = derive_source_runtime_state(db, source=source)
+    serialized = serialize_source(source, runtime_state=runtime_state)
+    term_binding = parse_source_term_window(source, required=False)
+    return OnboardingSourceSummary(
+        source_id=source.id,
+        provider=source.provider,
+        connected=_source_is_connected(source),
+        has_term_binding=term_binding is not None,
+        runtime_state=runtime_state.runtime_state,
+        oauth_account_email=serialized.get("oauth_account_email"),
+        term_binding=term_binding,
+    )
+
+
+def _preferred_term_binding(
+    *,
+    canvas_summary: OnboardingSourceSummary | None,
+    gmail_summary: OnboardingSourceSummary | None,
+) -> SourceTermWindow | None:
+    if canvas_summary is not None and canvas_summary.term_binding is not None:
+        return canvas_summary.term_binding
+    if gmail_summary is not None and gmail_summary.term_binding is not None:
+        return gmail_summary.term_binding
+    return None
+
+
+def _derive_stage_and_message(
+    *,
+    user: User,
+    canvas_source: OnboardingSourceSummary | None,
+    gmail_source: OnboardingSourceSummary | None,
+    gmail_skipped: bool,
+) -> tuple[str, str]:
+    if canvas_source is None or not canvas_source.connected:
+        return "needs_canvas_ics", "Add your Canvas ICS link before anything else."
+
+    canvas_binding = canvas_source.term_binding
+    gmail_connected = gmail_source is not None and gmail_source.connected
+    connected_sources = [canvas_source]
+    if gmail_connected and gmail_source is not None:
+        connected_sources.append(gmail_source)
+
+    if canvas_binding is None and not gmail_connected and not gmail_skipped:
+        return "needs_gmail_or_skip", "Connect Gmail now or skip it for this term."
+
+    if any(source.term_binding is None for source in connected_sources):
+        return "needs_term_binding", "Set the academic term window before sync starts."
+
+    now = datetime.now(timezone.utc)
+    if any(
+        source.term_binding is not None and source.term_binding.is_expired(now=now, timezone_name=user.timezone_name)
+        for source in connected_sources
+    ):
+        return "needs_term_renewal", "This term has ended. Set the next term window before continuing."
+
+    return "ready", "Onboarding complete."
+
+
 def _derive_source_health(*, active_sources: list[InputSource], first_error_source: InputSource | None) -> SourceHealthSummary:
     if not active_sources:
         return SourceHealthSummary(
@@ -115,3 +367,53 @@ def _derive_source_health(*, active_sources: list[InputSource], first_error_sour
         affected_source_id=None,
         affected_provider=None,
     )
+
+
+def _source_is_connected(source: InputSource) -> bool:
+    if source.provider == "ics":
+        return _source_has_canvas_url(source)
+    if source.provider == "gmail":
+        return _source_has_gmail_connection(source)
+    return source.is_active
+
+
+def _source_has_canvas_url(source: InputSource) -> bool:
+    payload = decode_source_secrets(source)
+    url = payload.get("url")
+    return isinstance(url, str) and bool(url.strip())
+
+
+def _source_has_gmail_connection(source: InputSource) -> bool:
+    payload = decode_source_secrets(source)
+    account_email = payload.get("account_email")
+    access_token = payload.get("access_token")
+    return (
+        isinstance(account_email, str)
+        and bool(account_email.strip())
+    ) or (
+        isinstance(access_token, str)
+        and bool(access_token.strip())
+    )
+
+
+def _merge_source_config_with_term(*, source: InputSource, window: SourceTermWindow) -> dict:
+    config_json = dict(source.config.config_json if source.config is not None else {})
+    config_json.update(window.to_config_json())
+    config_json.pop("pending_term_rebind", None)
+    return config_json
+
+
+__all__ = [
+    "OnboardingRegisterError",
+    "OnboardingRegisterResult",
+    "OnboardingSourceSummary",
+    "OnboardingStatus",
+    "SourceHealthSummary",
+    "apply_onboarding_term_binding",
+    "get_onboarding_status",
+    "get_onboarding_status_for_user",
+    "register_onboarding",
+    "skip_onboarding_gmail",
+    "start_onboarding_gmail_oauth",
+    "upsert_onboarding_canvas_ics",
+]

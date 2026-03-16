@@ -15,7 +15,7 @@ class SourceTermWindowConfigError(ValueError):
 
 
 class SourceTermWindowModel(BaseModel):
-    term_key: str = Field(min_length=1, max_length=64)
+    term_key: str | None = Field(default=None, max_length=64)
     term_from: date
     term_to: date
 
@@ -25,6 +25,11 @@ class SourceTermWindowModel(BaseModel):
     def _validate_order(self) -> "SourceTermWindowModel":
         if self.term_to < self.term_from:
             raise ValueError("term_to must be on or after term_from")
+        if isinstance(self.term_key, str):
+            normalized = self.term_key.strip()
+            self.term_key = normalized or None
+        if self.term_key is None:
+            self.term_key = _build_auto_term_key(term_from=self.term_from, term_to=self.term_to)
         return self
 
 
@@ -86,17 +91,18 @@ class SourceTermWindow:
 
 
 TERM_WINDOW_KEYS = ("term_key", "term_from", "term_to")
+TERM_REQUIRED_KEYS = ("term_from", "term_to")
 
 
 def normalize_term_window_config(*, config: dict[str, Any], required: bool) -> dict[str, Any]:
     normalized = dict(config)
-    present = [key for key in TERM_WINDOW_KEYS if key in normalized and normalized.get(key) not in (None, "")]
-    if not present:
+    present_required = [key for key in TERM_REQUIRED_KEYS if key in normalized and normalized.get(key) not in (None, "")]
+    if not present_required:
         if required:
-            raise SourceTermWindowConfigError("config must include term_key, term_from, and term_to")
+            raise SourceTermWindowConfigError("config must include term_from and term_to")
         return normalized
-    if len(present) != len(TERM_WINDOW_KEYS):
-        raise SourceTermWindowConfigError("config must include term_key, term_from, and term_to together")
+    if len(present_required) != len(TERM_REQUIRED_KEYS):
+        raise SourceTermWindowConfigError("config must include term_from and term_to together")
     window = parse_term_window_config(normalized, required=True)
     normalized.update(window.to_config_json())
     return normalized
@@ -108,12 +114,13 @@ def parse_term_window_config(config: Any, *, required: bool) -> SourceTermWindow
             raise SourceTermWindowConfigError("config must be an object")
         return None
     subset = {key: config.get(key) for key in TERM_WINDOW_KEYS if key in config}
-    if not subset:
+    present_required = [key for key in TERM_REQUIRED_KEYS if subset.get(key) not in (None, "")]
+    if not present_required:
         if required:
-            raise SourceTermWindowConfigError("config must include term_key, term_from, and term_to")
+            raise SourceTermWindowConfigError("config must include term_from and term_to")
         return None
-    if len(subset) != len(TERM_WINDOW_KEYS):
-        raise SourceTermWindowConfigError("config must include term_key, term_from, and term_to together")
+    if len(present_required) != len(TERM_REQUIRED_KEYS):
+        raise SourceTermWindowConfigError("config must include term_from and term_to together")
     try:
         model = SourceTermWindowModel.model_validate(subset)
     except ValidationError as exc:
@@ -277,6 +284,10 @@ def _resolve_timezone(timezone_name: str | None) -> ZoneInfo:
         return ZoneInfo(candidate)
     except ZoneInfoNotFoundError:
         return ZoneInfo("UTC")
+
+
+def _build_auto_term_key(*, term_from: date, term_to: date) -> str:
+    return f"{term_from.isoformat()}__{term_to.isoformat()}"
 
 
 __all__ = [

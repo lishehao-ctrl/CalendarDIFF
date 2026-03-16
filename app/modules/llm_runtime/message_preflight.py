@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.models.ingestion import IngestJob, IngestJobStatus
 from app.db.models.input import InputSource, SyncRequest, SyncRequestStatus
+from app.modules.ingestion.calendar_fanout_contract import is_calendar_component_reason
 from app.modules.runtime_kernel import JobContext, apply_dead_letter_transition, copy_job_payload, utcnow
 from app.modules.runtime_kernel.parse_task_queue import ParseTaskMessage
 
@@ -29,9 +30,11 @@ def prepare_message_for_processing(
     worker_id: str,
 ) -> MessagePreflight:
     now = utcnow()
-    job = db.scalar(
-        select(IngestJob).where(IngestJob.request_id == message.request_id).with_for_update()
-    )
+    is_calendar_component = is_calendar_component_reason(message.reason)
+    job_stmt = select(IngestJob).where(IngestJob.request_id == message.request_id)
+    if not is_calendar_component:
+        job_stmt = job_stmt.with_for_update()
+    job = db.scalar(job_stmt)
     if job is None:
         return MessagePreflight(
             should_parse=False,
@@ -113,6 +116,15 @@ def prepare_message_for_processing(
 
     if not isinstance(cursor_patch, dict):
         cursor_patch = {}
+
+    if is_calendar_component:
+        return MessagePreflight(
+            should_parse=True,
+            ack_on_skip=True,
+            parse_payload=parse_payload,
+            cursor_patch=cursor_patch,
+            provider_hint=str(payload.get("provider") or ""),
+        )
 
     payload["workflow_stage"] = "LLM_RUNNING"
     payload["llm_worker_id"] = worker_id

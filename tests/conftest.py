@@ -94,6 +94,9 @@ def configure_test_environment(test_database_url: str) -> Generator[None, None, 
     os.environ["NOTIFICATION_SERVICE_ENABLE_WORKER"] = "false"
     os.environ["LLM_SERVICE_ENABLE_WORKER"] = "false"
     os.environ["REDIS_URL"] = "redis://127.0.0.1:6389/0"
+    os.environ["BOOTSTRAP_ADMIN_NOTIFY_EMAIL"] = ""
+    os.environ["BOOTSTRAP_ADMIN_PASSWORD"] = ""
+    os.environ["BOOTSTRAP_ADMIN_TIMEZONE_NAME"] = "America/Los_Angeles"
 
     get_settings.cache_clear()
     reset_engine()

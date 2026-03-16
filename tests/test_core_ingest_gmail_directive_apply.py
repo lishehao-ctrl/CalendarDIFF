@@ -345,6 +345,61 @@ def test_gmail_directive_no_match_is_isolated_without_pending_changes(db_session
     assert unresolved.reason_code == "directive_no_match"
 
 
+def test_gmail_directive_lab_change_is_isolated_as_product_scope_excluded(db_session) -> None:
+    user, source, family = _create_user_source_and_family(db_session)
+    _seed_active_entity(
+        db_session,
+        user_id=user.id,
+        family_id=family.id,
+        entity_uid="ent-scope-ignore",
+        ordinal=1,
+        due_date=date(2026, 3, 9),
+    )
+    db_session.commit()
+
+    records = [
+        _directive_record(
+            message_id="msg-dir-lab",
+            external_event_id="msg-dir-lab#directive-seg-0",
+            selector={
+                "course_dept": "CSE",
+                "course_number": 8,
+                "course_suffix": "A",
+                "course_quarter": "WI",
+                "course_year2": 26,
+                "family_hint": "Lab",
+                "raw_type_hint": "Lab",
+                "scope_mode": "all_matching",
+                "ordinal_list": [],
+                "ordinal_range_start": None,
+                "ordinal_range_end": None,
+                "current_due_weekday": None,
+                "applies_to_future_only": False,
+            },
+            mutation={"move_weekday": "friday", "set_due_date": None},
+        )
+    ]
+    _seed_ingest_result(db_session, source=source, request_id="directive-apply-scope", records=records)
+    result = apply_ingest_result_idempotent(db_session, request_id="directive-apply-scope")
+    assert result["changes_created"] == 0
+
+    pending_count = int(
+        db_session.scalar(select(func.count(Change.id)).where(Change.user_id == user.id, Change.review_status == ReviewStatus.PENDING)) or 0
+    )
+    assert pending_count == 0
+
+    unresolved = db_session.scalar(
+        select(IngestUnresolvedRecord).where(
+            IngestUnresolvedRecord.user_id == user.id,
+            IngestUnresolvedRecord.source_id == source.id,
+            IngestUnresolvedRecord.external_event_id == "msg-dir-lab#directive-seg-0",
+            IngestUnresolvedRecord.is_active.is_(True),
+        )
+    )
+    assert unresolved is not None
+    assert unresolved.reason_code == "directive_product_scope_excluded"
+
+
 def test_gmail_directive_partial_term_out_of_scope_creates_partial_changes_and_isolation(db_session) -> None:
     user, source, family = _create_user_source_and_family(db_session)
     db_session.add(

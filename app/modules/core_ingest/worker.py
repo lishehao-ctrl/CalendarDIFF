@@ -75,6 +75,8 @@ def run_core_apply_tick(db: Session) -> int:
                     sync_request.error_code = "apply_failed"
                     sync_request.error_message = str(exc)[:MAX_SYNC_REQUEST_ERROR_LEN]
                     if sync_request.source is not None:
+                        sync_request.source.last_error_code = "apply_failed"
+                        sync_request.source.last_error_message = str(exc)[:MAX_SYNC_REQUEST_ERROR_LEN]
                         apply_pending_term_rebind_if_terminal(
                             db=db,
                             source=sync_request.source,

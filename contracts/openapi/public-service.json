@@ -12,7 +12,7 @@
           },
           "password": {
             "maxLength": 128,
-            "minLength": 8,
+            "minLength": 1,
             "title": "Password",
             "type": "string"
           },
@@ -130,7 +130,11 @@
           },
           "onboarding_stage": {
             "enum": [
-              "needs_source_connection",
+              "needs_user",
+              "needs_canvas_ics",
+              "needs_gmail_or_skip",
+              "needs_term_binding",
+              "needs_term_renewal",
               "ready"
             ],
             "title": "Onboarding Stage",
@@ -1259,10 +1263,29 @@
       },
       "InputSourceResponse": {
         "properties": {
+          "active_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Request Id"
+          },
           "config": {
             "additionalProperties": true,
             "title": "Config",
             "type": "object"
+          },
+          "config_state": {
+            "enum": [
+              "stable",
+              "rebind_pending"
+            ],
+            "title": "Config State",
+            "type": "string"
           },
           "created_at": {
             "format": "date-time",
@@ -1318,6 +1341,15 @@
             ],
             "title": "Last Polled At"
           },
+          "lifecycle_state": {
+            "enum": [
+              "active",
+              "inactive",
+              "archived"
+            ],
+            "title": "Lifecycle State",
+            "type": "string"
+          },
           "next_poll_at": {
             "anyOf": [
               {
@@ -1364,6 +1396,18 @@
             "title": "Provider",
             "type": "string"
           },
+          "runtime_state": {
+            "enum": [
+              "active",
+              "inactive",
+              "archived",
+              "queued",
+              "running",
+              "rebind_pending"
+            ],
+            "title": "Runtime State",
+            "type": "string"
+          },
           "source_id": {
             "title": "Source Id",
             "type": "integer"
@@ -1381,6 +1425,27 @@
               "announcement"
             ],
             "title": "Source Kind",
+            "type": "string"
+          },
+          "sync_progress": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Progress"
+          },
+          "sync_state": {
+            "enum": [
+              "idle",
+              "queued",
+              "running"
+            ],
+            "title": "Sync State",
             "type": "string"
           },
           "updated_at": {
@@ -1408,7 +1473,11 @@
           "last_error_message",
           "created_at",
           "updated_at",
-          "config"
+          "config",
+          "lifecycle_state",
+          "sync_state",
+          "config_state",
+          "runtime_state"
         ],
         "title": "InputSourceResponse",
         "type": "object"
@@ -2473,6 +2542,330 @@
         "title": "LinkRelinkResponse",
         "type": "object"
       },
+      "ManualEventMutationResponse": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "change_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Id"
+          },
+          "entity_uid": {
+            "title": "Entity Uid",
+            "type": "string"
+          },
+          "event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ManualEventResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "idempotent": {
+            "title": "Idempotent",
+            "type": "boolean"
+          },
+          "lifecycle": {
+            "enum": [
+              "active",
+              "removed"
+            ],
+            "title": "Lifecycle",
+            "type": "string"
+          }
+        },
+        "required": [
+          "applied",
+          "idempotent",
+          "change_id",
+          "entity_uid",
+          "lifecycle"
+        ],
+        "title": "ManualEventMutationResponse",
+        "type": "object"
+      },
+      "ManualEventResponse": {
+        "properties": {
+          "course_dept": {
+            "title": "Course Dept",
+            "type": "string"
+          },
+          "course_display": {
+            "title": "Course Display",
+            "type": "string"
+          },
+          "course_number": {
+            "title": "Course Number",
+            "type": "integer"
+          },
+          "course_quarter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Quarter"
+          },
+          "course_suffix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Suffix"
+          },
+          "course_year2": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Year2"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "due_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Time"
+          },
+          "entity_uid": {
+            "title": "Entity Uid",
+            "type": "string"
+          },
+          "event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserFacingEventResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "event_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Name"
+          },
+          "family_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Id"
+          },
+          "family_name": {
+            "title": "Family Name",
+            "type": "string"
+          },
+          "lifecycle": {
+            "enum": [
+              "active",
+              "removed"
+            ],
+            "title": "Lifecycle",
+            "type": "string"
+          },
+          "manual_support": {
+            "title": "Manual Support",
+            "type": "boolean"
+          },
+          "ordinal": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordinal"
+          },
+          "raw_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Type"
+          },
+          "time_precision": {
+            "anyOf": [
+              {
+                "enum": [
+                  "date_only",
+                  "datetime"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Time Precision"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course_display",
+          "course_dept",
+          "course_number",
+          "entity_uid",
+          "lifecycle",
+          "manual_support",
+          "family_name",
+          "time_precision",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ManualEventResponse",
+        "type": "object"
+      },
+      "ManualEventWriteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "due_date": {
+            "format": "date",
+            "title": "Due Date",
+            "type": "string"
+          },
+          "due_time": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Time"
+          },
+          "event_name": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Event Name",
+            "type": "string"
+          },
+          "family_id": {
+            "minimum": 1.0,
+            "title": "Family Id",
+            "type": "integer"
+          },
+          "ordinal": {
+            "anyOf": [
+              {
+                "maximum": 999.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordinal"
+          },
+          "raw_type": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Type"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "time_precision": {
+            "default": "datetime",
+            "enum": [
+              "date_only",
+              "datetime"
+            ],
+            "title": "Time Precision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "family_id",
+          "event_name",
+          "due_date"
+        ],
+        "title": "ManualEventWriteRequest",
+        "type": "object"
+      },
       "OAuthSessionCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2518,6 +2911,87 @@
         "title": "OAuthSessionCreateResponse",
         "type": "object"
       },
+      "OnboardingCanvasIcsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "OnboardingCanvasIcsRequest",
+        "type": "object"
+      },
+      "OnboardingGmailOAuthRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "label_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "INBOX",
+            "title": "Label Id"
+          },
+          "return_to": {
+            "default": "onboarding",
+            "enum": [
+              "onboarding",
+              "sources"
+            ],
+            "title": "Return To",
+            "type": "string"
+          }
+        },
+        "title": "OnboardingGmailOAuthRequest",
+        "type": "object"
+      },
+      "OnboardingGmailSkipRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "OnboardingGmailSkipRequest",
+        "type": "object"
+      },
+      "OnboardingOAuthSessionCreateResponse": {
+        "properties": {
+          "authorization_url": {
+            "title": "Authorization Url",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "provider": {
+            "const": "gmail",
+            "title": "Provider",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_id",
+          "provider",
+          "authorization_url",
+          "expires_at"
+        ],
+        "title": "OnboardingOAuthSessionCreateResponse",
+        "type": "object"
+      },
       "OnboardingRegisterRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2549,7 +3023,11 @@
           },
           "stage": {
             "enum": [
-              "needs_source_connection",
+              "needs_user",
+              "needs_canvas_ics",
+              "needs_gmail_or_skip",
+              "needs_term_binding",
+              "needs_term_renewal",
               "ready"
             ],
             "title": "Stage",
@@ -2573,8 +3051,84 @@
         "title": "OnboardingRegisterResponse",
         "type": "object"
       },
+      "OnboardingSourceResponse": {
+        "properties": {
+          "connected": {
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "has_term_binding": {
+            "title": "Has Term Binding",
+            "type": "boolean"
+          },
+          "oauth_account_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oauth Account Email"
+          },
+          "provider": {
+            "enum": [
+              "ics",
+              "gmail"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "runtime_state": {
+            "enum": [
+              "active",
+              "inactive",
+              "archived",
+              "queued",
+              "running",
+              "rebind_pending"
+            ],
+            "title": "Runtime State",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "integer"
+          },
+          "term_binding": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OnboardingTermBindingResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "source_id",
+          "provider",
+          "connected",
+          "has_term_binding",
+          "runtime_state"
+        ],
+        "title": "OnboardingSourceResponse",
+        "type": "object"
+      },
       "OnboardingStatusResponse": {
         "properties": {
+          "canvas_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OnboardingSourceResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "first_source_id": {
             "anyOf": [
               {
@@ -2585,6 +3139,21 @@
               }
             ],
             "title": "First Source Id"
+          },
+          "gmail_skipped": {
+            "default": false,
+            "title": "Gmail Skipped",
+            "type": "boolean"
+          },
+          "gmail_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OnboardingSourceResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "message": {
             "title": "Message",
@@ -2614,11 +3183,24 @@
           "stage": {
             "enum": [
               "needs_user",
-              "needs_source_connection",
+              "needs_canvas_ics",
+              "needs_gmail_or_skip",
+              "needs_term_binding",
+              "needs_term_renewal",
               "ready"
             ],
             "title": "Stage",
             "type": "string"
+          },
+          "term_binding": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OnboardingTermBindingResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -2626,6 +3208,64 @@
           "message"
         ],
         "title": "OnboardingStatusResponse",
+        "type": "object"
+      },
+      "OnboardingTermBindingRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "term_from": {
+            "format": "date",
+            "title": "Term From",
+            "type": "string"
+          },
+          "term_key": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Term Key"
+          },
+          "term_to": {
+            "format": "date",
+            "title": "Term To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "term_from",
+          "term_to"
+        ],
+        "title": "OnboardingTermBindingRequest",
+        "type": "object"
+      },
+      "OnboardingTermBindingResponse": {
+        "properties": {
+          "term_from": {
+            "format": "date",
+            "title": "Term From",
+            "type": "string"
+          },
+          "term_key": {
+            "title": "Term Key",
+            "type": "string"
+          },
+          "term_to": {
+            "format": "date",
+            "title": "Term To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "term_key",
+          "term_from",
+          "term_to"
+        ],
+        "title": "OnboardingTermBindingResponse",
         "type": "object"
       },
       "RawTypeSuggestionDecisionRequest": {
@@ -4287,6 +4927,18 @@
             "title": "Metadata",
             "type": "object"
           },
+          "progress": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
           "request_id": {
             "title": "Request Id",
             "type": "string"
@@ -4592,7 +5244,7 @@
     }
   },
   "info": {
-    "title": "CalendarDIFF Public Service",
+    "title": "CalendarDIFF API",
     "version": "0.1.0"
   },
   "openapi": "3.1.0",
@@ -4813,6 +5465,266 @@
         ]
       }
     },
+    "/events/manual": {
+      "get": {
+        "operationId": "get_manual_events_events_manual_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_removed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Removed",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ManualEventResponse"
+                  },
+                  "title": "Response Get Manual Events Events Manual Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Manual Events",
+        "tags": [
+          "events"
+        ]
+      },
+      "post": {
+        "operationId": "post_manual_event_events_manual_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualEventWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualEventMutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Manual Event",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/events/manual/{entity_uid}": {
+      "delete": {
+        "operationId": "remove_manual_event_events_manual__entity_uid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_uid",
+            "required": true,
+            "schema": {
+              "title": "Entity Uid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualEventMutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Manual Event",
+        "tags": [
+          "events"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_manual_event_events_manual__entity_uid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_uid",
+            "required": true,
+            "schema": {
+              "title": "Entity Uid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualEventWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualEventMutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Manual Event",
+        "tags": [
+          "events"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "health_health_get",
@@ -4833,6 +5745,183 @@
         "summary": "Health",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/onboarding/canvas-ics": {
+      "post": {
+        "operationId": "upsert_canvas_ics_onboarding_canvas_ics_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingCanvasIcsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upsert Canvas Ics",
+        "tags": [
+          "onboarding"
+        ]
+      }
+    },
+    "/onboarding/gmail-skip": {
+      "post": {
+        "operationId": "skip_gmail_onboarding_gmail_skip_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingGmailSkipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Skip Gmail",
+        "tags": [
+          "onboarding"
+        ]
+      }
+    },
+    "/onboarding/gmail/oauth-sessions": {
+      "post": {
+        "operationId": "create_onboarding_gmail_oauth_session_onboarding_gmail_oauth_sessions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingGmailOAuthRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingOAuthSessionCreateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Onboarding Gmail Oauth Session",
+        "tags": [
+          "onboarding"
         ]
       }
     },
@@ -4941,6 +6030,171 @@
         "summary": "Get Status",
         "tags": [
           "onboarding"
+        ]
+      }
+    },
+    "/onboarding/term-binding": {
+      "post": {
+        "operationId": "save_term_binding_onboarding_term_binding_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingTermBindingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Term Binding",
+        "tags": [
+          "onboarding"
+        ]
+      }
+    },
+    "/profile/me": {
+      "get": {
+        "operationId": "get_profile_profile_me_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Profile",
+        "tags": [
+          "profile"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_profile_profile_me_patch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Profile",
+        "tags": [
+          "profile"
         ]
       }
     },
@@ -7780,6 +9034,266 @@
           }
         },
         "summary": "Post Course Raw Type Relink",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/users/me/manual-events": {
+      "get": {
+        "operationId": "get_manual_events_users_me_manual_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_removed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Removed",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ManualEventResponse"
+                  },
+                  "title": "Response Get Manual Events Users Me Manual Events Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Manual Events",
+        "tags": [
+          "users"
+        ]
+      },
+      "post": {
+        "operationId": "post_manual_event_users_me_manual_events_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualEventWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualEventMutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Manual Event",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/users/me/manual-events/{entity_uid}": {
+      "delete": {
+        "operationId": "remove_manual_event_users_me_manual_events__entity_uid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_uid",
+            "required": true,
+            "schema": {
+              "title": "Entity Uid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualEventMutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Manual Event",
+        "tags": [
+          "users"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_manual_event_users_me_manual_events__entity_uid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_uid",
+            "required": true,
+            "schema": {
+              "title": "Entity Uid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualEventWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualEventMutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Manual Event",
         "tags": [
           "users"
         ]

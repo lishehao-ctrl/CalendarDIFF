@@ -23,6 +23,8 @@ def build_atomic_record(
     atomic_segment_count: int,
     extraction: GmailAtomicSegmentExtractionResponse,
 ) -> dict:
+    if extraction.semantic_event_draft is None or extraction.link_signals is None:
+        raise RuntimeError("gmail atomic record builder requires event outcome")
     message_id = segment_message_id(
         base_message_id=base_message_id,
         segment_index=segment.segment_index,
@@ -68,6 +70,8 @@ def build_directive_record(
     segment: GmailPlannerSegment,
     directive: GmailDirectiveExtractionResponse,
 ) -> dict:
+    if directive.selector is None or directive.mutation is None:
+        raise RuntimeError("gmail directive record builder requires directive outcome")
     directive_external_event_id = directive_external_event_id_for_segment(
         base_message_id=base_message_id,
         segment_index=segment.segment_index,

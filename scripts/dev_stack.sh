@@ -7,8 +7,8 @@ ENV_FILE="$ROOT_DIR/.env"
 LOG_DIR="$ROOT_DIR/output/dev-stack"
 TAIL_LINES="${DEV_STACK_TAIL_LINES:-80}"
 
-SERVICES=(frontend public input review ingest notification llm)
-BACKEND_SERVICES=(public input review ingest notification llm)
+SERVICES=(frontend backend)
+BACKEND_SERVICES=(backend)
 
 usage() {
   cat <<'USAGE'
@@ -17,7 +17,7 @@ Usage:
   scripts/dev_stack.sh down [--infra]
   scripts/dev_stack.sh reset
   scripts/dev_stack.sh status
-  scripts/dev_stack.sh logs [frontend|public|input|review|ingest|notification|llm|all]
+  scripts/dev_stack.sh logs [frontend|backend|all]
 USAGE
 }
 
@@ -29,7 +29,7 @@ die() {
 service_port() {
   case "$1" in
     frontend) echo 3000 ;;
-    public) echo 8200 ;;
+    backend|public) echo 8200 ;;
     input) echo 8201 ;;
     ingest) echo 8202 ;;
     review) echo 8203 ;;
@@ -370,7 +370,7 @@ show_logs() {
   fi
 
   case "$target" in
-    frontend|public|input|review|ingest|notification|llm)
+    frontend|backend)
       ;;
     *)
       die "invalid logs target '$target'"
@@ -389,6 +389,9 @@ start_all() {
   require_command curl
   ensure_log_dir
   load_env
+  for legacy_service in public input review ingest notification llm; do
+    stop_component "$legacy_service" >/dev/null 2>&1 || true
+  done
   start_infra
   run_migrations
   for service in "${BACKEND_SERVICES[@]}"; do
@@ -397,17 +400,13 @@ start_all() {
   start_frontend
   printf '\nStack is ready.\n'
   printf 'Frontend:     http://127.0.0.1:3000\n'
-  printf 'Public API:   http://127.0.0.1:8200/health\n'
-  printf 'Input API:    http://127.0.0.1:8201/health\n'
-  printf 'Review API:   http://127.0.0.1:8203/health\n'
-  printf 'Ingest API:   http://127.0.0.1:8202/health\n'
-  printf 'Notify API:   http://127.0.0.1:8204/health\n'
-  printf 'LLM API:      http://127.0.0.1:8205/health\n'
+  printf 'Backend API:  http://127.0.0.1:8200/health\n'
 }
 
 stop_all() {
   local stop_infra="${1:-false}"
   stop_component frontend
+  stop_component backend
   stop_component public
   stop_component llm
   stop_component notification
@@ -437,12 +436,7 @@ reset_all() {
   start_frontend
   printf '\nStack has been reset and restarted.\n'
   printf 'Frontend:     http://127.0.0.1:3000\n'
-  printf 'Public API:   http://127.0.0.1:8200/health\n'
-  printf 'Input API:    http://127.0.0.1:8201/health\n'
-  printf 'Review API:   http://127.0.0.1:8203/health\n'
-  printf 'Ingest API:   http://127.0.0.1:8202/health\n'
-  printf 'Notify API:   http://127.0.0.1:8204/health\n'
-  printf 'LLM API:      http://127.0.0.1:8205/health\n'
+  printf 'Backend API:  http://127.0.0.1:8200/health\n'
 }
 
 main() {
@@ -475,7 +469,7 @@ main() {
       elif [ "$#" -eq 2 ]; then
         show_logs "$2"
       else
-        die "usage: scripts/dev_stack.sh logs [frontend|public|input|review|ingest|notification|llm|all]"
+        die "usage: scripts/dev_stack.sh logs [frontend|backend|all]"
       fi
       ;;
     ""|-h|--help|help)

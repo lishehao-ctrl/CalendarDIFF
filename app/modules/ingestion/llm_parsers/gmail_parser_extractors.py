@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.ingestion.llm_parsers.contracts import ParserContext
 from app.modules.ingestion.llm_parsers.gmail_parser_llm import LlmInvokeCallable, invoke_schema_validated
+from app.modules.ingestion.llm_parsers.gmail_parser_planner import GMAIL_SHARED_PREFIX_PROMPT
 from app.modules.ingestion.llm_parsers.schemas import (
     GmailAtomicSegmentExtractionResponse,
     GmailDirectiveExtractionResponse,
@@ -18,6 +19,8 @@ def extract_atomic_segment(
     context: ParserContext,
     source_message_id: str,
     source_subject: str,
+    source_snippet: str | None,
+    source_body_text: str | None,
     source_from_header: str | None,
     source_thread_id: str | None,
     source_internal_date: str | None,
@@ -27,28 +30,26 @@ def extract_atomic_segment(
     invoke_request = LlmInvokeRequest(
         task_name="gmail_segment_atomic_extract",
         system_prompt=(
-            "You are pass-2 extractor for one Gmail segment. "
-            "Use only the provided segment snippet plus minimal message metadata. "
-            'Return JSON: {"semantic_event_draft":{"course_dept":string|null,"course_number":number|null,'
+            f"{GMAIL_SHARED_PREFIX_PROMPT}"
+            "Use only the provided segment snippet plus minimal stage-specific context. "
+            "If there is no clear course context, or the segment is a competition, recruiting or career test, "
+            "memo, digest, study note, solutions post, grade notification, graded or regrade notice, "
+            "score-release message, meeting notice, voting notice, annual meeting notice, corporate notice, "
+            "or other non-course content, return unknown. "
+            'Return JSON: {"outcome":"event"|"unknown",'
+            '"semantic_event_draft":{"course_dept":string|null,"course_number":number|null,'
             '"course_suffix":string|null,"course_quarter":"WI"|"SP"|"SU"|"FA"|null,"course_year2":number|null,'
             '"raw_type":string|null,"event_name":string|null,"ordinal":number|null,'
             '"due_date":string|null,"due_time":string|null,"time_precision":"date_only"|"datetime"|null,'
             '"confidence":number,"evidence":string},'
             '"link_signals":{"keywords":["exam"|"midterm"|"final"],"exam_sequence":number|null,'
             '"location_text":string|null,"instructor_hint":string|null}}. '
-            "Do not output directive-only or non-event instructions."
+            'Use outcome="event" only when the segment clearly describes a homework-like work item or test-like assessment. '
+            'Use outcome="unknown" when the segment is nonrelevant, too vague, or not actionable. '
+            'For unknown, return exactly {"outcome":"unknown"} with no extra explanation fields.'
         ),
         user_payload={
-            "source_id": context.source_id,
-            "provider": context.provider,
-            "source_kind": context.source_kind,
-            "message_meta": {
-                "message_id": source_message_id,
-                "subject": source_subject,
-                "from_header": source_from_header,
-                "thread_id": source_thread_id,
-                "internal_date": source_internal_date,
-            },
+            "stage": "atomic_extract",
             "segment": {
                 "segment_index": segment.segment_index,
                 "anchor": segment.anchor,
@@ -56,11 +57,21 @@ def extract_atomic_segment(
                 "segment_type_hint": segment.segment_type_hint,
             },
         },
+        shared_user_payload={
+            "message_id": source_message_id,
+            "subject": source_subject,
+            "snippet": source_snippet,
+            "body_text": source_body_text,
+            "from_header": source_from_header,
+            "thread_id": source_thread_id,
+            "internal_date": source_internal_date,
+        },
         output_schema_name="GmailAtomicSegmentExtractionResponse",
         output_schema_json=GmailAtomicSegmentExtractionResponse.model_json_schema(),
         source_id=context.source_id,
         source_provider=context.provider,
         request_id=context.request_id,
+        session_cache_mode="enable",
     )
     return invoke_schema_validated(
         db=db,
@@ -78,6 +89,8 @@ def extract_directive_segment(
     context: ParserContext,
     source_message_id: str,
     source_subject: str,
+    source_snippet: str | None,
+    source_body_text: str | None,
     source_from_header: str | None,
     source_thread_id: str | None,
     source_internal_date: str | None,
@@ -87,9 +100,15 @@ def extract_directive_segment(
     invoke_request = LlmInvokeRequest(
         task_name="gmail_segment_directive_extract",
         system_prompt=(
-            "You are pass-2 extractor for one Gmail directive segment. "
-            "Use only provided segment text and minimal message metadata. "
-            'Return JSON with schema: {"selector":{"course_dept":string|null,"course_number":number|null,'
+            f"{GMAIL_SHARED_PREFIX_PROMPT}"
+            "Use only the provided segment snippet plus minimal stage-specific context. "
+            "Classify only homework-like course work or test-like assessment directives. "
+            "If there is no clear course context, or the segment is a competition, recruiting or career test, "
+            "memo, digest, study note, solutions post, grade notification, graded or regrade notice, "
+            "score-release message, meeting notice, voting notice, annual meeting notice, corporate notice, "
+            "or other non-course content, return unknown. "
+            'Return JSON with schema: {"outcome":"directive"|"unknown",'
+            '"selector":{"course_dept":string|null,"course_number":number|null,'
             '"course_suffix":string|null,"course_quarter":"WI"|"SP"|"SU"|"FA"|null,"course_year2":number|null,'
             '"family_hint":string|null,"raw_type_hint":string|null,'
             '"scope_mode":"all_matching"|"ordinal_list"|"ordinal_range","ordinal_list":[number],'
@@ -99,19 +118,13 @@ def extract_directive_segment(
             '"mutation":{"move_weekday":"monday"|"tuesday"|"wednesday"|"thursday"|"friday"|"saturday"|"sunday"|null,'
             '"set_due_date":string|null},'
             '"confidence":number,"evidence":string}. '
+            'Use outcome="directive" only when the text clearly applies to homework-like work or test-like assessments. '
+            'Use outcome="unknown" when it is nonrelevant or too vague. '
+            'For unknown, return exactly {"outcome":"unknown"} with no extra explanation fields. '
             "Mutation must set exactly one of move_weekday or set_due_date."
         ),
         user_payload={
-            "source_id": context.source_id,
-            "provider": context.provider,
-            "source_kind": context.source_kind,
-            "message_meta": {
-                "message_id": source_message_id,
-                "subject": source_subject,
-                "from_header": source_from_header,
-                "thread_id": source_thread_id,
-                "internal_date": source_internal_date,
-            },
+            "stage": "directive_extract",
             "segment": {
                 "segment_index": segment.segment_index,
                 "anchor": segment.anchor,
@@ -119,11 +132,21 @@ def extract_directive_segment(
                 "segment_type_hint": segment.segment_type_hint,
             },
         },
+        shared_user_payload={
+            "message_id": source_message_id,
+            "subject": source_subject,
+            "snippet": source_snippet,
+            "body_text": source_body_text,
+            "from_header": source_from_header,
+            "thread_id": source_thread_id,
+            "internal_date": source_internal_date,
+        },
         output_schema_name="GmailDirectiveExtractionResponse",
         output_schema_json=GmailDirectiveExtractionResponse.model_json_schema(),
         source_id=context.source_id,
         source_provider=context.provider,
         request_id=context.request_id,
+        session_cache_mode="enable",
     )
     return invoke_schema_validated(
         db=db,

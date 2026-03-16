@@ -62,18 +62,14 @@ Key runtime rules
 
 ## Runtime Topology
 
-Current runtime
+Default runtime
 
-1. `public-service` (`services.public_api.main:app`)
-2. `input-service` (`services.input_api.main:app`, internal metrics/runtime only)
-3. `ingest-service` (`services.ingest_api.main:app`)
-4. `llm-service` (`services.llm_api.main:app`)
-5. `review-service` (`services.review_api.main:app`, internal apply/runtime only)
-6. `notification-service` (`services.notification_api.main:app`)
-7. `postgres`
-8. `redis`
+1. `backend-service` (`services.app_api.main:app`)
+2. `frontend`
+3. `postgres`
+4. `redis`
 
-Public traffic goes through the unified public gateway, while internal services handle ingest, parsing, review, and notification work.
+The default backend runtime is now a modular monolith: public HTTP APIs and background worker loops run in one backend process over a shared PostgreSQL and Redis runtime.
 
 
 ## Quick Start
@@ -106,7 +102,7 @@ This launcher will
 
 1. start `postgres` and `redis` via `docker compose`
 2. apply schema with `python -m alembic upgrade head`
-3. start `frontend`, `public-service`, `input-service`, `ingest-service`, `llm-service`, `review-service`, and `notification-service`
+3. start `frontend` and the monolith `backend-service`
 4. write pid/log files under `output/dev-stack/`
 5. keep PostgreSQL and Redis running unless you explicitly stop them with `scripts/dev_stack.sh down --infra`
 6. support `scripts/dev_stack.sh reset` to reset the configured database and restart the stack
@@ -132,12 +128,7 @@ If you want to run services one by one
 ```bash
 docker compose up -d postgres redis
 python -m alembic upgrade head
-SERVICE_NAME=public RUN_MIGRATIONS=false PORT=8200 ./scripts/start_service.sh
-SERVICE_NAME=input RUN_MIGRATIONS=false PORT=8201 ./scripts/start_service.sh
-SERVICE_NAME=ingest RUN_MIGRATIONS=false PORT=8202 ./scripts/start_service.sh
-SERVICE_NAME=review RUN_MIGRATIONS=false PORT=8203 ./scripts/start_service.sh
-SERVICE_NAME=llm RUN_MIGRATIONS=false PORT=8205 ./scripts/start_service.sh
-SERVICE_NAME=notification RUN_MIGRATIONS=false PORT=8204 ./scripts/start_service.sh
+SERVICE_NAME=backend RUN_MIGRATIONS=false PORT=8200 ./scripts/start_service.sh
 cd frontend && BACKEND_BASE_URL=http://127.0.0.1:8200 BACKEND_API_KEY="$APP_API_KEY" NEXT_DIST_DIR=.next-dev npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
@@ -153,13 +144,8 @@ Compose includes
 
 1. `postgres`
 2. `redis`
-3. `public-service`
-4. `input-service`
-5. `ingest-service`
-6. `llm-service`
-7. `review-service`
-8. `notification-service`
-9. `frontend`
+3. `public-service` (monolith backend)
+4. `frontend`
 
 Default host ports
 
@@ -168,8 +154,7 @@ Default host ports
 
 For day-to-day local work, prefer `scripts/dev_stack.sh up` and the `820x` port set.
 
-
-`input-service`, `review-service`, `ingest-service`, `llm-service`, and `notification-service` are internal-only in default compose. Use `docker-compose.dev.yml` if you want internal port exposure for debugging.
+Legacy split services remain available behind the `legacy` compose profile for migration and debugging only. They are no longer part of the default runtime path.
 
 
 If you enable Gmail OAuth under compose, set `HOST_SECRETS_DIR` to the parent directory of `GMAIL_OAUTH_CLIENT_SECRETS_FILE`.

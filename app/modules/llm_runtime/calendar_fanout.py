@@ -31,7 +31,7 @@ from app.modules.runtime_kernel import (
     upsert_ingest_result_and_outbox_once,
     utcnow,
 )
-from app.modules.runtime_kernel.parse_task_queue import enqueue_parse_task
+from app.modules.runtime_kernel.parse_task_queue import enqueue_parse_task, schedule_parse_retry
 
 TERMINAL_COMPONENT_STATUSES = {
     CalendarComponentParseStatus.SUCCEEDED,
@@ -81,13 +81,10 @@ def _process_calendar_component_message(
     changed_rows = changed_components if isinstance(changed_components, list) else []
 
     with session_factory() as db:
-        context = load_job_context(db, request_id=message.request_id, lock_job=True)
-        if context is None or context.sync_request is None or context.source is None:
-            return True
         component_task = _ensure_component_task(
             db=db,
             request_id=message.request_id,
-            source_id=context.source.id,
+            source_id=message.source_id,
             component_key=component_key,
             changed_components=changed_rows,
         )
@@ -106,14 +103,14 @@ def _process_calendar_component_message(
         component_task.status = CalendarComponentParseStatus.RUNNING
         component_task.attempt = max(int(component_task.attempt or 0), 0) + 1
         component_task.started_at = utcnow()
+        component_task.finished_at = None
         component_task.error_code = None
         component_task.error_message = None
-        _touch_job_running(context=context, stage="LLM_CALENDAR_COMPONENT_RUNNING")
         db.commit()
 
         attempt = int(component_task.attempt)
-        source_id = context.source.id
-        provider = context.source.provider
+        source_id = message.source_id
+        provider = preflight.provider_hint or "calendar"
         normalized_component = normalize_calendar_changed_component_input(
             {
                 "component_key": component_task.component_key,
@@ -124,8 +121,6 @@ def _process_calendar_component_message(
         )
         if normalized_component is None:
             _mark_component_terminal(
-                db=db,
-                context=context,
                 component_task=component_task,
                 status=CalendarComponentParseStatus.UNRESOLVED,
                 error_code="llm_calendar_delta_payload_invalid",
@@ -158,15 +153,12 @@ def _process_calendar_component_message(
                 component=normalized_component,
             )
     except RateLimitRejected as exc:
-        return _handle_retryable_component_error(
+        return _requeue_rate_limited_component(
             message=message,
             session_factory=session_factory,
             redis_client=redis_client,
             component_key=component_key,
-            error_code="llm_rate_limited",
             error_message=f"llm limiter rejected: {exc.reason}",
-            attempt=attempt,
-            retryable=True,
         )
     except LlmParseError as exc:
         return _handle_retryable_component_error(
@@ -193,9 +185,6 @@ def _process_calendar_component_message(
 
     parsed_record = _first_calendar_record(parsed_records)
     with session_factory() as db:
-        context = load_job_context(db, request_id=message.request_id, lock_job=True)
-        if context is None or context.sync_request is None or context.source is None:
-            return True
         component_task = db.scalar(
             select(CalendarComponentParseTask)
             .where(
@@ -208,8 +197,6 @@ def _process_calendar_component_message(
             return True
         if parsed_record is None:
             _mark_component_terminal(
-                db=db,
-                context=context,
                 component_task=component_task,
                 status=CalendarComponentParseStatus.UNRESOLVED,
                 error_code="llm_calendar_component_record_missing",
@@ -221,7 +208,6 @@ def _process_calendar_component_message(
             component_task.error_code = None
             component_task.error_message = None
             component_task.finished_at = utcnow()
-            _touch_job_running(context=context, stage="LLM_CALENDAR_COMPONENT_SUCCEEDED")
         db.commit()
 
     enqueue_parse_task(
@@ -248,9 +234,6 @@ def _handle_retryable_component_error(
     settings = get_settings()
     max_attempts = max(1, int(settings.llm_max_retry_attempts))
     with session_factory() as db:
-        context = load_job_context(db, request_id=message.request_id, lock_job=True)
-        if context is None or context.sync_request is None or context.source is None:
-            return True
         component_task = db.scalar(
             select(CalendarComponentParseTask)
             .where(
@@ -266,7 +249,6 @@ def _handle_retryable_component_error(
             component_task.error_code = error_code
             component_task.error_message = error_message
             component_task.finished_at = utcnow()
-            _touch_job_running(context=context, stage="LLM_CALENDAR_COMPONENT_RETRY_PENDING")
             db.commit()
             enqueue_parse_task(
                 redis_client=redis_client,
@@ -279,8 +261,6 @@ def _handle_retryable_component_error(
 
         terminal_status = CalendarComponentParseStatus.UNRESOLVED if not retryable else CalendarComponentParseStatus.FAILED
         _mark_component_terminal(
-            db=db,
-            context=context,
             component_task=component_task,
             status=terminal_status,
             error_code=error_code,
@@ -295,6 +275,43 @@ def _handle_retryable_component_error(
         attempt=0,
         reason=CALENDAR_REDUCE_REASON,
     )
+    return True
+
+
+def _requeue_rate_limited_component(
+    *,
+    message,
+    session_factory: sessionmaker[Session],
+    redis_client: redis.Redis,
+    component_key: str,
+    error_message: str,
+) -> bool:
+    due_at = utcnow() + timedelta(seconds=1)
+    with session_factory() as db:
+        component_task = db.scalar(
+            select(CalendarComponentParseTask)
+            .where(
+                CalendarComponentParseTask.request_id == message.request_id,
+                CalendarComponentParseTask.component_key == component_key,
+            )
+            .with_for_update()
+        )
+        if component_task is None:
+            return True
+        component_task.status = CalendarComponentParseStatus.PENDING
+        component_task.attempt = max(int(component_task.attempt or 0) - 1, 0)
+        component_task.error_code = "llm_rate_limited"
+        component_task.error_message = error_message
+        component_task.finished_at = utcnow()
+        schedule_parse_retry(
+            redis_client=redis_client,
+            request_id=message.request_id,
+            source_id=message.source_id,
+            attempt=max(message.attempt, 0),
+            reason=message.reason,
+            available_at=due_at,
+        )
+        db.commit()
     return True
 
 
@@ -385,6 +402,9 @@ def _process_calendar_reduce_message(
                 }
             },
             payload_remove_keys=["llm_parse_payload"],
+            apply_cursor_patch=False,
+            touch_source_success_state=False,
+            sync_status=SyncRequestStatus.RUNNING,
         )
         db.commit()
         return True
@@ -441,8 +461,6 @@ def _ensure_component_task(
 
 def _mark_component_terminal(
     *,
-    db: Session,
-    context,
     component_task: CalendarComponentParseTask,
     status: CalendarComponentParseStatus,
     error_code: str,
@@ -452,10 +470,6 @@ def _mark_component_terminal(
     component_task.error_code = error_code
     component_task.error_message = error_message
     component_task.finished_at = utcnow()
-    _touch_job_running(
-        context=context,
-        stage="LLM_CALENDAR_COMPONENT_TERMINAL",
-    )
 
 
 def _touch_job_running(

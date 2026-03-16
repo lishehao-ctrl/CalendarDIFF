@@ -69,3 +69,9 @@ def test_core_apply_worker_marks_sync_request_failed_on_apply_exception(db_sessi
     assert refreshed_sync.status == SyncRequestStatus.FAILED
     assert refreshed_sync.error_code == "apply_failed"
     assert refreshed_sync.error_message is not None
+
+    refreshed_source = db_session.get(InputSource, source.id)
+    assert refreshed_source is not None
+    assert refreshed_source.last_error_code == "apply_failed"
+    assert refreshed_source.last_error_message is not None
+    assert refreshed_source.cursor is None

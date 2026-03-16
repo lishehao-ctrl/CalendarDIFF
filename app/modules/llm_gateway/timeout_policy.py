@@ -8,9 +8,16 @@ DEFAULT_TIMEOUT_CAP_SECONDS = 180.0
 
 _TASK_MIN_TIMEOUT_SECONDS = {
     "calendar_event_semantic_extract": 90.0,
+    "calendar_source_context_prime": 35.0,
+    "calendar_purpose_relevance": 30.0,
+    "calendar_semantic_extract": 90.0,
     "gmail_message_segment_plan": 25.0,
+    "gmail_source_context_prime": 30.0,
+    "gmail_purpose_mode_classify": 25.0,
     "gmail_segment_atomic_extract": 35.0,
     "gmail_segment_directive_extract": 40.0,
+    "gmail_atomic_semantic_extract": 35.0,
+    "gmail_directive_semantic_extract": 40.0,
     "course_raw_type_match": 20.0,
 }
 
@@ -21,6 +28,8 @@ def with_dynamic_timeout(
     invoke_request: LlmInvokeRequest,
     truncated_input_json: str,
 ) -> ResolvedLlmProfile:
+    if profile.timeout_seconds <= 0:
+        return profile
     estimated_input_tokens = estimate_input_tokens(truncated_input_json)
     effective_timeout_seconds = _resolve_timeout_seconds(
         base_timeout_seconds=profile.timeout_seconds,

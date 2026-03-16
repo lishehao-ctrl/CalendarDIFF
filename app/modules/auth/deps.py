@@ -13,7 +13,7 @@ from app.modules.auth.service import (
     delete_user_session,
     get_authenticated_user_from_request,
 )
-from app.modules.users.service import has_active_input_source
+from app.modules.onboarding.service import get_onboarding_status_for_user
 
 
 def get_authenticated_user_or_401(request: Request, db: Session = Depends(get_db)) -> User:
@@ -27,10 +27,11 @@ def get_onboarded_authenticated_user_or_409(
     user: User = Depends(get_authenticated_user_or_401),
     db: Session = Depends(get_db),
 ) -> User:
-    if not has_active_input_source(db, user_id=user.id):
+    status_payload = get_onboarding_status_for_user(db, user=user)
+    if status_payload.stage != "ready":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "user_onboarding_incomplete", "message": "Connect at least one active input source via /sources"},
+            detail={"code": "user_onboarding_incomplete", "message": status_payload.message},
         )
     return user
 

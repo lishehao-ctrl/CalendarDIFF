@@ -30,6 +30,7 @@ from app.modules.core_ingest.payload_extractors import (
     extract_semantic_event_draft,
     extract_source_facts_from_gmail_payload,
 )
+from app.modules.core_ingest.product_scope import is_monitored_assignment_or_exam_event
 from app.modules.core_ingest.semantic_event_service import build_semantic_event_payload
 from app.modules.core_ingest.unresolved_store import resolve_active_unresolved_records, upsert_active_unresolved_record
 
@@ -85,6 +86,32 @@ def apply_gmail_atomic_record(
             external_event_id=external_event_id,
             request_id=request_id,
             reason_code="term_out_of_scope",
+            source_facts_json=source_facts,
+            semantic_event_draft_json=semantic_draft,
+            kind_resolution_json=None,
+            raw_payload_json=payload,
+        )
+        return set()
+    if not is_monitored_assignment_or_exam_event(
+        semantic_draft=semantic_draft,
+        source_facts=source_facts,
+    ):
+        retire_active_observation_for_unresolved_transition(
+            db=db,
+            source_id=source.id,
+            external_event_id=external_event_id,
+            applied_at=applied_at,
+            request_id=request_id,
+        )
+        upsert_active_unresolved_record(
+            db=db,
+            user_id=source.user_id,
+            source_id=source.id,
+            source_kind=source.source_kind,
+            provider=source.provider,
+            external_event_id=external_event_id,
+            request_id=request_id,
+            reason_code="product_scope_excluded",
             source_facts_json=source_facts,
             semantic_event_draft_json=semantic_draft,
             kind_resolution_json=None,

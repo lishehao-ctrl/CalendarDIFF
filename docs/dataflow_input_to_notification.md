@@ -35,10 +35,12 @@ flowchart LR
 
 - `input-service`: receives sync trigger (manual/scheduler/webhook), writes `sync_requests`, emits `sync.requested`.
 - `ingest-orchestrator`: consumes `sync.requested`, creates `ingest_jobs`, advances request status to queued.
-- `ingest-connector`: claims jobs with source-level FIFO, fetches source data (Gmail incremental or ICS delta), prepares parse payload.
+- `ingest-connector`: claims jobs with source-level FIFO, fetches source data (Gmail incremental or ICS delta), then uses source-aware routing before parse payloads are enqueued.
 - `llm-service`: parses only changed items; removal records can pass without LLM call in delta flow.
+  - Gmail path is sender-family aware and two-pass (`atomic|directive|unknown`)
+  - Calendar path is deterministic-normalized and two-pass (`relevant|unknown` then minimal semantic classification)
 - `review-apply`: writes/updates `source_event_observations`, computes pending `changes`, emits notification trigger event.
-  - runtime observation payload is fixed to `source_facts + semantic_event + link_signals + kind_resolution`
+  - runtime observation payload is `source_facts + semantic_event + kind_resolution`, plus optional `link_signals` for sources that provide them
   - parser-stage `semantic_event_draft` is normalized immediately and is not a runtime observation field
   - unresolved ingest records (missing course identity) are isolated to backend unresolved bucket and do not enter review pending flow
 - `notification-consumer`: consumes pending-created events and enqueues `notifications`.
@@ -69,7 +71,7 @@ flowchart LR
 | 1 | input-service | user/scheduler/webhook sync trigger | `input_sources`, `input_source_configs`, `input_source_cursors` | `sync_requests`, `integration_outbox(sync.requested)` | `sync.requested` | ingest-orchestrator |
 | 2 | ingest-orchestrator | outbox `sync.requested` available | `integration_outbox`, `sync_requests` | `ingest_jobs`, `integration_inbox`, `sync_requests(status=QUEUED)` | none | ingest-connector |
 | 3 | ingest-connector | claimed pending ingest job | `ingest_jobs`, `sync_requests`, source config/secret/cursor | `ingest_jobs(status=CLAIMED/RUNNING payload)`, `input_source_cursors` | none | connector fetch |
-| 4 | ingest-connector | fetch result available | Gmail: provider incrementals + buffered term-window bootstrap/filter (`term_from-30` to `term_to+30`); ICS: delta parser snapshot + VEVENT buffered term filter | `ingest_jobs(payload parse task)`, retry metadata | none | llm-service |
+| 4 | ingest-connector | fetch result available | Gmail: provider incrementals + buffered term-window bootstrap/filter (`term_from-30` to `term_to+30`) + sender-family route; ICS: delta parser snapshot + VEVENT buffered term filter + `relevant/unknown` route | `ingest_jobs(payload parse task)`, retry metadata | none | llm-service |
 | 5 | llm-service | Redis parse task consumed | parse payload (`gmail` / `calendar_delta`) | `ingest_results`, `ingest_jobs`, `sync_requests`, `integration_outbox` | `ingest.result.ready` | review-apply worker |
 | 6 | review-apply worker/service | outbox `ingest.result.ready` available | `ingest_results`, `source_event_observations`, `event_entities`, `changes`, `ingest_unresolved_records` | resolvable records: `source_event_observations`, `changes(pending)`, `integration_outbox`; unresolved records: `ingest_unresolved_records` only | `review.pending.created` (resolvable path only) | notification-consumer |
 | 7 | review decision APIs | user approve/reject/batch decision/unified edit | `changes`, `event_entities` | approved entity state updates on approve or canonical edit, proposal updates on proposal edit | `review.decision.approved/rejected` | audit consumers |

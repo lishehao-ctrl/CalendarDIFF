@@ -5,7 +5,7 @@ import { LoginPageClient } from "@/components/login-page-client";
 export default async function LoginPage() {
   const session = await getServerSession();
   if (session) {
-    redirect("/");
+    redirect(session.user.onboarding_stage === "ready" ? "/" : "/setup");
   }
   return <LoginPageClient mode="login" />;
 }

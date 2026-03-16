@@ -11,6 +11,7 @@ from app.modules.input_control_plane.router_common import require_owned_source_o
 from app.modules.input_control_plane.schemas import InputSourceCreateRequest, InputSourcePatchRequest, InputSourceResponse
 from app.modules.input_control_plane.source_runtime_state import derive_source_runtime_state, derive_source_runtime_states
 from app.modules.input_control_plane.source_serializers import serialize_source
+from app.modules.input_control_plane.status_projection import build_sync_progress_payload, get_display_sync_request_for_source
 from app.modules.input_control_plane.sources_service import (
     GmailSourceAlreadyExistsError,
     IcsSourceAlreadyExistsError,
@@ -67,7 +68,25 @@ def list_sources(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="status must be one of: active, archived, all")
     rows = list_input_sources(db, user_id=user.id, status=normalized_status)
     projections = derive_source_runtime_states(db, sources=rows)
-    return [InputSourceResponse.model_validate(serialize_source(row, runtime_state=projections[row.id])) for row in rows]
+    payloads: list[InputSourceResponse] = []
+    for row in rows:
+        active_sync = get_display_sync_request_for_source(db, source_id=row.id)
+        sync_progress = (
+            build_sync_progress_payload(db, sync_request=active_sync)
+            if active_sync is not None
+            else None
+        )
+        payloads.append(
+            InputSourceResponse.model_validate(
+                serialize_source(
+                    row,
+                    runtime_state=projections[row.id],
+                    active_request_id=active_sync.request_id if active_sync is not None else None,
+                    sync_progress=sync_progress,
+                )
+            )
+        )
+    return payloads
 
 
 @router.patch("/sources/{source_id}", response_model=InputSourceResponse)
