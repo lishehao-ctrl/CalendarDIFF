@@ -7,12 +7,13 @@
 
 ## Acceptance checklist
 - Login/register/session flows work against `/auth/*`
-- Settings page reads and writes `/profile/me`
+- Settings page uses `/settings`
 - Sources pages use `/sources/*` and `/onboarding/*`
-- Review pages use `/review/changes*` and `/review/links*`
-- Family management uses `/review/course-work-item-families*`
-- Manual workbench uses `/events/manual*`
+- Changes pages use `/changes*`
+- Family pages use `/families*`
+- Manual workbench uses `/manual*`
 - No frontend flow depends on `/users/...`
+- Product-shape guidance stays aligned with `docs/frontend_product_shape.md`
 
 ## Required frontend checks
 ```bash
