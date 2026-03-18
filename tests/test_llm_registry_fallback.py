@@ -18,7 +18,7 @@ def test_resolve_llm_profile_falls_back_to_app_openai_model(monkeypatch) -> None
     try:
         profile = resolve_llm_profile(None, source_id=None)
         assert profile.model == "fallback-model"
-        assert profile.api_mode == "responses"
+        assert profile.api_mode == "chat_completions"
         assert profile.extra_body == {"enable_thinking": True}
         assert profile.timeout_seconds == 30.0
         assert profile.max_retries == 2
