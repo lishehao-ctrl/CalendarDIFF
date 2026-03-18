@@ -103,5 +103,5 @@ def test_frontend_app_base_url_falls_back_to_first_public_origin(monkeypatch) ->
     monkeypatch.setenv("PUBLIC_WEB_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
     get_settings.cache_clear()
 
-    assert resolve_frontend_app_base_url() == "http://localhost:3000"
+    assert resolve_frontend_app_base_url() == "http://127.0.0.1:3000"
     get_settings.cache_clear()

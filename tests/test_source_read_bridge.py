@@ -112,7 +112,7 @@ def test_feed_read_source_id_via_review_pool(client, db_session, auth_headers) -
     assert pending_response.status_code == 200
     pending_rows = pending_response.json()
     assert len(pending_rows) == 1
-    assert pending_rows[0]["source_id"] == source.id
+    assert pending_rows[0]["primary_source"]["source_id"] == source.id
     change_id = pending_rows[0]["id"]
 
     decision_response = client.post(
@@ -130,7 +130,7 @@ def test_feed_read_source_id_via_review_pool(client, db_session, auth_headers) -
     assert feed_response.status_code == 200
     feed_rows = feed_response.json()
     assert len(feed_rows) == 1
-    assert feed_rows[0]["source_id"] == source.id
+    assert feed_rows[0]["primary_source"]["source_id"] == source.id
 
     removed_timeline = client.get(f"/timeline-events?source_id={source.id}", headers=headers)
     assert removed_timeline.status_code == 404

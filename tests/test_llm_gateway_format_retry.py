@@ -32,6 +32,7 @@ def _profile() -> ResolvedLlmProfile:
         api_mode="responses",
         model="test-model",
         api_key="test-key",
+        session_cache_enabled=False,
         timeout_seconds=12.0,
         max_retries=0,
         max_input_chars=12000,
