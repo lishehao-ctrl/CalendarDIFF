@@ -1,4 +1,11 @@
+import { demoBackendFetch } from "@/lib/demo-backend";
+import { getClientPreviewMode } from "@/lib/demo-mode";
+
 export async function backendFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  if (getClientPreviewMode()) {
+    return demoBackendFetch<T>(path, init);
+  }
+
   const response = await fetch(`/api/backend${path}`, {
     ...init,
     headers: {
@@ -65,7 +72,7 @@ function humanizeErrorPayload(path: string, status: number, payload: unknown) {
       if (path.startsWith("/review/changes")) {
         return "Finish onboarding before opening the review inbox.";
       }
-      if (path.startsWith("/review/links") || path.startsWith("/review/link")) {
+      if (path.startsWith("/families") || path.startsWith("/review/links") || path.startsWith("/review/link")) {
         return "Finish onboarding before opening the family workspace.";
       }
       return "Finish onboarding before continuing.";

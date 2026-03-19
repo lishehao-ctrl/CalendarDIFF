@@ -12,6 +12,7 @@ from app.db.models.input import SyncRequestStatus
 from app.modules.ingestion.calendar_component_tasks import upsert_calendar_component_tasks
 from app.modules.ingestion.calendar_fanout_contract import (
     CALENDAR_REDUCE_REASON,
+    build_calendar_component_reason,
     is_calendar_fanout_reason,
     is_calendar_reduce_reason,
     parse_component_key_from_reason,
@@ -52,6 +53,7 @@ def process_calendar_fanout_message(
         return _process_calendar_reduce_message(
             message=message,
             preflight=preflight,
+            redis_client=redis_client,
             session_factory=session_factory,
         )
     component_key = parse_component_key_from_reason(message.reason)
@@ -319,6 +321,7 @@ def _process_calendar_reduce_message(
     *,
     message,
     preflight: MessagePreflight,
+    redis_client: redis.Redis,
     session_factory: sessionmaker[Session],
 ) -> bool:
     parse_payload = preflight.parse_payload if isinstance(preflight.parse_payload, dict) else {}
@@ -338,18 +341,27 @@ def _process_calendar_reduce_message(
                 .order_by(CalendarComponentParseTask.component_key.asc())
             ).all()
         )
+        running_exists = any(row.status == CalendarComponentParseStatus.RUNNING for row in rows)
         pending_exists = any(
             row.status in {CalendarComponentParseStatus.PENDING, CalendarComponentParseStatus.RUNNING}
             for row in rows
         )
         if pending_exists:
+            requeued_count = _requeue_stale_pending_components(
+                rows=rows,
+                redis_client=redis_client,
+                request_id=message.request_id,
+                source_id=message.source_id,
+                allow_immediate_requeue=not running_exists,
+            )
             _touch_job_running(
                 context=context,
                 stage="LLM_CALENDAR_REDUCE_WAITING",
                 extra={
                     "calendar_component_pending": sum(
                         1 for row in rows if row.status in {CalendarComponentParseStatus.PENDING, CalendarComponentParseStatus.RUNNING}
-                    )
+                    ),
+                    "calendar_component_requeued": requeued_count,
                 },
             )
             db.commit()
@@ -490,6 +502,39 @@ def _touch_job_running(
         context.sync_request.status = SyncRequestStatus.RUNNING
         context.sync_request.error_code = None
         context.sync_request.error_message = None
+
+
+def _requeue_stale_pending_components(
+    *,
+    rows: list[CalendarComponentParseTask],
+    redis_client: redis.Redis,
+    request_id: str,
+    source_id: int,
+    allow_immediate_requeue: bool,
+) -> int:
+    now = utcnow()
+    stale_threshold = now - timedelta(seconds=5)
+    requeued = 0
+    for row in rows:
+        if row.status != CalendarComponentParseStatus.PENDING:
+            continue
+        if row.started_at is not None:
+            continue
+        last_touch = row.updated_at or row.created_at
+        if not allow_immediate_requeue and (last_touch is None or last_touch > stale_threshold):
+            continue
+        enqueue_parse_task(
+            redis_client=redis_client,
+            request_id=request_id,
+            source_id=source_id,
+            attempt=max(int(row.attempt or 0), 0),
+            reason=build_calendar_component_reason(row.component_key),
+        )
+        row.error_code = "llm_component_requeued"
+        row.error_message = "requeued by reducer after component task remained pending without start"
+        row.finished_at = now
+        requeued += 1
+    return requeued
 
 
 __all__ = [

@@ -45,9 +45,9 @@ export function LoginPageClient({ mode }: { mode: "login" | "register" }) {
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.16),transparent_42%),radial-gradient(circle_at_80%_20%,rgba(215,90,45,0.12),transparent_30%)]" />
             <div className="relative">
               <p className="text-xs uppercase tracking-[0.24em] text-[#6d7885]">CalendarDIFF</p>
-              <h1 className="mt-4 text-4xl font-semibold leading-tight text-ink">Editorial operations for course deadlines, before the queue gets noisy.</h1>
+              <h1 className="mt-4 text-4xl font-semibold leading-tight text-ink">Keep deadline changes, source intake, and canonical cleanup in one calm workspace.</h1>
               <p className="mt-5 max-w-xl text-sm leading-7 text-[#596270]">
-                Sign in with your workspace notify email to manage sources, review changes, resolve links, and control Gmail intake from one console.
+                Sign in with your workspace notify email to review changes, manage families, monitor source health, and repair exceptions without bouncing between email and calendars.
               </p>
             </div>
           </Card>
@@ -106,6 +106,9 @@ export function LoginPageClient({ mode }: { mode: "login" | "register" }) {
                     Already registered? <Link className="font-medium text-cobalt" href="/login">Sign in</Link>
                   </>
                 )}
+              </div>
+              <div>
+                Prefer a frontend-only preview first? <Link className="font-medium text-cobalt" href="/preview">Open preview workspace</Link>
               </div>
               <div className="flex flex-wrap gap-3 text-xs uppercase tracking-[0.14em] text-[#6d7885]">
                 <Link className="font-medium text-[#425061] transition hover:text-cobalt" href="/privacy">Privacy policy</Link>

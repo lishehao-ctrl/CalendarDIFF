@@ -7,11 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
+import { SourceObservabilitySections } from "@/components/source-observability-sections";
 import { SourceSyncProgress } from "@/components/source-sync-progress";
-import { createSyncRequest, deleteSource as deleteSourceRequest, getSyncRequest, listSources, updateSource } from "@/lib/api/sources";
+import { startOnboardingGmailOAuth } from "@/lib/api/onboarding";
+import { createOAuthSession, createSyncRequest, deleteSource as deleteSourceRequest, getSyncRequest, listSources, updateSource } from "@/lib/api/sources";
+import { withBasePath } from "@/lib/demo-mode";
+import { buildSourceObservabilityViews } from "@/lib/source-observability";
 import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
-import type { SourceRow } from "@/lib/types";
+import type { SourceObservabilityView, SourceRow, SyncStatus } from "@/lib/types";
 
 const oauthQueryKeys = ["oauth_provider", "oauth_status", "source_id", "request_id", "message"] as const;
 
@@ -26,26 +30,20 @@ function sourceNeedsAttention(source: SourceRow) {
 
 function syncTone(value: string | undefined) {
   if (!value) return "default";
-  if (["queued", "running", "pending"].includes(value)) return "pending";
+  if (["queued", "running", "pending", "rebind_pending"].includes(value)) return "pending";
   if (["succeeded", "success"].includes(value)) return "approved";
   if (["failed", "error"].includes(value)) return "error";
   return "default";
 }
 
 function sourceHealthTone(source: SourceRow) {
-  if (sourceNeedsAttention(source)) {
-    return "pending";
-  }
-  if (!source.is_active) {
-    return "info";
-  }
+  if (sourceNeedsAttention(source)) return "pending";
+  if (!source.is_active) return "info";
   return "approved";
 }
 
 function formatSourceTitle(source: SourceRow) {
-  if (source.provider === "ics") {
-    return "Canvas ICS";
-  }
+  if (source.provider === "ics") return "Canvas ICS";
   return source.display_name || source.source_key;
 }
 
@@ -53,49 +51,53 @@ function formatSourceSubtitle(source: SourceRow) {
   if (source.provider === "ics") {
     return "Student calendar feed";
   }
-  return `${formatStatusLabel(source.source_kind, "Email")} · ${source.source_key}`;
+  return source.oauth_account_email || `${formatStatusLabel(source.source_kind, "Email")} · ${source.source_key}`;
 }
 
-function SourceCatalogCard({
-  providerLabel,
+function sourceSetupHref(basePath: string, provider: string) {
+  if (provider === "ics") return withBasePath(basePath, "/sources/connect/canvas-ics");
+  if (provider === "gmail") return withBasePath(basePath, "/sources/connect/gmail");
+  return withBasePath(basePath, "/sources");
+}
+
+function ConnectSourceCard({
+  provider,
   title,
-  description,
-  href,
+  detail,
   connected,
+  attention,
+  href,
   icon,
   iconShellClassName,
 }: {
-  providerLabel: string;
+  provider: string;
   title: string;
-  description: string;
-  href: string;
+  detail: string;
   connected: boolean;
+  attention: boolean;
+  href: string;
   icon: React.ReactNode;
   iconShellClassName: string;
 }) {
-  const statusTone = connected ? "approved" : "pending";
-  const StatusIcon = connected ? CheckCircle2 : CircleAlert;
-
   return (
-    <Card className="bg-white/60 p-4">
+    <Card className="animate-surface-enter interactive-lift bg-white/72 p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <div className={iconShellClassName}>{icon}</div>
           <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{providerLabel}</p>
-            <h4 className="mt-1 text-lg font-semibold text-ink">{title}</h4>
+            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{provider}</p>
+            <h3 className="mt-1 text-lg font-semibold text-ink">{title}</h3>
           </div>
         </div>
-        <Badge tone={statusTone} className="gap-1.5 whitespace-nowrap">
-          <StatusIcon className="h-3.5 w-3.5" />
-          {connected ? "Connected" : "Needs setup"}
+        <Badge tone={attention ? "pending" : connected ? "approved" : "info"}>
+          {attention ? "Attention" : connected ? "Connected" : "Not connected"}
         </Badge>
       </div>
-      <p className="mt-3 text-sm leading-6 text-[#596270]">{description}</p>
+      <p className="mt-3 text-sm leading-6 text-[#596270]">{detail}</p>
       <div className="mt-4">
         <Button asChild>
           <Link href={href}>
-            {connected ? `Manage ${providerLabel}` : `Connect ${providerLabel}`}
+            {connected ? "Manage" : "Connect"}
             <ChevronRight className="ml-2 h-4 w-4" />
           </Link>
         </Button>
@@ -104,137 +106,102 @@ function SourceCatalogCard({
   );
 }
 
-function sourceSetupHref(provider: string) {
-  if (provider === "ics") {
-    return "/sources/connect/canvas-ics";
-  }
-  if (provider === "gmail") {
-    return "/sources/connect/gmail";
-  }
-  return "/sources";
-}
-
-function SourceInventoryCard({
+function ConnectedSourceCard({
   source,
+  observability,
   syncLabel,
-  syncProgress,
-  busyDelete,
-  busyReactivate,
   onSync,
   onDelete,
-  onReactivate,
-  archived = false,
+  busyDelete,
+  basePath,
 }: {
   source: SourceRow;
+  observability: SourceObservabilityView;
   syncLabel?: string;
-  syncProgress?: SourceRow["sync_progress"];
-  busyDelete: number | null;
-  busyReactivate: number | null;
-  onSync?: (sourceId: number) => void;
+  onSync: (sourceId: number) => void;
   onDelete: (sourceId: number, provider: string) => void;
-  onReactivate?: (sourceId: number) => void;
-  archived?: boolean;
+  busyDelete: number | null;
+  basePath: string;
 }) {
-  const isGmail = source.provider === "gmail";
-  const isCanvasIcs = source.provider === "ics";
   const needsAttention = sourceNeedsAttention(source);
-  const cardClassName = archived
-    ? "border border-line/85 bg-white/80 p-4 shadow-[0_12px_28px_rgba(20,32,44,0.05)]"
-    : needsAttention
-      ? "overflow-hidden border border-[rgba(215,90,45,0.28)] bg-white p-4 shadow-[0_14px_30px_rgba(20,32,44,0.06)]"
-      : "overflow-hidden border border-line/90 bg-white p-4 shadow-[0_14px_30px_rgba(20,32,44,0.06)]";
 
   return (
-    <Card className={cardClassName}>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 flex-1 space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <h4 className="text-base font-semibold">{formatSourceTitle(source)}</h4>
-            <Badge tone={source.is_active ? "active" : "default"}>{source.provider}</Badge>
-            <Badge tone={sourceHealthTone(source)}>{needsAttention ? "Needs attention" : source.is_active ? "Healthy" : "Archived"}</Badge>
-            {source.is_active ? <Badge tone={syncTone(syncLabel)}>{formatStatusLabel(syncLabel, "Idle")}</Badge> : null}
-            {isGmail && source.oauth_connection_status ? (
-              <Badge tone={source.oauth_connection_status === "connected" ? "approved" : "pending"}>
-                {formatStatusLabel(source.oauth_connection_status)}
-              </Badge>
-            ) : null}
-            {!source.is_active ? <Badge tone="info">Archived</Badge> : null}
+    <Card className={needsAttention ? "animate-surface-enter interactive-lift border-[rgba(215,90,45,0.28)] bg-white p-5" : "animate-surface-enter interactive-lift bg-white p-5"}>
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-semibold text-ink">{formatSourceTitle(source)}</h3>
+            <Badge tone={sourceHealthTone(source)}>{needsAttention ? "Needs attention" : "Healthy"}</Badge>
+            <Badge tone={syncTone(syncLabel)}>{formatStatusLabel(syncLabel, "Idle")}</Badge>
           </div>
-          <p className="text-sm text-[#596270]">{formatSourceSubtitle(source)}</p>
-          {isGmail && source.oauth_account_email ? <p className="text-sm text-[#314051]">{source.oauth_account_email}</p> : null}
-          {isCanvasIcs ? <p className="text-sm text-[#314051]">Workspace calendar feed</p> : null}
-          <div className="flex flex-wrap gap-2 text-sm text-[#314051]">
-            <div className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5">
-              Last polled {formatDateTime(source.last_polled_at, "Never")}
-            </div>
-            <div className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5">
-              Next poll {formatDateTime(source.next_poll_at, "Not scheduled")}
-            </div>
-            <div className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5">
-              {Math.round(source.poll_interval_seconds / 60)} min
-            </div>
-            <div className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5">
-              {source.is_active ? "Active" : "Archived"}
-            </div>
+          <p className="mt-2 text-sm text-[#596270]">{formatSourceSubtitle(source)}</p>
+          <div className="mt-3 flex flex-wrap gap-2 text-sm text-[#314051]">
+            <span className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5">Last {formatDateTime(source.last_polled_at, "Never")}</span>
+            <span className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5">Next {formatDateTime(source.next_poll_at, "Not scheduled")}</span>
           </div>
-          {syncProgress ? <SourceSyncProgress progress={syncProgress} /> : null}
+          <SourceObservabilitySections observability={observability} className="mt-4" />
+          {source.sync_progress ? <SourceSyncProgress className="mt-4" progress={source.sync_progress} /> : null}
           {source.last_error_message ? (
-            <div className="rounded-[1.15rem] border border-[#efc4b5] bg-[#fff3ef] px-4 py-3 text-sm text-[#7f3d2a]">
-              <p className="text-xs uppercase tracking-[0.16em] text-[#b84d25]">Needs attention</p>
-              <p className="mt-2 leading-6">{source.last_error_message}</p>
+            <div className="mt-4 max-w-xl rounded-[1rem] border border-[#efc4b5] bg-[#fff3ef] p-4 text-sm text-[#7f3d2a]">
+              {source.last_error_message}
             </div>
           ) : null}
         </div>
-        <div className="flex flex-wrap items-center gap-2 lg:max-w-[280px] lg:justify-end">
-          {source.is_active ? (
-            <>
-              <Button onClick={() => onSync?.(source.source_id)}>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Sync now
-              </Button>
-              <Button asChild variant={needsAttention ? "secondary" : "ghost"}>
-                <Link href={sourceSetupHref(source.provider)}>
-                  Manage
-                  <ChevronRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => onDelete(source.source_id, source.provider)}
-                disabled={busyDelete === source.source_id}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                {busyDelete === source.source_id ? "Archiving..." : isGmail ? "Disconnect mailbox" : isCanvasIcs ? "Archive link" : "Archive source"}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button
-                onClick={() => onReactivate?.(source.source_id)}
-                disabled={busyReactivate === source.source_id}
-              >
-                <ArchiveRestore className="mr-2 h-4 w-4" />
-                {busyReactivate === source.source_id ? "Reactivating..." : "Reactivate"}
-              </Button>
-              <Button asChild variant="ghost">
-                <Link href={sourceSetupHref(source.provider)}>
-                  Manage
-                  <ChevronRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </>
-          )}
+        <div className="flex shrink-0 flex-wrap gap-2 xl:w-[300px] xl:justify-end">
+          <Button onClick={() => onSync(source.source_id)}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Sync now
+          </Button>
+          <Button asChild variant={needsAttention ? "secondary" : "ghost"}>
+            <Link href={sourceSetupHref(basePath, source.provider)}>Manage</Link>
+          </Button>
+          <Button variant="ghost" onClick={() => onDelete(source.source_id, source.provider)} disabled={busyDelete === source.source_id}>
+            <Trash2 className="mr-2 h-4 w-4" />
+            {busyDelete === source.source_id ? "Archiving..." : "Archive"}
+          </Button>
         </div>
       </div>
     </Card>
   );
 }
 
-export function SourcesPanel() {
+function ArchivedSourceCard({
+  source,
+  onReactivate,
+  busyReactivate,
+  basePath,
+}: {
+  source: SourceRow;
+  onReactivate: (sourceId: number) => void;
+  busyReactivate: number | null;
+  basePath: string;
+}) {
+  return (
+    <Card className="animate-surface-enter interactive-lift bg-white/80 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="font-medium text-ink">{formatSourceTitle(source)}</p>
+          <p className="mt-1 text-sm text-[#596270]">{formatSourceSubtitle(source)}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => onReactivate(source.source_id)} disabled={busyReactivate === source.source_id}>
+            <ArchiveRestore className="mr-2 h-4 w-4" />
+            {busyReactivate === source.source_id ? "Reactivating..." : "Reactivate"}
+          </Button>
+          <Button asChild variant="ghost">
+            <Link href={sourceSetupHref(basePath, source.provider)}>Manage</Link>
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
   const active = useApiResource<SourceRow[]>(() => listSources({ status: "active" }), []);
   const archived = useApiResource<SourceRow[]>(() => listSources({ status: "archived" }), []);
-  const [activeSection, setActiveSection] = useState<"inventory" | "catalog" | "archived">("inventory");
   const [syncState, setSyncState] = useState<Record<number, string>>({});
+  const [syncDetails, setSyncDetails] = useState<Record<number, SyncStatus | undefined>>({});
   const [busyDelete, setBusyDelete] = useState<number | null>(null);
   const [busyReactivate, setBusyReactivate] = useState<number | null>(null);
   const [banner, setBanner] = useState<Banner>(null);
@@ -243,9 +210,13 @@ export function SourcesPanel() {
   const activeSources = useMemo(() => (active.data || []).filter((source) => source.is_active), [active.data]);
   const archivedSources = useMemo(() => (archived.data || []).filter((source) => !source.is_active), [archived.data]);
   const activeProviders = useMemo(() => new Set(activeSources.map((source) => source.provider)), [activeSources]);
-  const unboundCatalogCount = useMemo(() => ["ics", "gmail"].filter((provider) => !activeProviders.has(provider)).length, [activeProviders]);
   const attentionSources = useMemo(() => activeSources.filter((source) => sourceNeedsAttention(source)), [activeSources]);
-  const syncingSources = useMemo(() => activeSources.filter((source) => ["queued", "running"].includes(source.sync_state || "") || ["queued", "running"].includes(source.runtime_state || "")), [activeSources]);
+  const healthySources = useMemo(() => activeSources.filter((source) => !sourceNeedsAttention(source)), [activeSources]);
+  const observabilityViews = useMemo(
+    () => buildSourceObservabilityViews(activeSources, { previewMode: basePath === "/preview", syncStatusesBySource: syncDetails }),
+    [activeSources, basePath, syncDetails],
+  );
+  const observabilityBySourceId = useMemo(() => Object.fromEntries(observabilityViews.map((view) => [view.source_id, view])), [observabilityViews]);
   const shouldPollProgress = useMemo(
     () =>
       activeSources.some(
@@ -253,9 +224,9 @@ export function SourcesPanel() {
           source.runtime_state === "running" ||
           source.runtime_state === "queued" ||
           source.runtime_state === "rebind_pending" ||
-          Boolean(source.sync_progress)
+          Boolean(source.sync_progress),
       ),
-    [activeSources]
+    [activeSources],
   );
 
   const refreshAll = useCallback(async () => {
@@ -263,44 +234,72 @@ export function SourcesPanel() {
   }, [active, archived]);
 
   useEffect(() => {
-    if (!shouldPollProgress) {
-      return;
-    }
+    if (!shouldPollProgress) return;
     const intervalId = window.setInterval(() => {
       void refreshAll();
     }, 2000);
     return () => window.clearInterval(intervalId);
   }, [refreshAll, shouldPollProgress]);
 
-  const pollSyncRequest = useCallback(async (
-    sourceId: number,
-    requestId: string,
-    options?: { successMessage?: string; failurePrefix?: string }
-  ) => {
-    setSyncState((prev) => ({ ...prev, [sourceId]: "queued" }));
-    for (let attempt = 0; attempt < 15; attempt += 1) {
-      const status = await getSyncRequest(requestId);
-      const normalized = status.status.toLowerCase();
-      setSyncState((prev) => ({ ...prev, [sourceId]: normalized }));
-      if (status.status === "SUCCEEDED" || status.status === "FAILED") {
-        if (status.status === "SUCCEEDED") {
-          setBanner({ tone: "info", text: options?.successMessage || `Source #${sourceId} sync succeeded.` });
-        }
-        if (status.status === "FAILED") {
-          const failure = status.error_message || status.connector_result?.error_message || options?.failurePrefix || `Source #${sourceId} sync failed.`;
-          setBanner({ tone: "error", text: failure });
-        }
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
-    await refreshAll();
-  }, [refreshAll]);
-
   useEffect(() => {
-    if (oauthQueryHandled.current) {
+    let cancelled = false;
+    const requestPairs = activeSources
+      .filter((source) => source.active_request_id)
+      .map((source) => ({ sourceId: source.source_id, requestId: source.active_request_id as string }));
+
+    if (requestPairs.length === 0) {
+      setSyncDetails({});
       return;
     }
+
+    void Promise.all(
+      requestPairs.map(async ({ sourceId, requestId }) => ({
+        sourceId,
+        payload: await getSyncRequest(requestId),
+      })),
+    )
+      .then((rows) => {
+        if (cancelled) return;
+        const next: Record<number, SyncStatus | undefined> = {};
+        for (const row of rows) {
+          next[row.sourceId] = row.payload;
+        }
+        setSyncDetails(next);
+      })
+      .catch(() => {
+        if (!cancelled) setSyncDetails({});
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSources]);
+
+  const pollSyncRequest = useCallback(
+    async (sourceId: number, requestId: string, options?: { successMessage?: string; failurePrefix?: string }) => {
+      setSyncState((prev) => ({ ...prev, [sourceId]: "queued" }));
+      for (let attempt = 0; attempt < 15; attempt += 1) {
+        const status = await getSyncRequest(requestId);
+        const normalized = status.status.toLowerCase();
+        setSyncState((prev) => ({ ...prev, [sourceId]: normalized }));
+        if (status.status === "SUCCEEDED" || status.status === "FAILED") {
+          if (status.status === "SUCCEEDED") {
+            setBanner({ tone: "info", text: options?.successMessage || `Source #${sourceId} sync succeeded.` });
+          } else {
+            const failure = status.error_message || status.connector_result?.error_message || options?.failurePrefix || `Source #${sourceId} sync failed.`;
+            setBanner({ tone: "error", text: failure });
+          }
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      await refreshAll();
+    },
+    [refreshAll],
+  );
+
+  useEffect(() => {
+    if (oauthQueryHandled.current) return;
     oauthQueryHandled.current = true;
 
     const url = new URL(window.location.href);
@@ -310,14 +309,12 @@ export function SourcesPanel() {
     const requestId = url.searchParams.get("request_id");
     const message = url.searchParams.get("message");
 
-    if (!provider || provider !== "gmail" || !status) {
-      return;
-    }
+    if (!provider || provider !== "gmail" || !status) return;
 
     const sourceId = sourceIdRaw ? Number(sourceIdRaw) : null;
     setBanner({
       tone: status === "success" ? "info" : "error",
-      text: message || (status === "success" ? "Gmail connection succeeded." : "Gmail connection failed.")
+      text: message || (status === "success" ? "Gmail connection succeeded." : "Gmail connection failed."),
     });
 
     for (const key of oauthQueryKeys) {
@@ -329,7 +326,7 @@ export function SourcesPanel() {
     if (status === "success" && requestId && sourceId) {
       void pollSyncRequest(sourceId, requestId, {
         successMessage: "Gmail initial sync succeeded.",
-        failurePrefix: "Gmail initial sync failed"
+        failurePrefix: "Gmail initial sync failed",
       });
     }
   }, [pollSyncRequest, refreshAll]);
@@ -352,11 +349,9 @@ export function SourcesPanel() {
         ? "Disconnect this Gmail mailbox and move it to Archived Sources?"
         : provider === "ics"
           ? "Archive this Canvas ICS link?"
-          : "Archive this source?"
+          : "Archive this source?",
     );
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     setBusyDelete(sourceId);
     setBanner(null);
@@ -364,7 +359,7 @@ export function SourcesPanel() {
       await deleteSourceRequest(sourceId);
       setBanner({
         tone: "info",
-        text: provider === "gmail" ? "Mailbox disconnected and archived." : provider === "ics" ? "Canvas ICS link archived." : "Source archived."
+        text: provider === "gmail" ? "Mailbox disconnected and archived." : provider === "ics" ? "Canvas ICS link archived." : "Source archived.",
       });
       await refreshAll();
     } catch (err) {
@@ -388,20 +383,42 @@ export function SourcesPanel() {
     }
   }
 
+  async function startGmailConnect() {
+    const source = activeSources.find((row) => row.provider === "gmail") || archivedSources.find((row) => row.provider === "gmail") || null;
+    setBanner(null);
+    try {
+      const session = source
+        ? await createOAuthSession(source.source_id, { provider: "gmail" })
+        : await startOnboardingGmailOAuth({ label_id: "INBOX", return_to: "sources" });
+      window.location.assign(session.authorization_url);
+    } catch (err) {
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to start Gmail OAuth" });
+    }
+  }
+
   if (active.loading || archived.loading) return <LoadingState label="sources" />;
   if (active.error) return <ErrorState message={active.error} />;
   if (archived.error) return <ErrorState message={archived.error} />;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-[1.2rem] border border-line/80 bg-white/72 px-4 py-3 shadow-[var(--shadow-panel)] md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-wrap items-center gap-2 text-sm text-[#596270]">
-          <span className="rounded-full bg-[rgba(20,32,44,0.06)] px-3 py-1.5 text-ink">{activeSources.length} active</span>
-          <span className="rounded-full bg-[rgba(20,32,44,0.06)] px-3 py-1.5 text-ink">{attentionSources.length} attention</span>
-          <span className="rounded-full bg-[rgba(20,32,44,0.06)] px-3 py-1.5 text-ink">{archivedSources.length} archived</span>
+    <div className="space-y-5">
+      <Card className="animate-surface-enter relative overflow-hidden p-6 md:p-7">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.13),transparent_36%),radial-gradient(circle_at_84%_20%,rgba(215,90,45,0.11),transparent_24%)]" />
+        <div className="relative space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-3xl">
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Sources</p>
+              <h2 className="mt-3 text-3xl font-semibold text-ink">Keep intake trustworthy.</h2>
+              <p className="mt-3 text-sm leading-7 text-[#596270]">Fix attention first, then connect or maintain the sources feeding the timeline.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone={attentionSources.length > 0 ? "pending" : "approved"}>{attentionSources.length} attention</Badge>
+              <Badge tone="info">{activeSources.length} connected</Badge>
+              <Badge tone="info">{archivedSources.length} archived</Badge>
+            </div>
+          </div>
         </div>
-        <p className="text-sm text-[#596270]">{syncingSources.length} syncing</p>
-      </div>
+      </Card>
 
       {banner ? (
         <Card className={banner.tone === "error" ? "border-[#efc4b5] bg-[#fff3ef] p-4" : "border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] p-4"}>
@@ -409,110 +426,145 @@ export function SourcesPanel() {
         </Card>
       ) : null}
 
-      {attentionSources.length > 0 ? (
-        <Card className="border-[#efc4b5] bg-[#fff8f4] p-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-ember">Attention needed</p>
-              <h3 className="mt-2 text-lg font-semibold text-ink">Fix highlighted sources first.</h3>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
+        <div className="space-y-4">
+          <Card className="animate-surface-enter animate-surface-delay-1 p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Connected sources</p>
+                <h3 className="mt-1 text-lg font-semibold text-ink">Current intake</h3>
+              </div>
+              <Badge tone="info">{activeSources.length}</Badge>
             </div>
-            <Badge tone="pending">{attentionSources.length} source{attentionSources.length === 1 ? "" : "s"}</Badge>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {attentionSources.map((source) => (
-              <Badge key={source.source_id} tone="error">
-                {formatSourceTitle(source)}
-              </Badge>
-            ))}
-          </div>
-        </Card>
-      ) : null}
 
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="inline-flex flex-wrap gap-2 rounded-full border border-line/80 bg-white/60 p-2">
-          <Button size="sm" variant={activeSection === "inventory" ? "primary" : "ghost"} onClick={() => setActiveSection("inventory")}>
-            Live inventory ({activeSources.length})
-          </Button>
-          <Button size="sm" variant={activeSection === "catalog" ? "primary" : "ghost"} onClick={() => setActiveSection("catalog")}>
-            Source catalog ({unboundCatalogCount})
-          </Button>
-          <Button size="sm" variant={activeSection === "archived" ? "primary" : "ghost"} onClick={() => setActiveSection("archived")}>
-            Recover previous connections ({archivedSources.length})
-          </Button>
+            <div className="mt-4 space-y-3">
+              {activeSources.length === 0 ? (
+                <EmptyState title="No connected sources" description="Connect Canvas ICS or Gmail to start intake." />
+              ) : (
+                <>
+                  {attentionSources.length > 0 ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs uppercase tracking-[0.18em] text-ember">Needs attention</p>
+                        <Badge tone="pending">{attentionSources.length}</Badge>
+                      </div>
+                      {attentionSources.map((source) => (
+                        <ConnectedSourceCard
+                          key={source.source_id}
+                          source={source}
+                          observability={observabilityBySourceId[source.source_id]}
+                          syncLabel={
+                            syncState[source.source_id] ||
+                            (source.sync_state !== "idle" ? source.sync_state : undefined) ||
+                            (source.config_state === "rebind_pending" ? "rebind_pending" : undefined)
+                          }
+                          onSync={triggerSync}
+                          onDelete={archiveSource}
+                          busyDelete={busyDelete}
+                          basePath={basePath}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {healthySources.length > 0 ? (
+                    <div className={`${attentionSources.length > 0 ? "border-t border-line/80 pt-4" : ""} space-y-3`}>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Healthy</p>
+                        <Badge tone="approved">{healthySources.length}</Badge>
+                      </div>
+                      {healthySources.map((source) => (
+                        <ConnectedSourceCard
+                          key={source.source_id}
+                          source={source}
+                          observability={observabilityBySourceId[source.source_id]}
+                          syncLabel={
+                            syncState[source.source_id] ||
+                            (source.sync_state !== "idle" ? source.sync_state : undefined) ||
+                            (source.config_state === "rebind_pending" ? "rebind_pending" : undefined)
+                          }
+                          onSync={triggerSync}
+                          onDelete={archiveSource}
+                          busyDelete={busyDelete}
+                          basePath={basePath}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </Card>
         </div>
-        <p className="text-sm text-[#596270]">
-          {activeSection === "inventory" ? "Current active sources" : activeSection === "catalog" ? "Connect or reconnect a source" : "Reactivate archived sources"}
-        </p>
+
+        <div className="space-y-4">
+          <Card className="animate-surface-enter animate-surface-delay-2 p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Connect or reconnect</p>
+                <h3 className="mt-1 text-lg font-semibold text-ink">Bring intake online</h3>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3">
+              <ConnectSourceCard
+                provider="Canvas ICS"
+                title="Student calendar feed"
+                detail="Connect or update the Canvas subscription URL for this workspace."
+                connected={activeProviders.has("ics")}
+                attention={activeSources.some((source) => source.provider === "ics" && sourceNeedsAttention(source))}
+                href={withBasePath(basePath, "/sources/connect/canvas-ics")}
+                icon={<CalendarSync className="h-5 w-5" />}
+                iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(31,94,255,0.1)] text-cobalt"
+              />
+              <ConnectSourceCard
+                provider="Gmail"
+                title="OAuth mailbox"
+                detail="Connect or reconnect the mailbox used for announcement-driven change detection."
+                connected={activeProviders.has("gmail")}
+                attention={activeSources.some((source) => source.provider === "gmail" && sourceNeedsAttention(source))}
+                href={withBasePath(basePath, "/sources/connect/gmail")}
+                icon={<Mailbox className="h-5 w-5" />}
+                iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(215,90,45,0.12)] text-ember"
+              />
+            </div>
+
+            {!activeProviders.has("gmail") ? (
+              <div className="mt-4">
+                <Button variant="ghost" onClick={() => void startGmailConnect()}>
+                  Connect Gmail now
+                </Button>
+              </div>
+            ) : null}
+          </Card>
+
+          <Card className="animate-surface-enter animate-surface-delay-3 p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Archived</p>
+                <h3 className="mt-1 text-lg font-semibold text-ink">Recover previous connections</h3>
+              </div>
+              <Badge tone="info">{archivedSources.length}</Badge>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {archivedSources.length === 0 ? (
+                <div className="rounded-[1.1rem] border border-dashed border-line/80 bg-white/40 p-5 text-sm text-[#596270]">No archived sources.</div>
+              ) : (
+                archivedSources.map((source) => (
+                  <ArchivedSourceCard
+                    key={source.source_id}
+                    source={source}
+                    onReactivate={reactivateSource}
+                    busyReactivate={busyReactivate}
+                    basePath={basePath}
+                  />
+                ))
+              )}
+            </div>
+          </Card>
+        </div>
       </div>
-
-      {activeSection === "inventory" ? (
-        <div className="space-y-4">
-          {activeSources.length === 0 ? (
-            <EmptyState title="No connected sources" description="Use Source Catalog to connect Canvas ICS or Gmail." />
-          ) : (
-            activeSources.map((source) => (
-              <SourceInventoryCard
-                key={source.source_id}
-                source={source}
-                syncLabel={
-                  syncState[source.source_id] ||
-                  (source.sync_state !== "idle" ? source.sync_state : undefined) ||
-                  (source.config_state === "rebind_pending" ? "rebind_pending" : undefined)
-                }
-                syncProgress={source.sync_progress}
-                busyDelete={busyDelete}
-                busyReactivate={busyReactivate}
-                onSync={triggerSync}
-                onDelete={archiveSource}
-              />
-            ))
-          )}
-        </div>
-      ) : null}
-
-      {activeSection === "catalog" ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <SourceCatalogCard
-            providerLabel="Canvas ICS"
-            title="Student calendar feed"
-            description="Connect or reconnect the Canvas subscription URL."
-            href="/sources/connect/canvas-ics"
-            connected={activeProviders.has("ics")}
-            icon={<CalendarSync className="h-5 w-5" />}
-            iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(31,94,255,0.1)] text-cobalt"
-          />
-          <SourceCatalogCard
-            providerLabel="Gmail"
-            title="OAuth mailbox"
-            description="Connect or reconnect the workspace mailbox."
-            href="/sources/connect/gmail"
-            connected={activeProviders.has("gmail")}
-            icon={<Mailbox className="h-5 w-5" />}
-            iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(215,90,45,0.12)] text-ember"
-          />
-        </div>
-      ) : null}
-
-      {activeSection === "archived" ? (
-        <div className="space-y-4">
-          {archivedSources.length === 0 ? (
-            <EmptyState title="No archived sources" description="Archived sources will appear here after you disconnect or archive them." />
-          ) : (
-            archivedSources.map((source) => (
-              <SourceInventoryCard
-                key={source.source_id}
-                source={source}
-                syncProgress={source.sync_progress}
-                busyDelete={busyDelete}
-                busyReactivate={busyReactivate}
-                onDelete={archiveSource}
-                onReactivate={reactivateSource}
-                archived
-              />
-            ))
-          )}
-        </div>
-      ) : null}
     </div>
   );
 }

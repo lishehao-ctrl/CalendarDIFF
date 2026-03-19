@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from datetime import UTC
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models.ingestion import CalendarComponentParseStatus, CalendarComponentParseTask, IngestJob, IngestResult
-from app.db.models.input import SyncRequest, SyncRequestStatus
+from app.db.models.input import IngestTriggerType, SyncRequest, SyncRequestStatus
 from app.db.models.review import IngestApplyLog
+from app.modules.llm_gateway.usage_tracking import LLM_USAGE_SUMMARY_KEY, present_llm_usage_summary
 
 INFLIGHT_SYNC_STATUSES = (SyncRequestStatus.PENDING, SyncRequestStatus.QUEUED, SyncRequestStatus.RUNNING)
 _DISPLAY_STATUS_PRIORITY = {
@@ -42,9 +45,82 @@ def build_sync_request_status_payload(db: Session, *, sync_request: SyncRequest)
         "created_at": sync_request.created_at,
         "updated_at": sync_request.updated_at,
         "connector_result": connector_result,
+        "llm_usage": _extract_llm_usage_payload(sync_request),
+        "elapsed_ms": _compute_elapsed_ms(sync_request=sync_request, apply_log=apply_log),
         "applied": apply_log is not None,
         "applied_at": apply_log.applied_at if apply_log is not None else None,
         "progress": progress,
+    }
+
+
+def build_source_observability_payload(db: Session, *, source_id: int) -> dict:
+    sync_rows = list(
+        db.scalars(
+            select(SyncRequest)
+            .where(SyncRequest.source_id == source_id)
+            .order_by(SyncRequest.created_at.asc(), SyncRequest.id.asc())
+        ).all()
+    )
+    if not sync_rows:
+        return {
+            "source_id": source_id,
+            "active_request_id": None,
+            "bootstrap": None,
+            "latest_replay": None,
+            "active": None,
+        }
+
+    bootstrap_row = sync_rows[0]
+    latest_replay_row = sync_rows[-1] if len(sync_rows) > 1 else None
+    if latest_replay_row is bootstrap_row:
+        latest_replay_row = None
+    active_row = get_display_sync_request_for_source(db, source_id=source_id)
+
+    return {
+        "source_id": source_id,
+        "active_request_id": active_row.request_id if active_row is not None else None,
+        "bootstrap": _serialize_source_observability_sync(db, row=bootstrap_row, phase="bootstrap"),
+        "latest_replay": _serialize_source_observability_sync(db, row=latest_replay_row, phase="replay"),
+        "active": _serialize_source_observability_sync(
+            db,
+            row=active_row,
+            phase=_derive_phase_for_row(row=active_row, bootstrap_request_id=bootstrap_row.request_id),
+        ),
+    }
+
+
+def build_source_sync_history_payload(
+    db: Session,
+    *,
+    source_id: int,
+    limit: int,
+) -> dict:
+    sync_rows = list(
+        db.scalars(
+            select(SyncRequest)
+            .where(SyncRequest.source_id == source_id)
+            .order_by(SyncRequest.created_at.asc(), SyncRequest.id.asc())
+        ).all()
+    )
+    if not sync_rows:
+        return {
+            "source_id": source_id,
+            "items": [],
+        }
+
+    bootstrap_request_id = sync_rows[0].request_id
+    selected_rows = list(reversed(sync_rows))[:limit]
+    items = [
+        _serialize_source_observability_sync(
+            db,
+            row=row,
+            phase=_derive_phase_for_row(row=row, bootstrap_request_id=bootstrap_request_id),
+        )
+        for row in selected_rows
+    ]
+    return {
+        "source_id": source_id,
+        "items": [item for item in items if isinstance(item, dict)],
     }
 
 
@@ -256,6 +332,54 @@ def _normalize_progress_payload(progress: dict) -> dict:
         "percent": percent,
         "unit": str(progress.get("unit")) if progress.get("unit") is not None else None,
     }
+
+
+def _serialize_source_observability_sync(
+    db: Session,
+    *,
+    row: SyncRequest | None,
+    phase: str | None,
+) -> dict | None:
+    if row is None or phase not in {"bootstrap", "replay"}:
+        return None
+    payload = build_sync_request_status_payload(db, sync_request=row)
+    return {
+        "request_id": payload["request_id"],
+        "phase": phase,
+        "trigger_type": payload["trigger_type"],
+        "status": payload["status"],
+        "created_at": payload["created_at"],
+        "updated_at": payload["updated_at"],
+        "applied": payload["applied"],
+        "applied_at": payload["applied_at"],
+        "elapsed_ms": payload["elapsed_ms"],
+        "error_code": payload["error_code"],
+        "error_message": payload["error_message"],
+        "connector_result": payload["connector_result"],
+        "llm_usage": payload["llm_usage"],
+        "progress": payload["progress"],
+    }
+
+
+def _derive_phase_for_row(*, row: SyncRequest | None, bootstrap_request_id: str) -> str | None:
+    if row is None:
+        return None
+    return "bootstrap" if row.request_id == bootstrap_request_id else "replay"
+
+
+def _extract_llm_usage_payload(sync_request: SyncRequest) -> dict | None:
+    metadata = sync_request.metadata_json if isinstance(sync_request.metadata_json, dict) else {}
+    usage = metadata.get(LLM_USAGE_SUMMARY_KEY)
+    return present_llm_usage_summary(usage if isinstance(usage, dict) else None)
+
+
+def _compute_elapsed_ms(*, sync_request: SyncRequest, apply_log: IngestApplyLog | None) -> int | None:
+    ended_at = apply_log.applied_at if apply_log is not None else sync_request.updated_at
+    if ended_at is None or sync_request.created_at is None:
+        return None
+    started_at = sync_request.created_at.astimezone(UTC)
+    ended = ended_at.astimezone(UTC)
+    return max(int((ended - started_at).total_seconds() * 1000), 0)
 
 
 def _coerce_optional_int(value: object) -> int | None:

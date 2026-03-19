@@ -3,6 +3,21 @@
 ## Default base URL
 - Public/backend API: `http://localhost:8200`
 
+## Product lanes
+
+User-facing product lanes should be interpreted as:
+
+- `Sources`
+- `Changes`
+- `Families`
+- `Manual`
+- `Settings`
+
+Important:
+
+- some legacy public endpoints still exist on this branch
+- they should not define new product language or new UI concepts
+
 ## Public endpoints
 - `POST /auth/register`
 - `POST /auth/login`
@@ -11,10 +26,13 @@
 - `GET /profile/me`
 - `PATCH /profile/me`
 - `GET /sources`
+- `GET /sources/{source_id}/observability`
+- `GET /sources/{source_id}/sync-history`
 - `POST /sources`
 - `PATCH /sources/{source_id}`
 - `POST /sources/{source_id}/oauth-sessions`
 - `POST /sources/{source_id}/sync-requests`
+- `GET /sync-requests/{request_id}`
 - `POST /onboarding/registrations`
 - `GET /onboarding/status`
 - `POST /onboarding/canvas-ics`
@@ -35,14 +53,6 @@
 - `POST /review/changes/{change_id}/label-learning`
 - `GET /review/raw-type-suggestions`
 - `POST /review/raw-type-suggestions/{suggestion_id}/decisions`
-- `GET /review/link-candidates`
-- `POST /review/link-candidates/batch/decisions`
-- `POST /review/link-candidates/{candidate_id}/decisions`
-- `GET /review/link-candidates/blocks`
-- `DELETE /review/link-candidates/blocks/{block_id}`
-- `GET /review/links`
-- `DELETE /review/links/{link_id}`
-- `POST /review/links/relink`
 - `GET /review/course-work-item-families`
 - `POST /review/course-work-item-families`
 - `PATCH /review/course-work-item-families/{family_id}`

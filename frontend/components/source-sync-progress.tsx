@@ -39,7 +39,7 @@ export function SourceSyncProgress({
           <div className="h-2 rounded-full bg-white/90">
             <div
               aria-hidden="true"
-              className="h-2 rounded-full bg-cobalt transition-all duration-300"
+              className="progress-sheen h-2 rounded-full bg-cobalt transition-all duration-500"
               style={{ width: `${percent}%` }}
             />
           </div>

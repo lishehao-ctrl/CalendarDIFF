@@ -179,6 +179,45 @@ def test_sync_request_status_exposes_calendar_component_progress(input_client, d
     assert payload["progress"]["unit"] == "events"
 
 
+def test_sync_request_status_exposes_llm_usage_summary_and_elapsed_ms(input_client, db_session, authenticate_client) -> None:
+    user = _create_user(db_session, email="progress-usage@example.com")
+    source = _create_source(db_session, user=user, provider="gmail")
+    row = _seed_sync_request(db_session, source=source, request_id="gmail-usage-req", status=SyncRequestStatus.SUCCEEDED)
+    row.metadata_json = {
+        "kind": "test",
+        "llm_usage_summary": {
+            "successful_call_count": 4,
+            "usage_record_count": 4,
+            "latency_ms_total": 2400,
+            "latency_ms_max": 900,
+            "input_tokens": 3000,
+            "cached_input_tokens": 1200,
+            "cache_creation_input_tokens": 300,
+            "output_tokens": 500,
+            "reasoning_tokens": 0,
+            "total_tokens": 3500,
+            "api_modes": {"chat_completions": 4},
+            "models": {"qwen3.5-flash": 4},
+            "task_counts": {"gmail_purpose_mode_classify": 4},
+            "last_observed_at": "2026-03-18T00:00:10+00:00",
+        },
+    }
+    row.created_at = datetime(2026, 3, 18, 0, 0, 0, tzinfo=timezone.utc)
+    row.updated_at = datetime(2026, 3, 18, 0, 0, 5, tzinfo=timezone.utc)
+    db_session.commit()
+
+    authenticate_client(input_client, user=user)
+    response = input_client.get("/sync-requests/gmail-usage-req", headers={"X-API-Key": "test-api-key"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["elapsed_ms"] == 5000
+    assert payload["llm_usage"]["successful_call_count"] == 4
+    assert payload["llm_usage"]["cached_input_tokens"] == 1200
+    assert payload["llm_usage"]["cache_hit_ratio"] == 0.4
+    assert payload["llm_usage"]["avg_latency_ms"] == 600
+
+
 def test_sources_api_prefers_running_sync_over_newer_pending_sync(input_client, db_session, authenticate_client) -> None:
     user = _create_user(db_session, email="progress-priority@example.com")
     source = _create_source(db_session, user=user, provider="gmail")
@@ -210,3 +249,152 @@ def test_sources_api_prefers_running_sync_over_newer_pending_sync(input_client, 
     payload = response.json()[0]
     assert payload["active_request_id"] == "older-running"
     assert payload["sync_progress"]["current"] == 10
+
+
+def test_source_observability_splits_bootstrap_and_latest_replay(input_client, db_session, authenticate_client) -> None:
+    user = _create_user(db_session, email="progress-observability@example.com")
+    source = _create_source(db_session, user=user, provider="gmail")
+    bootstrap = _seed_sync_request(db_session, source=source, request_id="bootstrap-req", status=SyncRequestStatus.SUCCEEDED)
+    bootstrap.trigger_type = IngestTriggerType.SCHEDULER
+    bootstrap.created_at = datetime(2026, 3, 18, 0, 0, 0, tzinfo=timezone.utc)
+    bootstrap.updated_at = datetime(2026, 3, 18, 0, 2, 0, tzinfo=timezone.utc)
+    bootstrap.metadata_json = {
+        "kind": "scheduler",
+        "llm_usage_summary": {
+            "successful_call_count": 10,
+            "usage_record_count": 10,
+            "latency_ms_total": 10000,
+            "latency_ms_max": 1400,
+            "input_tokens": 9000,
+            "cached_input_tokens": 100,
+            "cache_creation_input_tokens": 2200,
+            "output_tokens": 300,
+            "reasoning_tokens": 0,
+            "total_tokens": 9300,
+            "api_modes": {"chat_completions": 10},
+            "models": {"qwen3.5-flash": 10},
+            "task_counts": {"gmail_purpose_mode_classify": 10},
+        },
+    }
+    replay = _seed_sync_request(db_session, source=source, request_id="replay-req", status=SyncRequestStatus.RUNNING)
+    replay.trigger_type = IngestTriggerType.MANUAL
+    replay.created_at = datetime(2026, 3, 18, 1, 0, 0, tzinfo=timezone.utc)
+    replay.updated_at = datetime(2026, 3, 18, 1, 0, 30, tzinfo=timezone.utc)
+    replay.metadata_json = {
+        "kind": "timeline_replay",
+        "llm_usage_summary": {
+            "successful_call_count": 2,
+            "usage_record_count": 2,
+            "latency_ms_total": 1200,
+            "latency_ms_max": 700,
+            "input_tokens": 1200,
+            "cached_input_tokens": 500,
+            "cache_creation_input_tokens": 0,
+            "output_tokens": 80,
+            "reasoning_tokens": 0,
+            "total_tokens": 1280,
+            "api_modes": {"chat_completions": 2},
+            "models": {"qwen3.5-flash": 2},
+            "task_counts": {"gmail_purpose_mode_classify": 2},
+        },
+    }
+    _seed_job(
+        db_session,
+        source=source,
+        request_id="replay-req",
+        payload_json={
+            "provider": "gmail",
+            "workflow_stage": "CONNECTOR_FETCH_RUNNING",
+            "sync_progress": {
+                "phase": "gmail_bootstrap_fetch",
+                "label": "Scanning Gmail bootstrap window",
+                "detail": "Inspected 20 of 100 emails in the bootstrap window.",
+                "current": 20,
+                "total": 100,
+                "percent": 20,
+                "unit": "emails",
+            },
+        },
+    )
+    db_session.commit()
+
+    authenticate_client(input_client, user=user)
+    response = input_client.get(f"/sources/{source.id}/observability", headers={"X-API-Key": "test-api-key"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source_id"] == source.id
+    assert payload["active_request_id"] == "replay-req"
+    assert payload["bootstrap"]["request_id"] == "bootstrap-req"
+    assert payload["bootstrap"]["phase"] == "bootstrap"
+    assert payload["bootstrap"]["llm_usage"]["successful_call_count"] == 10
+    assert payload["latest_replay"]["request_id"] == "replay-req"
+    assert payload["latest_replay"]["phase"] == "replay"
+    assert payload["latest_replay"]["progress"]["current"] == 20
+    assert payload["active"]["request_id"] == "replay-req"
+
+
+def test_source_sync_history_lists_bootstrap_and_replay_newest_first(input_client, db_session, authenticate_client) -> None:
+    user = _create_user(db_session, email="progress-sync-history@example.com")
+    source = _create_source(db_session, user=user, provider="gmail")
+
+    bootstrap = _seed_sync_request(db_session, source=source, request_id="history-bootstrap", status=SyncRequestStatus.SUCCEEDED)
+    bootstrap.trigger_type = IngestTriggerType.SCHEDULER
+    bootstrap.created_at = datetime(2026, 3, 18, 0, 0, 0, tzinfo=timezone.utc)
+    bootstrap.updated_at = datetime(2026, 3, 18, 0, 2, 0, tzinfo=timezone.utc)
+
+    replay_a = _seed_sync_request(db_session, source=source, request_id="history-replay-a", status=SyncRequestStatus.SUCCEEDED)
+    replay_a.trigger_type = IngestTriggerType.MANUAL
+    replay_a.created_at = datetime(2026, 3, 18, 1, 0, 0, tzinfo=timezone.utc)
+    replay_a.updated_at = datetime(2026, 3, 18, 1, 1, 0, tzinfo=timezone.utc)
+
+    replay_b = _seed_sync_request(db_session, source=source, request_id="history-replay-b", status=SyncRequestStatus.RUNNING)
+    replay_b.trigger_type = IngestTriggerType.MANUAL
+    replay_b.created_at = datetime(2026, 3, 18, 2, 0, 0, tzinfo=timezone.utc)
+    replay_b.updated_at = datetime(2026, 3, 18, 2, 0, 30, tzinfo=timezone.utc)
+
+    _seed_job(
+        db_session,
+        source=source,
+        request_id="history-replay-b",
+        payload_json={
+            "provider": "gmail",
+            "workflow_stage": "CONNECTOR_FETCH_RUNNING",
+            "sync_progress": {
+                "phase": "gmail_bootstrap_fetch",
+                "label": "Scanning Gmail bootstrap window",
+                "detail": "Inspected 5 of 10 emails in the bootstrap window.",
+                "current": 5,
+                "total": 10,
+                "percent": 50,
+                "unit": "emails",
+            },
+        },
+    )
+    db_session.commit()
+
+    authenticate_client(input_client, user=user)
+    response = input_client.get(
+        f"/sources/{source.id}/sync-history?limit=2",
+        headers={"X-API-Key": "test-api-key"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source_id"] == source.id
+    assert [item["request_id"] for item in payload["items"]] == ["history-replay-b", "history-replay-a"]
+    assert [item["phase"] for item in payload["items"]] == ["replay", "replay"]
+    assert payload["items"][0]["progress"]["current"] == 5
+
+    bootstrap_response = input_client.get(
+        f"/sources/{source.id}/sync-history?limit=10",
+        headers={"X-API-Key": "test-api-key"},
+    )
+    assert bootstrap_response.status_code == 200
+    bootstrap_payload = bootstrap_response.json()
+    assert [item["request_id"] for item in bootstrap_payload["items"]] == [
+        "history-replay-b",
+        "history-replay-a",
+        "history-bootstrap",
+    ]
+    assert bootstrap_payload["items"][-1]["phase"] == "bootstrap"

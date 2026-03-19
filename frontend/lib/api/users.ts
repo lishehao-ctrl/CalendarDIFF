@@ -1,10 +1,14 @@
 import { apiDelete, apiGet, apiPatch, apiPost, buildQuery } from "@/lib/api/client";
 import type {
   CourseIdentity,
+  CourseWorkItemRawType,
+  CourseWorkItemRawTypeMoveResponse,
   CourseWorkItemFamily,
   CourseWorkItemFamilyStatus,
   ManualEvent,
   ManualEventMutationResponse,
+  RawTypeSuggestionDecisionResponse,
+  RawTypeSuggestionItem,
   UserProfile,
 } from "@/lib/types";
 
@@ -63,6 +67,48 @@ export async function getCourseWorkItemFamilyStatus() {
 
 export async function listKnownCourseKeys() {
   return apiGet<{ courses: CourseIdentity[] }>("/review/course-work-item-families/courses");
+}
+
+export async function listCourseWorkItemRawTypes(params?: {
+  course_dept?: string | null;
+  course_number?: number | null;
+  course_suffix?: string | null;
+  course_quarter?: string | null;
+  course_year2?: number | null;
+  family_id?: number | null;
+}) {
+  return apiGet<CourseWorkItemRawType[]>(`/review/course-work-item-raw-types${buildQuery(params || {})}`);
+}
+
+export async function moveCourseRawTypeToFamily(payload: {
+  raw_type_id: number;
+  family_id: number;
+  note?: string | null;
+}) {
+  return apiPost<CourseWorkItemRawTypeMoveResponse>("/review/course-work-item-raw-types/relink", payload);
+}
+
+export async function listRawTypeSuggestions(params?: {
+  status?: "pending" | "approved" | "rejected" | "dismissed";
+  course_dept?: string | null;
+  course_number?: number | null;
+  course_suffix?: string | null;
+  course_quarter?: string | null;
+  course_year2?: number | null;
+  limit?: number;
+  offset?: number;
+}) {
+  return apiGet<RawTypeSuggestionItem[]>(`/review/raw-type-suggestions${buildQuery({ status: "pending", ...(params || {}) })}`);
+}
+
+export async function decideRawTypeSuggestion(
+  suggestionId: number,
+  payload: {
+    decision: "approve" | "reject" | "dismiss";
+    note?: string | null;
+  }
+) {
+  return apiPost<RawTypeSuggestionDecisionResponse>(`/review/raw-type-suggestions/${suggestionId}/decisions`, payload);
 }
 
 export async function listManualEvents(params?: { include_removed?: boolean }) {

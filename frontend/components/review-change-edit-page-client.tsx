@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { applyReviewEdit, getReviewChangeEditContext, previewReviewEdit } from "@/lib/api/review";
+import { withBasePath } from "@/lib/demo-mode";
 import { formatCourseDisplay, formatSemanticDue, formatStatusLabel } from "@/lib/presenters";
 import type { ReviewEditContext, ReviewEditMode, ReviewEditPreviewResponse, ReviewEditRequest } from "@/lib/types";
 import { useApiResource } from "@/lib/use-api-resource";
@@ -36,7 +37,7 @@ function ReviewEditEventCard({
   );
 }
 
-export function ReviewChangeEditPageClient({ mode, changeId }: { mode: ReviewEditMode; changeId: number }) {
+export function ReviewChangeEditPageClient({ mode, changeId, basePath = "" }: { mode: ReviewEditMode; changeId: number; basePath?: string }) {
   const router = useRouter();
   const { data, loading, error } = useApiResource<ReviewEditContext>(() => getReviewChangeEditContext(changeId), [changeId]);
   const [form, setForm] = useState({
@@ -132,7 +133,7 @@ export function ReviewChangeEditPageClient({ mode, changeId }: { mode: ReviewEdi
         text: payload.mode === "proposal" ? "Proposal updated. Returning to review inbox..." : "Current event updated. Returning to review inbox..."
       });
       setTimeout(() => {
-        router.push("/review/changes");
+        router.push(withBasePath(basePath, "/review/changes"));
         router.refresh();
       }, 300);
     } catch (err) {
@@ -168,7 +169,7 @@ export function ReviewChangeEditPageClient({ mode, changeId }: { mode: ReviewEdi
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="info">{formatStatusLabel(mode)}</Badge>
             <Button asChild size="sm" variant="ghost">
-              <Link href="/review/changes">
+              <Link href={withBasePath(basePath, "/review/changes")}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to inbox
               </Link>

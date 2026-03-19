@@ -13,6 +13,17 @@ def build_chat_completions_payload(
     truncated_input_json: str,
 ) -> dict:
     if isinstance(invoke_request.cache_prefix_payload, dict):
+        cached_content = (
+            _build_cached_task_prefix(
+                invoke_request=invoke_request,
+                profile=profile,
+            )
+            if invoke_request.cache_task_prompt
+            else _build_cache_prefix(
+                invoke_request=invoke_request,
+                profile=profile,
+            )
+        )
         return {
             "model": profile.model,
             "temperature": invoke_request.temperature,
@@ -27,10 +38,7 @@ def build_chat_completions_payload(
                     "content": [
                         {
                             "type": "text",
-                            "text": _build_cache_prefix(
-                                invoke_request=invoke_request,
-                                profile=profile,
-                            ),
+                            "text": cached_content,
                             "cache_control": {"type": "ephemeral"},
                         }
                     ],
@@ -40,6 +48,7 @@ def build_chat_completions_payload(
                     "content": _build_task_prompt(
                         invoke_request=invoke_request,
                         input_json=truncated_input_json,
+                        include_task_prompt=not invoke_request.cache_task_prompt,
                     ),
                 },
             ],
@@ -110,7 +119,49 @@ def _build_cache_prefix(*, invoke_request: LlmInvokeRequest, profile: ResolvedLl
     )
 
 
-def _build_task_prompt(*, invoke_request: LlmInvokeRequest, input_json: str) -> str:
+def _build_cached_task_prefix(*, invoke_request: LlmInvokeRequest, profile: ResolvedLlmProfile) -> str:
+    sections = [
+        "TASK_INSTRUCTIONS:",
+        invoke_request.system_prompt.strip(),
+        f"Output schema name: {invoke_request.output_schema_name}",
+        "Schema JSON:",
+        json.dumps(invoke_request.output_schema_json, ensure_ascii=True),
+    ]
+    if isinstance(invoke_request.cache_prefix_payload, dict) and invoke_request.cache_prefix_payload:
+        sections.extend(
+            [
+                "CACHE_CONTEXT_JSON:",
+                _truncate_prefix_payload(
+                    payload=invoke_request.cache_prefix_payload,
+                    max_chars=profile.max_input_chars,
+                ),
+            ]
+        )
+    return "\n".join(sections)
+
+
+def _build_task_prompt(*, invoke_request: LlmInvokeRequest, input_json: str, include_task_prompt: bool) -> str:
+    if not include_task_prompt:
+        if isinstance(invoke_request.shared_user_payload, dict):
+            return "\n".join(
+                [
+                    "TASK_INPUT_JSON:",
+                    json.dumps(
+                        {
+                            "shared_context": invoke_request.shared_user_payload,
+                            "task_input": invoke_request.user_payload,
+                        },
+                        ensure_ascii=True,
+                        separators=(",", ":"),
+                    ),
+                ]
+            )
+        return "\n".join(
+            [
+                "TASK_INPUT_JSON:",
+                input_json,
+            ]
+        )
     return "\n".join(
         [
             "TASK_INSTRUCTIONS:",

@@ -11,8 +11,6 @@ from app.db.models.review import (
     ChangeType,
     EventEntity,
     EventEntityLifecycle,
-    EventEntityLink,
-    EventLinkOrigin,
     ReviewStatus,
     SourceEventObservation,
 )
@@ -96,24 +94,58 @@ def _seed_active_entity_for_directive(
     )
 
 
-def _seed_manual_link(
+def _seed_existing_observation(
     db_session,
     *,
     user_id: int,
-    source_id: int,
+    source: InputSource,
     external_event_id: str,
     entity_uid: str,
+    family_id: int,
 ) -> None:
     db_session.add(
-        EventEntityLink(
+        SourceEventObservation(
             user_id=user_id,
-            source_id=source_id,
-            source_kind=SourceKind.EMAIL,
+            source_id=source.id,
+            source_kind=source.source_kind,
+            provider=source.provider,
             external_event_id=external_event_id,
             entity_uid=entity_uid,
-            link_origin=EventLinkOrigin.MANUAL_CANDIDATE,
-            link_score=1.0,
-            signals_json={"seed": "manual_smoke_link"},
+            event_payload={
+                "source_facts": {
+                    "external_event_id": external_event_id,
+                    "source_title": "HW1",
+                    "internal_date": "2026-03-01T18:00:00+00:00",
+                },
+                "semantic_event": {
+                    "uid": entity_uid,
+                    "course_dept": "CSE",
+                    "course_number": 8,
+                    "course_suffix": "A",
+                    "course_quarter": "WI",
+                    "course_year2": 26,
+                    "family_id": family_id,
+                    "family_name": "Homework",
+                    "raw_type": "Homework",
+                    "event_name": "HW1",
+                    "ordinal": 1,
+                    "due_date": "2026-03-09",
+                    "time_precision": "date_only",
+                    "confidence": 0.9,
+                },
+                "link_signals": {},
+                "kind_resolution": {
+                    "status": "exact",
+                    "family_id": family_id,
+                    "canonical_label": "Homework",
+                    "raw_type": "Homework",
+                    "ordinal": 1,
+                },
+            },
+            event_hash=f"hash-{external_event_id}",
+            observed_at=datetime.now(timezone.utc),
+            is_active=True,
+            last_request_id="seed-observation",
         )
     )
 
@@ -199,12 +231,13 @@ def test_gmail_mixed_dispatch_smoke_routes_atomic_and_directive_lanes(db_session
         family_id=family.id,
         entity_uid="ent-directive-1",
     )
-    _seed_manual_link(
+    _seed_existing_observation(
         db_session,
         user_id=user.id,
-        source_id=source.id,
+        source=source,
         external_event_id="msg-atomic-1",
         entity_uid="ent-atomic-1",
+        family_id=family.id,
     )
     db_session.commit()
 

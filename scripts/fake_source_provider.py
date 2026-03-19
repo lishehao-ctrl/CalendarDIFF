@@ -15,6 +15,13 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 ROUND_IDS = (0, 1, 2, 3)
+EMAIL_POOL_ROOT = Path("/Users/lishehao/Desktop/Project/CalendarDIFF/tests/fixtures/private/email_pool")
+PHASE_TO_SEMESTER = {
+    "WI26": 1,
+    "SP26": 2,
+    "SU26": 3,
+    "FA26": 4,
+}
 
 
 @dataclass(frozen=True)
@@ -287,6 +294,57 @@ def _load_semester_batch_scenarios(path: str | None) -> list[SemesterBatchScenar
             )
     scenarios.sort(key=lambda row: row.global_batch)
     return scenarios
+
+
+def _load_email_bucket_messages(bucket_name: str | None) -> dict[tuple[int, int], list[dict[str, Any]]]:
+    cleaned = (bucket_name or "").strip()
+    if not cleaned:
+        return {}
+    samples_path = EMAIL_POOL_ROOT / cleaned / "samples.jsonl"
+    if not samples_path.exists():
+        raise ValueError(f"email bucket not found: {cleaned}")
+    grouped: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    for line in samples_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        if not isinstance(row, dict):
+            continue
+        history_batch = row.get("history_batch")
+        phase_label = str(row.get("phase_label") or "")
+        semester = PHASE_TO_SEMESTER.get(phase_label)
+        if semester is None or not isinstance(history_batch, int) or history_batch <= 0:
+            continue
+        grouped.setdefault((semester, history_batch), []).append(row)
+    for key in grouped:
+        grouped[key].sort(key=lambda row: str(row.get("internal_date") or ""))
+    return grouped
+
+
+def _overlay_email_bucket_messages(
+    scenarios: list[SemesterBatchScenario],
+    *,
+    bucket_messages: dict[tuple[int, int], list[dict[str, Any]]],
+) -> list[SemesterBatchScenario]:
+    if not bucket_messages:
+        return scenarios
+    out: list[SemesterBatchScenario] = []
+    for scenario in scenarios:
+        replacement = bucket_messages.get((scenario.semester, scenario.batch))
+        if replacement is None:
+            out.append(scenario)
+            continue
+        out.append(
+            SemesterBatchScenario(
+                semester=scenario.semester,
+                batch=scenario.batch,
+                global_batch=scenario.global_batch,
+                start_iso=scenario.start_iso,
+                ics_events=scenario.ics_events,
+                gmail_messages=replacement,
+            )
+        )
+    return out
 
 
 class FakeSourceState:
@@ -599,6 +657,30 @@ def create_handler(state: FakeSourceState):
                 self._json_response(HTTPStatus.OK, history_payload)
                 return
 
+            if path == "/gmail/v1/users/me/messages":
+                scenario = state.current_semester_scenario()
+                if state.mode == "semester" and scenario is not None:
+                    requested_label_ids = [value for value in query.get("labelIds", []) if isinstance(value, str) and value]
+                    messages_payload: list[dict[str, Any]] = []
+                    for message in scenario.gmail_messages:
+                        message_id = str(message.get("message_id") or "")
+                        if not message_id:
+                            continue
+                        label_ids_raw = message.get("label_ids")
+                        label_ids = [value for value in label_ids_raw if isinstance(value, str)] if isinstance(label_ids_raw, list) else []
+                        if requested_label_ids and not any(label in label_ids for label in requested_label_ids):
+                            continue
+                        messages_payload.append({"id": message_id, "threadId": str(message.get("thread_id") or f"thread-{message_id}")})
+                    self._json_response(HTTPStatus.OK, {"messages": messages_payload})
+                    return
+                if state.mode != "semester":
+                    scenario = SCENARIOS.get(int(state.snapshot().get("round") or 0))
+                    messages_payload: list[dict[str, Any]] = []
+                    if scenario is not None and scenario.message_id:
+                        messages_payload.append({"id": scenario.message_id, "threadId": f"thread-{scenario.message_id}"})
+                    self._json_response(HTTPStatus.OK, {"messages": messages_payload})
+                    return
+
             if path.startswith("/gmail/v1/users/me/messages/"):
                 state.increment("gmail_message_count")
                 message_id = path.rsplit("/", 1)[-1]
@@ -733,12 +815,21 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional semester demo scenario manifest JSON path.",
     )
+    parser.add_argument(
+        "--email-bucket",
+        default=None,
+        help="Optional email-pool bucket name to overlay Gmail messages onto semester scenarios.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     semester_scenarios = _load_semester_batch_scenarios(args.scenario_manifest)
+    semester_scenarios = _overlay_email_bucket_messages(
+        semester_scenarios,
+        bucket_messages=_load_email_bucket_messages(args.email_bucket),
+    )
     state = FakeSourceState(semester_scenarios=semester_scenarios)
     handler = create_handler(state)
     server = ThreadingHTTPServer((args.host, args.port), handler)

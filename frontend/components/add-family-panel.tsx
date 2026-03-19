@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { createCourseWorkItemFamily, listCourseWorkItemFamilies, listKnownCourseKeys } from "@/lib/api/users";
+import { withBasePath } from "@/lib/demo-mode";
 import { useApiResource } from "@/lib/use-api-resource";
 import type { CourseIdentity, CourseWorkItemFamily } from "@/lib/types";
 
@@ -50,7 +51,7 @@ function parseMatchingKeywords(input: string) {
     });
 }
 
-export function AddFamilyPanel() {
+export function AddFamilyPanel({ basePath = "" }: { basePath?: string }) {
   const families = useApiResource<CourseWorkItemFamily[]>(() => listCourseWorkItemFamilies(), []);
   const courses = useApiResource<{ courses: CourseIdentity[] }>(() => listKnownCourseKeys(), []);
 
@@ -94,8 +95,8 @@ export function AddFamilyPanel() {
           <span className="rounded-full bg-[rgba(20,32,44,0.06)] px-3 py-1.5 text-ink">{courses.data?.courses?.length || 0} courses</span>
           <span className="rounded-full bg-[rgba(20,32,44,0.06)] px-3 py-1.5 text-ink">{familyCount} families</span>
         </div>
-        <Link href="/review/links" className="text-sm font-medium text-cobalt">
-          Back to manage
+        <Link href={withBasePath(basePath, "/families")} className="text-sm font-medium text-cobalt">
+          Back to Families
         </Link>
       </div>
 

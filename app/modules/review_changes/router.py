@@ -18,6 +18,7 @@ from app.modules.review_changes.schemas import (
     RawTypeSuggestionItemResponse,
     ReviewBatchDecisionRequest,
     ReviewBatchDecisionResponse,
+    ReviewSummaryResponse,
     ReviewEditApplyResponse,
     ReviewEditContextResponse,
     ReviewEditPreviewResponse,
@@ -27,6 +28,7 @@ from app.modules.review_changes.schemas import (
     ReviewDecisionRequest,
     ReviewDecisionResponse,
 )
+from app.modules.review_changes.summary_service import get_review_summary
 from app.modules.review_changes.change_decision_service import (
     ReviewChangeNotFoundError,
     batch_decide_review_changes,
@@ -66,6 +68,15 @@ router = APIRouter(
     tags=["review-items"],
     dependencies=[Depends(require_public_api_key)],
 )
+
+
+@router.get("/summary", response_model=ReviewSummaryResponse)
+def get_review_summary_route(
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> ReviewSummaryResponse:
+    payload = get_review_summary(db=db, user_id=user.id)
+    return ReviewSummaryResponse(**payload)
 
 
 @router.get("/changes", response_model=list[ReviewChangeItemResponse])

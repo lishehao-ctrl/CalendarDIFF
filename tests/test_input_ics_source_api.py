@@ -13,11 +13,6 @@ from app.db.models.review import (
     Change,
     ChangeSourceRef,
     ChangeType,
-    EventEntityLink,
-    EventLinkBlock,
-    EventLinkCandidate,
-    EventLinkCandidateReason,
-    EventLinkCandidateStatus,
     ReviewStatus,
     SourceEventObservation,
 )
@@ -238,33 +233,6 @@ def test_ics_source_term_rebind_rescopes_state_and_enqueues_sync(input_client, d
         )
     )
     db_session.add(
-        EventEntityLink(
-            user_id=user.id,
-            entity_uid="entity-rescope-1",
-            source_id=source.id,
-            source_kind=source.source_kind,
-            external_event_id="evt-1",
-        )
-    )
-    db_session.add(
-        EventLinkCandidate(
-            user_id=user.id,
-            source_id=source.id,
-            external_event_id="evt-1",
-            proposed_entity_uid="entity-rescope-1",
-            reason_code=EventLinkCandidateReason.SCORE_BAND,
-            status=EventLinkCandidateStatus.PENDING,
-        )
-    )
-    db_session.add(
-        EventLinkBlock(
-            user_id=user.id,
-            source_id=source.id,
-            external_event_id="evt-1",
-            blocked_entity_uid="entity-rescope-2",
-        )
-    )
-    db_session.add(
         IngestUnresolvedRecord(
             user_id=user.id,
             source_id=source.id,
@@ -299,9 +267,6 @@ def test_ics_source_term_rebind_rescopes_state_and_enqueues_sync(input_client, d
     assert db_session.scalar(
         select(SourceEventObservation).where(SourceEventObservation.source_id == source.id)
     ) is None
-    assert db_session.scalar(select(EventEntityLink).where(EventEntityLink.source_id == source.id)) is None
-    assert db_session.scalar(select(EventLinkCandidate).where(EventLinkCandidate.source_id == source.id)) is None
-    assert db_session.scalar(select(EventLinkBlock).where(EventLinkBlock.source_id == source.id)) is None
     assert db_session.scalar(select(IngestUnresolvedRecord).where(IngestUnresolvedRecord.source_id == source.id)) is None
 
     rejected_change = db_session.scalar(select(Change).where(Change.id == change.id))

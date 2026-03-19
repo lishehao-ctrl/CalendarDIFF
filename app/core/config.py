@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     gmail_oauth_authorize_url: str = "https://accounts.google.com/o/oauth2/v2/auth"
     app_llm_openai_model: str | None = None
     ingestion_llm_base_url: str | None = None
+    ingestion_llm_chat_base_url: str | None = None
+    ingestion_llm_responses_base_url: str | None = None
     ingestion_llm_api_key: str | None = None
     ingestion_llm_model: str = ""
     ingestion_llm_api_mode: str = "responses"

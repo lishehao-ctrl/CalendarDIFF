@@ -54,23 +54,6 @@ class EventEntityLifecycle(str, Enum):
     REMOVED = "removed"
 
 
-class EventLinkOrigin(str, Enum):
-    AUTO = "auto"
-    MANUAL_CANDIDATE = "manual_candidate"
-
-
-class EventLinkCandidateStatus(str, Enum):
-    PENDING = "pending"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-
-
-class EventLinkCandidateReason(str, Enum):
-    SCORE_BAND = "score_band"
-    NO_TIME_ANCHOR = "no_time_anchor"
-    LOW_CONFIDENCE = "low_confidence"
-
-
 class EventEntity(Base):
     __tablename__ = "event_entities"
     __table_args__ = (
@@ -107,110 +90,6 @@ class EventEntity(Base):
     )
 
     user: Mapped["User"] = relationship("User", back_populates="event_entities")
-
-
-class EventEntityLink(Base):
-    __tablename__ = "event_entity_links"
-    __table_args__ = (
-        UniqueConstraint("user_id", "source_id", "external_event_id", name="uq_event_entity_links_user_source_external"),
-        Index("ix_event_entity_links_user_entity", "user_id", "entity_uid"),
-        Index("ix_event_entity_links_source_external", "source_id", "external_event_id"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    entity_uid: Mapped[str] = mapped_column(String(128), nullable=False)
-    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), nullable=False)
-    source_kind: Mapped[SourceKind] = mapped_column(
-        SAEnum(SourceKind, name="source_kind", native_enum=False),
-        nullable=False,
-    )
-    external_event_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    link_origin: Mapped[EventLinkOrigin] = mapped_column(
-        SAEnum(EventLinkOrigin, name="event_link_origin", native_enum=False),
-        nullable=False,
-        default=EventLinkOrigin.AUTO,
-        server_default=EventLinkOrigin.AUTO.value,
-    )
-    link_score: Mapped[float | None] = mapped_column(Float, nullable=True)
-    signals_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
-    )
-
-    user: Mapped["User"] = relationship("User", back_populates="event_entity_links")
-    source: Mapped["InputSource"] = relationship("InputSource", back_populates="event_entity_links")
-
-
-class EventLinkCandidate(Base):
-    __tablename__ = "event_link_candidates"
-    __table_args__ = (
-        UniqueConstraint(
-            "user_id",
-            "source_id",
-            "external_event_id",
-            "proposed_entity_uid",
-            "status",
-            name="uq_event_link_candidates_user_pair_entity_status",
-        ),
-        Index("ix_event_link_candidates_user_status_created", "user_id", "status", "created_at"),
-        Index("ix_event_link_candidates_source_external", "source_id", "external_event_id"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), nullable=False)
-    external_event_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    proposed_entity_uid: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    score: Mapped[float | None] = mapped_column(Float, nullable=True)
-    score_breakdown_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
-    reason_code: Mapped[EventLinkCandidateReason] = mapped_column(
-        SAEnum(EventLinkCandidateReason, name="event_link_candidate_reason", native_enum=False),
-        nullable=False,
-    )
-    status: Mapped[EventLinkCandidateStatus] = mapped_column(
-        SAEnum(EventLinkCandidateStatus, name="event_link_candidate_status", native_enum=False),
-        nullable=False,
-        default=EventLinkCandidateStatus.PENDING,
-        server_default=EventLinkCandidateStatus.PENDING.value,
-    )
-    reviewed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
-    )
-
-    user: Mapped["User"] = relationship("User", back_populates="event_link_candidates", foreign_keys=[user_id])
-    source: Mapped["InputSource"] = relationship("InputSource", back_populates="event_link_candidates")
-
-
-class EventLinkBlock(Base):
-    __tablename__ = "event_link_blocks"
-    __table_args__ = (
-        UniqueConstraint(
-            "user_id",
-            "source_id",
-            "external_event_id",
-            "blocked_entity_uid",
-            name="uq_event_link_blocks_user_source_external_entity",
-        ),
-        Index("ix_event_link_blocks_source_external", "source_id", "external_event_id"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), nullable=False)
-    external_event_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    blocked_entity_uid: Mapped[str] = mapped_column(String(128), nullable=False)
-    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-
-    user: Mapped["User"] = relationship("User", back_populates="event_link_blocks", foreign_keys=[user_id])
-    source: Mapped["InputSource"] = relationship("InputSource", back_populates="event_link_blocks")
 
 
 class Change(Base):
@@ -345,12 +224,6 @@ __all__ = [
     "ChangeType",
     "EventEntity",
     "EventEntityLifecycle",
-    "EventEntityLink",
-    "EventLinkBlock",
-    "EventLinkCandidate",
-    "EventLinkCandidateReason",
-    "EventLinkCandidateStatus",
-    "EventLinkOrigin",
     "IngestApplyLog",
     "ReviewStatus",
     "SourceEventObservation",

@@ -17,7 +17,9 @@ from app.modules.ingestion.llm_parsers.gmail_parser_records import build_atomic_
 from app.modules.ingestion.llm_parsers.schemas import (
     CalendarRelevanceResponse,
     CalendarSemanticEventClassification,
+    GmailAtomicIdentityExtractionResponse,
     GmailAtomicSegmentExtractionResponse,
+    GmailAtomicTimeResolutionResponse,
     GmailDirectiveExtractionResponse,
     GmailPlannerSegment,
     GmailPurposeModeResponse,
@@ -56,6 +58,70 @@ GMAIL_CACHE_POLICY_TEXT = (
     "If uncertain between atomic and unknown, prefer unknown. "
     "If uncertain between directive and atomic, prefer atomic only when a single monitored item is clearly described; otherwise prefer unknown. "
     "Do not invent hidden context beyond the message. "
+)
+
+GMAIL_BROAD_AUDIENCE_RULE_TEXT = (
+    "A message about one concrete monitored item stays atomic even if it applies to all sections, all students, "
+    "or the whole class. Broad audience alone is not directive evidence. "
+)
+
+GMAIL_DIRECTIVE_STRUCTURE_RULE_TEXT = (
+    "Directive requires a rule over multiple existing monitored items, such as all future matching items, an ordinal list, "
+    "an ordinal range, or another recurring future rule. "
+)
+
+GMAIL_MODE_FEWSHOT_TEXT = (
+    'Examples: "Project 2 extended for all sections" => atomic. '
+    '"Homework 3 now due Friday for all students" => atomic. '
+    '"All future quizzes that were due Friday now move to Monday" => directive. '
+    '"Homework 2 through Homework 4 now due 2026-04-10" => directive. '
+)
+
+GMAIL_ATOMIC_IDENTITY_RULE_TEXT = (
+    "For atomic extraction, keep raw_type and event_name close to the source alias used in the authoritative graded-item phrase. "
+    "Do not over-canonicalize aliases across families because alias merging happens later in the family layer. "
+    "If the message says HW 27, prefer raw_type=HW and event_name=HW 27. "
+    "If the message says Write-up 2, prefer raw_type=Write-up and event_name=Write-up 2. "
+    "If the message says Take-home Final, prefer raw_type=Take-home Final and event_name=Take-home Final. "
+    "Normalize case and spacing lightly so parsing is stable, but preserve the alias family from the source phrase. "
+    "If subject and body use different aliases, prefer the alias from the main authoritative timing sentence in the body over the subject wrapper wording. "
+    "If the body explicitly says that multiple aliases refer to the same graded item, choose exactly one final alias instead of explaining the alias relationship. "
+    "Prefer the most specific graded-item alias, not the shortest shorthand, when an equivalence sentence lists several aliases for the same item. "
+    "Do not use generic raw_type labels such as assignment, coursework, extension, update, reminder, due date change, or assignment_extension. "
+    "Evidence must be a short supporting phrase only and must not explain alternate aliases or reasoning. "
+    "event_name must stay focused on the monitored item identity only; do not include change words like extended, extension, updated, moved, rescheduled, timing confirmed, or deadline change in event_name. "
+)
+
+GMAIL_ATOMIC_IDENTITY_FEWSHOT_TEXT = (
+    'Identity examples: "Project 2 deadline extension" => raw_type="Project", event_name="Project 2". '
+    '"Project Milestone 11 due date updated" => raw_type="Project Milestone", event_name="Project Milestone 11". '
+    '"HW 27 is posted" => raw_type="HW", event_name="HW 27". '
+    '"Write-up 2 now lands at ..." => raw_type="Write-up", event_name="Write-up 2". '
+    '"Take-home final due time revised" => raw_type="Take-home Final", event_name="Take-home Final". '
+    '"Problem Set 4 deadline moved earlier" => raw_type="Problem Set", event_name="Problem Set 4". '
+    'If the subject says "HW 26 posted" but the authoritative timing sentence says "Problem Set 26 is posted", prefer raw_type="Problem Set" and event_name="Problem Set 26". '
+    'If the body says "Deliverable 3, Project Milestone 3, and Milestone 3 all refer to the same deliverable", choose raw_type="Project Milestone" and event_name="Project Milestone 3". '
+)
+
+GMAIL_DIRECTIVE_FEWSHOT_TEXT = (
+    'Directive examples: "All future quizzes that were due Friday now move to Monday" => directive with all_matching. '
+    '"Homework 2 through Homework 4 now due 2026-04-10" => directive with ordinal_range. '
+    '"Checkpoint 2 and 4 now due 2026-04-10" => directive with ordinal_list. '
+    'Negative example: "Project 2 extended for all sections" => unknown here because atomic lane should handle one item. '
+)
+
+GMAIL_TIME_RESOLUTION_RULE_TEXT = (
+    "For time resolution, use source_message.internal_date as the anchor for relative dates and for month/day phrases without an explicit year. "
+    "If a due phrase gives month and day but no year, infer the year from internal_date unless the message explicitly says a different year. "
+    "For new or updated graded items, choose the current authoritative due date/time, not the previous posted time or historical comparison timestamp. "
+    "When multiple dates appear, prefer the one tied to phrases like now due, is due, deadline is, lands at, closes at, or submission deadline. "
+    "resolved_due_time must keep the wall-clock time stated in the message and must not be converted to UTC. "
+)
+
+GMAIL_TIME_RESOLUTION_FEWSHOT_TEXT = (
+    'Time examples: with internal_date in December 2026, "Friday, December 25 at 11:00 PM UTC" => 2026-12-25 and 23:00:00. '
+    'With internal_date 2026-07-19, "Sunday, July 19 at 11:59 PM PT" => 2026-07-19 and 23:59:00. '
+    'With internal_date 2026-12-01, "this Monday at 11:59 PM" => the next upcoming Monday at 23:59:00. '
 )
 
 CALENDAR_CACHE_POLICY_TEXT = (
@@ -107,7 +173,7 @@ def run_semantic_parse_orchestrator(
 def _run_gmail_workflow(*, db: Session, payload: dict, context: ParserContext) -> ParserOutput:
     parser_name = "gmail_llm"
     message_context = _build_gmail_cache_prefix(payload=payload)
-    mode, stage2_model, classify_response_id = _classify_gmail_mode(
+    mode, stage2_model, _classify_response_id = _classify_gmail_mode(
         db=db,
         message_context=message_context,
         context=context,
@@ -133,14 +199,28 @@ def _run_gmail_workflow(*, db: Session, payload: dict, context: ParserContext) -
     )
 
     if mode.mode == "directive":
-        directive, stage3_model, _directive_response_id = _extract_gmail_directive(
-            db=db,
-            previous_response_id=classify_response_id,
-            context=context,
-        )
-        records: list[dict] = []
-        if directive.outcome == "directive" and directive.selector is not None and directive.mutation is not None:
-            records.append(
+        directive: GmailDirectiveExtractionResponse | None = None
+        directive_model_hint: str | None = None
+        directive_fallback_reason: str | None = None
+        try:
+            directive, directive_model_hint, _directive_response_id = _extract_gmail_directive(
+                db=db,
+                message_context=message_context,
+                context=context,
+            )
+        except LlmParseError as exc:
+            if exc.code != GMAIL_SCHEMA_INVALID_CODE:
+                raise
+            directive_fallback_reason = "directive_schema_invalid"
+            logger.info(
+                "semantic_orchestrator.directive_atomic_fallback request_id=%s source_id=%s reason=%s",
+                context.request_id or "-",
+                context.source_id,
+                directive_fallback_reason,
+            )
+
+        if directive is not None and directive.outcome == "directive" and directive.selector is not None and directive.mutation is not None:
+            records: list[dict] = [
                 build_directive_record(
                     base_message_id=base_message_id,
                     source_subject=_first_non_empty_text(payload.get("subject"), "Untitled") or "Untitled",
@@ -151,34 +231,54 @@ def _run_gmail_workflow(*, db: Session, payload: dict, context: ParserContext) -
                     segment=synthetic_segment,
                     directive=directive,
                 )
+            ]
+            return ParserOutput(
+                records=records,
+                parser_name=parser_name,
+                parser_version="mainline",
+                model_hint=directive_model_hint or stage2_model or "unknown_model",
             )
+
+        if directive_fallback_reason is None:
+            directive_fallback_reason = "directive_unknown"
+            logger.info(
+                "semantic_orchestrator.directive_atomic_fallback request_id=%s source_id=%s reason=%s",
+                context.request_id or "-",
+                context.source_id,
+                directive_fallback_reason,
+            )
+
+        extraction, fallback_model_hint, _atomic_response_id = _extract_gmail_atomic(
+            db=db,
+            payload=payload,
+            message_context=message_context,
+            context=context,
+        )
+        records = _build_gmail_atomic_records(
+            payload=payload,
+            base_message_id=base_message_id,
+            segment=synthetic_segment,
+            extraction=extraction,
+        )
         return ParserOutput(
             records=records,
             parser_name=parser_name,
             parser_version="mainline",
-            model_hint=stage3_model or stage2_model or "unknown_model",
+            model_hint=fallback_model_hint or directive_model_hint or stage2_model or "unknown_model",
         )
 
     extraction, stage3_model, _atomic_response_id = _extract_gmail_atomic(
         db=db,
-        previous_response_id=classify_response_id,
+        payload=payload,
+        message_context=message_context,
         context=context,
     )
-    records = []
-    if extraction.outcome == "event" and extraction.semantic_event_draft is not None and extraction.link_signals is not None:
-        records.append(
-            build_atomic_record(
-                base_message_id=base_message_id,
-                source_subject=_first_non_empty_text(payload.get("subject"), "Untitled") or "Untitled",
-                source_snippet=cast(str | None, payload.get("snippet")) if isinstance(payload.get("snippet"), str) else None,
-                source_from_header=cast(str | None, payload.get("from_header")) if isinstance(payload.get("from_header"), str) else None,
-                source_thread_id=cast(str | None, payload.get("thread_id")) if isinstance(payload.get("thread_id"), str) else None,
-                source_internal_date=cast(str | None, payload.get("internal_date")) if isinstance(payload.get("internal_date"), str) else None,
-                segment=synthetic_segment,
-                atomic_segment_count=1,
-                extraction=extraction,
-            )
-        )
+    records = _build_gmail_atomic_records(
+        payload=payload,
+        base_message_id=base_message_id,
+        segment=synthetic_segment,
+        extraction=extraction,
+    )
     return ParserOutput(
         records=records,
         parser_name=parser_name,
@@ -206,16 +306,22 @@ def _classify_gmail_mode(
             "6. Canvas 'sent you a message' wrappers are not enough by themselves; classify from the actual message content only. "
             "7. Piazza daily digests and similar multi-topic summaries should be unknown unless they isolate exactly one clear monitored item. "
             "8. unknown output must be the shortest valid JSON only: {\"mode\":\"unknown\",\"evidence\":\"\"}. "
+            f"9. {GMAIL_BROAD_AUDIENCE_RULE_TEXT}"
+            f"10. {GMAIL_DIRECTIVE_STRUCTURE_RULE_TEXT}"
+            f"11. {GMAIL_MODE_FEWSHOT_TEXT}"
             "Do not extract semantic fields yet. Do not output any explanation outside JSON."
         ),
-        user_payload={"purpose": "assignment_or_exam_monitoring"},
-        cache_prefix_payload=message_context,
+        user_payload={
+            "purpose": "assignment_or_exam_monitoring",
+            "message_context": message_context,
+        },
+        cache_prefix_payload={"cache_scope": "gmail_purpose_mode_classify:v2"},
+        cache_task_prompt=True,
         output_schema_name="GmailPurposeModeResponse",
         output_schema_json=GmailPurposeModeResponse.model_json_schema(),
         source_id=context.source_id,
         source_provider=context.provider,
         request_id=context.request_id,
-        api_mode_override="responses",
         session_cache_mode="enable",
     )
     return _invoke_schema_validated(
@@ -232,46 +338,154 @@ def _classify_gmail_mode(
 def _extract_gmail_atomic(
     *,
     db: Session,
-    previous_response_id: str | None,
+    payload: dict[str, Any],
+    message_context: dict[str, Any],
     context: ParserContext,
 ) -> tuple[GmailAtomicSegmentExtractionResponse, str | None, str | None]:
+    identity, stage3_model, _identity_response_id = _extract_gmail_atomic_identity(
+        db=db,
+        message_context=message_context,
+        context=context,
+    )
+    if identity.outcome != "event" or identity.semantic_identity_draft is None or identity.link_signals is None:
+        return (
+            GmailAtomicSegmentExtractionResponse(
+                outcome="unknown",
+                semantic_event_draft=None,
+                link_signals=None,
+            ),
+            stage3_model,
+            None,
+        )
+
+    time_resolution, stage4_model, time_response_id = _resolve_gmail_atomic_time(
+        db=db,
+        message_context=message_context,
+        identity=identity,
+        payload=payload,
+        context=context,
+    )
+    if time_resolution.outcome != "resolved" or time_resolution.resolved_due_date is None or time_resolution.time_precision is None:
+        return (
+            GmailAtomicSegmentExtractionResponse(
+                outcome="unknown",
+                semantic_event_draft=None,
+                link_signals=None,
+            ),
+            stage4_model or stage3_model,
+            time_response_id,
+        )
+
+    return (
+        _build_gmail_atomic_extraction(
+            identity=identity,
+            time_resolution=time_resolution,
+        ),
+        stage4_model or stage3_model,
+        time_response_id,
+    )
+
+
+def _extract_gmail_atomic_identity(
+    *,
+    db: Session,
+    message_context: dict[str, Any],
+    context: ParserContext,
+) -> tuple[GmailAtomicIdentityExtractionResponse, str | None, str | None]:
     invoke_request = LlmInvokeRequest(
-        task_name="gmail_atomic_semantic_extract",
+        task_name="gmail_atomic_identity_extract",
         system_prompt=(
-            "Extract semantic info for one atomic course-work or assessment update from the Gmail message. "
+            "Extract stable identity info for one atomic course-work or assessment update from the Gmail message. "
             "Rules: "
             "1. If there is not exactly one clear monitored item, return unknown. "
             "2. Digest summaries, FAQ summaries, discussion rollups, and mixed-topic messages should be unknown unless one item is isolated with direct evidence. "
             "3. Do not convert general exam information, study advice, skipped sections, or grading chatter into a monitored item unless a specific monitored event is clearly stated. "
-            "4. Only use due date and time when directly supported by the message content. "
+            "4. This stage is for stable item identity only, not time normalization. "
             "5. If the course identity is weak or ambiguous, prefer unknown. "
-            "6. unknown output must be exactly {\"outcome\":\"unknown\"}. "
-            "7. Do not output any explanation outside JSON. "
+            f"6. {GMAIL_BROAD_AUDIENCE_RULE_TEXT}"
+            "7. If one concrete monitored item gets a new date or time, keep it atomic even when the audience is every section or the whole class. "
+            '8. Example: "Project 2 extended for all sections" should still be event, not unknown. '
+            f"9. {GMAIL_ATOMIC_IDENTITY_RULE_TEXT}"
+            f"10. {GMAIL_ATOMIC_IDENTITY_FEWSHOT_TEXT}"
+            "11. unknown output must be exactly {\"outcome\":\"unknown\"}. "
+            "12. Do not output any explanation outside JSON. "
             'Return JSON: {"outcome":"event"|"unknown",'
-            '"semantic_event_draft":{"course_dept":string|null,"course_number":number|null,'
+            '"semantic_identity_draft":{"course_dept":string|null,"course_number":number|null,'
             '"course_suffix":string|null,"course_quarter":"WI"|"SP"|"SU"|"FA"|null,"course_year2":number|null,'
-            '"raw_type":string|null,"event_name":string|null,"ordinal":number|null,'
-            '"due_date":string|null,"due_time":string|null,"time_precision":"date_only"|"datetime"|null,'
-            '"confidence":number,"evidence":string},'
+            '"raw_type":string|null,"event_name":string|null,"ordinal":number|null,"confidence":number,"evidence":string},'
             '"link_signals":{"keywords":["exam"|"midterm"|"final"],"exam_sequence":number|null,'
             '"location_text":string|null,"instructor_hint":string|null}}.'
         ),
         user_payload={"mode": "atomic", "purpose": "assignment_or_exam_monitoring"},
-        previous_response_id=previous_response_id,
-        output_schema_name="GmailAtomicSegmentExtractionResponse",
-        output_schema_json=GmailAtomicSegmentExtractionResponse.model_json_schema(),
+        cache_prefix_payload=message_context,
+        output_schema_name="GmailAtomicIdentityExtractionResponse",
+        output_schema_json=GmailAtomicIdentityExtractionResponse.model_json_schema(),
         source_id=context.source_id,
         source_provider=context.provider,
         request_id=context.request_id,
-        api_mode_override="responses",
         session_cache_mode="enable",
     )
     return _invoke_schema_validated(
         db=db,
         context=context,
         invoke_request=invoke_request,
-        response_model=GmailAtomicSegmentExtractionResponse,
-        stage_label="gmail_atomic_semantic_extract",
+        response_model=GmailAtomicIdentityExtractionResponse,
+        stage_label="gmail_atomic_identity_extract",
+        schema_invalid_code=GMAIL_SCHEMA_INVALID_CODE,
+        upstream_error_code=GMAIL_UPSTREAM_ERROR_CODE,
+    )
+
+
+def _resolve_gmail_atomic_time(
+    *,
+    db: Session,
+    payload: dict[str, Any],
+    message_context: dict[str, Any],
+    identity: GmailAtomicIdentityExtractionResponse,
+    context: ParserContext,
+) -> tuple[GmailAtomicTimeResolutionResponse, str | None, str | None]:
+    identity_payload = identity.semantic_identity_draft.model_dump(mode="json") if identity.semantic_identity_draft is not None else {}
+    invoke_request = LlmInvokeRequest(
+        task_name="gmail_atomic_time_resolve",
+        system_prompt=(
+            "Resolve the due date and time for one already-identified atomic monitored item from the Gmail message. "
+            "Rules: "
+            "1. Use only the current authoritative due phrase for the monitored item, not historical comparison dates unless they are explicitly the new due date. "
+            "2. This stage resolves time only; the item identity is already provided in task_input.identity_draft. "
+            f"3. {GMAIL_TIME_RESOLUTION_RULE_TEXT}"
+            f"4. {GMAIL_TIME_RESOLUTION_FEWSHOT_TEXT}"
+            "5. resolution_basis should be a short label, not a long sentence. "
+            '6. unknown output must be exactly {"outcome":"unknown"}. '
+            "7. Do not output any explanation outside JSON. "
+            'Return JSON: {"outcome":"resolved"|"unknown",'
+            '"source_time_phrase":string|null,'
+            '"resolved_due_date":string|null,'
+            '"resolved_due_time":string|null,'
+            '"time_precision":"date_only"|"datetime"|null,'
+            '"resolution_basis":string|null,'
+            '"confidence":number,'
+            '"evidence":string}.'
+        ),
+        user_payload={
+            "mode": "atomic_time_resolve",
+            "purpose": "assignment_or_exam_monitoring",
+            "identity_draft": identity_payload,
+            "source_internal_date": payload.get("internal_date"),
+        },
+        cache_prefix_payload=message_context,
+        output_schema_name="GmailAtomicTimeResolutionResponse",
+        output_schema_json=GmailAtomicTimeResolutionResponse.model_json_schema(),
+        source_id=context.source_id,
+        source_provider=context.provider,
+        request_id=context.request_id,
+        session_cache_mode="enable",
+    )
+    return _invoke_schema_validated(
+        db=db,
+        context=context,
+        invoke_request=invoke_request,
+        response_model=GmailAtomicTimeResolutionResponse,
+        stage_label="gmail_atomic_time_resolve",
         schema_invalid_code=GMAIL_SCHEMA_INVALID_CODE,
         upstream_error_code=GMAIL_UPSTREAM_ERROR_CODE,
     )
@@ -280,7 +494,7 @@ def _extract_gmail_atomic(
 def _extract_gmail_directive(
     *,
     db: Session,
-    previous_response_id: str | None,
+    message_context: dict[str, Any],
     context: ParserContext,
 ) -> tuple[GmailDirectiveExtractionResponse, str | None, str | None]:
     invoke_request = LlmInvokeRequest(
@@ -293,8 +507,13 @@ def _extract_gmail_directive(
             "3. A single event change is not directive. "
             "4. If selector or mutation is incomplete, return unknown. "
             "5. If the message only describes one exam, one project, or one homework, return unknown here. "
-            "6. unknown output must be exactly {\"outcome\":\"unknown\"}. "
-            "7. Do not output any explanation outside JSON. "
+            f"6. {GMAIL_BROAD_AUDIENCE_RULE_TEXT}"
+            f"7. {GMAIL_DIRECTIVE_STRUCTURE_RULE_TEXT}"
+            "8. all sections, all students, or whole class alone are never enough for directive. "
+            "9. set_due_date must be YYYY-MM-DD only; do not include time in set_due_date. "
+            f"10. {GMAIL_DIRECTIVE_FEWSHOT_TEXT}"
+            "11. unknown output must be exactly {\"outcome\":\"unknown\"}. Return only that object when not directive. "
+            "12. Do not output any explanation outside JSON. "
             'Return JSON with schema: {"outcome":"directive"|"unknown",'
             '"selector":{"course_dept":string|null,"course_number":number|null,'
             '"course_suffix":string|null,"course_quarter":"WI"|"SP"|"SU"|"FA"|null,"course_year2":number|null,'
@@ -308,13 +527,12 @@ def _extract_gmail_directive(
             '"confidence":number,"evidence":string}.'
         ),
         user_payload={"mode": "directive", "purpose": "assignment_or_exam_monitoring"},
-        previous_response_id=previous_response_id,
+        cache_prefix_payload=message_context,
         output_schema_name="GmailDirectiveExtractionResponse",
         output_schema_json=GmailDirectiveExtractionResponse.model_json_schema(),
         source_id=context.source_id,
         source_provider=context.provider,
         request_id=context.request_id,
-        api_mode_override="responses",
         session_cache_mode="enable",
     )
     return _invoke_schema_validated(
@@ -356,7 +574,7 @@ def _run_calendar_workflow(*, db: Session, content: bytes, context: ParserContex
         if getattr(component, "name", "") != "VEVENT":
             continue
         source_facts = _extract_calendar_source_facts(component=component, source_id=context.source_id, index=index)
-        relevance, stage1_model, relevance_response_id = _classify_calendar_relevance(
+        relevance, stage1_model, _relevance_response_id = _classify_calendar_relevance(
             db=db,
             source_facts=source_facts,
             context=context,
@@ -368,7 +586,7 @@ def _run_calendar_workflow(*, db: Session, content: bytes, context: ParserContex
             continue
         classification, stage2_model, _semantic_response_id = _extract_calendar_semantic(
             db=db,
-            previous_response_id=relevance_response_id,
+            source_facts=source_facts,
             context=context,
         )
         semantic_event_draft = _build_calendar_semantic_draft(
@@ -415,7 +633,6 @@ def _classify_calendar_relevance(
         source_id=context.source_id,
         source_provider=context.provider,
         request_id=context.request_id,
-        api_mode_override="responses",
         session_cache_mode="enable",
     )
     return _invoke_schema_validated(
@@ -432,7 +649,7 @@ def _classify_calendar_relevance(
 def _extract_calendar_semantic(
     *,
     db: Session,
-    previous_response_id: str | None,
+    source_facts: dict[str, Any],
     context: ParserContext,
 ) -> tuple[CalendarSemanticEventClassification, str | None, str | None]:
     invoke_request = LlmInvokeRequest(
@@ -443,13 +660,12 @@ def _extract_calendar_semantic(
             "Do not infer due date/time or link metadata."
         ),
         user_payload={"purpose": "assignment_or_exam_monitoring"},
-        previous_response_id=previous_response_id,
+        cache_prefix_payload=_build_calendar_cache_prefix(source_facts=source_facts),
         output_schema_name="CalendarSemanticEventClassification",
         output_schema_json=CalendarSemanticEventClassification.model_json_schema(),
         source_id=context.source_id,
         source_provider=context.provider,
         request_id=context.request_id,
-        api_mode_override="responses",
         session_cache_mode="enable",
     )
     return _invoke_schema_validated(
@@ -627,6 +843,68 @@ def _build_gmail_cache_prefix(*, payload: dict) -> dict[str, Any]:
             "internal_date": payload.get("internal_date"),
         },
     }
+
+
+def _build_gmail_atomic_records(
+    *,
+    payload: dict[str, Any],
+    base_message_id: str,
+    segment: GmailPlannerSegment,
+    extraction: GmailAtomicSegmentExtractionResponse,
+) -> list[dict]:
+    records: list[dict] = []
+    if extraction.outcome == "event" and extraction.semantic_event_draft is not None and extraction.link_signals is not None:
+        records.append(
+            build_atomic_record(
+                base_message_id=base_message_id,
+                source_subject=_first_non_empty_text(payload.get("subject"), "Untitled") or "Untitled",
+                source_snippet=cast(str | None, payload.get("snippet")) if isinstance(payload.get("snippet"), str) else None,
+                source_from_header=cast(str | None, payload.get("from_header")) if isinstance(payload.get("from_header"), str) else None,
+                source_thread_id=cast(str | None, payload.get("thread_id")) if isinstance(payload.get("thread_id"), str) else None,
+                source_internal_date=cast(str | None, payload.get("internal_date")) if isinstance(payload.get("internal_date"), str) else None,
+                segment=segment,
+                atomic_segment_count=1,
+                extraction=extraction,
+            )
+        )
+    return records
+
+
+def _build_gmail_atomic_extraction(
+    *,
+    identity: GmailAtomicIdentityExtractionResponse,
+    time_resolution: GmailAtomicTimeResolutionResponse,
+) -> GmailAtomicSegmentExtractionResponse:
+    if identity.semantic_identity_draft is None or identity.link_signals is None:
+        return GmailAtomicSegmentExtractionResponse(outcome="unknown", semantic_event_draft=None, link_signals=None)
+    if time_resolution.resolved_due_date is None or time_resolution.time_precision is None:
+        return GmailAtomicSegmentExtractionResponse(outcome="unknown", semantic_event_draft=None, link_signals=None)
+
+    due_time_value = (
+        time_resolution.resolved_due_time.isoformat()
+        if time_resolution.resolved_due_time is not None and time_resolution.time_precision == "datetime"
+        else None
+    )
+    semantic_event_draft = normalize_semantic_event(
+        {
+            **identity.semantic_identity_draft.model_dump(mode="json"),
+            "due_date": time_resolution.resolved_due_date.isoformat(),
+            "due_time": due_time_value,
+            "time_precision": time_resolution.time_precision,
+            "confidence": min(
+                float(identity.semantic_identity_draft.confidence or 0.0),
+                float(time_resolution.confidence or 0.0),
+            ),
+            "evidence": time_resolution.evidence or identity.semantic_identity_draft.evidence,
+        }
+    )
+    return GmailAtomicSegmentExtractionResponse.model_validate(
+        {
+            "outcome": "event",
+            "semantic_event_draft": semantic_event_draft,
+            "link_signals": identity.link_signals.model_dump(mode="json"),
+        }
+    )
 
 
 def _build_calendar_cache_prefix(*, source_facts: dict[str, Any]) -> dict[str, Any]:

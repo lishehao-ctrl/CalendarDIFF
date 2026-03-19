@@ -8,10 +8,21 @@ from app.db.models.shared import User
 from app.db.session import get_db
 from app.modules.auth.deps import get_authenticated_user_or_401
 from app.modules.input_control_plane.router_common import require_owned_source_or_404
-from app.modules.input_control_plane.schemas import InputSourceCreateRequest, InputSourcePatchRequest, InputSourceResponse
+from app.modules.input_control_plane.schemas import (
+    InputSourceCreateRequest,
+    InputSourcePatchRequest,
+    InputSourceResponse,
+    SourceObservabilityResponse,
+    SourceSyncHistoryResponse,
+)
 from app.modules.input_control_plane.source_runtime_state import derive_source_runtime_state, derive_source_runtime_states
 from app.modules.input_control_plane.source_serializers import serialize_source
-from app.modules.input_control_plane.status_projection import build_sync_progress_payload, get_display_sync_request_for_source
+from app.modules.input_control_plane.status_projection import (
+    build_source_observability_payload,
+    build_source_sync_history_payload,
+    build_sync_progress_payload,
+    get_display_sync_request_for_source,
+)
 from app.modules.input_control_plane.sources_service import (
     GmailSourceAlreadyExistsError,
     IcsSourceAlreadyExistsError,
@@ -103,6 +114,31 @@ def patch_source(
         raise HTTPException(status_code=422, detail=sanitize_log_message(str(exc))) from exc
     return InputSourceResponse.model_validate(
         serialize_source(updated, runtime_state=derive_source_runtime_state(db, source=updated))
+    )
+
+
+@router.get("/sources/{source_id}/observability", response_model=SourceObservabilityResponse)
+def get_source_observability(
+    source_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
+) -> SourceObservabilityResponse:
+    source = require_owned_source_or_404(db=db, user_id=user.id, source_id=source_id)
+    return SourceObservabilityResponse.model_validate(
+        build_source_observability_payload(db, source_id=source.id)
+    )
+
+
+@router.get("/sources/{source_id}/sync-history", response_model=SourceSyncHistoryResponse)
+def get_source_sync_history(
+    source_id: int,
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
+) -> SourceSyncHistoryResponse:
+    source = require_owned_source_or_404(db=db, user_id=user.id, source_id=source_id)
+    return SourceSyncHistoryResponse.model_validate(
+        build_source_sync_history_payload(db, source_id=source.id, limit=limit)
     )
 
 

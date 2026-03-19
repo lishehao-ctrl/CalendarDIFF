@@ -12,7 +12,7 @@ export function PageHeader({
   badge?: string;
 }) {
   return (
-    <header className="relative overflow-hidden rounded-[1.6rem] border border-line/80 bg-card px-6 py-6 shadow-[var(--shadow-panel)]">
+    <header className="animate-surface-enter relative overflow-hidden rounded-[1.6rem] border border-line/80 bg-card px-6 py-6 shadow-[var(--shadow-panel)]">
       <div className="absolute inset-y-0 right-0 w-48 bg-[radial-gradient(circle_at_center,rgba(31,94,255,0.12),transparent_65%)]" />
       <div className="relative flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-3xl">

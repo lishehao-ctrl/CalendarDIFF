@@ -28,8 +28,13 @@ Minimum runtime settings:
 - `DATABASE_URL`
 - `REDIS_URL`
 - `INGESTION_LLM_MODEL`
-- `INGESTION_LLM_BASE_URL`
 - `INGESTION_LLM_API_KEY`
+
+LLM endpoint settings:
+- `INGESTION_LLM_API_MODE`
+- `INGESTION_LLM_CHAT_BASE_URL` for `chat_completions`
+- `INGESTION_LLM_RESPONSES_BASE_URL` for `responses`
+- `INGESTION_LLM_BASE_URL` remains a legacy fallback when you intentionally use one shared root for both modes
 
 Optional OAuth/SMTP settings still apply when those integrations are enabled.
 

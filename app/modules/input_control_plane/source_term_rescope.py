@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.ingestion import CalendarComponentParseTask, IngestUnresolvedRecord
 from app.db.models.input import IngestTriggerType, InputSource
-from app.db.models.review import Change, ChangeSourceRef, EventEntityLink, EventLinkBlock, EventLinkCandidate, SourceEventObservation
+from app.db.models.review import Change, ChangeSourceRef, SourceEventObservation
 from app.modules.common.source_term_window import SourceTermWindow, source_timezone_name
 from app.modules.core_ingest.pending_proposal_rebuild import rebuild_pending_change_proposals
 from app.modules.input_control_plane.sync_requests_service import enqueue_sync_request_idempotent_in_txn
@@ -108,20 +108,10 @@ def _collect_affected_entity_uids(*, db: Session, source: InputSource) -> set[st
         ).all()
         if isinstance(value, str) and value
     )
-    entity_uids.update(
-        value
-        for value in db.scalars(
-            select(EventEntityLink.entity_uid).where(EventEntityLink.source_id == source.id).distinct()
-        ).all()
-        if isinstance(value, str) and value
-    )
     return entity_uids
 
 
 def _purge_source_scoped_state(*, db: Session, source: InputSource) -> None:
-    db.execute(delete(EventLinkCandidate).where(EventLinkCandidate.source_id == source.id))
-    db.execute(delete(EventEntityLink).where(EventEntityLink.source_id == source.id))
-    db.execute(delete(EventLinkBlock).where(EventLinkBlock.source_id == source.id))
     db.execute(delete(IngestUnresolvedRecord).where(IngestUnresolvedRecord.source_id == source.id))
     db.execute(delete(CalendarComponentParseTask).where(CalendarComponentParseTask.source_id == source.id))
     db.execute(delete(SourceEventObservation).where(SourceEventObservation.source_id == source.id))

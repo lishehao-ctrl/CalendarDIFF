@@ -39,6 +39,82 @@ GMAIL_STRICT_METADATA_KEYWORDS = (
     "deadline",
     "due date",
 )
+GMAIL_POSITIVE_TIME_SIGNAL_PHRASES = (
+    "now due",
+    "is due",
+    "deadline is now",
+    "deadline has moved",
+    "due date changed",
+    "due date updated",
+    "working due time",
+    "submission deadline",
+    "now lands at",
+    "rescheduled to",
+    "is posted",
+    "are posted",
+    "all future",
+    "remaining quizzes",
+    "remaining quiz",
+    "through homework",
+    "through homework",
+    "through quiz",
+    "through milestone",
+    "are now due on",
+    "will all be due on",
+    "will now be due on",
+)
+GMAIL_NEGATIVE_NON_TARGET_PHRASES = (
+    "no graded due date is created or modified here",
+    "should not be treated as a graded deadline change",
+    "the graded item itself is unchanged",
+    "no new change is introduced here",
+    "without a canonical due-time mutation",
+    "no monitored deadline changed",
+    "wrapper digest only",
+    "rubric or comment-posted wrappers should not become monitored events",
+    "lab section moved, report unchanged",
+    "students should ignore this for deadline tracking",
+    "no canonical course event should be created",
+    "administrative note only",
+    "discussion waitlist handling changed and the graded submission schedule is unchanged",
+    "office hours expanded",
+    "the graded submission schedule is unchanged",
+    "should not create a monitored event in the canonical timeline",
+    "academic context only",
+    "this mailbox is not monitored",
+    "sent by a registered student organization",
+    "unsubscribe | manage preferences | view in browser",
+    "newsletter action prompts are intentionally noisy and non-canonical",
+    "digest content bundles many prompts together and should stay non-target",
+    "career networking timing is non-target",
+    "recruiting logistics are unrelated to monitored course deadlines",
+    "event signup timing is unrelated to canonical course events",
+    "volunteer logistics can look assignment-like but are non-target",
+)
+GMAIL_NON_TARGET_SENDER_MARKERS = (
+    "linkedin",
+    "recruiting",
+    "careers.example.com",
+    "handshake",
+    "digest@lists",
+    "campus weekly",
+    "student digest",
+    "tech briefing",
+    "quiz bowl club",
+    "robotics society",
+    "triton volunteers",
+    "project showcase team",
+    "registrar",
+    "student health",
+    "academic advising",
+    "accessibility office",
+    "easy requests",
+    "enrollment services",
+    "transportation services",
+    "campus billing",
+    "housing",
+    "lease",
+)
 _CALENDAR_WORK_TEST_HINTS = (
     "assignment",
     "homework",
@@ -100,6 +176,15 @@ def route_gmail_message(
         GMAIL_STRICT_METADATA_KEYWORDS,
     )
     course_signal = any(token in combined_text for token in (known_course_tokens or set()))
+    positive_time_signal = _text_has_any_keyword_phrase(combined_text, GMAIL_POSITIVE_TIME_SIGNAL_PHRASES)
+    explicit_non_target_signal = _text_has_any_keyword_phrase(combined_text, GMAIL_NEGATIVE_NON_TARGET_PHRASES)
+    non_target_sender_signal = _text_has_any_keyword_phrase((from_header or "").lower(), GMAIL_NON_TARGET_SENDER_MARKERS)
+
+    if explicit_non_target_signal and not positive_time_signal:
+        return RouteDecision(route="skip_unknown", sender_family=sender_family)
+
+    if non_target_sender_signal and not course_signal and not positive_time_signal:
+        return RouteDecision(route="skip_unknown", sender_family=sender_family)
 
     if course_signal or sender_signal or keyword_signal:
         return RouteDecision(route="parse", sender_family=sender_family)

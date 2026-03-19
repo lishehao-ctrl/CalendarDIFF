@@ -1,0 +1,31 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.db.models.review import Change, ReviewStatus
+
+
+def get_review_summary(
+    db: Session,
+    *,
+    user_id: int,
+) -> dict:
+    changes_pending = int(
+        db.scalar(
+            select(func.count(Change.id)).where(
+                Change.user_id == user_id,
+                Change.review_status == ReviewStatus.PENDING,
+            )
+        )
+        or 0
+    )
+    return {
+        "changes_pending": changes_pending,
+        "generated_at": datetime.now(timezone.utc),
+    }
+
+
+__all__ = ["get_review_summary"]

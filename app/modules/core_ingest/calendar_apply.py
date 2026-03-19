@@ -14,8 +14,8 @@ from app.modules.common.source_term_window import (
     semantic_due_date_in_window,
     source_timezone_name,
 )
+from app.modules.core_ingest.entity_resolution import resolve_entity_uid
 from app.modules.core_ingest.source_facts_coercion import coerce_calendar_payload
-from app.modules.core_ingest.linking_engine import find_existing_entity_link
 from app.modules.core_ingest.semantic_event_service import build_semantic_event_payload
 from app.modules.core_ingest.observation_store import (
     deactivate_observation,
@@ -33,7 +33,7 @@ from app.modules.core_ingest.payload_extractors import (
     extract_source_facts_from_calendar_payload,
 )
 from app.modules.core_ingest.product_scope import is_monitored_assignment_or_exam_event
-from app.modules.core_ingest.course_work_item_family_resolution import build_source_scoped_entity_uid, resolve_kind_resolution
+from app.modules.core_ingest.course_work_item_family_resolution import resolve_kind_resolution
 from app.modules.ingestion.ics_delta import external_event_id_from_component_key
 
 logger = logging.getLogger(__name__)
@@ -221,17 +221,37 @@ def apply_calendar_observations(
                 raw_payload_json=payload,
             )
             continue
-        existing_link = find_existing_entity_link(
+        entity_resolution = resolve_entity_uid(
             db=db,
-            user_id=source.user_id,
-            source_id=source.id,
+            source=source,
             external_event_id=external_event_id,
+            course_parse=course_parse,
+            kind_resolution=kind_resolution,
         )
-        entity_uid = (
-            existing_link.entity_uid
-            if existing_link is not None and isinstance(existing_link.entity_uid, str)
-            else build_source_scoped_entity_uid(source_kind=SourceKind.CALENDAR.value, external_event_id=external_event_id)
-        )
+        if entity_resolution.status != "resolved" or not isinstance(entity_resolution.entity_uid, str):
+            retire_active_observation_for_unresolved_transition(
+                db=db,
+                source_id=source.id,
+                external_event_id=external_event_id,
+                applied_at=applied_at,
+                request_id=request_id,
+            )
+            upsert_active_unresolved_record(
+                db=db,
+                user_id=source.user_id,
+                source_id=source.id,
+                source_kind=source.source_kind,
+                provider=source.provider,
+                external_event_id=external_event_id,
+                request_id=request_id,
+                reason_code=str(entity_resolution.reason_code or "insufficient_entity_resolution"),
+                source_facts_json=source_facts,
+                semantic_event_draft_json=semantic_draft,
+                kind_resolution_json=kind_resolution,
+                raw_payload_json=payload,
+            )
+            continue
+        entity_uid = entity_resolution.entity_uid
         semantic_event = build_semantic_event_payload(
             semantic_draft=semantic_draft,
             source_facts=source_facts,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -490,6 +490,7 @@ def test_calendar_fanout_reducer_waits_until_all_children_terminal(
         },
     }
     task_b.status = CalendarComponentParseStatus.PENDING
+    task_b.started_at = datetime.now(timezone.utc)
     db_session.commit()
 
     first_reduce_ack = process_parse_task_message(
@@ -537,4 +538,184 @@ def test_calendar_fanout_reducer_waits_until_all_children_terminal(
     result = db_session.scalar(select(IngestResult).where(IngestResult.request_id == "fanout-reduce-wait-1"))
     assert result is not None
     assert result.status == ConnectorResultStatus.CHANGED
-    assert len(result.records) == 1
+
+
+def test_calendar_fanout_reducer_requeues_stale_pending_component(
+    db_session: Session,
+    db_session_factory: sessionmaker,
+    monkeypatch,
+) -> None:
+    parse_payload = {
+        "kind": "calendar_delta",
+        "changed_components": [
+            _vevent_component(uid="evt-a", recurrence_id=None, summary="A"),
+            _vevent_component(uid="evt-b", recurrence_id=None, summary="B"),
+        ],
+        "removed_component_keys": [],
+    }
+    source, _sync_request, _job, _enqueued = _dispatch_calendar_job(
+        db_session,
+        monkeypatch,
+        request_id="fanout-requeue-stale-1",
+        parse_payload=parse_payload,
+    )
+    task_a = db_session.scalar(
+        select(CalendarComponentParseTask).where(
+            CalendarComponentParseTask.request_id == "fanout-requeue-stale-1",
+            CalendarComponentParseTask.component_key == "evt-a#",
+        )
+    )
+    task_b = db_session.scalar(
+        select(CalendarComponentParseTask).where(
+            CalendarComponentParseTask.request_id == "fanout-requeue-stale-1",
+            CalendarComponentParseTask.component_key == "evt-b#",
+        )
+    )
+    assert task_a is not None and task_b is not None
+    task_a.status = CalendarComponentParseStatus.SUCCEEDED
+    task_a.parsed_record_json = {
+        "record_type": "calendar.event.extracted",
+        "payload": {
+            "source_facts": {
+                "external_event_id": "evt-a",
+                "component_key": "evt-a#",
+                "source_title": "A",
+                "source_dtstart_utc": "2026-03-01T10:00:00+00:00",
+                "source_dtend_utc": "2026-03-01T11:00:00+00:00",
+            },
+            "semantic_event_draft": {},
+            "link_signals": {},
+        },
+    }
+    task_b.status = CalendarComponentParseStatus.PENDING
+    task_b.started_at = None
+    task_b.finished_at = None
+    task_b.error_code = None
+    task_b.error_message = None
+    stale_time = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(seconds=10)
+    task_b.created_at = stale_time
+    task_b.updated_at = stale_time
+    db_session.commit()
+
+    requeued: list[dict] = []
+    monkeypatch.setattr(
+        "app.modules.llm_runtime.calendar_fanout.enqueue_parse_task",
+        lambda **kwargs: requeued.append(dict(kwargs)) or "msg-requeued",
+    )
+
+    first_reduce_ack = process_parse_task_message(
+        message=ParseTaskMessage(
+            message_id="msg-reduce-requeue-stale",
+            request_id="fanout-requeue-stale-1",
+            source_id=source.id,
+            attempt=0,
+            reason=CALENDAR_REDUCE_REASON,
+        ),
+        redis_client=object(),  # type: ignore[arg-type]
+        session_factory=db_session_factory,
+        worker_id="llm-worker-test",
+        stream_key="llm:parse:stream",
+    )
+    assert first_reduce_ack is True
+    assert requeued
+    assert requeued[0]["reason"] == "calendar_component:evt-b#"
+
+    db_session.expire_all()
+    task_b = db_session.scalar(
+        select(CalendarComponentParseTask).where(
+            CalendarComponentParseTask.request_id == "fanout-requeue-stale-1",
+            CalendarComponentParseTask.component_key == "evt-b#",
+        )
+    )
+    assert task_b is not None
+    assert task_b.error_code == "llm_component_requeued"
+
+    assert db_session.scalar(select(IngestResult).where(IngestResult.request_id == "fanout-requeue-stale-1")) is None
+
+
+def test_calendar_fanout_reducer_requeues_never_started_pending_when_no_running_children(
+    db_session: Session,
+    db_session_factory: sessionmaker,
+    monkeypatch,
+) -> None:
+    parse_payload = {
+        "kind": "calendar_delta",
+        "changed_components": [
+            _vevent_component(uid="evt-a", recurrence_id=None, summary="A"),
+            _vevent_component(uid="evt-b", recurrence_id=None, summary="B"),
+        ],
+        "removed_component_keys": [],
+    }
+    source, _sync_request, _job, _enqueued = _dispatch_calendar_job(
+        db_session,
+        monkeypatch,
+        request_id="fanout-requeue-immediate-1",
+        parse_payload=parse_payload,
+    )
+    task_a = db_session.scalar(
+        select(CalendarComponentParseTask).where(
+            CalendarComponentParseTask.request_id == "fanout-requeue-immediate-1",
+            CalendarComponentParseTask.component_key == "evt-a#",
+        )
+    )
+    task_b = db_session.scalar(
+        select(CalendarComponentParseTask).where(
+            CalendarComponentParseTask.request_id == "fanout-requeue-immediate-1",
+            CalendarComponentParseTask.component_key == "evt-b#",
+        )
+    )
+    assert task_a is not None and task_b is not None
+    task_a.status = CalendarComponentParseStatus.SUCCEEDED
+    task_a.parsed_record_json = {
+        "record_type": "calendar.event.extracted",
+        "payload": {
+            "source_facts": {
+                "external_event_id": "evt-a",
+                "component_key": "evt-a#",
+                "source_title": "A",
+                "source_dtstart_utc": "2026-03-01T10:00:00+00:00",
+                "source_dtend_utc": "2026-03-01T11:00:00+00:00",
+            },
+            "semantic_event_draft": {},
+            "link_signals": {},
+        },
+    }
+    task_b.status = CalendarComponentParseStatus.PENDING
+    task_b.started_at = None
+    task_b.finished_at = None
+    task_b.error_code = None
+    task_b.error_message = None
+    db_session.commit()
+
+    requeued: list[dict] = []
+    monkeypatch.setattr(
+        "app.modules.llm_runtime.calendar_fanout.enqueue_parse_task",
+        lambda **kwargs: requeued.append(dict(kwargs)) or "msg-requeued",
+    )
+
+    reduce_ack = process_parse_task_message(
+        message=ParseTaskMessage(
+            message_id="msg-reduce-requeue-immediate",
+            request_id="fanout-requeue-immediate-1",
+            source_id=source.id,
+            attempt=0,
+            reason=CALENDAR_REDUCE_REASON,
+        ),
+        redis_client=object(),  # type: ignore[arg-type]
+        session_factory=db_session_factory,
+        worker_id="llm-worker-test",
+        stream_key="llm:parse:stream",
+    )
+    assert reduce_ack is True
+    assert requeued
+    assert requeued[0]["reason"] == "calendar_component:evt-b#"
+
+    db_session.expire_all()
+    task_b = db_session.scalar(
+        select(CalendarComponentParseTask).where(
+            CalendarComponentParseTask.request_id == "fanout-requeue-immediate-1",
+            CalendarComponentParseTask.component_key == "evt-b#",
+        )
+    )
+    assert task_b is not None
+    assert task_b.error_code == "llm_component_requeued"

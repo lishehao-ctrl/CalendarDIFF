@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.db.models.input import InputSource, SourceKind
-from app.db.models.review import EventLinkCandidate, EventLinkCandidateReason, EventLinkCandidateStatus
+from app.db.models.review import Change, ChangeOrigin, ChangeType, ReviewStatus
 from app.db.models.shared import User
 
 
@@ -35,15 +35,23 @@ def test_review_summary_is_scoped_to_authenticated_user(client, db_session, auth
     db_session.flush()
 
     db_session.add(
-        EventLinkCandidate(
+        Change(
             user_id=user_a.id,
-            source_id=source_a.id,
-            external_event_id="gmail-a-1",
-            proposed_entity_uid="entity-a",
-            score=0.8,
-            score_breakdown_json={"total": 0.8},
-            reason_code=EventLinkCandidateReason.SCORE_BAND,
-            status=EventLinkCandidateStatus.PENDING,
+            entity_uid="entity-a",
+            change_origin=ChangeOrigin.INGEST_PROPOSAL,
+            change_type=ChangeType.CREATED,
+            detected_at=datetime.now(timezone.utc),
+            after_semantic_json={
+                "uid": "entity-a",
+                "course_dept": "CSE",
+                "course_number": 100,
+                "family_name": "Homework",
+                "event_name": "Homework 1",
+                "ordinal": 1,
+                "due_date": "2026-03-15",
+                "time_precision": "date_only",
+            },
+            review_status=ReviewStatus.PENDING,
         )
     )
     db_session.commit()
@@ -51,10 +59,10 @@ def test_review_summary_is_scoped_to_authenticated_user(client, db_session, auth
     authenticate_client(client, user=user_a)
     response_a = client.get("/review/summary", headers={"X-API-Key": "test-api-key"})
     assert response_a.status_code == 200
-    assert response_a.json()["link_candidates_pending"] == 1
+    assert response_a.json()["changes_pending"] == 1
 
     client.cookies.clear()
     authenticate_client(client, user=user_b)
     response_b = client.get("/review/summary", headers={"X-API-Key": "test-api-key"})
     assert response_b.status_code == 200
-    assert response_b.json()["link_candidates_pending"] == 0
+    assert response_b.json()["changes_pending"] == 0

@@ -14,8 +14,8 @@ from app.modules.common.semantic_codec import (
     semantic_delta_seconds,
     semantic_payloads_equivalent,
 )
+from app.modules.review_changes.common import dedupe_ids_preserve_order, normalize_review_note
 from app.modules.review_changes.approved_entity_state import apply_approved_entity_state
-from app.modules.review_links.common import dedupe_ids_preserve_order, normalize_review_note
 
 
 class ReviewChangeNotFoundError(RuntimeError):

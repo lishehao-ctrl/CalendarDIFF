@@ -8,12 +8,13 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { getCurrentUser, updateCurrentUser } from "@/lib/api/users";
+import { withBasePath } from "@/lib/demo-mode";
 import { getBrowserTimeZone } from "@/lib/browser-timezone";
 import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime } from "@/lib/presenters";
 import type { UserProfile } from "@/lib/types";
 
-export function SettingsPanel() {
+export function SettingsPanel({ basePath = "" }: { basePath?: string }) {
   const user = useApiResource<UserProfile>(() => getCurrentUser(), []);
 
   const [form, setForm] = useState({ timezone_name: "" });
@@ -109,11 +110,11 @@ export function SettingsPanel() {
 
       <Card className="p-4">
         <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Moved</p>
-        <h3 className="mt-2 text-lg font-semibold text-ink">Families now live in Family</h3>
+        <h3 className="mt-2 text-lg font-semibold text-ink">Families live in Families</h3>
         <p className="mt-2 text-sm text-[#596270]">Canonical labels and raw-type rules now live in the Family module.</p>
         <div className="mt-4">
           <Button asChild size="sm">
-            <Link href="/review/links">Open Family</Link>
+            <Link href={withBasePath(basePath, "/families")}>Open Families</Link>
           </Button>
         </div>
       </Card>

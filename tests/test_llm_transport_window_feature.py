@@ -115,7 +115,7 @@ def test_gateway_respects_session_cache_override_and_observer(monkeypatch) -> No
 
     monkeypatch.setattr(
         "app.modules.llm_gateway.gateway.resolve_llm_profile",
-        lambda db, source_id: _profile(session_cache_enabled=False),
+        lambda db, source_id, explicit_api_mode=None: _profile(session_cache_enabled=False),
     )
 
     gateway = LlmGateway(transport=_FakeTransport())
@@ -141,19 +141,19 @@ def test_process_local_email_pool_lists_derived_sets() -> None:
         text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "synthetic_smoke_4" in result.stdout
-    assert "mixed_local_24" in result.stdout
+    assert "year_timeline_smoke_24" in result.stdout
+    assert "year_timeline_full_sim_smoke_96" in result.stdout
 
 
 
 def test_process_local_email_pool_lists_samples_for_derived_set() -> None:
     result = subprocess.run(
-        [sys.executable, "scripts/process_local_email_pool.py", "--list-samples", "--derived-set", "synthetic_smoke_4"],
+        [sys.executable, "scripts/process_local_email_pool.py", "--list-samples", "--derived-set", "year_timeline_smoke_24"],
         cwd=REPO_ROOT,
         check=False,
         capture_output=True,
         text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "syn-a01" in result.stdout
-    assert "syn-d08" in result.stdout
+    assert "y01-b01-gmail-003" in result.stdout
+    assert "y01-b02-gmail-004" in result.stdout

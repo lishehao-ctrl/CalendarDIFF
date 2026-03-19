@@ -9,8 +9,8 @@ export default async function GmailConnectPage() {
     <div className="space-y-5">
       <PageHeader
         eyebrow="Sources"
-        title="Gmail Setup"
-        description="Connect, reconnect, or disconnect the Gmail mailbox attached to this workspace."
+        title="Gmail mailbox"
+        description="Connect the mailbox, inspect bootstrap vs replay posture, and keep replay intake trustworthy."
       />
       <GmailSourceSetupPanel />
     </div>

@@ -3,15 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.db.models.input import InputSource, SourceKind
-from app.db.models.review import (
-    Change,
-    ChangeOrigin,
-    ChangeType,
-    EventLinkCandidate,
-    EventLinkCandidateReason,
-    EventLinkCandidateStatus,
-    ReviewStatus,
-)
+from app.db.models.review import Change, ChangeOrigin, ChangeType, ReviewStatus
 from app.db.models.shared import User
 
 
@@ -40,8 +32,8 @@ def _create_user_with_source(db_session, *, email: str) -> tuple[User, InputSour
 
 
 def test_review_items_summary_counts_pending_only_for_current_user(client, db_session, auth_headers) -> None:
-    user, source = _create_user_with_source(db_session, email="owner@example.com")
-    other_user, other_source = _create_user_with_source(db_session, email="other@example.com")
+    user, _source = _create_user_with_source(db_session, email="owner@example.com")
+    other_user, _other_source = _create_user_with_source(db_session, email="other@example.com")
 
     now = datetime.now(timezone.utc)
     db_session.add_all(
@@ -104,26 +96,6 @@ def test_review_items_summary_counts_pending_only_for_current_user(client, db_se
                 },
                 review_status=ReviewStatus.PENDING,
             ),
-            EventLinkCandidate(
-                user_id=user.id,
-                source_id=source.id,
-                external_event_id="candidate-owner",
-                proposed_entity_uid="ent-owner-pending",
-                score=0.7,
-                score_breakdown_json={"rule_reason": "score_band"},
-                reason_code=EventLinkCandidateReason.SCORE_BAND,
-                status=EventLinkCandidateStatus.PENDING,
-            ),
-            EventLinkCandidate(
-                user_id=other_user.id,
-                source_id=other_source.id,
-                external_event_id="candidate-other",
-                proposed_entity_uid="ent-other-pending",
-                score=0.7,
-                score_breakdown_json={"rule_reason": "score_band"},
-                reason_code=EventLinkCandidateReason.SCORE_BAND,
-                status=EventLinkCandidateStatus.PENDING,
-            ),
         ]
     )
     db_session.commit()
@@ -132,6 +104,5 @@ def test_review_items_summary_counts_pending_only_for_current_user(client, db_se
     assert response.status_code == 200
     payload = response.json()
     assert payload["changes_pending"] == 1
-    assert payload["link_candidates_pending"] == 1
-    assert "link_alerts_pending" not in payload
+    assert "link_candidates_pending" not in payload
     assert isinstance(payload["generated_at"], str)

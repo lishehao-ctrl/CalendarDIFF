@@ -80,7 +80,7 @@ def consume_parse_tasks(
         stream_key=stream_key,
         group_name=group_name,
         consumer_name=worker_id,
-        min_idle_ms=max(int(poll_ms) * 3, 1_000),
+        min_idle_ms=compute_parse_reclaim_idle_ms(poll_ms=poll_ms),
         count=batch_size,
     )
     remaining = max(1, batch_size - len(reclaimed))
@@ -93,6 +93,12 @@ def consume_parse_tasks(
         block_ms=max(1, int(poll_ms)),
     )
     return stream_key, group_name, reclaimed + fresh
+
+
+def compute_parse_reclaim_idle_ms(*, poll_ms: int) -> int:
+    settings = get_settings()
+    claim_timeout_ms = max(int(settings.llm_claim_timeout_seconds), 1) * 1000
+    return max(claim_timeout_ms, max(int(poll_ms) * 3, 1_000))
 
 
 def ack_parse_tasks(

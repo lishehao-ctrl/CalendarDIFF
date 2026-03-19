@@ -3,21 +3,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.modules.core_ingest.observation_priority import choose_primary_observation
-from app.modules.core_ingest.source_identity import build_source_scoped_entity_uid
-
-
-def test_build_source_scoped_entity_uid_stable_for_same_pair() -> None:
-    first = build_source_scoped_entity_uid(source_kind="calendar", external_event_id="abc-123")
-    second = build_source_scoped_entity_uid(source_kind="calendar", external_event_id="abc-123")
-    assert first == second
-
-
-def test_build_source_scoped_entity_uid_differs_for_different_pairs() -> None:
-    first = build_source_scoped_entity_uid(source_kind="calendar", external_event_id="abc-123")
-    second = build_source_scoped_entity_uid(source_kind="email", external_event_id="abc-123")
-    third = build_source_scoped_entity_uid(source_kind="calendar", external_event_id="xyz-999")
-    assert first != second
-    assert first != third
 
 
 def test_choose_primary_observation_prefers_newer_observation() -> None:

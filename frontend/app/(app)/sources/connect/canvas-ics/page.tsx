@@ -9,8 +9,8 @@ export default async function CanvasIcsConnectPage() {
     <div className="space-y-5">
       <PageHeader
         eyebrow="Sources"
-        title="Canvas ICS Setup"
-        description="Connect or update the single Canvas ICS subscription used by this workspace."
+        title="Canvas ICS"
+        description="Connect the calendar feed, inspect bootstrap vs replay posture, and keep Canvas intake steady."
       />
       <CanvasIcsSetupPanel />
     </div>

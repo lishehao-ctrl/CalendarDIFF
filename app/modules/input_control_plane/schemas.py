@@ -94,9 +94,41 @@ class SyncRequestStatusResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     connector_result: dict | None = None
+    llm_usage: dict | None = None
+    elapsed_ms: int | None = None
     applied: bool = False
     applied_at: datetime | None = None
     progress: dict | None = None
+
+
+class SourceObservabilitySyncResponse(BaseModel):
+    request_id: str
+    phase: Literal["bootstrap", "replay"]
+    trigger_type: TriggerTypeLiteral
+    status: SyncRequestStatusLiteral
+    created_at: datetime
+    updated_at: datetime
+    applied: bool = False
+    applied_at: datetime | None = None
+    elapsed_ms: int | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    connector_result: dict | None = None
+    llm_usage: dict | None = None
+    progress: dict | None = None
+
+
+class SourceObservabilityResponse(BaseModel):
+    source_id: int
+    active_request_id: str | None = None
+    bootstrap: SourceObservabilitySyncResponse | None = None
+    latest_replay: SourceObservabilitySyncResponse | None = None
+    active: SourceObservabilitySyncResponse | None = None
+
+
+class SourceSyncHistoryResponse(BaseModel):
+    source_id: int
+    items: list[SourceObservabilitySyncResponse]
 
 
 class OAuthStartResponse(BaseModel):

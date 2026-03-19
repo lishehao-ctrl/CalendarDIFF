@@ -1868,680 +1868,6 @@
         "title": "LabelLearningPreviewResponse",
         "type": "object"
       },
-      "LinkBlockDeleteResponse": {
-        "properties": {
-          "deleted": {
-            "title": "Deleted",
-            "type": "boolean"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "deleted",
-          "id"
-        ],
-        "title": "LinkBlockDeleteResponse",
-        "type": "object"
-      },
-      "LinkBlockItemResponse": {
-        "properties": {
-          "blocked_entity_uid": {
-            "title": "Blocked Entity Uid",
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "external_event_id": {
-            "title": "External Event Id",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
-          },
-          "source_id": {
-            "title": "Source Id",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "source_id",
-          "external_event_id",
-          "blocked_entity_uid",
-          "note",
-          "created_at"
-        ],
-        "title": "LinkBlockItemResponse",
-        "type": "object"
-      },
-      "LinkCandidateBatchDecisionItemResult": {
-        "properties": {
-          "block_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Block Id"
-          },
-          "error_code": {
-            "anyOf": [
-              {
-                "enum": [
-                  "not_found",
-                  "invalid_state"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Code"
-          },
-          "error_detail": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Detail"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "idempotent": {
-            "title": "Idempotent",
-            "type": "boolean"
-          },
-          "link_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Link Id"
-          },
-          "ok": {
-            "title": "Ok",
-            "type": "boolean"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "enum": [
-                  "pending",
-                  "approved",
-                  "rejected"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
-          }
-        },
-        "required": [
-          "id",
-          "ok",
-          "status",
-          "idempotent",
-          "link_id",
-          "block_id",
-          "error_code",
-          "error_detail"
-        ],
-        "title": "LinkCandidateBatchDecisionItemResult",
-        "type": "object"
-      },
-      "LinkCandidateBatchDecisionRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "decision": {
-            "enum": [
-              "approve",
-              "reject"
-            ],
-            "title": "Decision",
-            "type": "string"
-          },
-          "ids": {
-            "items": {
-              "type": "integer"
-            },
-            "maxItems": 200,
-            "minItems": 1,
-            "title": "Ids",
-            "type": "array"
-          },
-          "note": {
-            "anyOf": [
-              {
-                "maxLength": 512,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
-          }
-        },
-        "required": [
-          "ids",
-          "decision"
-        ],
-        "title": "LinkCandidateBatchDecisionRequest",
-        "type": "object"
-      },
-      "LinkCandidateBatchDecisionResponse": {
-        "properties": {
-          "decision": {
-            "enum": [
-              "approve",
-              "reject"
-            ],
-            "title": "Decision",
-            "type": "string"
-          },
-          "failed": {
-            "title": "Failed",
-            "type": "integer"
-          },
-          "results": {
-            "items": {
-              "$ref": "#/components/schemas/LinkCandidateBatchDecisionItemResult"
-            },
-            "title": "Results",
-            "type": "array"
-          },
-          "succeeded": {
-            "title": "Succeeded",
-            "type": "integer"
-          },
-          "total_requested": {
-            "title": "Total Requested",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "decision",
-          "total_requested",
-          "succeeded",
-          "failed",
-          "results"
-        ],
-        "title": "LinkCandidateBatchDecisionResponse",
-        "type": "object"
-      },
-      "LinkCandidateDecisionRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "decision": {
-            "enum": [
-              "approve",
-              "reject"
-            ],
-            "title": "Decision",
-            "type": "string"
-          },
-          "note": {
-            "anyOf": [
-              {
-                "maxLength": 512,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
-          }
-        },
-        "required": [
-          "decision"
-        ],
-        "title": "LinkCandidateDecisionRequest",
-        "type": "object"
-      },
-      "LinkCandidateDecisionResponse": {
-        "properties": {
-          "block_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Block Id"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "idempotent": {
-            "title": "Idempotent",
-            "type": "boolean"
-          },
-          "link_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Link Id"
-          },
-          "status": {
-            "enum": [
-              "pending",
-              "approved",
-              "rejected"
-            ],
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "status",
-          "idempotent"
-        ],
-        "title": "LinkCandidateDecisionResponse",
-        "type": "object"
-      },
-      "LinkCandidateEntityPreview": {
-        "properties": {
-          "entity_uid": {
-            "title": "Entity Uid",
-            "type": "string"
-          },
-          "event_display": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/EventDisplayResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "entity_uid"
-        ],
-        "title": "LinkCandidateEntityPreview",
-        "type": "object"
-      },
-      "LinkCandidateItemResponse": {
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "evidence_snapshot": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Evidence Snapshot"
-          },
-          "external_event_id": {
-            "title": "External Event Id",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "proposed_entity": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LinkCandidateEntityPreview"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "proposed_entity_uid": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Proposed Entity Uid"
-          },
-          "reason_code": {
-            "enum": [
-              "score_band",
-              "no_time_anchor",
-              "low_confidence"
-            ],
-            "title": "Reason Code",
-            "type": "string"
-          },
-          "review_note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Review Note"
-          },
-          "reviewed_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reviewed At"
-          },
-          "reviewed_by_user_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reviewed By User Id"
-          },
-          "score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Score"
-          },
-          "score_breakdown": {
-            "additionalProperties": true,
-            "title": "Score Breakdown",
-            "type": "object"
-          },
-          "source_id": {
-            "title": "Source Id",
-            "type": "integer"
-          },
-          "status": {
-            "enum": [
-              "pending",
-              "approved",
-              "rejected"
-            ],
-            "title": "Status",
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "source_id",
-          "external_event_id",
-          "proposed_entity_uid",
-          "score",
-          "score_breakdown",
-          "reason_code",
-          "status",
-          "reviewed_by_user_id",
-          "reviewed_at",
-          "review_note",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "LinkCandidateItemResponse",
-        "type": "object"
-      },
-      "LinkDeleteResponse": {
-        "properties": {
-          "block_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Block Id"
-          },
-          "deleted": {
-            "title": "Deleted",
-            "type": "boolean"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "deleted",
-          "id"
-        ],
-        "title": "LinkDeleteResponse",
-        "type": "object"
-      },
-      "LinkItemResponse": {
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "entity_uid": {
-            "title": "Entity Uid",
-            "type": "string"
-          },
-          "external_event_id": {
-            "title": "External Event Id",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "link_origin": {
-            "title": "Link Origin",
-            "type": "string"
-          },
-          "link_score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Link Score"
-          },
-          "linked_entity": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LinkCandidateEntityPreview"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "signals": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Signals"
-          },
-          "source_id": {
-            "title": "Source Id",
-            "type": "integer"
-          },
-          "source_kind": {
-            "title": "Source Kind",
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "source_id",
-          "source_kind",
-          "external_event_id",
-          "entity_uid",
-          "link_origin",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "LinkItemResponse",
-        "type": "object"
-      },
-      "LinkRelinkRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "clear_block": {
-            "default": true,
-            "title": "Clear Block",
-            "type": "boolean"
-          },
-          "entity_uid": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Entity Uid",
-            "type": "string"
-          },
-          "external_event_id": {
-            "maxLength": 255,
-            "minLength": 1,
-            "title": "External Event Id",
-            "type": "string"
-          },
-          "note": {
-            "anyOf": [
-              {
-                "maxLength": 512,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
-          },
-          "source_id": {
-            "minimum": 1.0,
-            "title": "Source Id",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "source_id",
-          "external_event_id",
-          "entity_uid"
-        ],
-        "title": "LinkRelinkRequest",
-        "type": "object"
-      },
-      "LinkRelinkResponse": {
-        "properties": {
-          "cleared_blocks": {
-            "title": "Cleared Blocks",
-            "type": "integer"
-          },
-          "entity_uid": {
-            "title": "Entity Uid",
-            "type": "string"
-          },
-          "external_event_id": {
-            "title": "External Event Id",
-            "type": "string"
-          },
-          "link_id": {
-            "title": "Link Id",
-            "type": "integer"
-          },
-          "source_id": {
-            "title": "Source Id",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "link_id",
-          "entity_uid",
-          "source_id",
-          "external_event_id",
-          "cleared_blocks"
-        ],
-        "title": "LinkRelinkResponse",
-        "type": "object"
-      },
       "ManualEventMutationResponse": {
         "properties": {
           "applied": {
@@ -4420,30 +3746,6 @@
         "title": "ReviewEditTargetRequest",
         "type": "object"
       },
-      "ReviewItemsSummaryResponse": {
-        "properties": {
-          "changes_pending": {
-            "title": "Changes Pending",
-            "type": "integer"
-          },
-          "generated_at": {
-            "format": "date-time",
-            "title": "Generated At",
-            "type": "string"
-          },
-          "link_candidates_pending": {
-            "title": "Link Candidates Pending",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "changes_pending",
-          "link_candidates_pending",
-          "generated_at"
-        ],
-        "title": "ReviewItemsSummaryResponse",
-        "type": "object"
-      },
       "ReviewPrimarySourceRef": {
         "properties": {
           "external_event_id": {
@@ -4545,6 +3847,25 @@
           "source_id"
         ],
         "title": "ReviewSourceRef",
+        "type": "object"
+      },
+      "ReviewSummaryResponse": {
+        "properties": {
+          "changes_pending": {
+            "title": "Changes Pending",
+            "type": "integer"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "changes_pending",
+          "generated_at"
+        ],
+        "title": "ReviewSummaryResponse",
         "type": "object"
       },
       "SemanticEventDraft": {
@@ -4785,6 +4106,223 @@
         "title": "SourceHealthSummaryResponse",
         "type": "object"
       },
+      "SourceObservabilityResponse": {
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceObservabilitySyncResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "active_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Request Id"
+          },
+          "bootstrap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceObservabilitySyncResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "latest_replay": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceObservabilitySyncResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_id"
+        ],
+        "title": "SourceObservabilityResponse",
+        "type": "object"
+      },
+      "SourceObservabilitySyncResponse": {
+        "properties": {
+          "applied": {
+            "default": false,
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "applied_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied At"
+          },
+          "connector_result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connector Result"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "elapsed_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elapsed Ms"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "llm_usage": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Usage"
+          },
+          "phase": {
+            "enum": [
+              "bootstrap",
+              "replay"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PENDING",
+              "QUEUED",
+              "RUNNING",
+              "SUCCEEDED",
+              "FAILED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "trigger_type": {
+            "enum": [
+              "manual",
+              "scheduler",
+              "webhook"
+            ],
+            "title": "Trigger Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "phase",
+          "trigger_type",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SourceObservabilitySyncResponse",
+        "type": "object"
+      },
+      "SourceSyncHistoryResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SourceObservabilitySyncResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_id",
+          "items"
+        ],
+        "title": "SourceSyncHistoryResponse",
+        "type": "object"
+      },
       "SyncRequestCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4896,6 +4434,17 @@
             "title": "Created At",
             "type": "string"
           },
+          "elapsed_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elapsed Ms"
+          },
           "error_code": {
             "anyOf": [
               {
@@ -4921,6 +4470,18 @@
           "idempotency_key": {
             "title": "Idempotency Key",
             "type": "string"
+          },
+          "llm_usage": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Usage"
           },
           "metadata": {
             "additionalProperties": true,
@@ -7491,624 +7052,6 @@
         ]
       }
     },
-    "/review/link-candidates": {
-      "get": {
-        "operationId": "get_link_candidates_review_link_candidates_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "default": "pending",
-              "title": "Status",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "source_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "minimum": 1,
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Source Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "maximum": 200,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "offset",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "minimum": 0,
-              "title": "Offset",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/LinkCandidateItemResponse"
-                  },
-                  "title": "Response Get Link Candidates Review Link Candidates Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Link Candidates",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/link-candidates/batch/decisions": {
-      "post": {
-        "operationId": "post_link_candidate_batch_decisions_review_link_candidates_batch_decisions_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LinkCandidateBatchDecisionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LinkCandidateBatchDecisionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Post Link Candidate Batch Decisions",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/link-candidates/blocks": {
-      "get": {
-        "operationId": "get_link_blocks_review_link_candidates_blocks_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "source_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "minimum": 1,
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Source Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "maximum": 200,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "offset",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "minimum": 0,
-              "title": "Offset",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/LinkBlockItemResponse"
-                  },
-                  "title": "Response Get Link Blocks Review Link Candidates Blocks Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Link Blocks",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/link-candidates/blocks/{block_id}": {
-      "delete": {
-        "operationId": "delete_link_block_route_review_link_candidates_blocks__block_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "block_id",
-            "required": true,
-            "schema": {
-              "title": "Block Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LinkBlockDeleteResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Delete Link Block Route",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/link-candidates/{candidate_id}/decisions": {
-      "post": {
-        "operationId": "post_link_candidate_decision_review_link_candidates__candidate_id__decisions_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "candidate_id",
-            "required": true,
-            "schema": {
-              "title": "Candidate Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LinkCandidateDecisionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LinkCandidateDecisionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Post Link Candidate Decision",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/links": {
-      "get": {
-        "operationId": "get_links_review_links_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "source_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "minimum": 1,
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Source Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "maximum": 200,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "offset",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "minimum": 0,
-              "title": "Offset",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/LinkItemResponse"
-                  },
-                  "title": "Response Get Links Review Links Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Links",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/links/relink": {
-      "post": {
-        "operationId": "post_relink_observation_review_links_relink_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LinkRelinkRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LinkRelinkResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Post Relink Observation",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/links/{link_id}": {
-      "delete": {
-        "operationId": "delete_link_route_review_links__link_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "link_id",
-            "required": true,
-            "schema": {
-              "title": "Link Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "block",
-            "required": false,
-            "schema": {
-              "default": true,
-              "title": "Block",
-              "type": "boolean"
-            }
-          },
-          {
-            "in": "query",
-            "name": "note",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 512,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Note"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LinkDeleteResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Delete Link Route",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
     "/review/raw-type-suggestions": {
       "get": {
         "operationId": "get_raw_type_suggestions_review_raw_type_suggestions_get",
@@ -8345,7 +7288,7 @@
     },
     "/review/summary": {
       "get": {
-        "operationId": "get_review_items_summary_route_review_summary_get",
+        "operationId": "get_review_summary_route_review_summary_get",
         "parameters": [
           {
             "in": "header",
@@ -8369,7 +7312,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReviewItemsSummaryResponse"
+                  "$ref": "#/components/schemas/ReviewSummaryResponse"
                 }
               }
             },
@@ -8386,7 +7329,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Review Items Summary Route",
+        "summary": "Get Review Summary Route",
         "tags": [
           "review-items"
         ]
@@ -8703,6 +7646,134 @@
           }
         },
         "summary": "Create Oauth Session",
+        "tags": [
+          "input-control-plane"
+        ]
+      }
+    },
+    "/sources/{source_id}/observability": {
+      "get": {
+        "operationId": "get_source_observability_sources__source_id__observability_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceObservabilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Source Observability",
+        "tags": [
+          "input-control-plane"
+        ]
+      }
+    },
+    "/sources/{source_id}/sync-history": {
+      "get": {
+        "operationId": "get_source_sync_history_sources__source_id__sync_history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSyncHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Source Sync History",
         "tags": [
           "input-control-plane"
         ]

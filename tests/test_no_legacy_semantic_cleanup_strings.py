@@ -14,6 +14,13 @@ TARGETS: tuple[Path, ...] = (
     REPO_ROOT / "scripts",
     REPO_ROOT / "tests",
 )
+IGNORED_PATH_PARTS = {
+    ".next",
+    ".next-dev",
+    ".next-prod",
+    "node_modules",
+    "__pycache__",
+}
 
 DISALLOWED_LITERALS: tuple[str, ...] = (
     "proposal_entity_uid",
@@ -50,7 +57,11 @@ DISALLOWED_PATTERNS: tuple[re.Pattern[str], ...] = (
 def _iter_files() -> list[Path]:
     files: list[Path] = []
     for target in TARGETS:
-        files.extend(path for path in target.rglob("*") if path.is_file())
+        files.extend(
+            path
+            for path in target.rglob("*")
+            if path.is_file() and not any(part in IGNORED_PATH_PARTS for part in path.parts)
+        )
     return files
 
 

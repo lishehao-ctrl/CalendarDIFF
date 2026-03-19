@@ -40,6 +40,7 @@ class LlmInvokeRequest:
     temperature: float = 0.0
     shared_user_payload: dict | None = None
     cache_prefix_payload: dict | None = None
+    cache_task_prompt: bool = False
     previous_response_id: str | None = None
     api_mode_override: LlmApiModeLiteral | None = None
     session_cache_mode: SessionCacheModeLiteral = "inherit"

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, time
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -10,6 +10,7 @@ from app.modules.common.payload_schemas import LinkSignals, SemanticEventDraft
 
 SegmentTypeHint = Literal["atomic", "directive", "unknown"]
 AtomicExtractionOutcome = Literal["event", "unknown"]
+AtomicTimeResolutionOutcome = Literal["resolved", "unknown"]
 DirectiveExtractionOutcome = Literal["directive", "unknown"]
 CalendarExtractionOutcome = Literal["event", "unknown"]
 CalendarRelevanceOutcome = Literal["relevant", "unknown"]
@@ -105,7 +106,7 @@ class CalendarSemanticEventClassification(BaseModel):
     event_name: str | None = Field(default=None, max_length=512)
     ordinal: int | None = Field(default=None, ge=1, le=999)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-    evidence: str = Field(default="", max_length=160)
+    evidence: str = Field(default="", max_length=255)
 
     model_config = {"extra": "forbid"}
 
@@ -144,7 +145,7 @@ class CalendarSemanticEventClassification(BaseModel):
     @classmethod
     def _normalize_evidence(cls, value: object) -> object:
         if isinstance(value, str):
-            return value.strip()[:160]
+            return value.strip()[:255]
         return ""
 
 
@@ -232,6 +233,154 @@ class GmailAtomicSegmentExtractionResponse(BaseModel):
         return self
 
 
+class GmailAtomicIdentityDraft(BaseModel):
+    course_dept: str | None = Field(default=None, max_length=16)
+    course_number: int | None = Field(default=None, ge=0, le=9999)
+    course_suffix: str | None = Field(default=None, max_length=8)
+    course_quarter: Literal["WI", "SP", "SU", "FA"] | None = None
+    course_year2: int | None = Field(default=None, ge=0, le=99)
+    raw_type: str | None = Field(default=None, max_length=128)
+    event_name: str | None = Field(default=None, max_length=512)
+    ordinal: int | None = Field(default=None, ge=1, le=999)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    evidence: str = Field(default="", max_length=160)
+
+    model_config = {"extra": "forbid"}
+
+    @field_validator("course_dept", "course_suffix", "raw_type", "event_name", mode="before")
+    @classmethod
+    def _strip_identity_text(cls, value: object) -> object:
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned or None
+        return value
+
+    @field_validator("course_dept", "course_suffix", mode="after")
+    @classmethod
+    def _normalize_identity_course_code(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip().upper()
+        return cleaned or None
+
+    @field_validator("course_quarter", mode="before")
+    @classmethod
+    def _normalize_identity_quarter(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        cleaned = value.strip().upper()
+        return cleaned or None
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _normalize_identity_confidence(cls, value: object) -> object:
+        if isinstance(value, (int, float)):
+            return float(value)
+        return 0.0
+
+    @field_validator("evidence", mode="before")
+    @classmethod
+    def _normalize_identity_evidence(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()[:160]
+        return ""
+
+
+class GmailAtomicIdentityExtractionResponse(BaseModel):
+    outcome: AtomicExtractionOutcome = "event"
+    semantic_identity_draft: GmailAtomicIdentityDraft | None = None
+    link_signals: LinkSignals | None = None
+
+    model_config = {"extra": "forbid"}
+
+    @model_validator(mode="after")
+    def _validate_identity_outcome(self):
+        if self.outcome == "event":
+            if self.semantic_identity_draft is None or self.link_signals is None:
+                raise ValueError("event outcome requires semantic_identity_draft and link_signals")
+        else:
+            self.semantic_identity_draft = None
+            self.link_signals = None
+        return self
+
+
+class GmailAtomicTimeResolutionResponse(BaseModel):
+    outcome: AtomicTimeResolutionOutcome = "resolved"
+    source_time_phrase: str | None = Field(default=None, max_length=255)
+    resolved_due_date: date | None = None
+    resolved_due_time: time | None = None
+    time_precision: Literal["date_only", "datetime"] | None = None
+    resolution_basis: str | None = Field(default=None, max_length=255)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    evidence: str = Field(default="", max_length=160)
+
+    model_config = {"extra": "forbid"}
+
+    @field_validator("source_time_phrase", "resolution_basis", mode="before")
+    @classmethod
+    def _strip_time_resolution_text(cls, value: object) -> object:
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned or None
+        return value
+
+    @field_validator("resolved_due_time", mode="before")
+    @classmethod
+    def _normalize_resolved_due_time(cls, value: object) -> object:
+        if isinstance(value, time):
+            return value.replace(tzinfo=None)
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if not cleaned:
+                return None
+            parsed = time.fromisoformat(cleaned)
+            return parsed.replace(tzinfo=None)
+        return None
+
+    @field_validator("resolved_due_date", mode="before")
+    @classmethod
+    def _normalize_resolved_due_date(cls, value: object) -> object:
+        if isinstance(value, date):
+            return value
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return date.fromisoformat(cleaned) if cleaned else None
+        return None
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _normalize_time_confidence(cls, value: object) -> object:
+        if isinstance(value, (int, float)):
+            return float(value)
+        return 0.0
+
+    @field_validator("evidence", mode="before")
+    @classmethod
+    def _normalize_time_evidence(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()[:160]
+        return ""
+
+    @model_validator(mode="after")
+    def _validate_time_resolution_outcome(self):
+        if self.outcome == "resolved":
+            if self.resolved_due_date is None or self.time_precision is None:
+                raise ValueError("resolved outcome requires resolved_due_date and time_precision")
+            if self.time_precision == "datetime" and self.resolved_due_time is None:
+                raise ValueError("datetime resolution requires resolved_due_time")
+            if self.time_precision == "date_only":
+                self.resolved_due_time = None
+        else:
+            self.source_time_phrase = None
+            self.resolved_due_date = None
+            self.resolved_due_time = None
+            self.time_precision = None
+            self.resolution_basis = None
+            self.confidence = 0.0
+            self.evidence = ""
+        return self
+
+
 class GmailDirectiveSelector(BaseModel):
     course_dept: str | None = Field(default=None, max_length=16)
     course_number: int | None = Field(default=None, ge=0, le=9999)
@@ -315,7 +464,10 @@ class GmailDirectiveExtractionResponse(BaseModel):
 __all__ = [
     "CalendarSourceContextResponse",
     "CalendarRelevanceResponse",
+    "GmailAtomicIdentityDraft",
+    "GmailAtomicIdentityExtractionResponse",
     "GmailAtomicSegmentExtractionResponse",
+    "GmailAtomicTimeResolutionResponse",
     "GmailDirectiveExtractionResponse",
     "GmailDirectiveMutation",
     "GmailDirectiveSelector",

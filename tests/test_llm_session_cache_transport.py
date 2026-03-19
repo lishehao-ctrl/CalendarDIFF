@@ -237,3 +237,56 @@ def test_chat_completions_task_prompt_keeps_task_specific_tail_outside_cache_pre
     assert "TASK_INSTRUCTIONS:" in user_message["content"]
     assert "Classify as unknown, atomic, or directive." in user_message["content"]
     assert "TASK_INPUT_JSON:" in user_message["content"]
+
+
+def test_chat_completions_can_cache_task_prompt_and_leave_message_body_in_tail() -> None:
+    payload = build_chat_completions_payload(
+        invoke_request=LlmInvokeRequest(
+            task_name="gmail_purpose_mode_classify",
+            system_prompt="Classify as unknown, atomic, or directive with few-shots.",
+            user_payload={
+                "purpose": "assignment_or_exam_monitoring",
+                "message_context": {
+                    "message_id": "msg-1",
+                    "subject": "Homework 3 due tonight",
+                    "body_text": "Homework 3 is now due tonight by 11:59 PM.",
+                },
+            },
+            cache_prefix_payload={"cache_scope": "gmail_purpose_mode_classify:v2"},
+            cache_task_prompt=True,
+            output_schema_name="AnyObject",
+            output_schema_json={"type": "object"},
+            source_id=1,
+            request_id="req-1",
+            source_provider="gmail",
+            api_mode_override="chat_completions",
+            session_cache_mode="enable",
+        ),
+        profile=ResolvedLlmProfile(
+            provider_id="env-default",
+            vendor="openai-compatible",
+            base_url="https://example.com/v1",
+            api_mode="chat_completions",
+            model="test-model",
+            api_key="test-key",
+            session_cache_enabled=False,
+            timeout_seconds=30.0,
+            max_retries=0,
+            max_input_chars=12000,
+            extra_body={},
+        ),
+        truncated_input_json='{"purpose":"assignment_or_exam_monitoring","message_context":{"message_id":"msg-1","subject":"Homework 3 due tonight","body_text":"Homework 3 is now due tonight by 11:59 PM."}}',
+    )
+    cached_message = payload["messages"][1]
+    user_message = payload["messages"][2]
+    cached_content = cached_message["content"][0]["text"]
+    assert "TASK_INSTRUCTIONS:" in cached_content
+    assert "Classify as unknown, atomic, or directive with few-shots." in cached_content
+    assert "Schema JSON:" in cached_content
+    assert "CACHE_CONTEXT_JSON:" in cached_content
+    assert '"cache_scope":"gmail_purpose_mode_classify:v2"' in cached_content
+    assert "Homework 3 due tonight" not in cached_content
+    assert user_message["role"] == "user"
+    assert user_message["content"].startswith("TASK_INPUT_JSON:")
+    assert "Homework 3 due tonight" in user_message["content"]
+    assert "TASK_INSTRUCTIONS:" not in user_message["content"]

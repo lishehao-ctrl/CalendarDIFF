@@ -14,7 +14,7 @@ export const SheetOverlay = React.forwardRef<
   React.ElementRef<typeof Dialog.Overlay>,
   React.ComponentPropsWithoutRef<typeof Dialog.Overlay>
 >(function SheetOverlay({ className, ...props }, ref) {
-  return <Dialog.Overlay ref={ref} className={cn("fixed inset-0 z-40 bg-[rgba(20,32,44,0.38)] backdrop-blur-sm", className)} {...props} />;
+  return <Dialog.Overlay ref={ref} className={cn("sheet-overlay fixed inset-0 z-40 bg-[rgba(20,32,44,0.38)] backdrop-blur-sm", className)} {...props} />;
 });
 
 export const SheetContent = React.forwardRef<
@@ -22,8 +22,8 @@ export const SheetContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof Dialog.Content> & { side?: "right" | "bottom" }
 >(function SheetContent({ className, children, side = "right", ...props }, ref) {
   const sideClassName = side === "bottom"
-    ? "fixed inset-x-0 bottom-0 z-50 max-h-[85vh] rounded-t-[1.7rem] border-t border-line bg-card p-5 shadow-[var(--shadow-panel)]"
-    : "fixed inset-y-0 right-0 z-50 h-full w-full max-w-2xl border-l border-line bg-card p-5 shadow-[var(--shadow-panel)]";
+    ? "sheet-content--bottom fixed inset-x-0 bottom-0 z-50 max-h-[85vh] rounded-t-[1.7rem] border-t border-line bg-card p-5 shadow-[var(--shadow-panel)]"
+    : "sheet-content--right fixed inset-y-0 right-0 z-50 h-full w-full max-w-2xl border-l border-line bg-card p-5 shadow-[var(--shadow-panel)]";
   return (
     <Dialog.Portal>
       <SheetOverlay />

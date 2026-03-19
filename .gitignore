@@ -22,11 +22,8 @@ labeled*.jsonl
 error*.jsonl
 tools/labeling/.env
 
-# Keep synthetic benchmark dataset tracked.
-!/data/synthetic/
-!/data/synthetic/ddlchange_160/
-!/data/synthetic/ddlchange_160/**
-!/data/synthetic/ddlchange_160/ics/pairs/*.ics
+# Large generated synthetic datasets stay local.
+/data/synthetic/
 .playwright-cli/
 output/*
 !output/README.md
@@ -34,3 +31,4 @@ frontend/tsconfig.typecheck.tsbuildinfo
 .cache/
 frontend/.next-dev/
 frontend/.next-prod/
+archive/generated/

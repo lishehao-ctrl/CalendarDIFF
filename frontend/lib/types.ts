@@ -94,7 +94,55 @@ export type SyncStatus = {
     error_code?: string | null;
     error_message?: string | null;
   } | null;
+  metadata?: Record<string, unknown>;
   progress?: SyncProgress | null;
+};
+
+export type SyncUsageSummary = {
+  successful_call_count: number;
+  usage_record_count: number;
+  latency_ms_total: number;
+  latency_ms_max: number;
+  input_tokens: number;
+  cached_input_tokens: number;
+  cache_creation_input_tokens: number;
+  output_tokens: number;
+  reasoning_tokens: number;
+  total_tokens: number;
+  cache_hit_ratio: number | null;
+  avg_latency_ms: number | null;
+  api_modes: Record<string, number>;
+  models: Record<string, number>;
+  task_counts: Record<string, number>;
+  last_observed_at?: string | null;
+};
+
+export type SourceObservabilityView = {
+  source_id: number;
+  source_label: string;
+  source_kind: "calendar" | "email";
+  runtime_state: string;
+  connection_status: "healthy" | "attention" | "disconnected";
+  connection_label: string;
+  connection_detail: string;
+  bootstrap_status: "idle" | "running" | "succeeded" | "failed" | "unknown";
+  replay_status: "idle" | "running" | "succeeded" | "failed" | "unknown";
+  latest_bootstrap_elapsed_ms: number | null;
+  latest_replay_elapsed_ms: number | null;
+  bootstrap_usage: SyncUsageSummary | null;
+  replay_usage: SyncUsageSummary | null;
+  latest_sync_label: string | null;
+  latest_sync_detail: string | null;
+};
+
+export type IntakePostureView = {
+  warming_source_count: number;
+  replay_health: "healthy" | "attention" | "unknown";
+  bootstrap_cost_state: "normal" | "elevated" | "unknown";
+  replay_cost_state: "normal" | "elevated" | "unknown";
+  warming_label: string;
+  replay_label: string;
+  cost_label: string;
 };
 
 export type EventDisplay = {
@@ -363,6 +411,65 @@ export type CourseWorkItemFamilyStatus = {
   state: string;
   last_rebuilt_at: string | null;
   last_error: string | null;
+};
+
+export type CourseWorkItemRawType = {
+  course_display: string;
+  course_dept: string;
+  course_number: number;
+  course_suffix?: string | null;
+  course_quarter?: string | null;
+  course_year2?: number | null;
+  id: number;
+  family_id: number;
+  raw_type: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CourseWorkItemRawTypeMoveResponse = {
+  course_display: string;
+  course_dept: string;
+  course_number: number;
+  course_suffix?: string | null;
+  course_quarter?: string | null;
+  course_year2?: number | null;
+  raw_type_id: number;
+  family_id: number;
+  previous_family_id: number;
+};
+
+export type RawTypeSuggestionItem = {
+  id: number;
+  course_display: string;
+  course_dept: string;
+  course_number: number;
+  course_suffix?: string | null;
+  course_quarter?: string | null;
+  course_year2?: number | null;
+  status: "pending" | "approved" | "rejected" | "dismissed";
+  confidence: number;
+  evidence?: string | null;
+  source_observation_id?: number | null;
+  source_raw_type?: string | null;
+  source_raw_type_id?: number | null;
+  source_family_id?: number | null;
+  source_family_name?: string | null;
+  suggested_raw_type?: string | null;
+  suggested_raw_type_id?: number | null;
+  suggested_family_id?: number | null;
+  suggested_family_name?: string | null;
+  review_note?: string | null;
+  reviewed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RawTypeSuggestionDecisionResponse = {
+  id: number;
+  status: "pending" | "approved" | "rejected" | "dismissed";
+  review_note?: string | null;
+  reviewed_at?: string | null;
 };
 
 export type ManualEvent = {

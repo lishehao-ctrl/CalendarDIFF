@@ -10,7 +10,6 @@ from app.modules.input_control_plane.router import router as input_control_plane
 from app.modules.onboarding.router import router as onboarding_router
 from app.modules.profile.router import router as profile_router
 from app.modules.review_changes.router import router as review_changes_router
-from app.modules.review_links.router import router as review_links_router
 from app.modules.review_taxonomy.router import router as review_taxonomy_router
 from app.runtime.monolith_workers import (
     run_ingest_worker,
@@ -34,7 +33,6 @@ app = create_service_app(
         input_control_plane_router,
         review_taxonomy_router,
         review_changes_router,
-        review_links_router,
     ],
     worker_tasks=[
         run_ingest_worker,

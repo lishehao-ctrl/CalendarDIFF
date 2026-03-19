@@ -116,6 +116,11 @@ class ReviewBatchDecisionResponse(BaseModel):
     results: list[ReviewBatchDecisionItemResult]
 
 
+class ReviewSummaryResponse(BaseModel):
+    changes_pending: int
+    generated_at: datetime
+
+
 class EvidencePreviewEvent(BaseModel):
     uid: str | None
     summary: str | None

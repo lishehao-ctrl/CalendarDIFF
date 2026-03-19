@@ -203,6 +203,111 @@ def test_gmail_filter_allows_known_course_token_even_without_edu_sender() -> Non
     )
 
 
+def test_gmail_filter_blocks_lms_wrapper_with_explicit_non_target_phrase() -> None:
+    metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="notifications@canvas.example.edu",
+        subject="Canvas comment for CSE 120",
+        snippet="An LMS comment or notification was posted, but no monitored deadline changed.",
+        body_text="You are receiving this notification because activity occurred in CSE 120. No monitored deadline changed.",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    assert (
+        matches_gmail_source_filters(
+            metadata=metadata,
+            config={},
+            known_course_tokens={"cse 120", "cse120"},
+        )
+        is False
+    )
+
+
+def test_gmail_filter_blocks_student_services_bait_without_course_signal() -> None:
+    metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="EASy Requests <services@students.example.edu>",
+        subject="Easy Request assignment follow-up",
+        snippet="Student services notice. The wording contains assignment even though the message is unrelated to monitored course work.",
+        body_text="Student services notice. Please use the student services portal for follow-up.",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    assert matches_gmail_source_filters(metadata=metadata, config={}) is False
+
+
+def test_gmail_filter_keeps_target_signal_even_with_unchanged_footer_text() -> None:
+    metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="cse120-staff@courses.example.edu",
+        subject="[CSE120] Homework 4 due date updated",
+        snippet="Homework 4 is now due Thursday, October 15 at 11:59 PM PT.",
+        body_text=(
+            "Homework 4 is now due Thursday, October 15 at 11:59 PM PT instead of Tuesday. "
+            "Grade weights and rubric points are unchanged."
+        ),
+        internal_date="2026-10-15T12:00:00+00:00",
+    )
+
+    assert (
+        matches_gmail_source_filters(
+            metadata=metadata,
+            config={},
+            known_course_tokens={"cse 120", "cse120"},
+        )
+        is True
+    )
+
+
+def test_gmail_filter_blocks_recruiting_bait_with_explicit_non_target_text() -> None:
+    metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="Vertex Recruiting <talent@careers.example.com>",
+        subject="Internship Application submission update",
+        snippet="Recruiting logistics are unrelated to monitored course deadlines.",
+        body_text="Recruiting workflow update. Recruiting logistics are unrelated to monitored course deadlines. This mailbox is not monitored.",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    assert matches_gmail_source_filters(metadata=metadata, config={}) is False
+
+
+def test_gmail_filter_blocks_newsletter_digest_bait_without_course_signal() -> None:
+    metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="Campus Weekly <digest@lists.example.com>",
+        subject="Quarter Start digest: assignment, events, and inbox clutter",
+        snippet="Digest content bundles many prompts together and should stay non-target.",
+        body_text="Quarter Start newsletter. Digest content bundles many prompts together and should stay non-target. Unsubscribe | Manage preferences | View in browser",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    assert matches_gmail_source_filters(metadata=metadata, config={}) is False
+
+
+def test_gmail_filter_blocks_academic_non_target_even_with_course_token_when_explicitly_unchanged() -> None:
+    metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="Registrar Updates <noreply@campus.example.edu>",
+        subject="[MATH18] section waitlist admin and submission note",
+        snippet="Discussion waitlist handling changed and the graded submission schedule is unchanged.",
+        body_text=(
+            "Course context: MATH18. Discussion waitlist handling changed and the graded submission schedule is unchanged. "
+            "This email is academic context only and should not create a monitored event in the canonical timeline."
+        ),
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    assert (
+        matches_gmail_source_filters(
+            metadata=metadata,
+            config={},
+            known_course_tokens={"math 18", "math18"},
+        )
+        is False
+    )
+
+
 def test_gmail_fetcher_bootstraps_term_window_messages(monkeypatch) -> None:
     source = SimpleNamespace(
         config=SimpleNamespace(

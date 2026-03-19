@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import statistics
 import sys
 import time
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -16,6 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from app.core.config import get_settings
 from app.modules.ingestion.llm_parsers.contracts import ParserContext
 from app.modules.ingestion.llm_parsers.gmail_parser import parse_gmail_payload
 from app.modules.llm_gateway.runtime_control import (
@@ -28,7 +31,7 @@ from app.modules.llm_gateway.runtime_control import (
 FIXTURE_ROOT = REPO_ROOT / "tests" / "fixtures" / "private" / "email_pool"
 DERIVED_SET_ROOT = FIXTURE_ROOT / "derived_sets"
 OUTPUT_ROOT = REPO_ROOT / "output"
-VALID_BUCKETS = ("synthetic_ddlchange", "oauth_filtered_150", "oauth_random_300")
+VALID_BUCKETS = ("year_timeline_gmail", "year_timeline_full_sim")
 ATOMIC_FIELDS = [
     "course_dept",
     "course_number",
@@ -63,9 +66,11 @@ DIRECTIVE_MUTATION_FIELDS = ["move_weekday", "set_due_date"]
 @dataclass
 class StageUsage:
     task_name: str
+    api_mode: str | None
     latency_ms: int | None
     input_tokens: int | None
     cached_input_tokens: int | None
+    cache_creation_input_tokens: int | None
     output_tokens: int | None
     total_tokens: int | None
     response_id: str | None
@@ -117,14 +122,14 @@ class SyntheticAccuracy:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Process local email-pool fixtures through the current Gmail Responses API parser path."
+        description="Process local email-pool fixtures through the current Gmail parser path."
     )
     parser.add_argument(
         "--bucket",
         action="append",
         choices=["all", *VALID_BUCKETS],
         default=None,
-        help="Bucket(s) to process. Repeatable. Defaults to all three Gmail local buckets.",
+        help="Bucket(s) to process. Repeatable. Defaults to all known Gmail local buckets.",
     )
     parser.add_argument(
         "--sample-id",
@@ -142,6 +147,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=20260316, help="Deterministic sampling seed.")
     parser.add_argument("--source-id", type=int, default=2, help="Source id used in parser context only.")
     parser.add_argument("--parallel", type=int, default=12, help="How many samples to process concurrently.")
+    parser.add_argument(
+        "--api-mode",
+        choices=["responses", "chat_completions"],
+        default=((os.getenv("INGESTION_LLM_API_MODE") or "chat_completions").strip().lower() or "chat_completions"),
+        help="LLM API mode to use for this run. Defaults to INGESTION_LLM_API_MODE or chat_completions.",
+    )
     parser.add_argument(
         "--cache-mode",
         choices=["enable", "disable"],
@@ -182,28 +193,45 @@ def main() -> None:
         return
 
     started_at = datetime.now(timezone.utc)
-    run_dir = OUTPUT_ROOT / f"local-email-pool-{started_at.strftime('%Y%m%d-%H%M%S')}"
+    run_dir = OUTPUT_ROOT / f"local-email-pool-{args.api_mode}-{args.cache_mode}-{started_at.strftime('%Y%m%d-%H%M%S-%f')}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
     runs: list[SampleRun] = []
     tasks = [(bucket, row) for bucket in selected_buckets for row in selected_rows[bucket]]
-    if max(int(args.parallel), 1) <= 1:
-        for bucket, row in tasks:
-            runs.append(run_sample(row=row, bucket=bucket, cache_mode=args.cache_mode, source_id=args.source_id))
-    else:
-        with ThreadPoolExecutor(max_workers=max(int(args.parallel), 1), thread_name_prefix="local-email-pool") as pool:
-            future_map = {
-                pool.submit(run_sample, row=row, bucket=bucket, cache_mode=args.cache_mode, source_id=args.source_id): (bucket, row)
-                for bucket, row in tasks
-            }
-            for future in as_completed(future_map):
-                runs.append(future.result())
-        runs.sort(key=lambda item: (selected_buckets.index(item.bucket), item.sample_id))
+    with llm_api_mode_override(args.api_mode):
+        if max(int(args.parallel), 1) <= 1:
+            for bucket, row in tasks:
+                runs.append(
+                    run_sample(
+                        row=row,
+                        bucket=bucket,
+                        cache_mode=args.cache_mode,
+                        source_id=args.source_id,
+                        api_mode=args.api_mode,
+                    )
+                )
+        else:
+            with ThreadPoolExecutor(max_workers=max(int(args.parallel), 1), thread_name_prefix="local-email-pool") as pool:
+                future_map = {
+                    pool.submit(
+                        run_sample,
+                        row=row,
+                        bucket=bucket,
+                        cache_mode=args.cache_mode,
+                        source_id=args.source_id,
+                        api_mode=args.api_mode,
+                    ): (bucket, row)
+                    for bucket, row in tasks
+                }
+                for future in as_completed(future_map):
+                    runs.append(future.result())
+            runs.sort(key=lambda item: (selected_buckets.index(item.bucket), item.sample_id))
 
     report = build_report(
         started_at=started_at,
         source_id=args.source_id,
         seed=args.seed,
+        api_mode=args.api_mode,
         cache_mode=args.cache_mode,
         selected_rows=selected_rows,
         runs=runs,
@@ -301,7 +329,7 @@ def select_rows(
 
 
 
-def run_sample(*, row: dict[str, Any], bucket: str, cache_mode: str, source_id: int) -> SampleRun:
+def run_sample(*, row: dict[str, Any], bucket: str, cache_mode: str, source_id: int, api_mode: str) -> SampleRun:
     stage_usages: list[StageUsage] = []
 
     def observe_invoke(invoke_request, result):  # type: ignore[no-untyped-def]
@@ -313,9 +341,11 @@ def run_sample(*, row: dict[str, Any], bucket: str, cache_mode: str, source_id: 
         stage_usages.append(
             StageUsage(
                 task_name=invoke_request.task_name,
+                api_mode=result.api_mode,
                 latency_ms=result.latency_ms,
                 input_tokens=usage["input_tokens"],
                 cached_input_tokens=usage["cached_input_tokens"],
+                cache_creation_input_tokens=usage["cache_creation_input_tokens"],
                 output_tokens=usage["output_tokens"],
                 total_tokens=usage["total_tokens"],
                 response_id=result.response_id,
@@ -345,7 +375,7 @@ def run_sample(*, row: dict[str, Any], bucket: str, cache_mode: str, source_id: 
                 source_id=source_id,
                 provider="gmail",
                 source_kind="email",
-                request_id=f"local-email-pool-{cache_mode}-{row.get('sample_id')}",
+                request_id=f"local-email-pool-{api_mode}-{cache_mode}-{row.get('sample_id')}",
             ),
         )
     except Exception as exc:  # noqa: BLE001
@@ -369,7 +399,10 @@ def run_sample(*, row: dict[str, Any], bucket: str, cache_mode: str, source_id: 
         actual_directive = directive if isinstance(directive, dict) else None
 
     accuracy = None
-    if bucket == "synthetic_ddlchange":
+    if any(
+        row.get(key) is not None
+        for key in ("expected_mode", "expected_record_type", "expected_semantic_event_draft", "expected_directive")
+    ):
         accuracy = evaluate_synthetic_accuracy(
             expected_mode=row.get("expected_mode"),
             expected_record_type=row.get("expected_record_type"),
@@ -437,8 +470,36 @@ def normalize_usage(raw_usage: dict[str, Any]) -> dict[str, int | None]:
     output_tokens = _int_or_none(raw_usage.get("output_tokens"))
     total_tokens = _int_or_none(raw_usage.get("total_tokens"))
     cached_input_tokens = None
+    cache_creation_input_tokens = None
     input_details = raw_usage.get("input_tokens_details") if isinstance(raw_usage.get("input_tokens_details"), dict) else {}
+    prompt_details = raw_usage.get("prompt_tokens_details") if isinstance(raw_usage.get("prompt_tokens_details"), dict) else {}
     cached_input_tokens = _int_or_none(input_details.get("cached_tokens"))
+    if cached_input_tokens is None:
+        cached_input_tokens = _int_or_none(prompt_details.get("cached_tokens"))
+    cache_creation_input_tokens = _int_or_none(prompt_details.get("cache_creation_input_tokens"))
+    if cache_creation_input_tokens is None:
+        cache_creation = prompt_details.get("cache_creation")
+        if isinstance(cache_creation, dict):
+            cache_creation_input_tokens = _int_or_none(cache_creation.get("ephemeral_5m_input_tokens"))
+    if cached_input_tokens is None or cache_creation_input_tokens is None:
+        x_details = raw_usage.get("x_details")
+        if isinstance(x_details, list):
+            for item in x_details:
+                if not isinstance(item, dict):
+                    continue
+                nested_prompt_details = item.get("prompt_tokens_details")
+                if not isinstance(nested_prompt_details, dict):
+                    continue
+                if cached_input_tokens is None:
+                    cached_input_tokens = _int_or_none(nested_prompt_details.get("cached_tokens"))
+                if cache_creation_input_tokens is None:
+                    cache_creation_input_tokens = _int_or_none(nested_prompt_details.get("cache_creation_input_tokens"))
+                if cache_creation_input_tokens is None:
+                    nested_creation = nested_prompt_details.get("cache_creation")
+                    if isinstance(nested_creation, dict):
+                        cache_creation_input_tokens = _int_or_none(nested_creation.get("ephemeral_5m_input_tokens"))
+                if cached_input_tokens is not None and cache_creation_input_tokens is not None:
+                    break
     if input_tokens is None:
         input_tokens = _int_or_none(raw_usage.get("prompt_tokens"))
     if output_tokens is None:
@@ -446,6 +507,7 @@ def normalize_usage(raw_usage: dict[str, Any]) -> dict[str, int | None]:
     return {
         "input_tokens": input_tokens,
         "cached_input_tokens": cached_input_tokens,
+        "cache_creation_input_tokens": cache_creation_input_tokens,
         "output_tokens": output_tokens,
         "total_tokens": total_tokens,
     }
@@ -515,6 +577,7 @@ def build_report(
     started_at: datetime,
     source_id: int,
     seed: int,
+    api_mode: str,
     cache_mode: str,
     selected_rows: dict[str, list[dict[str, Any]]],
     runs: list[SampleRun],
@@ -524,12 +587,13 @@ def build_report(
     for bucket in sorted(selected_rows):
         subset = [run for run in runs if run.bucket == bucket]
         aggregates[bucket] = asdict(aggregate_metrics(subset))
-        if bucket == "synthetic_ddlchange":
+        if any(run.accuracy is not None for run in subset):
             synthetic_accuracy[bucket] = asdict(aggregate_synthetic_accuracy(subset))
     return {
         "started_at": started_at.isoformat(),
         "source_id": source_id,
         "seed": seed,
+        "api_mode": api_mode,
         "cache_mode": cache_mode,
         "selection": {bucket: [row["sample_id"] for row in rows] for bucket, rows in selected_rows.items()},
         "runs": [asdict(run) for run in runs],
@@ -545,6 +609,7 @@ def render_summary(report: dict[str, Any]) -> str:
         "",
         f"- Started: `{report['started_at']}`",
         f"- Source ID: `{report['source_id']}`",
+        f"- API mode: `{report['api_mode']}`",
         f"- Cache mode: `{report['cache_mode']}`",
         f"- Selection: `{json.dumps(report['selection'], ensure_ascii=False)}`",
         "",
@@ -613,6 +678,21 @@ def fmt_num(value: float | None) -> str:
     if value is None:
         return "-"
     return f"{value:.1f}"
+
+
+@contextmanager
+def llm_api_mode_override(api_mode: str):
+    previous_mode = os.environ.get("INGESTION_LLM_API_MODE")
+    os.environ["INGESTION_LLM_API_MODE"] = api_mode
+    get_settings.cache_clear()
+    try:
+        yield
+    finally:
+        if previous_mode is None:
+            os.environ.pop("INGESTION_LLM_API_MODE", None)
+        else:
+            os.environ["INGESTION_LLM_API_MODE"] = previous_mode
+        get_settings.cache_clear()
 
 
 if __name__ == "__main__":

@@ -7,15 +7,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { SourceObservabilitySections } from "@/components/source-observability-sections";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { SourceSyncProgress } from "@/components/source-sync-progress";
-import { deleteSource, listSources, updateSource } from "@/lib/api/sources";
+import { withBasePath } from "@/lib/demo-mode";
+import { buildSourceObservabilityViews } from "@/lib/source-observability";
+import { deleteSource, getSyncRequest, listSources, updateSource } from "@/lib/api/sources";
 import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime } from "@/lib/presenters";
-import type { SourceRow } from "@/lib/types";
+import type { SourceRow, SyncStatus } from "@/lib/types";
 
-export function CanvasIcsSetupPanel() {
+export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
   const { data, loading, error, refresh } = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), []);
+  const [syncDetail, setSyncDetail] = useState<SyncStatus | null>(null);
   const [canvasIcsUrl, setCanvasIcsUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [busyArchive, setBusyArchive] = useState(false);
@@ -39,6 +43,32 @@ export function CanvasIcsSetupPanel() {
     }
     setCanvasIcsUrl("");
   }, [source]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!source?.active_request_id) {
+      setSyncDetail(null);
+      return;
+    }
+    void getSyncRequest(source.active_request_id)
+      .then((payload) => {
+        if (!cancelled) setSyncDetail(payload);
+      })
+      .catch(() => {
+        if (!cancelled) setSyncDetail(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [source?.active_request_id]);
+
+  const observability = useMemo(() => {
+    if (!source) return null;
+    return buildSourceObservabilityViews([source], {
+      previewMode: basePath === "/preview",
+      syncStatusesBySource: syncDetail ? { [source.source_id]: syncDetail } : {},
+    })[0];
+  }, [basePath, source, syncDetail]);
 
   async function save() {
     const normalizedUrl = canvasIcsUrl.trim();
@@ -97,7 +127,7 @@ export function CanvasIcsSetupPanel() {
             </p>
           </div>
           <Button asChild size="sm" variant="ghost">
-            <Link href="/sources">
+            <Link href={withBasePath(basePath, "/sources")}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Sources
             </Link>
@@ -108,6 +138,19 @@ export function CanvasIcsSetupPanel() {
           <div className={banner.tone === "error" ? "mt-5 rounded-[1.15rem] border border-[#efc4b5] bg-[#fff3ef] px-4 py-3 text-sm text-[#7f3d2a]" : "mt-5 rounded-[1.15rem] border border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] px-4 py-3 text-sm text-[#314051]"}>
             {banner.text}
           </div>
+        ) : null}
+
+        {observability ? (
+          <Card className="mt-6 bg-white/60 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Source posture</p>
+                <h4 className="mt-2 text-lg font-semibold text-ink">Bootstrap vs replay</h4>
+              </div>
+              <Badge tone={source?.is_active ? "approved" : "info"}>{source?.is_active ? "Connected" : "Archived"}</Badge>
+            </div>
+            <SourceObservabilitySections observability={observability} className="mt-4" />
+          </Card>
         ) : null}
 
         <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_0.95fr]">
@@ -167,7 +210,7 @@ export function CanvasIcsSetupPanel() {
               {!source ? (
                 <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/70 px-4 py-3 text-sm text-[#314051]">
                   This workspace does not currently have a Canvas source record. Re-run setup from{" "}
-                  <Link href="/setup" className="font-medium text-cobalt underline-offset-4 hover:underline">
+                  <Link href={withBasePath(basePath, "/setup")} className="font-medium text-cobalt underline-offset-4 hover:underline">
                     setup
                   </Link>{" "}
                   if you need to reconnect the required calendar intake.

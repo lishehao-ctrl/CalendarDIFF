@@ -25,10 +25,11 @@ from app.modules.llm_gateway.runtime_control import (
     get_session_cache_mode_override,
 )
 from app.modules.llm_gateway.json_contract import truncate_user_payload, validate_schema
-from app.modules.llm_gateway.registry import resolve_llm_profile
+from app.modules.llm_gateway.registry import resolve_llm_base_url, resolve_llm_profile
 from app.modules.llm_gateway.retry_policy import LLM_FORMAT_MAX_ATTEMPTS, is_format_retryable_code
 from app.modules.llm_gateway.timeout_policy import with_dynamic_timeout
 from app.modules.llm_gateway.transport_openai_compat import OpenAICompatTransport
+from app.modules.llm_gateway.usage_tracking import record_sync_request_llm_usage
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class LlmGateway:
             profile = resolve_llm_profile(
                 db,
                 source_id=invoke_request.source_id,
+                explicit_api_mode=invoke_request.api_mode_override,
             )
             provider_id = profile.provider_id
             model = profile.model
@@ -146,6 +148,10 @@ class LlmGateway:
             effective_profile = replace(
                 effective_profile,
                 api_mode=invoke_request.api_mode_override,
+                base_url=resolve_llm_base_url(
+                    api_mode=invoke_request.api_mode_override,
+                    fallback_base_url=effective_profile.base_url,
+                ),
             )
         session_cache_mode_override = get_session_cache_mode_override()
         if session_cache_mode_override in {"enable", "disable"}:
@@ -201,6 +207,7 @@ class LlmGateway:
         observer = get_llm_invoke_observer()
         if observer is not None:
             observer(invoke_request, result)
+        record_sync_request_llm_usage(invoke_request=invoke_request, result=result)
         return result
 
 

@@ -21,6 +21,7 @@ import {
 import { LogoutButton } from "@/components/logout-button";
 import { updateCurrentUser } from "@/lib/api/users";
 import { getBrowserTimeZone } from "@/lib/browser-timezone";
+import { withBasePath } from "@/lib/demo-mode";
 import type { OnboardingStage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -35,15 +36,22 @@ type SessionUser = {
 };
 
 const items: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; description: string }> = [
-  { href: "/", label: "Overview", icon: LayoutDashboard, description: "Status, queues, next step" },
-  { href: "/sources", label: "Sources", icon: BellDot, description: "Connect and sync intake" },
-  { href: "/review/changes", label: "Changes", icon: GitCompareArrows, description: "Approve detected updates" },
-  { href: "/review/links", label: "Family", icon: Link2, description: "Manage families and raw types" },
-  { href: "/manual", label: "Manual", icon: Pencil, description: "Add, edit, and delete events" },
-  { href: "/settings", label: "Settings", icon: Settings2, description: "Timezone and notifications" }
+  { href: "/", label: "Overview", icon: LayoutDashboard, description: "Next action" },
+  { href: "/sources", label: "Sources", icon: BellDot, description: "Intake health" },
+  { href: "/review/changes", label: "Changes", icon: GitCompareArrows, description: "Review lane" },
+  { href: "/families", label: "Families", icon: Link2, description: "Naming" },
+  { href: "/manual", label: "Manual", icon: Pencil, description: "Repairs" },
+  { href: "/settings", label: "Settings", icon: Settings2, description: "Preferences" }
 ] as const;
 
 const DESKTOP_NAV_COLLAPSED_KEY = "calendardiff.desktop-nav-collapsed";
+
+function animatedTextBlock(collapsed: boolean, maxWidthClass: string) {
+  return cn(
+    "overflow-hidden transition-[max-width,opacity,transform,margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+    collapsed ? "pointer-events-none max-w-0 translate-x-2 opacity-0" : `${maxWidthClass} translate-x-0 opacity-100`
+  );
+}
 
 function NavContentWithItems({
   pathname,
@@ -52,6 +60,7 @@ function NavContentWithItems({
   onboardingReady,
   collapsed,
   onToggleCollapse,
+  logoutRedirectTo = "/login",
 }: {
   pathname: string;
   items: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; description: string }>;
@@ -59,26 +68,25 @@ function NavContentWithItems({
   onboardingReady: boolean;
   collapsed: boolean;
   onToggleCollapse?: () => void;
+  logoutRedirectTo?: string;
 }) {
   return (
     <>
-      <div className={cn("mb-6", collapsed ? "space-y-3" : "space-y-4")}>
-        <div className={cn("flex items-start", collapsed ? "justify-center" : "justify-between gap-3")}>
+      <div className={cn("relative mb-6", collapsed ? "space-y-3" : "space-y-4")}>
+        <div className={cn("flex items-start", collapsed ? "flex-col items-center gap-3" : "justify-between gap-3")}>
           <div
             className={cn(
-              "rounded-[1.6rem] bg-[linear-gradient(135deg,rgba(31,94,255,0.18),rgba(215,90,45,0.12))]",
-              collapsed ? "flex h-14 w-14 items-center justify-center" : "flex flex-1 items-center gap-3 p-5"
+              "rounded-[1.6rem] bg-[linear-gradient(135deg,rgba(31,94,255,0.18),rgba(215,90,45,0.12))] transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+              collapsed ? "flex h-12 w-12 items-center justify-center rounded-[1.35rem]" : "flex flex-1 items-center gap-3 p-5"
             )}
           >
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ink text-paper">
               <Sparkles className="h-5 w-5" />
             </div>
-            {collapsed ? null : (
-              <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-[#425061]">CalendarDIFF</p>
-                <h1 className="mt-1 text-2xl font-semibold">Deadline Ops Console</h1>
-              </div>
-            )}
+            <div className={animatedTextBlock(collapsed, "max-w-[220px]")}>
+              <p className="text-xs uppercase tracking-[0.24em] text-[#425061]">CalendarDIFF</p>
+              <h1 className="mt-1 text-2xl font-semibold">Deadline Ops Console</h1>
+            </div>
           </div>
           {onToggleCollapse ? (
             <button
@@ -87,21 +95,23 @@ function NavContentWithItems({
               title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
               onClick={onToggleCollapse}
               className={cn(
-                "hidden h-11 w-11 items-center justify-center rounded-2xl border border-line/80 bg-white/75 text-ink transition hover:bg-white xl:flex",
-                collapsed ? "shrink-0" : ""
+                "hidden items-center justify-center border border-line/80 bg-white/90 text-ink shadow-[0_10px_24px_rgba(20,32,44,0.08)] transition-all duration-300 hover:bg-white xl:flex",
+                collapsed
+                  ? "absolute -right-5 top-1 h-9 w-9 rounded-full"
+                  : "h-11 w-11 shrink-0 rounded-2xl"
               )}
             >
               {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
             </button>
           ) : null}
         </div>
-        {!collapsed ? (
+        <div className={animatedTextBlock(collapsed, "max-w-[260px]")}>
           <p className="text-sm leading-6 text-[#314051]">
             {onboardingReady
-              ? "Keep intake, review, and deadline fixes in one calm workspace instead of spreading them across email and calendars."
-              : "Finish setup once, then the review workspace will open with the right sources and term already in place."}
+              ? "Changes first. Sources when intake drifts."
+              : "Finish setup to unlock the workspace."}
           </p>
-        ) : null}
+        </div>
       </div>
       <nav className={cn("flex flex-1 flex-col", collapsed ? "gap-3" : "gap-2")}>
         {items.map(({ href, label, icon: Icon, description }) => {
@@ -113,9 +123,9 @@ function NavContentWithItems({
               aria-label={label}
               title={label}
               className={cn(
-                "transition",
+                "transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
                 collapsed
-                  ? "flex h-14 w-14 items-center justify-center self-center rounded-2xl"
+                  ? "flex h-12 w-12 items-center justify-center self-center rounded-2xl"
                   : "rounded-[1.25rem] px-4 py-4",
                 active ? "bg-ink text-paper shadow-[0_16px_32px_rgba(20,32,44,0.18)]" : "text-[#314051] hover:bg-white/70"
               )}
@@ -130,26 +140,24 @@ function NavContentWithItems({
                 >
                   <Icon className="h-4 w-4" />
                 </div>
-                {collapsed ? null : (
-                  <div>
-                    <div className="text-sm font-medium">{label}</div>
-                    <div className={cn("mt-1 text-xs", active ? "text-white/70" : "text-[#7a8593]")}>{description}</div>
-                  </div>
-                )}
+                <div className={animatedTextBlock(collapsed, "max-w-[170px]")}>
+                  <div className="text-sm font-medium">{label}</div>
+                  <div className={cn("mt-1 text-xs", active ? "text-white/70" : "text-[#7a8593]")}>{description}</div>
+                </div>
               </div>
             </Link>
           );
         })}
       </nav>
       <div className={cn("mt-6", collapsed ? "flex justify-center" : "space-y-3")}>
-        {!collapsed ? (
+        <div className={animatedTextBlock(collapsed, "max-w-[260px]")}>
           <div className="rounded-[1.25rem] border border-line/80 bg-white/55 p-4 text-sm text-[#596270]">
             {onboardingReady
-              ? "Connect Canvas and Gmail from Sources, then work the resulting changes and link fixes from the two review lanes."
-              : "Onboarding is required before the rest of the workspace unlocks."}
+              ? "Changes for time truth. Families for naming truth."
+              : "Setup is still required."}
           </div>
-        ) : null}
-        <LogoutButton collapsed={collapsed} />
+        </div>
+        <LogoutButton collapsed={collapsed} redirectTo={logoutRedirectTo} />
       </div>
     </>
   );
@@ -158,9 +166,11 @@ function NavContentWithItems({
 export function AppShell({
   children,
   sessionUser,
+  basePath = "",
 }: {
   children: React.ReactNode;
   sessionUser: SessionUser;
+  basePath?: string;
 }) {
   const pathname = usePathname();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -168,10 +178,10 @@ export function AppShell({
   const [timezoneSynced, setTimezoneSynced] = useState(false);
   const onboardingReady = sessionUser.onboarding_stage === "ready";
   const navItems = onboardingReady
-    ? items
+    ? items.map((item) => ({ ...item, href: withBasePath(basePath, item.href) }))
     : [
         {
-          href: "/setup",
+          href: withBasePath(basePath, "/setup"),
           label: "Setup",
           icon: Sparkles,
           description: "Connect sources and set the active term",
@@ -228,8 +238,8 @@ export function AppShell({
     <div className="mx-auto flex min-h-screen max-w-[1500px] gap-6 p-4 md:p-6">
       <aside
         className={cn(
-          "hidden shrink-0 flex-col rounded-[1.7rem] border border-line/80 bg-card p-5 shadow-[var(--shadow-panel)] xl:flex",
-          desktopNavCollapsed ? "w-[92px]" : "w-80"
+          "hidden shrink-0 flex-col overflow-visible rounded-[1.7rem] border border-line/80 bg-card p-5 shadow-[var(--shadow-panel)] transition-[width,padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] xl:flex",
+          desktopNavCollapsed ? "w-[76px] p-3" : "w-80"
         )}
       >
         <NavContentWithItems
@@ -238,6 +248,7 @@ export function AppShell({
           onboardingReady={onboardingReady}
           collapsed={desktopNavCollapsed}
           onToggleCollapse={() => setDesktopNavCollapsed((current) => !current)}
+          logoutRedirectTo={basePath ? withBasePath(basePath, "/") : "/login"}
         />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col gap-6">
@@ -247,7 +258,7 @@ export function AppShell({
             <p className="mt-1 text-lg font-semibold">Deadline Ops</p>
           </div>
           <div className="flex items-center gap-2">
-            <LogoutButton />
+            <LogoutButton redirectTo={basePath ? withBasePath(basePath, "/") : "/login"} />
             <Dialog.Root open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
               <Dialog.Trigger asChild>
                 <button aria-label="Open navigation" className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ink text-paper">
@@ -272,6 +283,7 @@ export function AppShell({
                     onNavigate={() => setMobileNavOpen(false)}
                     onboardingReady={onboardingReady}
                     collapsed={false}
+                    logoutRedirectTo={basePath ? withBasePath(basePath, "/") : "/login"}
                   />
                 </Dialog.Content>
               </Dialog.Portal>

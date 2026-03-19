@@ -40,6 +40,108 @@ body {
   background: transparent;
 }
 
+@keyframes surface-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes section-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes attention-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(31, 94, 255, 0.12);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(31, 94, 255, 0);
+  }
+}
+
+@keyframes overlay-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes overlay-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheet-rise-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+
+@keyframes sheet-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes sheet-slide-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+}
+
+@keyframes bar-shimmer {
+  from {
+    transform: translateX(-140%);
+  }
+  to {
+    transform: translateX(220%);
+  }
+}
+
 h1,
 h2,
 h3,
@@ -57,4 +159,79 @@ a {
 
 ::selection {
   background: rgba(31, 94, 255, 0.18);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .animate-surface-enter {
+    animation: surface-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .animate-surface-delay-1 {
+    animation-delay: 60ms;
+  }
+
+  .animate-surface-delay-2 {
+    animation-delay: 120ms;
+  }
+
+  .animate-surface-delay-3 {
+    animation-delay: 180ms;
+  }
+
+  .animate-section-enter {
+    animation: section-enter 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .animate-attention-pulse {
+    animation: attention-pulse 2.8s ease-in-out infinite;
+  }
+
+  .interactive-lift {
+    transition:
+      transform 220ms ease,
+      box-shadow 220ms ease,
+      border-color 220ms ease,
+      background-color 220ms ease;
+  }
+
+  .interactive-lift:hover {
+    transform: translateY(-2px);
+  }
+
+  .sheet-overlay[data-state="open"] {
+    animation: overlay-fade-in 220ms ease both;
+  }
+
+  .sheet-overlay[data-state="closed"] {
+    animation: overlay-fade-out 180ms ease both;
+  }
+
+  .sheet-content--bottom[data-state="open"] {
+    animation: sheet-rise-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .sheet-content--bottom[data-state="closed"] {
+    animation: sheet-rise-out 180ms ease both;
+  }
+
+  .sheet-content--right[data-state="open"] {
+    animation: sheet-slide-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .sheet-content--right[data-state="closed"] {
+    animation: sheet-slide-out 180ms ease both;
+  }
+
+  .progress-sheen {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .progress-sheen::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+    animation: bar-shimmer 1.8s linear infinite;
+  }
 }

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.ingestion import ConnectorResultStatus, IngestResult, IngestUnresolvedRecord
 from app.db.models.input import IngestTriggerType, InputSource, InputSourceConfig, SourceKind, SyncRequest, SyncRequestStatus
-from app.db.models.review import Change, EventEntityLink, EventLinkCandidate, SourceEventObservation
+from app.db.models.review import Change, SourceEventObservation
 from app.db.models.shared import IntegrationOutbox, User
 from app.modules.core_ingest.apply import apply_ingest_result_idempotent
 from tests.support.payload_builders import (
@@ -264,8 +264,6 @@ def test_missing_course_identity_for_gmail_creates_no_link_side_effects(db_sessi
 
     observation_count = db_session.scalar(select(func.count(SourceEventObservation.id)).where(SourceEventObservation.source_id == source.id))
     change_count = db_session.scalar(select(func.count(Change.id)).where(Change.user_id == user.id))
-    candidate_count = db_session.scalar(select(func.count(EventLinkCandidate.id)).where(EventLinkCandidate.user_id == user.id))
-    link_count = db_session.scalar(select(func.count(EventEntityLink.id)).where(EventEntityLink.user_id == user.id))
     outbox_count = db_session.scalar(
         select(func.count(IntegrationOutbox.id)).where(
             IntegrationOutbox.event_type == "review.pending.created",
@@ -274,8 +272,6 @@ def test_missing_course_identity_for_gmail_creates_no_link_side_effects(db_sessi
     )
     assert int(observation_count or 0) == 0
     assert int(change_count or 0) == 0
-    assert int(candidate_count or 0) == 0
-    assert int(link_count or 0) == 0
     assert int(outbox_count or 0) == 0
 
 
@@ -447,6 +443,14 @@ def test_later_valid_ingest_resolves_active_unresolved_record(db_session: Sessio
         start_at=due_at,
         end_at=due_at + timedelta(hours=1),
         course_parse=build_course_parse(dept="CSE", number=140, quarter="SP", year2=26, confidence=0.95, evidence="CSE140"),
+        semantic_parse=build_semantic_parse(
+            raw_type="Homework",
+            event_name="Recoverable Homework",
+            ordinal=1,
+            due_at=due_at,
+            confidence=0.85,
+            evidence="Homework 1",
+        ),
     )
     _seed_result(
         db_session,
@@ -614,13 +618,6 @@ def test_gmail_valid_to_unresolved_retires_active_observation_without_semantic_s
         )
         or 0
     )
-    baseline_candidate_count = int(
-        db_session.scalar(select(func.count(EventLinkCandidate.id)).where(EventLinkCandidate.user_id == user.id)) or 0
-    )
-    baseline_link_count = int(
-        db_session.scalar(select(func.count(EventEntityLink.id)).where(EventEntityLink.user_id == user.id)) or 0
-    )
-
     unresolved_payload = build_gmail_payload(
         message_id="msg-transition-gmail",
         title="Transition Gmail Homework Missing Course",
@@ -670,16 +667,8 @@ def test_gmail_valid_to_unresolved_retires_active_observation_without_semantic_s
         )
         or 0
     )
-    current_candidate_count = int(
-        db_session.scalar(select(func.count(EventLinkCandidate.id)).where(EventLinkCandidate.user_id == user.id)) or 0
-    )
-    current_link_count = int(
-        db_session.scalar(select(func.count(EventEntityLink.id)).where(EventEntityLink.user_id == user.id)) or 0
-    )
     assert current_change_count == baseline_change_count
     assert current_outbox_count == baseline_outbox_count
-    assert current_candidate_count == baseline_candidate_count
-    assert current_link_count == baseline_link_count
 
 
 def test_calendar_removed_record_clears_active_unresolved_entry(db_session: Session) -> None:

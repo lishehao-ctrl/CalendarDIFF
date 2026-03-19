@@ -12,7 +12,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.db.models.input import InputSource
     from app.db.models.notify import DigestSendLog
-    from app.db.models.review import Change, EventEntity, EventEntityLink, EventLinkBlock, EventLinkCandidate
+    from app.db.models.review import Change, EventEntity
 
 
 class OutboxStatus(str, Enum):
@@ -60,19 +60,6 @@ class User(Base):
         foreign_keys="Change.user_id",
     )
     event_entities: Mapped[list["EventEntity"]] = relationship("EventEntity", back_populates="user", cascade="all, delete-orphan")
-    event_entity_links: Mapped[list["EventEntityLink"]] = relationship("EventEntityLink", back_populates="user", cascade="all, delete-orphan")
-    event_link_candidates: Mapped[list["EventLinkCandidate"]] = relationship(
-        "EventLinkCandidate",
-        back_populates="user",
-        cascade="all, delete-orphan",
-        foreign_keys="EventLinkCandidate.user_id",
-    )
-    event_link_blocks: Mapped[list["EventLinkBlock"]] = relationship(
-        "EventLinkBlock",
-        back_populates="user",
-        cascade="all, delete-orphan",
-        foreign_keys="EventLinkBlock.user_id",
-    )
     digest_send_logs: Mapped[list["DigestSendLog"]] = relationship("DigestSendLog", back_populates="user", cascade="all, delete-orphan")
     sessions: Mapped[list["UserSession"]] = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
 

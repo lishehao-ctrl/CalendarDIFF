@@ -16,8 +16,6 @@ from app.db.models.review import (
     ChangeType,
     EventEntity,
     EventEntityLifecycle,
-    EventEntityLink,
-    EventLinkOrigin,
     ReviewStatus,
     SourceEventObservation,
 )
@@ -113,24 +111,52 @@ def _create_family(
     return family
 
 
-def _seed_manual_link(
+def _seed_existing_observation(
     db_session,
     *,
     user_id: int,
-    source_id: int,
+    source: InputSource,
     external_event_id: str,
     entity_uid: str,
+    family_id: int,
+    family_name: str = "Homework",
+    raw_type: str = "Homework",
+    event_name: str | None = None,
+    ordinal: int = 1,
+    course_dept: str = "CSE",
+    course_number: int = 120,
+    course_suffix: str | None = None,
+    course_quarter: str = "WI",
+    course_year2: int = 26,
+    due_date: str = "2026-03-10",
 ) -> None:
     db_session.add(
-        EventEntityLink(
+        SourceEventObservation(
             user_id=user_id,
-            source_id=source_id,
-            source_kind=SourceKind.EMAIL,
+            source_id=source.id,
+            source_kind=source.source_kind,
+            provider=source.provider,
             external_event_id=external_event_id,
             entity_uid=entity_uid,
-            link_origin=EventLinkOrigin.MANUAL_CANDIDATE,
-            link_score=1.0,
-            signals_json={"seed": "term_edgecase_exploration"},
+            event_payload=_runtime_observation_payload(
+                entity_uid=entity_uid,
+                external_event_id=external_event_id,
+                due_date=due_date,
+                course_dept=course_dept,
+                course_number=course_number,
+                course_suffix=course_suffix,
+                course_quarter=course_quarter,
+                course_year2=course_year2,
+                family_id=family_id,
+                family_name=family_name,
+                raw_type=raw_type,
+                event_name=event_name,
+                ordinal=ordinal,
+            ),
+            event_hash=f"hash-{external_event_id}",
+            observed_at=datetime.now(timezone.utc),
+            is_active=True,
+            last_request_id="seed-observation",
         )
     )
 
@@ -369,7 +395,7 @@ def test_gmail_semantic_due_date_controls_term_gate_when_message_timestamp_disag
         secrets_payload={"access_token": "token"},
         cursor_json={"history_id": "300"},
     )
-    _create_family(
+    family = _create_family(
         db_session,
         user=user,
         dept="CSE",
@@ -377,12 +403,13 @@ def test_gmail_semantic_due_date_controls_term_gate_when_message_timestamp_disag
         quarter="WI",
         year2=26,
     )
-    _seed_manual_link(
+    _seed_existing_observation(
         db_session,
         user_id=user.id,
-        source_id=source.id,
+        source=source,
         external_event_id="msg-semantic-in",
         entity_uid="entity-semantic-in",
+        family_id=family.id,
     )
     db_session.commit()
 
@@ -483,7 +510,7 @@ def test_repeated_identical_gmail_replay_does_not_duplicate_pending_change_or_ou
         secrets_payload={"access_token": "token"},
         cursor_json={"history_id": "200"},
     )
-    _create_family(
+    family = _create_family(
         db_session,
         user=user,
         dept="CSE",
@@ -491,12 +518,13 @@ def test_repeated_identical_gmail_replay_does_not_duplicate_pending_change_or_ou
         quarter="WI",
         year2=26,
     )
-    _seed_manual_link(
+    _seed_existing_observation(
         db_session,
         user_id=user.id,
-        source_id=source.id,
+        source=source,
         external_event_id="msg-replay-1",
         entity_uid="entity-replay-1",
+        family_id=family.id,
     )
     db_session.commit()
 

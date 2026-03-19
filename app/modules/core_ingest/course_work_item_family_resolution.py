@@ -3,7 +3,6 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.modules.common.course_identity import course_display_name, normalize_label_token
-from app.modules.core_ingest.source_identity import build_source_scoped_entity_uid as hash_source_scoped_entity_uid
 from app.modules.core_ingest.semantic_event_service import normalize_semantic_parse
 from app.modules.core_ingest.raw_type_matching import RawTypeMatchError, compare_raw_type_against_known_types
 from app.modules.users.course_raw_types_service import (
@@ -235,13 +234,7 @@ def _first_non_empty_text(*values: object) -> str | None:
                 return cleaned[:128]
     return None
 
-
-def build_source_scoped_entity_uid(*, source_kind: str, external_event_id: str) -> str:
-    return hash_source_scoped_entity_uid(source_kind=source_kind, external_event_id=external_event_id)
-
-
 __all__ = [
-    "build_source_scoped_entity_uid",
     "normalize_semantic_parse",
     "resolve_kind_resolution",
 ]

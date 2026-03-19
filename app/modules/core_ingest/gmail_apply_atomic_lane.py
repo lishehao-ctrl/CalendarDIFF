@@ -6,22 +6,14 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource, SourceKind
-from app.db.models.review import EventLinkOrigin
 from app.modules.common.source_term_window import (
     parse_iso_datetime,
     parse_source_term_window,
     semantic_due_date_in_window,
     source_timezone_name,
 )
-from app.modules.core_ingest.course_work_item_family_resolution import build_source_scoped_entity_uid, resolve_kind_resolution
-from app.modules.core_ingest.linking_engine import (
-    find_existing_entity_link,
-    link_gmail_observation_to_entity,
-    resolve_pending_link_candidates_for_pair,
-    upsert_event_entity_link,
-    upsert_link_candidate,
-    with_candidate_evidence,
-)
+from app.modules.core_ingest.entity_resolution import resolve_entity_uid
+from app.modules.core_ingest.course_work_item_family_resolution import resolve_kind_resolution
 from app.modules.core_ingest.observation_store import retire_active_observation_for_unresolved_transition, upsert_observation
 from app.modules.core_ingest.payload_contracts import PayloadContractError, validate_gmail_payload
 from app.modules.core_ingest.payload_extractors import (
@@ -154,69 +146,37 @@ def apply_gmail_atomic_record(
         )
         return set()
 
-    existing_link = find_existing_entity_link(
+    entity_resolution = resolve_entity_uid(
         db=db,
-        user_id=source.user_id,
-        source_id=source.id,
         external_event_id=external_event_id,
+        source=source,
+        course_parse=course_parse,
+        kind_resolution=kind_resolution,
     )
-    should_emit_semantic_proposal = False
-    if existing_link is not None and existing_link.link_origin != EventLinkOrigin.AUTO and isinstance(existing_link.entity_uid, str):
-        entity_uid = existing_link.entity_uid
-        should_emit_semantic_proposal = True
-    else:
-        link_decision = link_gmail_observation_to_entity(
+    if entity_resolution.status != "resolved" or not isinstance(entity_resolution.entity_uid, str):
+        retire_active_observation_for_unresolved_transition(
             db=db,
-            source=source,
+            source_id=source.id,
             external_event_id=external_event_id,
-            course_parse=course_parse,
-            semantic_parse=semantic_draft,
-            time_anchor_confidence=float(link_signals.get("time_anchor_confidence") or 0.0),
-            signals=link_signals,
+            applied_at=applied_at,
+            request_id=request_id,
         )
-        if link_decision.status == "linked" and isinstance(link_decision.entity_uid, str):
-            entity_uid = link_decision.entity_uid
-            upsert_event_entity_link(
-                db=db,
-                source=source,
-                external_event_id=external_event_id,
-                entity_uid=entity_uid,
-                link_origin=EventLinkOrigin.AUTO,
-                link_score=float(link_decision.score),
-                signals_json=link_signals,
-            )
-            should_emit_semantic_proposal = True
-            resolve_pending_link_candidates_for_pair(
-                db=db,
-                user_id=source.user_id,
-                source_id=source.id,
-                external_event_id=external_event_id,
-                note="semantic_link_resolved",
-            )
-        else:
-            rule_reason = str(link_decision.score_breakdown.get("rule_reason") or "")
-            candidate_can_emit_semantic_proposal = (
-                link_decision.status == "candidate"
-                and rule_reason in {"no_rule_match", "missing_raw_type"}
-                and isinstance(kind_resolution.get("family_id"), int)
-            )
-            entity_uid = (
-                existing_link.entity_uid
-                if existing_link is not None and isinstance(existing_link.entity_uid, str)
-                else build_source_scoped_entity_uid(source_kind=SourceKind.EMAIL.value, external_event_id=external_event_id)
-            )
-            should_emit_semantic_proposal = candidate_can_emit_semantic_proposal
-            if link_decision.status == "candidate" and not candidate_can_emit_semantic_proposal:
-                upsert_link_candidate(
-                    db=db,
-                    user_id=source.user_id,
-                    source_id=source.id,
-                    external_event_id=external_event_id,
-                    proposed_entity_uid=link_decision.candidate_entity_uid,
-                    score=float(link_decision.score),
-                    score_breakdown=with_candidate_evidence(score_breakdown=link_decision.score_breakdown, signals=link_signals),
-                    reason_code=str(link_decision.reason_code or "score_band"),
-                )
+        upsert_active_unresolved_record(
+            db=db,
+            user_id=source.user_id,
+            source_id=source.id,
+            source_kind=source.source_kind,
+            provider=source.provider,
+            external_event_id=external_event_id,
+            request_id=request_id,
+            reason_code=str(entity_resolution.reason_code or "insufficient_entity_resolution"),
+            source_facts_json=source_facts,
+            semantic_event_draft_json=semantic_draft,
+            kind_resolution_json=kind_resolution,
+            raw_payload_json=payload,
+        )
+        return set()
+    entity_uid = entity_resolution.entity_uid
 
     semantic_event = build_semantic_event_payload(
         semantic_draft=semantic_draft,
@@ -258,7 +218,7 @@ def apply_gmail_atomic_record(
         external_event_id=external_event_id,
         resolved_at=applied_at,
     )
-    return changed_entity_uids if should_emit_semantic_proposal else set()
+    return changed_entity_uids
 
 
 __all__ = ["apply_gmail_atomic_record"]

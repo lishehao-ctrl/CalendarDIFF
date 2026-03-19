@@ -24,8 +24,6 @@ from app.db.models.review import (
     ChangeType,
     EventEntity,
     EventEntityLifecycle,
-    EventEntityLink,
-    EventLinkOrigin,
     ReviewStatus,
     SourceEventObservation,
 )
@@ -140,28 +138,6 @@ def _seed_sync_request(
         )
     )
     db_session.flush()
-
-
-def _seed_manual_link(
-    db_session,
-    *,
-    user_id: int,
-    source: InputSource,
-    external_event_id: str,
-    entity_uid: str,
-) -> None:
-    db_session.add(
-        EventEntityLink(
-            user_id=user_id,
-            source_id=source.id,
-            source_kind=source.source_kind,
-            external_event_id=external_event_id,
-            entity_uid=entity_uid,
-            link_origin=EventLinkOrigin.MANUAL_CANDIDATE,
-            link_score=1.0,
-            signals_json={"seed": "runtime_state_manual_support_validation"},
-        )
-    )
 
 
 def _seed_ingest_result(db_session, *, source: InputSource, request_id: str, records: list[dict]) -> None:
@@ -517,13 +493,6 @@ def test_automatic_ingest_apply_does_not_set_manual_support(db_session) -> None:
     )
     db_session.add(entity)
     db_session.flush()
-    _seed_manual_link(
-        db_session,
-        user_id=user.id,
-        source=source,
-        external_event_id="msg-auto-manual-1",
-        entity_uid=entity.entity_uid,
-    )
     db_session.commit()
 
     record = {

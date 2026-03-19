@@ -22,10 +22,6 @@ This document describes module ownership inside the monolith.
 ## Review state
 - `review_changes`
   - review decisions, viewed markers, canonical edits, label learning
-- `review_links`
-  - `event_link_candidates`
-  - `event_entity_links`
-  - `event_link_blocks`
 - `review_taxonomy`
   - course family / raw-type mapping tables
 

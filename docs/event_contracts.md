@@ -6,13 +6,11 @@ CalendarDIFF now treats event flow as module boundaries inside one backend proce
 - `SourceEventObservation`: normalized source observations captured from Gmail / ICS / other sources
 - `Change`: reviewable proposed or manual semantic changes
 - `EventEntity`: approved entity state used by product surfaces
-- `EventLinkCandidate`: pending link review candidates
-- `EventEntityLink`: approved source-to-entity links
 - `IntegrationOutbox`: notification/audit events emitted after decisions
 
 ## Flow semantics
 1. Source ingestion writes observations and parsed payloads.
-2. Apply logic converts those payloads into pending `Change` rows and link candidates.
+2. Apply logic deterministically resolves `entity_uid` and converts payloads into pending `Change` rows.
 3. Review decisions or canonical edits update `EventEntity` state.
 4. Notification and audit code consume approved state / outbox rows.
 

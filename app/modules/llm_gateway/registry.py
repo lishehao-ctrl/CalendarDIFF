@@ -7,7 +7,7 @@ from typing import Iterator
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.modules.llm_gateway.contracts import LlmGatewayError, ResolvedLlmProfile
+from app.modules.llm_gateway.contracts import LlmApiModeLiteral, LlmGatewayError, ResolvedLlmProfile
 
 DEFAULT_PROVIDER_ID = "env-default"
 DEFAULT_VENDOR = "openai-compatible"
@@ -73,16 +73,17 @@ def resolve_llm_profile(
     *,
     source_id: int | None,
     explicit_provider_id: str | None = None,
+    explicit_api_mode: LlmApiModeLiteral | None = None,
 ) -> ResolvedLlmProfile:
     del db
     del source_id
     del explicit_provider_id
 
     settings = get_settings()
-    base_url = (settings.ingestion_llm_base_url or "").strip()
     api_key = (settings.ingestion_llm_api_key or "").strip()
     model = (settings.ingestion_llm_model or "").strip()
-    api_mode = (settings.ingestion_llm_api_mode or "").strip().lower() or DEFAULT_API_MODE
+    api_mode = explicit_api_mode or (settings.ingestion_llm_api_mode or "").strip().lower() or DEFAULT_API_MODE
+    base_url = resolve_llm_base_url(api_mode=api_mode, settings=settings)
     extra_body = _parse_extra_body(settings.ingestion_llm_extra_body_json)
     timeout_seconds = (
         _normalize_timeout_seconds(settings.ingestion_llm_timeout_seconds)
@@ -149,6 +150,25 @@ def resolve_llm_profile(
         max_input_chars=max_input_chars,
         extra_body=extra_body,
     )
+
+
+def resolve_llm_base_url(
+    *,
+    api_mode: LlmApiModeLiteral,
+    settings=None,
+    fallback_base_url: str | None = None,
+) -> str:
+    current_settings = settings or get_settings()
+    if api_mode == "responses":
+        mode_specific_base_url = current_settings.ingestion_llm_responses_base_url
+    else:
+        mode_specific_base_url = current_settings.ingestion_llm_chat_base_url
+
+    for candidate in (mode_specific_base_url, fallback_base_url, current_settings.ingestion_llm_base_url):
+        cleaned = (candidate or "").strip()
+        if cleaned:
+            return cleaned
+    return ""
 
 
 def _parse_extra_body(raw_value: str | None) -> dict:
