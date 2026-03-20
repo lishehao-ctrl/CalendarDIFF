@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from app.db.models.runtime import CalendarComponentParseStatus, CalendarComponentParseTask, IngestJob, IngestJobStatus
+from app.db.models.runtime import CalendarComponentParseStatus, CalendarComponentParseTask, IngestJob, IngestJobStatus, IngestUnresolvedRecord
 from app.db.models.input import IngestTriggerType, InputSource, SyncRequest, SyncRequestStatus
+from app.db.models.review import Change, ChangeIntakePhase, ChangeOrigin, ChangeReviewBucket, ChangeSourceRef, ChangeType, IngestApplyLog, ReviewStatus
 from app.db.models.shared import User
 from app.modules.sources.schemas import InputSourceCreateRequest
 from app.modules.sources.sources_service import create_input_source
@@ -50,6 +51,20 @@ def _seed_sync_request(db_session, *, source: InputSource, request_id: str, stat
     db_session.commit()
     db_session.refresh(row)
     return row
+
+
+def _attach_change_source_ref(db_session, *, change: Change, source: InputSource, external_event_id: str) -> None:
+    db_session.add(
+        ChangeSourceRef(
+            change_id=change.id,
+            position=0,
+            source_id=source.id,
+            source_kind=source.source_kind,
+            provider=source.provider,
+            external_event_id=external_event_id,
+            confidence=0.95,
+        )
+    )
 
 
 def _seed_job(db_session, *, source: InputSource, request_id: str, payload_json: dict) -> IngestJob:
@@ -228,6 +243,92 @@ def test_source_observability_exposes_stale_running_operator_guidance(input_clie
     assert payload["operator_guidance"]["severity"] == "blocking"
 
 
+def test_source_observability_exposes_bootstrap_summary(input_client, db_session, authenticate_client) -> None:
+    user = _create_user(db_session, email="guidance-bootstrap-summary@example.com")
+    source = _create_source(db_session, user=user, provider="ics")
+    sync_request = _seed_sync_request(db_session, source=source, request_id="bootstrap-summary-req", status=SyncRequestStatus.SUCCEEDED)
+    db_session.add(
+        IngestApplyLog(
+            request_id=sync_request.request_id,
+            applied_at=datetime.now(timezone.utc),
+            status="applied",
+            error_message=None,
+        )
+    )
+    baseline_change = Change(
+        user_id=user.id,
+        entity_uid="ent-bootstrap-1",
+        change_origin=ChangeOrigin.INGEST_PROPOSAL,
+        change_type=ChangeType.CREATED,
+        intake_phase=ChangeIntakePhase.BASELINE,
+        review_bucket=ChangeReviewBucket.INITIAL_REVIEW,
+        detected_at=datetime.now(timezone.utc),
+        after_semantic_json={
+            "uid": "ent-bootstrap-1",
+            "course_dept": "CSE",
+            "course_number": 160,
+            "family_name": "Homework",
+            "event_name": "Homework 1",
+            "ordinal": 1,
+            "due_date": "2026-03-29",
+            "due_time": "23:59:00",
+            "time_precision": "datetime",
+        },
+        review_status=ReviewStatus.PENDING,
+    )
+    db_session.add(baseline_change)
+    db_session.flush()
+    _attach_change_source_ref(db_session, change=baseline_change, source=source, external_event_id="evt-bootstrap-1")
+    db_session.add(
+        IngestUnresolvedRecord(
+            user_id=user.id,
+            source_id=source.id,
+            source_kind=source.source_kind,
+            provider=source.provider,
+            external_event_id="evt-bootstrap-ignored",
+            request_id=sync_request.request_id,
+            reason_code="product_scope_excluded",
+            source_facts_json={},
+            semantic_event_draft_json=None,
+            kind_resolution_json=None,
+            raw_payload_json=None,
+            is_active=True,
+            resolved_at=None,
+        )
+    )
+    db_session.add(
+        IngestUnresolvedRecord(
+            user_id=user.id,
+            source_id=source.id,
+            source_kind=source.source_kind,
+            provider=source.provider,
+            external_event_id="evt-bootstrap-conflict",
+            request_id=sync_request.request_id,
+            reason_code="ambiguous_entity_resolution",
+            source_facts_json={},
+            semantic_event_draft_json=None,
+            kind_resolution_json=None,
+            raw_payload_json=None,
+            is_active=True,
+            resolved_at=None,
+        )
+    )
+    db_session.commit()
+
+    authenticate_client(input_client, user=user)
+    response = input_client.get(f"/sources/{source.id}/observability", headers={"X-API-Key": "test-api-key"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["bootstrap_summary"] == {
+        "imported_count": 1,
+        "review_required_count": 1,
+        "ignored_count": 1,
+        "conflict_count": 1,
+        "state": "review_required",
+    }
+
+
 def test_sync_request_status_exposes_llm_usage_summary_and_elapsed_ms(input_client, db_session, authenticate_client) -> None:
     user = _create_user(db_session, email="progress-usage@example.com")
     source = _create_source(db_session, user=user, provider="gmail")
@@ -307,6 +408,14 @@ def test_source_observability_splits_bootstrap_and_latest_replay(input_client, d
     bootstrap.trigger_type = IngestTriggerType.SCHEDULER
     bootstrap.created_at = datetime(2026, 3, 18, 0, 0, 0, tzinfo=timezone.utc)
     bootstrap.updated_at = datetime(2026, 3, 18, 0, 2, 0, tzinfo=timezone.utc)
+    db_session.add(
+        IngestApplyLog(
+            request_id=bootstrap.request_id,
+            applied_at=datetime(2026, 3, 18, 0, 2, 0, tzinfo=timezone.utc),
+            status="applied",
+            error_message=None,
+        )
+    )
     bootstrap.metadata_json = {
         "kind": "scheduler",
         "llm_usage_summary": {
@@ -391,6 +500,14 @@ def test_source_sync_history_lists_bootstrap_and_replay_newest_first(input_clien
     bootstrap.trigger_type = IngestTriggerType.SCHEDULER
     bootstrap.created_at = datetime(2026, 3, 18, 0, 0, 0, tzinfo=timezone.utc)
     bootstrap.updated_at = datetime(2026, 3, 18, 0, 2, 0, tzinfo=timezone.utc)
+    db_session.add(
+        IngestApplyLog(
+            request_id=bootstrap.request_id,
+            applied_at=datetime(2026, 3, 18, 0, 2, 0, tzinfo=timezone.utc),
+            status="applied",
+            error_message=None,
+        )
+    )
 
     replay_a = _seed_sync_request(db_session, source=source, request_id="history-replay-a", status=SyncRequestStatus.SUCCEEDED)
     replay_a.trigger_type = IngestTriggerType.MANUAL

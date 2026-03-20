@@ -112,7 +112,25 @@ def test_feed_read_source_id_via_review_pool(client, db_session, auth_headers) -
     pending_rows = pending_response.json()
     assert len(pending_rows) == 1
     assert pending_rows[0]["primary_source"]["source_id"] == source.id
+    assert pending_rows[0]["intake_phase"] == "baseline"
+    assert pending_rows[0]["review_bucket"] == "initial_review"
     change_id = pending_rows[0]["id"]
+
+    initial_review_response = client.get(
+        "/changes?review_status=pending&review_bucket=initial_review&intake_phase=baseline",
+        headers=headers,
+    )
+    assert initial_review_response.status_code == 200
+    initial_review_rows = initial_review_response.json()
+    assert len(initial_review_rows) == 1
+    assert initial_review_rows[0]["id"] == change_id
+
+    replay_review_response = client.get(
+        "/changes?review_status=pending&review_bucket=changes",
+        headers=headers,
+    )
+    assert replay_review_response.status_code == 200
+    assert replay_review_response.json() == []
 
     decision_response = client.post(
         f"/changes/{change_id}/decisions",

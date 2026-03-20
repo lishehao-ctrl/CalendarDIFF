@@ -11,8 +11,10 @@ import { SourceSyncProgress } from "@/components/source-sync-progress";
 import { startOnboardingGmailOAuth } from "@/lib/api/onboarding";
 import { createOAuthSession, createSyncRequest, deleteSource as deleteSourceRequest, getSyncRequest, listSources, updateSource } from "@/lib/api/sources";
 import { withBasePath } from "@/lib/demo-mode";
+import { deriveSourceImportState } from "@/lib/import-review";
 import { buildSourceObservabilityViews } from "@/lib/source-observability";
 import { useApiResource } from "@/lib/use-api-resource";
+import { useSourceObservabilityMap } from "@/lib/use-source-observability-map";
 import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
 import type { SourceObservabilityView, SourceRow, SyncStatus } from "@/lib/types";
 
@@ -129,6 +131,7 @@ function ConnectSourceCard({
 function ConnectedSourceCard({
   source,
   observability,
+  importState,
   syncLabel,
   onSync,
   onDelete,
@@ -137,6 +140,7 @@ function ConnectedSourceCard({
 }: {
   source: SourceRow;
   observability: SourceObservabilityView;
+  importState: ReturnType<typeof deriveSourceImportState>;
   syncLabel?: string;
   onSync: (sourceId: number) => void;
   onDelete: (sourceId: number, provider: string) => void;
@@ -145,7 +149,37 @@ function ConnectedSourceCard({
 }) {
   const needsAttention = sourceNeedsAttention(source);
   const detailHref = withBasePath(basePath, `/sources/${source.source_id}`);
-  const insight = buildSourceInsight(source);
+  const primaryAction =
+    importState.phase === "initial_review_ready" ? (
+      <Button asChild className="w-full justify-center">
+        <Link href={withBasePath(basePath, "/initial-review")}>Open Initial Review</Link>
+      </Button>
+    ) : (
+      <Button onClick={() => onSync(source.source_id)} className="w-full justify-center">
+        <RefreshCw className="mr-2 h-4 w-4" />
+        Sync now
+      </Button>
+    );
+  const remediationAction =
+    source.provider === "gmail" && needsAttention ? (
+      <Button asChild variant="secondary" className="w-full justify-center">
+        <Link href={sourceSetupHref(basePath, source.provider)}>Reconnect Gmail</Link>
+      </Button>
+    ) : source.provider === "ics" && needsAttention ? (
+      <Button asChild variant="secondary" className="w-full justify-center">
+        <Link href={sourceSetupHref(basePath, source.provider)}>Update Canvas ICS</Link>
+      </Button>
+    ) : (
+      <Button asChild variant="ghost" className="w-full justify-center">
+        <Link href={detailHref}>Open details</Link>
+      </Button>
+    );
+  const insight =
+    importState.phase === "baseline_running"
+      ? { title: "Baseline import in progress", detail: "The first import is still building this source baseline." }
+      : importState.phase === "initial_review_ready"
+        ? { title: "Initial Review is next", detail: "The first import finished. Review the baseline before treating later changes as replay." }
+        : buildSourceInsight(source);
 
   return (
     <Card className={needsAttention ? "animate-surface-enter interactive-lift border-[rgba(215,90,45,0.28)] bg-white p-5" : "animate-surface-enter interactive-lift bg-white p-5"}>
@@ -157,27 +191,26 @@ function ConnectedSourceCard({
                 <h3 className="text-base font-semibold text-ink">{formatSourceTitle(source)}</h3>
                 <Badge tone={sourceHealthTone(source)}>{needsAttention ? "Needs attention" : "Healthy"}</Badge>
                 <Badge tone={syncTone(syncLabel)}>{formatStatusLabel(syncLabel, "Idle")}</Badge>
+                {importState.phase === "baseline_running" ? <Badge tone="pending">Baseline import</Badge> : null}
+                {importState.phase === "initial_review_ready" ? <Badge tone="pending">Initial Review</Badge> : null}
               </div>
               <p className="mt-2 text-sm text-[#596270]">{formatSourceSubtitle(source)}</p>
             </div>
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <Button onClick={() => onSync(source.source_id)}>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Sync now
-              </Button>
-              <Button asChild variant="ghost">
-                <Link href={detailHref}>Open details</Link>
-              </Button>
+            <div className="grid w-full shrink-0 gap-2 sm:grid-cols-2 lg:w-[340px]">
+              {primaryAction}
+              {remediationAction}
               {source.provider === "gmail" && needsAttention ? (
-                <Button asChild variant="secondary">
-                  <Link href={sourceSetupHref(basePath, source.provider)}>Reconnect Gmail</Link>
+                <Button asChild variant="ghost" className="w-full justify-center">
+                  <Link href={detailHref}>Open details</Link>
                 </Button>
               ) : source.provider === "ics" && needsAttention ? (
-                <Button asChild variant="secondary">
-                  <Link href={sourceSetupHref(basePath, source.provider)}>Update Canvas ICS</Link>
+                <Button asChild variant="ghost" className="w-full justify-center">
+                  <Link href={detailHref}>Open details</Link>
                 </Button>
-              ) : null}
-              <Button variant="ghost" onClick={() => onDelete(source.source_id, source.provider)} disabled={busyDelete === source.source_id}>
+              ) : (
+                <div className="hidden sm:block" />
+              )}
+              <Button variant="ghost" className="w-full justify-center" onClick={() => onDelete(source.source_id, source.provider)} disabled={busyDelete === source.source_id}>
                 <Trash2 className="mr-2 h-4 w-4" />
                 {busyDelete === source.source_id ? "Archiving..." : "Archive"}
               </Button>
@@ -188,11 +221,34 @@ function ConnectedSourceCard({
             <span className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5 text-sm text-[#314051]">
               Updated {formatDateTime(source.last_polled_at, "Never")}
             </span>
+            {importState.importedCount > 0 ? (
+              <span className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5 text-sm text-[#314051]">
+                Imported {importState.importedCount}
+              </span>
+            ) : null}
+            {importState.reviewRequiredCount > 0 ? (
+              <span className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5 text-sm text-[#314051]">
+                Needs review {importState.reviewRequiredCount}
+              </span>
+            ) : null}
+            {typeof importState.bootstrapRecordsCount === "number" ? (
+              <span className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5 text-sm text-[#314051]">
+                Baseline scanned {importState.bootstrapRecordsCount}
+              </span>
+            ) : null}
           </div>
 
           <div className="rounded-[1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
             <p className="font-medium text-ink">{insight.title}</p>
             {insight.detail ? <p className="mt-2 text-[#596270]">{insight.detail}</p> : null}
+            {importState.phase !== "replay_review" ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <p>Imported: {importState.importedCount}</p>
+                <p>Needs review: {importState.reviewRequiredCount}</p>
+                <p>Ignored: {importState.ignoredCount}</p>
+                <p>Conflicts: {importState.conflictCount}</p>
+              </div>
+            ) : null}
           </div>
 
           {source.sync_progress ? <SourceSyncProgress className="mt-1" progress={source.sync_progress} /> : null}
@@ -244,7 +300,35 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
   const [banner, setBanner] = useState<Banner>(null);
   const oauthQueryHandled = useRef(false);
 
-  const activeSources = useMemo(() => (active.data || []).filter((source) => source.is_active), [active.data]);
+  const activeSources = useMemo(
+    () =>
+      ((active.data || []).filter((source) => source.is_active)).map((source) => {
+        const detail = syncDetails[source.source_id];
+        if (!detail) {
+          return source;
+        }
+        const normalizedStatus = detail.status.toLowerCase();
+        const syncStateValue =
+          normalizedStatus === "running"
+            ? "running"
+            : normalizedStatus === "queued" || normalizedStatus === "pending"
+              ? "queued"
+              : source.sync_state;
+        return {
+          ...source,
+          sync_state: syncStateValue,
+          runtime_state:
+            syncStateValue === "running" || syncStateValue === "queued"
+              ? syncStateValue
+              : source.runtime_state,
+          sync_progress: detail.progress || source.sync_progress,
+          last_error_code: detail.error_code ?? source.last_error_code,
+          last_error_message:
+            detail.error_message ?? detail.connector_result?.error_message ?? source.last_error_message,
+        };
+      }),
+    [active.data, syncDetails],
+  );
   const archivedSources = useMemo(() => (archived.data || []).filter((source) => !source.is_active), [archived.data]);
   const activeProviders = useMemo(() => new Set(activeSources.map((source) => source.provider)), [activeSources]);
   const attentionSources = useMemo(() => activeSources.filter((source) => sourceNeedsAttention(source)), [activeSources]);
@@ -253,30 +337,23 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
     () => buildSourceObservabilityViews(activeSources, { previewMode: basePath === "/preview", syncStatusesBySource: syncDetails }),
     [activeSources, basePath, syncDetails],
   );
+  const observabilityMap = useSourceObservabilityMap(activeSources);
   const observabilityBySourceId = useMemo(() => Object.fromEntries(observabilityViews.map((view) => [view.source_id, view])), [observabilityViews]);
-  const shouldPollProgress = useMemo(
-    () =>
-      activeSources.some(
-        (source) =>
-          source.runtime_state === "running" ||
-          source.runtime_state === "queued" ||
-          source.runtime_state === "rebind_pending" ||
-          Boolean(source.sync_progress),
-      ),
-    [activeSources],
+  const importStates = useMemo(
+    () => Object.fromEntries(activeSources.map((source) => [source.source_id, deriveSourceImportState(source, observabilityMap.data[source.source_id])])),
+    [activeSources, observabilityMap.data],
   );
-
-  const refreshAll = useCallback(async () => {
-    await Promise.all([active.refresh(), archived.refresh()]);
+  const initialReviewReady = useMemo(
+    () => Object.values(importStates).filter((state) => state.phase === "initial_review_ready"),
+    [importStates],
+  );
+  const baselineRunning = useMemo(
+    () => Object.values(importStates).filter((state) => state.phase === "baseline_running"),
+    [importStates],
+  );
+  const refreshAll = useCallback(async (options?: { background?: boolean }) => {
+    await Promise.all([active.refresh(options), archived.refresh(options)]);
   }, [active, archived]);
-
-  useEffect(() => {
-    if (!shouldPollProgress) return;
-    const intervalId = window.setInterval(() => {
-      void refreshAll();
-    }, 2000);
-    return () => window.clearInterval(intervalId);
-  }, [refreshAll, shouldPollProgress]);
 
   useEffect(() => {
     let cancelled = false;
@@ -289,28 +366,47 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
       return;
     }
 
-    void Promise.all(
-      requestPairs.map(async ({ sourceId, requestId }) => ({
-        sourceId,
-        payload: await getSyncRequest(requestId),
-      })),
-    )
-      .then((rows) => {
+    async function poll() {
+      try {
+        const rows = await Promise.all(
+          requestPairs.map(async ({ sourceId, requestId }) => ({
+            sourceId,
+            payload: await getSyncRequest(requestId),
+          })),
+        );
         if (cancelled) return;
         const next: Record<number, SyncStatus | undefined> = {};
+        const nextSyncState: Record<number, string> = {};
+        let sawTerminal = false;
         for (const row of rows) {
           next[row.sourceId] = row.payload;
+          nextSyncState[row.sourceId] = row.payload.status.toLowerCase();
+          if (row.payload.status === "SUCCEEDED" || row.payload.status === "FAILED") {
+            sawTerminal = true;
+          }
         }
         setSyncDetails(next);
-      })
-      .catch(() => {
-        if (!cancelled) setSyncDetails({});
-      });
+        setSyncState((prev) => ({ ...prev, ...nextSyncState }));
+        if (sawTerminal) {
+          void refreshAll({ background: true });
+        }
+      } catch {
+        if (!cancelled) {
+          return;
+        }
+      }
+    }
+
+    void poll();
+    const intervalId = window.setInterval(() => {
+      void poll();
+    }, 2000);
 
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
     };
-  }, [activeSources]);
+  }, [activeSources, refreshAll]);
 
   const pollSyncRequest = useCallback(
     async (sourceId: number, requestId: string, options?: { successMessage?: string; failurePrefix?: string }) => {
@@ -330,7 +426,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
-      await refreshAll();
+      await refreshAll({ background: true });
     },
     [refreshAll],
   );
@@ -359,7 +455,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
     }
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 
-    void refreshAll();
+    void refreshAll({ background: true });
     if (status === "success" && requestId && sourceId) {
       void pollSyncRequest(sourceId, requestId, {
         successMessage: "Gmail initial sync succeeded.",
@@ -398,7 +494,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
         tone: "info",
         text: provider === "gmail" ? "Mailbox disconnected and archived." : provider === "ics" ? "Canvas ICS link archived." : "Source archived.",
       });
-      await refreshAll();
+      await refreshAll({ background: true });
     } catch (err) {
       setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to archive source" });
     } finally {
@@ -412,7 +508,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
     try {
       await updateSource(sourceId, { is_active: true });
       setBanner({ tone: "info", text: `Source #${sourceId} reactivated.` });
-      await refreshAll();
+      await refreshAll({ background: true });
     } catch (err) {
       setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to reactivate source" });
     } finally {
@@ -433,9 +529,10 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
     }
   }
 
-  if (active.loading || archived.loading) return <LoadingState label="sources" />;
+  if ((active.loading && !active.data) || (archived.loading && !archived.data)) return <LoadingState label="sources" />;
   if (active.error) return <ErrorState message={active.error} />;
   if (archived.error) return <ErrorState message={archived.error} />;
+  if (observabilityMap.error) return <ErrorState message={observabilityMap.error} />;
 
   return (
     <div className="space-y-5">
@@ -460,6 +557,31 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
       {banner ? (
         <Card className={banner.tone === "error" ? "border-[#efc4b5] bg-[#fff3ef] p-4" : "border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] p-4"}>
           <p className="text-sm text-[#314051]">{banner.text}</p>
+        </Card>
+      ) : null}
+
+      {initialReviewReady.length > 0 ? (
+        <Card className="animate-surface-enter border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Initial Review</p>
+              <p className="mt-1 text-sm font-medium text-ink">
+                {initialReviewReady.length === 1 ? "A source finished its first baseline import." : `${initialReviewReady.length} sources finished their first baseline import.`}
+              </p>
+            </div>
+            <Button asChild size="sm">
+              <Link href={withBasePath(basePath, "/initial-review")}>Open Initial Review</Link>
+            </Button>
+          </div>
+        </Card>
+      ) : null}
+
+      {initialReviewReady.length === 0 && baselineRunning.length > 0 ? (
+        <Card className="animate-surface-enter border border-line/80 bg-white/80 p-4">
+          <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Baseline import</p>
+          <p className="mt-1 text-sm font-medium text-ink">
+            {baselineRunning.length === 1 ? "A source is still building its first baseline." : `${baselineRunning.length} sources are still building their first baseline.`}
+          </p>
         </Card>
       ) : null}
 
@@ -490,6 +612,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
                           key={source.source_id}
                           source={source}
                           observability={observabilityBySourceId[source.source_id]}
+                          importState={importStates[source.source_id]}
                           syncLabel={
                             syncState[source.source_id] ||
                             (source.sync_state !== "idle" ? source.sync_state : undefined) ||
@@ -515,6 +638,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
                           key={source.source_id}
                           source={source}
                           observability={observabilityBySourceId[source.source_id]}
+                          importState={importStates[source.source_id]}
                           syncLabel={
                             syncState[source.source_id] ||
                             (source.sync_state !== "idle" ? source.sync_state : undefined) ||

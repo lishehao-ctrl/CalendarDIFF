@@ -1,29 +1,46 @@
 "use client";
 
-import { DependencyList, useEffect, useState } from "react";
+import { DependencyList, useCallback, useEffect, useRef, useState } from "react";
 
 export function useApiResource<T>(loader: () => Promise<T>, deps: DependencyList, initialData: T | null = null) {
   const [data, setData] = useState<T | null>(initialData);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loaderRef = useRef(loader);
+  const dataRef = useRef<T | null>(initialData);
 
-  async function refresh() {
-    setLoading(true);
-    setError(null);
+  useEffect(() => {
+    loaderRef.current = loader;
+  }, [loader]);
+
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+
+  const refresh = useCallback(async (options?: { background?: boolean }) => {
+    const background = Boolean(options?.background && dataRef.current !== null);
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
-      const next = await loader();
+      const next = await loaderRef.current();
       setData(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      if (!background) {
+        setError(err instanceof Error ? err.message : "Unknown error");
+      }
     } finally {
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
     }
-  }
+  }, []);
 
   useEffect(() => {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [refresh, ...deps]);
 
   return { data, loading, error, refresh, setData };
 }

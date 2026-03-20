@@ -72,6 +72,8 @@ def get_changes_summary_route(
 @router.get("/changes", response_model=list[ChangeItemResponse], tags=["changes"])
 def get_changes(
     review_status: str = Query(default="pending"),
+    review_bucket: str = Query(default="all"),
+    intake_phase: str = Query(default="all"),
     source_id: int | None = Query(default=None, ge=1),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -84,11 +86,25 @@ def get_changes(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="review_status must be one of: pending, approved, rejected, all",
         )
+    normalized_bucket = review_bucket.strip().lower() if isinstance(review_bucket, str) else "all"
+    if normalized_bucket not in {"initial_review", "changes", "all"}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="review_bucket must be one of: initial_review, changes, all",
+        )
+    normalized_intake_phase = intake_phase.strip().lower() if isinstance(intake_phase, str) else "all"
+    if normalized_intake_phase not in {"baseline", "replay", "all"}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="intake_phase must be one of: baseline, replay, all",
+        )
 
     rows = list_changes(
         db,
         user_id=user.id,
         review_status=normalized_status,
+        review_bucket=normalized_bucket,
+        intake_phase=normalized_intake_phase,
         source_id=source_id,
         limit=limit,
         offset=offset,

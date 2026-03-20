@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource
-from app.db.models.review import Change, ReviewStatus
+from app.db.models.review import Change, ChangeReviewBucket, ReviewStatus
 from app.db.models.review import EventEntity, EventEntityLifecycle
 from app.db.models.shared import (
     CourseRawTypeSuggestion,
@@ -35,6 +35,17 @@ def get_changes_workbench_summary(
             select(func.count(Change.id)).where(
                 Change.user_id == user_id,
                 Change.review_status == ReviewStatus.PENDING,
+                Change.review_bucket == ChangeReviewBucket.CHANGES,
+            )
+        )
+        or 0
+    )
+    baseline_review_pending = int(
+        db.scalar(
+            select(func.count(Change.id)).where(
+                Change.user_id == user_id,
+                Change.review_status == ReviewStatus.PENDING,
+                Change.review_bucket == ChangeReviewBucket.INITIAL_REVIEW,
             )
         )
         or 0
@@ -71,12 +82,14 @@ def get_changes_workbench_summary(
     )
     sources_summary = _build_sources_workbench_summary(db=db, user_id=user_id)
     recommended_lane, recommended_lane_reason_code, recommended_action_reason = _recommend_workbench_lane(
+        baseline_review_pending=baseline_review_pending,
         changes_pending=changes_pending,
         families_attention_count=families_attention_count,
         sources_summary=sources_summary,
     )
     return {
         "changes_pending": changes_pending,
+        "baseline_review_pending": baseline_review_pending,
         "recommended_lane": recommended_lane,
         "recommended_lane_reason_code": recommended_lane_reason_code,
         "recommended_action_reason": recommended_action_reason,
@@ -194,6 +207,7 @@ def _build_source_guidance_payload(db: Session, *, source: InputSource) -> dict:
 
 def _recommend_workbench_lane(
     *,
+    baseline_review_pending: int,
     changes_pending: int,
     families_attention_count: int,
     sources_summary: dict,
@@ -203,6 +217,12 @@ def _recommend_workbench_lane(
             "sources",
             "runtime_attention_required",
             "Source runtime needs attention before relying on lane state to be current.",
+        )
+    if baseline_review_pending > 0:
+        return (
+            "initial_review",
+            "baseline_review_pending",
+            f"{baseline_review_pending} baseline import items still need initial review before daily replay becomes the default workflow.",
         )
     if changes_pending > 0:
         return (

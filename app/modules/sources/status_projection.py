@@ -5,9 +5,22 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models.runtime import CalendarComponentParseStatus, CalendarComponentParseTask, IngestJob, IngestResult
+from app.db.models.runtime import (
+    CalendarComponentParseStatus,
+    CalendarComponentParseTask,
+    IngestJob,
+    IngestResult,
+    IngestUnresolvedRecord,
+)
 from app.db.models.input import IngestTriggerType, SyncRequest, SyncRequestStage, SyncRequestStatus
-from app.db.models.review import IngestApplyLog
+from app.db.models.review import (
+    Change,
+    ChangeIntakePhase,
+    ChangeReviewBucket,
+    ChangeSourceRef,
+    IngestApplyLog,
+    ReviewStatus,
+)
 from app.modules.llm_gateway.usage_tracking import LLM_USAGE_SUMMARY_KEY, present_llm_usage_summary
 
 INFLIGHT_SYNC_STATUSES = (SyncRequestStatus.PENDING, SyncRequestStatus.QUEUED, SyncRequestStatus.RUNNING)
@@ -75,6 +88,13 @@ def build_source_observability_payload(db: Session, *, source_id: int) -> dict:
             "source_id": source_id,
             "active_request_id": None,
             "bootstrap": None,
+            "bootstrap_summary": {
+                "imported_count": 0,
+                "review_required_count": 0,
+                "ignored_count": 0,
+                "conflict_count": 0,
+                "state": "idle",
+            },
             "latest_replay": None,
             "active": None,
             "operator_guidance": {
@@ -87,10 +107,8 @@ def build_source_observability_payload(db: Session, *, source_id: int) -> dict:
             },
         }
 
-    bootstrap_row = sync_rows[0]
-    latest_replay_row = sync_rows[-1] if len(sync_rows) > 1 else None
-    if latest_replay_row is bootstrap_row:
-        latest_replay_row = None
+    bootstrap_row = _resolve_bootstrap_sync_row(db, sync_rows=sync_rows)
+    latest_replay_row = _latest_replay_sync_row(sync_rows=sync_rows, bootstrap_request_id=bootstrap_row.request_id if bootstrap_row is not None else None)
     active_row = get_display_sync_request_for_source(db, source_id=source_id)
 
     bootstrap_payload = _serialize_source_observability_sync(db, row=bootstrap_row, phase="bootstrap")
@@ -104,6 +122,13 @@ def build_source_observability_payload(db: Session, *, source_id: int) -> dict:
         "source_id": source_id,
         "active_request_id": active_row.request_id if active_row is not None else None,
         "bootstrap": bootstrap_payload,
+        "bootstrap_summary": _build_source_bootstrap_summary_payload(
+            db,
+            source_id=source_id,
+            bootstrap_row=bootstrap_row,
+            bootstrap_payload=bootstrap_payload,
+            active_payload=active_payload,
+        ),
         "latest_replay": latest_replay_payload,
         "active": active_payload,
         "operator_guidance": build_source_operator_guidance_payload(
@@ -133,7 +158,8 @@ def build_source_sync_history_payload(
             "items": [],
         }
 
-    bootstrap_request_id = sync_rows[0].request_id
+    bootstrap_row = _resolve_bootstrap_sync_row(db, sync_rows=sync_rows)
+    bootstrap_request_id = bootstrap_row.request_id if bootstrap_row is not None else sync_rows[0].request_id
     selected_rows = list(reversed(sync_rows))[:limit]
     items = [
         _serialize_source_observability_sync(
@@ -164,6 +190,123 @@ def get_display_sync_request_for_source(db: Session, *, source_id: int) -> SyncR
         return None
     rows.sort(key=lambda row: (_DISPLAY_STATUS_PRIORITY[row.status], row.created_at, row.id))
     return rows[0]
+
+
+def _resolve_bootstrap_sync_row(db: Session, *, sync_rows: list[SyncRequest]) -> SyncRequest | None:
+    if not sync_rows:
+        return None
+    request_ids = [row.request_id for row in sync_rows if isinstance(row.request_id, str) and row.request_id]
+    applied_request_ids = set(
+        db.scalars(select(IngestApplyLog.request_id).where(IngestApplyLog.request_id.in_(request_ids))).all()
+    ) if request_ids else set()
+    for row in sync_rows:
+        if row.request_id in applied_request_ids:
+            return row
+    for row in sync_rows:
+        if row.status in INFLIGHT_SYNC_STATUSES:
+            return row
+    for row in sync_rows:
+        if row.status != SyncRequestStatus.FAILED:
+            return row
+    return sync_rows[0]
+
+
+def _latest_replay_sync_row(*, sync_rows: list[SyncRequest], bootstrap_request_id: str | None) -> SyncRequest | None:
+    for row in reversed(sync_rows):
+        if bootstrap_request_id is not None and row.request_id == bootstrap_request_id:
+            continue
+        return row
+    return None
+
+
+def _build_source_bootstrap_summary_payload(
+    db: Session,
+    *,
+    source_id: int,
+    bootstrap_row: SyncRequest | None,
+    bootstrap_payload: dict | None,
+    active_payload: dict | None,
+) -> dict:
+    imported_count = int(
+        db.scalar(
+            select(func.count(func.distinct(Change.id)))
+            .select_from(Change)
+            .join(ChangeSourceRef, ChangeSourceRef.change_id == Change.id)
+            .where(
+                ChangeSourceRef.source_id == source_id,
+                Change.intake_phase == ChangeIntakePhase.BASELINE,
+            )
+        )
+        or 0
+    )
+    review_required_count = int(
+        db.scalar(
+            select(func.count(func.distinct(Change.id)))
+            .select_from(Change)
+            .join(ChangeSourceRef, ChangeSourceRef.change_id == Change.id)
+            .where(
+                ChangeSourceRef.source_id == source_id,
+                Change.intake_phase == ChangeIntakePhase.BASELINE,
+                Change.review_bucket == ChangeReviewBucket.INITIAL_REVIEW,
+                Change.review_status == ReviewStatus.PENDING,
+            )
+        )
+        or 0
+    )
+    ignored_count, conflict_count = _count_bootstrap_unresolved(
+        db,
+        source_id=source_id,
+        bootstrap_request_id=bootstrap_row.request_id if bootstrap_row is not None else None,
+    )
+
+    state = "idle"
+    active_phase = str(active_payload.get("phase") or "") if isinstance(active_payload, dict) else ""
+    active_status = str(active_payload.get("status") or "") if isinstance(active_payload, dict) else ""
+    bootstrap_status = str(bootstrap_payload.get("status") or "") if isinstance(bootstrap_payload, dict) else ""
+    if active_phase == "bootstrap" and active_status in {"PENDING", "QUEUED", "RUNNING"}:
+        state = "running"
+    elif review_required_count > 0:
+        state = "review_required"
+    elif bootstrap_status == "SUCCEEDED":
+        state = "completed"
+
+    return {
+        "imported_count": imported_count,
+        "review_required_count": review_required_count,
+        "ignored_count": ignored_count,
+        "conflict_count": conflict_count,
+        "state": state,
+    }
+
+
+def _count_bootstrap_unresolved(db: Session, *, source_id: int, bootstrap_request_id: str | None) -> tuple[int, int]:
+    if not bootstrap_request_id:
+        return 0, 0
+    rows = db.execute(
+        select(IngestUnresolvedRecord.reason_code, func.count(IngestUnresolvedRecord.id))
+        .where(
+            IngestUnresolvedRecord.source_id == source_id,
+            IngestUnresolvedRecord.request_id == bootstrap_request_id,
+        )
+        .group_by(IngestUnresolvedRecord.reason_code)
+    ).all()
+    ignored_reason_codes = {
+        "directive_monitoring_window_out_of_scope",
+        "directive_monitoring_window_out_of_scope_partial",
+        "directive_product_scope_excluded",
+        "directive_unsupported_or_no_effect",
+        "monitoring_window_out_of_scope",
+        "product_scope_excluded",
+    }
+    ignored_count = 0
+    conflict_count = 0
+    for reason_code, count in rows:
+        normalized_reason = str(reason_code or "")
+        if normalized_reason in ignored_reason_codes:
+            ignored_count += int(count or 0)
+        else:
+            conflict_count += int(count or 0)
+    return ignored_count, conflict_count
 
 
 def build_sync_progress_payload(

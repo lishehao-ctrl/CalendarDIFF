@@ -18,6 +18,8 @@ export async function getChangesSummary() {
 
 export async function listChanges(params: {
   review_status: "pending" | "approved" | "rejected" | "all";
+  review_bucket?: "initial_review" | "changes" | "all";
+  intake_phase?: "baseline" | "replay" | "all";
   limit?: number;
   offset?: number;
   source_id?: number | null;

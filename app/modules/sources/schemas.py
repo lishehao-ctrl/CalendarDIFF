@@ -27,6 +27,7 @@ SourceConfigStateLiteral = Literal["stable", "rebind_pending"]
 SourceRuntimeStateLiteral = Literal["active", "inactive", "archived", "queued", "running", "rebind_pending"]
 SourceOperatorActionLiteral = Literal["continue_review", "continue_review_with_caution", "wait_for_runtime", "investigate_runtime"]
 SourceOperatorSeverityLiteral = Literal["info", "warning", "blocking"]
+SourceBootstrapStateLiteral = Literal["idle", "running", "review_required", "completed"]
 
 
 class SourceOperatorGuidanceResponse(BaseModel):
@@ -146,10 +147,19 @@ class SourceObservabilitySyncResponse(BaseModel):
     progress: dict | None = None
 
 
+class SourceBootstrapSummaryResponse(BaseModel):
+    imported_count: int
+    review_required_count: int
+    ignored_count: int
+    conflict_count: int
+    state: SourceBootstrapStateLiteral
+
+
 class SourceObservabilityResponse(BaseModel):
     source_id: int
     active_request_id: str | None = None
     bootstrap: SourceObservabilitySyncResponse | None = None
+    bootstrap_summary: SourceBootstrapSummaryResponse | None = None
     latest_replay: SourceObservabilitySyncResponse | None = None
     active: SourceObservabilitySyncResponse | None = None
     operator_guidance: SourceOperatorGuidanceResponse | None = None

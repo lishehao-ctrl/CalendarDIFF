@@ -6,7 +6,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models.notify import Notification, NotificationChannel, NotificationStatus
-from app.db.models.review import Change, ChangeSourceRef, ReviewStatus
+from app.db.models.review import Change, ChangeIntakePhase, ChangeReviewBucket, ChangeSourceRef, ReviewStatus
 from app.modules.common.event_display import event_display_dict, user_facing_event_view
 from app.modules.common.family_labels import load_latest_family_labels, require_latest_family_label
 from app.modules.changes.change_projection import build_change_projection_context
@@ -17,6 +17,8 @@ def list_changes(
     *,
     user_id: int,
     review_status: str,
+    review_bucket: str,
+    intake_phase: str,
     source_id: int | None,
     limit: int,
     offset: int,
@@ -28,6 +30,14 @@ def list_changes(
         stmt = stmt.where(Change.review_status == ReviewStatus.APPROVED)
     elif review_status == "rejected":
         stmt = stmt.where(Change.review_status == ReviewStatus.REJECTED)
+    if review_bucket == "initial_review":
+        stmt = stmt.where(Change.review_bucket == ChangeReviewBucket.INITIAL_REVIEW)
+    elif review_bucket == "changes":
+        stmt = stmt.where(Change.review_bucket == ChangeReviewBucket.CHANGES)
+    if intake_phase == "baseline":
+        stmt = stmt.where(Change.intake_phase == ChangeIntakePhase.BASELINE)
+    elif intake_phase == "replay":
+        stmt = stmt.where(Change.intake_phase == ChangeIntakePhase.REPLAY)
     if source_id is not None:
         stmt = stmt.where(Change.source_refs.any(ChangeSourceRef.source_id == source_id))
 
@@ -110,6 +120,8 @@ def _serialize_rows(
                 "entity_uid": change.entity_uid,
                 "change_type": change.change_type.value,
                 "change_origin": change.change_origin.value,
+                "intake_phase": change.intake_phase.value,
+                "review_bucket": change.review_bucket.value,
                 "detected_at": change.detected_at,
                 "review_status": change.review_status.value,
                 "before_display": (

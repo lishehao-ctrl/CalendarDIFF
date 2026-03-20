@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Literal
 
 from app.db.models.runtime import IngestJob, IngestJobStatus
 from app.db.models.input import SyncRequestStage, SyncRequestStatus
+from app.modules.common.source_auto_sync_schedule import next_source_auto_sync_at
+from app.modules.common.source_monitoring_window import source_timezone_name
 from app.modules.runtime.kernel.job_context import JobContext
 from app.modules.runtime.kernel.retry_policy import truncate_error
 from app.modules.runtime.kernel.sync_runtime_state import set_sync_runtime_state
@@ -121,7 +123,6 @@ def apply_success_transition(
     payload_workflow_stage: str | None = None,
     payload_updates: dict | None = None,
     payload_remove_keys: list[str] | None = None,
-    min_poll_interval_seconds: int = 30,
     apply_cursor_patch: bool = True,
     touch_source_success_state: bool = True,
     sync_status: SyncRequestStatus | None = SyncRequestStatus.SUCCEEDED,
@@ -142,8 +143,9 @@ def apply_success_transition(
 
     if touch_source_success_state and context.source is not None:
         context.source.last_polled_at = completed_at
-        context.source.next_poll_at = completed_at + timedelta(
-            seconds=max(int(context.source.poll_interval_seconds), min_poll_interval_seconds)
+        context.source.next_poll_at = next_source_auto_sync_at(
+            now=completed_at,
+            timezone_name=source_timezone_name(context.source),
         )
         context.source.last_error_code = None
         context.source.last_error_message = None

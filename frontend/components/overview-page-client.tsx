@@ -8,9 +8,12 @@ import { Card } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/data-states";
 import { getChangesSummary, listChanges } from "@/lib/api/changes";
 import { getOnboardingStatus } from "@/lib/api/onboarding";
+import { listSources } from "@/lib/api/sources";
 import { withBasePath } from "@/lib/demo-mode";
+import { buildInitialReviewSummary } from "@/lib/import-review";
 import { buildOverviewCards } from "@/lib/overview";
-import type { ChangesWorkbenchSummary, OnboardingStatus, ChangeItem } from "@/lib/types";
+import type { ChangesWorkbenchSummary, OnboardingStatus, ChangeItem, SourceRow } from "@/lib/types";
+import { useSourceObservabilityMap } from "@/lib/use-source-observability-map";
 import { useApiResource } from "@/lib/use-api-resource";
 
 const cardIcons = {
@@ -22,29 +25,43 @@ const cardIcons = {
 
 export default function OverviewPage({ basePath = "" }: { basePath?: string }) {
   const summary = useApiResource<ChangesWorkbenchSummary>(() => getChangesSummary(), []);
-  const topPendingChange = useApiResource<ChangeItem[]>(() => listChanges({ review_status: "pending", limit: 1 }), []);
+  const topPendingChange = useApiResource<ChangeItem[]>(
+    () => listChanges({ review_status: "pending", review_bucket: "changes", intake_phase: "replay", limit: 1 }),
+    [],
+  );
   const onboarding = useApiResource<OnboardingStatus>(() => getOnboardingStatus(), []);
+  const sources = useApiResource<SourceRow[]>(() => listSources({ status: "active" }), []);
+  const observability = useSourceObservabilityMap(sources.data || []);
 
-  if (summary.loading || topPendingChange.loading || onboarding.loading) {
+  if (summary.loading || topPendingChange.loading || onboarding.loading || sources.loading || observability.loading) {
     return <LoadingState label="overview" />;
   }
 
   const errorMessage =
     summary.error ||
     topPendingChange.error ||
-    onboarding.error;
+    onboarding.error ||
+    sources.error ||
+    observability.error;
   if (errorMessage) {
     return <ErrorState message={`Overview could not assemble the current workspace state. ${errorMessage}`} actionLabel="Open Sources" actionHref={withBasePath(basePath, "/sources")} />;
   }
 
-  if (!summary.data || !onboarding.data || !topPendingChange.data) {
+  if (!summary.data || !onboarding.data || !topPendingChange.data || !sources.data) {
     return <ErrorState message="Overview could not assemble the current workspace state." />;
   }
+
+  const initialReview = buildInitialReviewSummary({
+    sources: sources.data,
+    observabilityMap: observability.data,
+    workbenchSummary: summary.data,
+  });
 
   const cards = buildOverviewCards({
     summary: summary.data,
     topPendingChange: topPendingChange.data[0] || null,
     onboarding: onboarding.data,
+    initialReview,
   });
 
   return (

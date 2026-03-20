@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource, InputSourceConfig, SyncRequest, SyncRequestStatus
+from app.modules.common.source_auto_sync_schedule import next_source_auto_sync_at
 from app.modules.common.source_monitoring_window import (
     SourceMonitoringWindow,
     normalize_monitoring_window_config,
@@ -106,10 +107,11 @@ def apply_pending_monitoring_window_update_if_terminal(
     next_window = parse_monitoring_window_config(normalized_next_config, required=False)
     timezone_name = source_timezone_name(source)
     if source.is_active:
+        next_auto_sync_at = next_source_auto_sync_at(now=applied_at, timezone_name=timezone_name)
         if next_window is not None:
-            source.next_poll_at = max(applied_at, next_window.monitor_start_at_utc(timezone_name=timezone_name))
+            source.next_poll_at = max(next_auto_sync_at, next_window.monitor_start_at_utc(timezone_name=timezone_name))
         else:
-            source.next_poll_at = source.next_poll_at or applied_at
+            source.next_poll_at = source.next_poll_at or next_auto_sync_at
 
     should_rescope = monitoring_window_changed(previous=previous_window, current=next_window)
     if should_rescope and next_window is not None:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import Select, and_, select
@@ -11,6 +11,7 @@ from app.contracts.events import new_event
 from app.db.models.runtime import IngestJob, IngestJobStatus
 from app.db.models.input import IngestTriggerType, InputSource, SyncRequest, SyncRequestStage, SyncRequestStatus
 from app.db.models.shared import IntegrationInbox, IntegrationOutbox, OutboxStatus
+from app.modules.common.source_auto_sync_schedule import next_source_auto_sync_at
 from app.modules.common.source_monitoring_window import parse_source_monitoring_window, source_timezone_name
 from app.modules.runtime.kernel import build_sync_progress_payload, set_sync_runtime_state
 
@@ -47,8 +48,8 @@ def _enqueue_due_scheduler_requests(db: Session, *, worker_id: str) -> int:
             source.is_active = False
             source.next_poll_at = None
             continue
-        interval = max(int(source.poll_interval_seconds), 30)
-        slot = int(now.timestamp()) // interval
+        next_scheduled_at = next_source_auto_sync_at(now=now, timezone_name=source_timezone_name(source))
+        slot = next_scheduled_at.isoformat()
         idempotency_key = f"scheduler:{source.id}:{slot}"
         existing = db.scalar(
             select(SyncRequest.id).where(
@@ -105,7 +106,7 @@ def _enqueue_due_scheduler_requests(db: Session, *, worker_id: str) -> int:
             )
             created += 1
         source.last_polled_at = now
-        source.next_poll_at = now + timedelta(seconds=interval)
+        source.next_poll_at = next_scheduled_at
     db.commit()
     return created
 

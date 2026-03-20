@@ -3,7 +3,16 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 from app.db.models.input import IngestTriggerType, InputSource, SourceKind, SyncRequest, SyncRequestStage, SyncRequestStatus
-from app.db.models.review import Change, ChangeOrigin, ChangeType, EventEntity, EventEntityLifecycle, ReviewStatus
+from app.db.models.review import (
+    Change,
+    ChangeIntakePhase,
+    ChangeOrigin,
+    ChangeReviewBucket,
+    ChangeType,
+    EventEntity,
+    EventEntityLifecycle,
+    ReviewStatus,
+)
 from app.db.models.shared import (
     CourseRawTypeSuggestion,
     CourseRawTypeSuggestionStatus,
@@ -223,3 +232,63 @@ def test_changes_summary_prefers_sources_when_runtime_is_blocking(client, db_ses
     assert payload["recommended_lane_reason_code"] == "runtime_attention_required"
     assert payload["sources"]["blocking_count"] == 1
     assert payload["sources"]["recommended_action"] == "wait_for_runtime"
+
+
+def test_changes_summary_prefers_initial_review_before_changes(client, db_session, auth_headers) -> None:
+    user, _source = _create_user_with_source(db_session, email="owner4@example.com")
+    now = datetime.now(timezone.utc)
+    db_session.add_all(
+        [
+            Change(
+                user_id=user.id,
+                entity_uid="ent-baseline-1",
+                change_origin=ChangeOrigin.INGEST_PROPOSAL,
+                change_type=ChangeType.CREATED,
+                intake_phase=ChangeIntakePhase.BASELINE,
+                review_bucket=ChangeReviewBucket.INITIAL_REVIEW,
+                detected_at=now,
+                after_semantic_json={
+                    "uid": "ent-baseline-1",
+                    "course_dept": "CSE",
+                    "course_number": 140,
+                    "family_name": "Homework",
+                    "event_name": "Homework 1",
+                    "ordinal": 1,
+                    "due_date": "2026-03-22",
+                    "due_time": "23:59:00",
+                    "time_precision": "datetime",
+                },
+                review_status=ReviewStatus.PENDING,
+            ),
+            Change(
+                user_id=user.id,
+                entity_uid="ent-replay-1",
+                change_origin=ChangeOrigin.INGEST_PROPOSAL,
+                change_type=ChangeType.DUE_CHANGED,
+                intake_phase=ChangeIntakePhase.REPLAY,
+                review_bucket=ChangeReviewBucket.CHANGES,
+                detected_at=now,
+                after_semantic_json={
+                    "uid": "ent-replay-1",
+                    "course_dept": "CSE",
+                    "course_number": 140,
+                    "family_name": "Homework",
+                    "event_name": "Homework 2",
+                    "ordinal": 2,
+                    "due_date": "2026-03-25",
+                    "due_time": "23:59:00",
+                    "time_precision": "datetime",
+                },
+                review_status=ReviewStatus.PENDING,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = client.get("/changes/summary", headers=auth_headers(client, user=user))
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["baseline_review_pending"] == 1
+    assert payload["changes_pending"] == 1
+    assert payload["recommended_lane"] == "initial_review"
+    assert payload["recommended_lane_reason_code"] == "baseline_review_pending"

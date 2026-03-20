@@ -49,6 +49,8 @@ export function OnboardingWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data, loading, error, refresh } = useApiResource<OnboardingStatus>(() => getOnboardingStatus(), []);
+  const oauthStatus = searchParams.get("oauth_status");
+  const oauthMessage = searchParams.get("message");
   const defaultStart = defaultMonitoringStart();
   const [canvasIcsUrl, setCanvasIcsUrl] = useState("");
   const [monitorSince, setMonitorSince] = useState("");
@@ -70,18 +72,23 @@ export function OnboardingWizard() {
   }, [data, defaultStart, router]);
 
   useEffect(() => {
-    const oauthStatus = searchParams.get("oauth_status");
-    const message = searchParams.get("message");
-    if (!oauthStatus && !message) {
+    if (!oauthStatus && !oauthMessage) {
       return;
     }
-    if (oauthStatus === "success") {
-      setBanner({ tone: "info", text: message || "Gmail connected. Finish the next setup step to continue." });
-      void refresh();
-      return;
-    }
-    setBanner({ tone: "error", text: message || "OAuth did not complete." });
-  }, [refresh, searchParams]);
+    let cancelled = false;
+    const nextBanner =
+      oauthStatus === "success"
+        ? { tone: "info" as const, text: oauthMessage || "Gmail connected. Finish the next setup step to continue." }
+        : { tone: "error" as const, text: oauthMessage || "OAuth did not complete." };
+    setBanner(nextBanner);
+    void refresh().finally(() => {
+      if (cancelled) return;
+      router.replace("/onboarding");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [oauthMessage, oauthStatus, refresh, router]);
 
   async function submitCanvasIcs() {
     if (!canvasIcsUrl.trim()) {

@@ -14,6 +14,7 @@ import {
   applyChangeLabelLearning,
   batchDecideChanges,
   decideChange,
+  getChangesSummary,
   getChangeEditContext,
   listChanges,
   markChangeViewed,
@@ -30,7 +31,7 @@ import {
   sourceKindDescriptor,
   summarizeChange,
 } from "@/lib/presenters";
-import type { EvidencePreviewResponse, LabelLearningPreview, ChangeItem, ChangeEditContext, SourceRow } from "@/lib/types";
+import type { EvidencePreviewResponse, LabelLearningPreview, ChangesWorkbenchSummary, ChangeItem, ChangeEditContext, SourceRow } from "@/lib/types";
 import { useApiResource } from "@/lib/use-api-resource";
 
 const statusOptions = ["pending", "approved", "rejected", "all"] as const;
@@ -296,11 +297,13 @@ function canonicalTimelineLabel(context: ChangeEditContext | null) {
 
 function CompactSection({
   title,
+  summary,
   open,
   onToggle,
   children,
 }: {
   title: string;
+  summary?: string;
   open: boolean;
   onToggle: () => void;
   children: React.ReactNode;
@@ -308,7 +311,10 @@ function CompactSection({
   return (
     <Card className="animate-surface-enter overflow-hidden p-0">
       <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left">
-        <p className="text-sm font-medium text-ink">{title}</p>
+        <div>
+          <p className="text-sm font-medium text-ink">{title}</p>
+          {summary ? <p className="mt-1 text-xs text-[#6d7885]">{summary}</p> : null}
+        </div>
         {open ? <ChevronUp className="h-4 w-4 text-[#6d7885]" /> : <ChevronDown className="h-4 w-4 text-[#6d7885]" />}
       </button>
       {open ? <div className="animate-section-enter border-t border-line/80 p-4">{children}</div> : null}
@@ -527,78 +533,9 @@ function DecisionWorkspace({
       </Card>
       ) : null}
 
-      {!compact ? (
-      <Card className="p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Why the system thinks this</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant={currentEvidenceSide === "before" ? "secondary" : "ghost"} onClick={() => onEvidenceSideChange("before")}>
-              <FileSearch className="mr-2 h-4 w-4" />
-              {previewBusy === "before" ? "Loading..." : "Preview before"}
-            </Button>
-            <Button size="sm" variant={currentEvidenceSide === "after" ? "secondary" : "ghost"} onClick={() => onEvidenceSideChange("after")}>
-              <CalendarRange className="mr-2 h-4 w-4" />
-              {previewBusy === "after" ? "Loading..." : "Preview after"}
-            </Button>
-          </div>
-        </div>
-
-        {!compact ? (
-          <>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {selected.proposal_sources.map((source) => (
-                <Badge key={`${selected.id}-${source.source_id}-${source.external_event_id || "none"}`} tone="info">
-                  {sourceDescriptor(source)}
-                </Badge>
-              ))}
-              <Badge tone="info">{confidenceLabel(selected)}</Badge>
-            </div>
-
-            <div className="mt-4 grid gap-3 lg:grid-cols-2">
-              <ChangeSummarySourceCard title="Previous source snapshot" emptyLabel="No previous source snapshot" summary={selected.change_summary?.old} />
-              <ChangeSummarySourceCard title="Current source snapshot" emptyLabel="No current source snapshot" summary={selected.change_summary?.new} />
-            </div>
-          </>
-        ) : null}
-
-        <div className="mt-4 inline-flex flex-wrap gap-2 rounded-full border border-line/80 bg-white/60 p-2">
-          <Button size="sm" variant={evidenceView === "summary" ? "primary" : "ghost"} onClick={() => onEvidenceViewChange("summary")}>
-            Summary
-          </Button>
-          <Button size="sm" variant={evidenceView === "raw" ? "primary" : "ghost"} onClick={() => onEvidenceViewChange("raw")}>
-            Raw
-          </Button>
-        </div>
-
-        <div className="mt-4 rounded-[1.2rem] border border-line/80 bg-[#f2ebe1] p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm font-medium text-ink">Evidence preview</p>
-            {evidence ? (
-              <div className="flex flex-wrap gap-2 text-xs text-[#6d7885]">
-                {evidence.payload.filename ? <span>{evidence.payload.filename}</span> : null}
-                {typeof evidence.payload.event_count === "number" ? <span>{evidence.payload.event_count} events</span> : null}
-                {evidence.payload.truncated ? <span>Truncated</span> : null}
-              </div>
-            ) : null}
-          </div>
-          <div className="mt-4">
-            {evidence ? (
-              evidenceView === "summary" ? (
-                <EvidenceSummary evidence={evidence} />
-              ) : (
-                <pre className="whitespace-pre-wrap text-xs leading-6 text-[#314051]">{evidence.payload.preview_text || evidence.summaryFallback}</pre>
-              )
-            ) : (
-              <p className="text-sm text-[#596270]">Choose before or after to inspect the attached evidence.</p>
-            )}
-          </div>
-        </div>
-      </Card>
-      ) : (
       <CompactSection
-        title="Evidence"
+        title="Why the system thinks this"
+        summary={`${selected.proposal_sources.length} source${selected.proposal_sources.length === 1 ? "" : "s"} · ${confidenceLabel(selected)}`}
         open={expandedSections.evidence}
         onToggle={() => setExpandedSections((current) => ({ ...current, evidence: !current.evidence }))}
       >
@@ -634,48 +571,11 @@ function DecisionWorkspace({
           </div>
         </div>
       </CompactSection>
-      )}
+      
 
-      {!compact ? (
-      <Card className="p-5">
-        <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Canonical match</p>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Family</p>
-            <p className="mt-2 text-sm font-medium text-ink">{canonicalDisplayLabel(editContext, selected)}</p>
-            <p className="mt-2 text-xs text-[#596270]">
-              {selected.after_event?.event_display.course_display || selected.before_event?.event_display.course_display || "Unknown course"}
-            </p>
-          </div>
-          <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Canonical event</p>
-            <p className="mt-2 text-sm font-medium text-ink">{canonicalTimeline || "Loading canonical context..."}</p>
-            <p className="mt-2 text-xs text-[#596270]">Entity UID: {selected.entity_uid}</p>
-          </div>
-        </div>
-
-        {!compact ? (
-          <div className="mt-4 rounded-[1.15rem] border border-line/80 bg-white/72 p-4 text-sm text-[#314051]">
-            {editContextBusy ? (
-              <p className="text-[#596270]">Loading…</p>
-            ) : editContextError ? (
-              <p className="text-[#7f3d2a]">{editContextError}</p>
-            ) : editContext ? (
-              <div className="grid gap-2 md:grid-cols-2">
-                <p>Event name: {editContext.editable_event.event_name || "Not set"}</p>
-                <p>Raw label: {editContext.editable_event.raw_type || "Not set"}</p>
-                <p>Ordinal: {editContext.editable_event.ordinal ?? "N/A"}</p>
-                <p>Current due: {formatSemanticDue(editContext.editable_event as unknown as Record<string, unknown>, "Not set")}</p>
-              </div>
-            ) : (
-              <p className="text-[#596270]">Canonical context is unavailable for this change.</p>
-            )}
-          </div>
-        ) : null}
-      </Card>
-      ) : (
       <CompactSection
         title="Canonical match"
+        summary={canonicalDisplayLabel(editContext, selected)}
         open={expandedSections.match}
         onToggle={() => setExpandedSections((current) => ({ ...current, match: !current.match }))}
       >
@@ -690,7 +590,6 @@ function DecisionWorkspace({
           </div>
         </div>
       </CompactSection>
-      )}
 
       <Card className="p-5">
         <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Decision</p>
@@ -788,16 +687,20 @@ function DecisionWorkspace({
         ) : null}
 
         {!compact && pending && selected.change_type !== "removed" ? (
-          <div className="mt-4 rounded-[1.1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#596270]">
-            <p className="font-medium text-ink">Advanced path</p>
-            <div className="mt-3">
+          <div className="mt-4">
+            <CompactSection
+              title="Advanced path"
+              summary="Edit the proposal before approving."
+              open={expandedSections.extras}
+              onToggle={() => setExpandedSections((current) => ({ ...current, extras: !current.extras }))}
+            >
               <Button asChild size="sm" variant="ghost">
                 <Link href={withBasePath(basePath, `/changes/${selected.id}/proposal`)}>
                   <PencilLine className="mr-2 h-4 w-4" />
                   Edit proposal
                 </Link>
               </Button>
-            </div>
+            </CompactSection>
           </div>
         ) : null}
 
@@ -805,6 +708,7 @@ function DecisionWorkspace({
           <div className="mt-4">
             <CompactSection
               title="More"
+              summary="Edit paths"
               open={expandedSections.extras}
               onToggle={() => setExpandedSections((current) => ({ ...current, extras: !current.extras }))}
             >
@@ -832,7 +736,13 @@ function DecisionWorkspace({
   );
 }
 
-export function ChangeItemsPanel({ basePath = "" }: { basePath?: string }) {
+export function ChangeItemsPanel({
+  basePath = "",
+  lane = "changes",
+}: {
+  basePath?: string;
+  lane?: "changes" | "initial_review";
+}) {
   const [statusFilter, setStatusFilter] = useState<(typeof statusOptions)[number]>("pending");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [selectedChangeId, setSelectedChangeId] = useState<number | null>(null);
@@ -856,15 +766,18 @@ export function ChangeItemsPanel({ basePath = "" }: { basePath?: string }) {
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const { side: drawerSide, isDesktop } = useWorkspaceLayout();
   const sources = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), []);
+  const summary = useApiResource<ChangesWorkbenchSummary>(() => getChangesSummary(), []);
 
   const { data, loading, error, refresh, setData } = useApiResource<ChangeItem[]>(
     () =>
       listChanges({
         review_status: statusFilter,
+        review_bucket: lane === "initial_review" ? "initial_review" : "changes",
+        intake_phase: lane === "initial_review" ? "baseline" : undefined,
         limit: 50,
         source_id: sourceFilter === "all" ? null : Number(sourceFilter),
       }),
-    [sourceFilter, statusFilter],
+    [lane, sourceFilter, statusFilter],
   );
   const rows = useMemo(() => data || [], [data]);
   const groups = useMemo(() => groupChangesByCourse(rows), [rows]);
@@ -1122,8 +1035,12 @@ export function ChangeItemsPanel({ basePath = "" }: { basePath?: string }) {
     }
   }
 
-  if (loading) return <LoadingState label="review changes" />;
+  if (loading || summary.loading) return <LoadingState label={lane === "initial_review" ? "initial review" : "changes"} />;
   if (error) return <ReviewInboxError message={error} basePath={basePath} />;
+  if (summary.error) return <ErrorState message={`Changes summary failed to load. ${summary.error}`} />;
+  if (!summary.data) return <ErrorState message="Changes summary is unavailable." />;
+
+  const summaryData = summary.data;
 
   return (
     <div className="space-y-5">
@@ -1132,8 +1049,15 @@ export function ChangeItemsPanel({ basePath = "" }: { basePath?: string }) {
         <div className="relative space-y-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
-              <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">Changes workspace</p>
-              <h3 className="mt-3 text-3xl font-semibold text-ink">Work the course inbox, but decide in context.</h3>
+              <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">{lane === "initial_review" ? "Initial Review" : "Replay Review"}</p>
+              <h3 className="mt-3 text-3xl font-semibold text-ink">
+                {lane === "initial_review" ? "Review baseline items before daily replay." : "Use Changes for ongoing review."}
+              </h3>
+              <p className="mt-3 text-sm text-[#596270]">
+                {lane === "initial_review"
+                  ? "This lane is only for baseline import items that still need explicit review."
+                  : "After the baseline is established, this is where day-to-day changes belong."}
+              </p>
             </div>
             <div className="flex flex-wrap gap-2">
               {statusOptions.map((status) => (
@@ -1150,8 +1074,26 @@ export function ChangeItemsPanel({ basePath = "" }: { basePath?: string }) {
             </Card>
           ) : null}
 
+          {lane === "changes" && summaryData.baseline_review_pending > 0 ? (
+            <Card className="border-[rgba(215,90,45,0.18)] bg-[#fff8f4] p-4">
+              <p className="text-sm font-medium text-ink">
+                {summaryData.baseline_review_pending === 1
+                  ? "1 baseline item is waiting in Initial Review."
+                  : `${summaryData.baseline_review_pending} baseline items are waiting in Initial Review.`}
+              </p>
+              <p className="mt-2 text-sm text-[#596270]">
+                Handle initial import review separately before using Replay Review as the default day-to-day lane.
+              </p>
+              <div className="mt-4">
+                <Button asChild size="sm" variant="ghost">
+                  <Link href={withBasePath(basePath, "/initial-review")}>Open Initial Review</Link>
+                </Button>
+              </div>
+            </Card>
+          ) : null}
+
           <div className="flex flex-wrap items-center gap-3 text-sm text-[#596270]">
-            <Badge tone="info">{formatStatusLabel(statusFilter)} lane</Badge>
+            <Badge tone="info">{lane === "initial_review" ? "Initial Review lane" : `${formatStatusLabel(statusFilter)} lane`}</Badge>
             <label className="flex items-center gap-2 rounded-full border border-line/80 bg-white/75 px-3 py-1.5 text-sm text-[#314051]">
               <span className="text-[#6d7885]">Source</span>
               <select
@@ -1206,7 +1148,14 @@ export function ChangeItemsPanel({ basePath = "" }: { basePath?: string }) {
 
           <div className="mt-5 space-y-5">
             {rows.length === 0 ? (
-              <EmptyState title="No changes in this lane" description="Switch filters or run another sync to generate new review work." />
+              <EmptyState
+                title={lane === "initial_review" ? "No baseline items in this lane" : "No changes in this lane"}
+                description={
+                  lane === "initial_review"
+                    ? "Baseline review is clear for the current filters."
+                    : "Switch filters or run another sync to generate new review work."
+                }
+              />
             ) : (
               groups.map((group) => (
                 <div key={group.course} className="space-y-3">

@@ -9,7 +9,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource
-from app.db.models.review import Change, ChangeType, EventEntity, EventEntityLifecycle, ReviewStatus, SourceEventObservation
+from app.db.models.review import (
+    Change,
+    ChangeIntakePhase,
+    ChangeType,
+    EventEntity,
+    EventEntityLifecycle,
+    ReviewStatus,
+    SourceEventObservation,
+)
 from app.modules.common.family_labels import load_latest_family_labels, resolve_family_label
 from app.modules.common.payload_schemas import ApprovedSemanticPayload, ChangeSourceRefPayload, FrozenChangeEvidence
 from app.modules.common.semantic_codec import (
@@ -26,6 +34,7 @@ from app.modules.runtime.apply.pending_change_store import (
 from app.modules.runtime.apply.pending_change_outbox import emit_change_pending_created_event
 from app.modules.runtime.apply.change_evidence import freeze_observation_evidence, freeze_semantic_evidence
 from app.modules.common.change_source_refs import normalize_source_refs, primary_source_from_refs, require_non_empty_source_refs
+from app.modules.runtime.apply.change_intake_policy import derive_review_bucket
 
 
 @dataclass(frozen=True)
@@ -49,6 +58,7 @@ def rebuild_pending_change_proposals(
     source: InputSource,
     affected_entity_uids: set[str],
     applied_at: datetime,
+    intake_phase: ChangeIntakePhase,
     previous_observation_payloads: dict[str, dict] | None = None,
 ) -> tuple[int, set[str]]:
     created_changes: list[Change] = []
@@ -101,6 +111,7 @@ def rebuild_pending_change_proposals(
             user_id=user_id,
             decision=decision,
             applied_at=applied_at,
+            intake_phase=intake_phase,
         )
         if new_change is not None:
             created_changes.append(new_change)
@@ -254,6 +265,7 @@ def apply_pending_proposal_decision(
     user_id: int,
     decision: PendingProposalDecision,
     applied_at: datetime,
+    intake_phase: ChangeIntakePhase,
 ) -> Change | None:
     if decision.mode == "skip":
         return None
@@ -269,11 +281,17 @@ def apply_pending_proposal_decision(
 
     if decision.change_type is None:
         raise RuntimeError("upsert decision requires change_type")
+    review_bucket = derive_review_bucket(
+        intake_phase=intake_phase,
+        change_type=decision.change_type,
+    )
     return upsert_pending_change(
         db=db,
         user_id=user_id,
         entity_uid=decision.entity_uid,
         change_type=decision.change_type,
+        intake_phase=intake_phase,
+        review_bucket=review_bucket,
         before_semantic_json=decision.before_semantic.to_json_dict() if decision.before_semantic is not None else None,
         after_semantic_json=decision.after_semantic.to_json_dict() if decision.after_semantic is not None else None,
         delta_seconds=decision.delta_seconds,

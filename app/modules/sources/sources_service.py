@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.security import encrypt_secret
 from app.db.models.input import InputSource, InputSourceConfig, InputSourceCursor, InputSourceSecret
 from app.db.models.shared import User
+from app.modules.common.source_auto_sync_schedule import next_source_auto_sync_at
 from app.modules.common.source_monitoring_window import (
     parse_monitoring_window_config,
     parse_source_monitoring_window,
@@ -158,6 +159,8 @@ def update_input_source(
     payload: InputSourcePatchRequest,
 ) -> InputSource:
     now = datetime.now(timezone.utc)
+    timezone_name = source_timezone_name(source)
+    next_auto_sync_at = next_source_auto_sync_at(now=now, timezone_name=timezone_name)
     normalized = normalize_source_patch_request(source=source, payload=payload)
     previous_term_window = parse_source_monitoring_window(source, required=False)
     next_term_window = previous_term_window
@@ -171,7 +174,7 @@ def update_input_source(
     if normalized.poll_interval_seconds is not None:
         source.poll_interval_seconds = normalized.poll_interval_seconds
         if source.next_poll_at is None:
-            source.next_poll_at = now + timedelta(seconds=normalized.poll_interval_seconds)
+            source.next_poll_at = next_auto_sync_at
     if normalized.config is not None:
         requested_config = dict(normalized.config)
         requested_term_window = parse_monitoring_window_config(requested_config, required=False)
@@ -196,17 +199,17 @@ def update_input_source(
             if source.is_active:
                 if next_term_window is not None and next_term_window.is_expired(
                     now=now,
-                    timezone_name=source_timezone_name(source),
+                    timezone_name=timezone_name,
                 ):
                     source.is_active = False
                     source.next_poll_at = None
                 elif next_term_window is not None:
                     source.next_poll_at = max(
-                        now,
-                        next_term_window.monitor_start_at_utc(timezone_name=source_timezone_name(source)),
+                        next_auto_sync_at,
+                        next_term_window.monitor_start_at_utc(timezone_name=timezone_name),
                     )
                 else:
-                    source.next_poll_at = source.next_poll_at or now
+                    source.next_poll_at = source.next_poll_at or next_auto_sync_at
     if normalized.secrets is not None:
         encrypted_payload = encrypt_secret(json.dumps(normalized.secrets, separators=(",", ":"), ensure_ascii=True))
         if source.secrets is None:
@@ -218,9 +221,9 @@ def update_input_source(
         if normalized.reactivate_on_secret_update and source.next_poll_at is None:
             term_window = next_term_window if next_term_window is not None else parse_source_monitoring_window(source, required=False)
             if term_window is not None:
-                source.next_poll_at = max(now, term_window.monitor_start_at_utc(timezone_name=source_timezone_name(source)))
+                source.next_poll_at = max(next_auto_sync_at, term_window.monitor_start_at_utc(timezone_name=timezone_name))
             else:
-                source.next_poll_at = now + timedelta(seconds=source.poll_interval_seconds)
+                source.next_poll_at = next_auto_sync_at
     if normalized.force_source_key is not None:
         source.source_key = normalized.force_source_key
     if normalized.force_display_name is not None:
@@ -228,13 +231,13 @@ def update_input_source(
     if normalized.is_active is True and source.next_poll_at is None:
         term_window = next_term_window if next_term_window is not None else parse_source_monitoring_window(source, required=False)
         if term_window is not None:
-            if term_window.is_expired(now=now, timezone_name=source_timezone_name(source)):
+            if term_window.is_expired(now=now, timezone_name=timezone_name):
                 source.is_active = False
                 source.next_poll_at = None
             else:
-                source.next_poll_at = max(now, term_window.monitor_start_at_utc(timezone_name=source_timezone_name(source)))
+                source.next_poll_at = max(next_auto_sync_at, term_window.monitor_start_at_utc(timezone_name=timezone_name))
         else:
-            source.next_poll_at = now + timedelta(seconds=source.poll_interval_seconds)
+            source.next_poll_at = next_auto_sync_at
     if normalized.is_active is False:
         source.next_poll_at = None
     if should_rescope_term_window and next_term_window is not None and not config_term_rebind_queued:

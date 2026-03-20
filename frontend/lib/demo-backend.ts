@@ -74,6 +74,8 @@ function createInitialDemoState(): DemoState {
       reviewStatus: "pending",
       sourceLabelOld: "Canvas assignment",
       sourceLabelNew: "Professor announcement",
+      intakePhase: "replay",
+      reviewBucket: "changes",
     }),
     changeRow({
       id: 402,
@@ -91,6 +93,8 @@ function createInitialDemoState(): DemoState {
       reviewStatus: "pending",
       sourceLabelOld: "Canvas due card",
       sourceLabelNew: "Staff alias bulletin",
+      intakePhase: "replay",
+      reviewBucket: "changes",
     }),
     changeRow({
       id: 403,
@@ -108,6 +112,8 @@ function createInitialDemoState(): DemoState {
       reviewStatus: "pending",
       sourceLabelOld: null,
       sourceLabelNew: "Canvas calendar",
+      intakePhase: "baseline",
+      reviewBucket: "initial_review",
     }),
     changeRow({
       id: 404,
@@ -125,6 +131,8 @@ function createInitialDemoState(): DemoState {
       reviewStatus: "approved",
       sourceLabelOld: "Lab rubric post",
       sourceLabelNew: "TA follow-up",
+      intakePhase: "replay",
+      reviewBucket: "changes",
     }),
   ];
 
@@ -375,6 +383,8 @@ function changeRow(input: {
   reviewStatus: string;
   sourceLabelOld: string | null;
   sourceLabelNew: string | null;
+  intakePhase?: ChangeItem["intake_phase"];
+  reviewBucket?: ChangeItem["review_bucket"];
 }) : ChangeItem {
   const ordinal = Number((input.label.match(/(\d+)/)?.[1] || "0")) || null;
   return {
@@ -382,6 +392,8 @@ function changeRow(input: {
     entity_uid: `demo-change-${input.id}`,
     change_type: input.changeType,
     change_origin: "ingest_proposal",
+    intake_phase: input.intakePhase || "replay",
+    review_bucket: input.reviewBucket || "changes",
     detected_at: "2026-03-18T04:40:00.000Z",
     review_status: input.reviewStatus,
     before_display: input.beforeDate ? eventDisplay(input.courseDisplay, input.familyName, ordinal, input.label) : null,
@@ -556,8 +568,18 @@ function buildDemoSourceObservability(sourceId: number): SourceObservabilityResp
     return {
       source_id: 1,
       active_request_id: null,
-      bootstrap: buildDemoObservabilitySync(1, "bootstrap", "SUCCEEDED"),
-      latest_replay: buildDemoObservabilitySync(1, "replay", "SUCCEEDED"),
+      bootstrap: {
+        ...buildDemoObservabilitySync(1, "bootstrap", "SUCCEEDED"),
+        connector_result: { provider: "ics", status: "CHANGED", records_count: 18, error_code: null, error_message: null },
+      },
+      bootstrap_summary: {
+        imported_count: 18,
+        review_required_count: 1,
+        ignored_count: 2,
+        conflict_count: 0,
+        state: "review_required",
+      },
+      latest_replay: null,
       active: null,
       operator_guidance: null,
     };
@@ -567,6 +589,13 @@ function buildDemoSourceObservability(sourceId: number): SourceObservabilityResp
     source_id: 2,
     active_request_id: "demo-replay-2",
     bootstrap: buildDemoObservabilitySync(2, "bootstrap", "SUCCEEDED"),
+    bootstrap_summary: {
+      imported_count: 9,
+      review_required_count: 0,
+      ignored_count: 6,
+      conflict_count: 1,
+      state: "completed",
+    },
     latest_replay: buildDemoObservabilitySync(2, "replay", "FAILED"),
     active: buildDemoObservabilitySync(2, "replay", "RUNNING"),
     operator_guidance: {
@@ -586,8 +615,10 @@ function buildDemoSourceSyncHistory(sourceId: number): SourceSyncHistoryResponse
     items:
       sourceId === 1
         ? [
-            buildDemoObservabilitySync(1, "replay", "SUCCEEDED"),
-            { ...buildDemoObservabilitySync(1, "replay", "SUCCEEDED"), request_id: "demo-replay-1-prev", updated_at: "2026-03-17T04:50:00.000Z" },
+            {
+              ...buildDemoObservabilitySync(1, "bootstrap", "SUCCEEDED"),
+              connector_result: { provider: "ics", status: "CHANGED", records_count: 18, error_code: null, error_message: null },
+            },
           ]
         : [
             buildDemoObservabilitySync(2, "replay", "FAILED"),
@@ -674,7 +705,8 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     return clone(demoState.onboarding) as T;
   }
   if (pathname === "/changes/summary") {
-    const pending = demoState.changes.filter((row) => row.review_status === "pending").length;
+    const pending = demoState.changes.filter((row) => row.review_status === "pending" && row.review_bucket === "changes").length;
+    const baselinePending = demoState.changes.filter((row) => row.review_status === "pending" && row.review_bucket === "initial_review").length;
     const activeSources = demoState.sources.filter((row) => row.is_active);
     const attentionSources = activeSources.filter(
       (row) =>
@@ -688,11 +720,14 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     const manualActiveCount = demoState.manualEvents.filter((row) => row.lifecycle !== "removed").length;
     const summary: ChangesWorkbenchSummary = {
       changes_pending: pending,
-      recommended_lane: pending > 0 ? "changes" : pendingSuggestions > 0 ? "families" : null,
+      baseline_review_pending: baselinePending,
+      recommended_lane: baselinePending > 0 ? "initial_review" : pending > 0 ? "changes" : pendingSuggestions > 0 ? "families" : null,
       recommended_lane_reason_code:
-        pending > 0 ? "changes_pending" : pendingSuggestions > 0 ? "family_governance_pending" : "all_clear",
+        baselinePending > 0 ? "baseline_review_pending" : pending > 0 ? "changes_pending" : pendingSuggestions > 0 ? "family_governance_pending" : "all_clear",
       recommended_action_reason:
-        pending > 0
+        baselinePending > 0
+          ? `${baselinePending} baseline import items are waiting in Initial Review.`
+          : pending > 0
           ? `${pending} pending change proposals are waiting for review decisions.`
           : pendingSuggestions > 0
             ? "Family or raw-type governance items need attention."
@@ -732,10 +767,18 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   }
   if (pathname === "/changes" && method === "GET") {
     const reviewStatus = (url.searchParams.get("review_status") || "pending").toLowerCase();
+    const reviewBucket = (url.searchParams.get("review_bucket") || "all").toLowerCase();
+    const intakePhase = (url.searchParams.get("intake_phase") || "all").toLowerCase();
     const sourceId = url.searchParams.get("source_id");
     let rows = demoState.changes.slice();
     if (reviewStatus !== "all") {
       rows = rows.filter((row) => row.review_status === reviewStatus);
+    }
+    if (reviewBucket !== "all") {
+      rows = rows.filter((row) => row.review_bucket === reviewBucket);
+    }
+    if (intakePhase !== "all") {
+      rows = rows.filter((row) => row.intake_phase === intakePhase);
     }
     if (sourceId) {
       rows = rows.filter((row) => row.primary_source?.source_id === Number(sourceId));

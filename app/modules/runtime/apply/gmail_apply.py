@@ -5,6 +5,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource
+from app.db.models.review import ChangeIntakePhase
 from app.db.models.review import Change
 from app.modules.runtime.apply.apply_outcome import ApplyOutcome
 from app.modules.runtime.apply.gmail_apply_atomic_lane import apply_gmail_atomic_record
@@ -19,6 +20,7 @@ def apply_gmail_observations(
     records: list[dict],
     applied_at: datetime,
     request_id: str,
+    intake_phase: ChangeIntakePhase,
 ) -> ApplyOutcome:
     affected_entity_uids: set[str] = set()
     directive_created_changes: list[Change] = []
@@ -49,6 +51,7 @@ def apply_gmail_observations(
                 record_index=index,
                 applied_at=applied_at,
                 request_id=request_id,
+                intake_phase=intake_phase,
             )
             directive_created_changes.extend(created_changes)
 

@@ -42,6 +42,8 @@ class ChangeItemResponse(BaseModel):
     entity_uid: str
     change_type: str
     change_origin: str
+    intake_phase: Literal["baseline", "replay"] = "replay"
+    review_bucket: Literal["initial_review", "changes"] = "changes"
     detected_at: datetime
     review_status: Literal["pending", "approved", "rejected"]
     before_display: EventDisplayResponse | None = None
@@ -117,7 +119,7 @@ class ChangeBatchDecisionResponse(BaseModel):
     results: list[ChangeBatchDecisionItemResult]
 
 
-WorkbenchLaneLiteral = Literal["sources", "changes", "families"]
+WorkbenchLaneLiteral = Literal["sources", "initial_review", "changes", "families"]
 
 
 class ChangesWorkbenchSourcesResponse(BaseModel):
@@ -149,6 +151,7 @@ class ChangesWorkbenchManualResponse(BaseModel):
 
 class ChangesWorkbenchSummaryResponse(BaseModel):
     changes_pending: int
+    baseline_review_pending: int = 0
     recommended_lane: WorkbenchLaneLiteral | None = None
     recommended_lane_reason_code: str
     recommended_action_reason: str

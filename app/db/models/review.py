@@ -49,6 +49,16 @@ class ReviewStatus(str, Enum):
     REJECTED = "rejected"
 
 
+class ChangeIntakePhase(str, Enum):
+    BASELINE = "baseline"
+    REPLAY = "replay"
+
+
+class ChangeReviewBucket(str, Enum):
+    INITIAL_REVIEW = "initial_review"
+    CHANGES = "changes"
+
+
 class EventEntityLifecycle(str, Enum):
     ACTIVE = "active"
     REMOVED = "removed"
@@ -98,6 +108,7 @@ class Change(Base):
         Index("ix_changes_user_detected_desc", "user_id", "detected_at"),
         Index("ix_changes_user_review_status_detected", "user_id", "review_status", "detected_at"),
         Index("ix_changes_user_entity_status_detected", "user_id", "entity_uid", "review_status", "detected_at"),
+        Index("ix_changes_user_bucket_status_detected", "user_id", "review_bucket", "review_status", "detected_at"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -126,6 +137,28 @@ class Change(Base):
         nullable=False,
         default=ReviewStatus.PENDING,
         server_default=ReviewStatus.PENDING.value,
+    )
+    intake_phase: Mapped[ChangeIntakePhase] = mapped_column(
+        SAEnum(
+            ChangeIntakePhase,
+            name="change_intake_phase",
+            native_enum=False,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+        default=ChangeIntakePhase.REPLAY,
+        server_default=ChangeIntakePhase.REPLAY.value,
+    )
+    review_bucket: Mapped[ChangeReviewBucket] = mapped_column(
+        SAEnum(
+            ChangeReviewBucket,
+            name="change_review_bucket",
+            native_enum=False,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+        default=ChangeReviewBucket.CHANGES,
+        server_default=ChangeReviewBucket.CHANGES.value,
     )
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -219,7 +252,9 @@ class IngestApplyLog(Base):
 
 __all__ = [
     "Change",
+    "ChangeIntakePhase",
     "ChangeOrigin",
+    "ChangeReviewBucket",
     "ChangeSourceRef",
     "ChangeType",
     "EventEntity",

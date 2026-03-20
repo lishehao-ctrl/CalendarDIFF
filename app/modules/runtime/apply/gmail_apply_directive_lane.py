@@ -5,7 +5,8 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource
-from app.db.models.review import Change, ChangeType
+from app.db.models.review import Change, ChangeIntakePhase, ChangeType
+from app.modules.runtime.apply.change_intake_policy import derive_review_bucket
 from app.modules.common.family_labels import load_latest_family_labels, require_latest_family_label
 from app.modules.common.source_monitoring_window import parse_source_monitoring_window, semantic_due_date_in_window, source_timezone_name
 from app.modules.common.semantic_codec import (
@@ -32,6 +33,7 @@ def apply_gmail_directive_record(
     record_index: int,
     applied_at: datetime,
     request_id: str,
+    intake_phase: ChangeIntakePhase,
 ) -> list[Change]:
     try:
         validate_gmail_directive_payload(payload=payload, record_index=record_index)
@@ -177,6 +179,11 @@ def apply_gmail_directive_record(
             user_id=source.user_id,
             entity_uid=entity.entity_uid,
             change_type=ChangeType.DUE_CHANGED,
+            intake_phase=intake_phase,
+            review_bucket=derive_review_bucket(
+                intake_phase=intake_phase,
+                change_type=ChangeType.DUE_CHANGED,
+            ),
             before_semantic_json=before_payload,
             after_semantic_json=after_payload,
             delta_seconds=semantic_delta_seconds(before_payload=before_payload, after_payload=after_payload),

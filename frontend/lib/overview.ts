@@ -3,6 +3,7 @@ import type {
   OnboardingStatus,
   ChangeItem,
 } from "@/lib/types";
+import type { InitialReviewSummary } from "@/lib/import-review";
 import { sourceDescriptor, summarizeChange } from "@/lib/presenters";
 
 export type OverviewCardVM = {
@@ -20,10 +21,12 @@ export function buildOverviewCards(params: {
   summary: ChangesWorkbenchSummary;
   topPendingChange: ChangeItem | null;
   onboarding: OnboardingStatus;
+  initialReview: InitialReviewSummary;
 }): OverviewCardVM[] {
-  const { summary, topPendingChange, onboarding } = params;
+  const { summary, topPendingChange, onboarding, initialReview } = params;
+  const needsInitialReview = summary.baseline_review_pending > 0 || initialReview.readyCount > 0;
 
-  const needsReviewSummary = topPendingChange
+  const replayReviewSummary = topPendingChange
     ? `${summarizeChange(topPendingChange).title} is waiting from ${topPendingChange.primary_source ? sourceDescriptor(topPendingChange.primary_source) : "attached evidence"}.`
     : summary.changes_pending > 0
       ? `${summary.changes_pending} changes are waiting for review.`
@@ -46,13 +49,13 @@ export function buildOverviewCards(params: {
   return [
     {
       key: "needs-review",
-      eyebrow: "Needs Review",
-      title: "Review changes",
-      metric: `${summary.changes_pending}`,
-      summary: needsReviewSummary,
-      ctaLabel: "Open Changes",
-      ctaHref: "/changes",
-      tone: summary.changes_pending > 0 ? "pending" : "approved",
+      eyebrow: initialReview.readyCount > 0 ? "Initial Review" : "Needs Review",
+      title: initialReview.summaryTitle,
+      metric: `${needsInitialReview ? summary.baseline_review_pending : summary.changes_pending}`,
+      summary: initialReview.readyCount > 0 || initialReview.runningCount > 0 ? initialReview.summaryBody : replayReviewSummary,
+      ctaLabel: initialReview.primaryCtaLabel,
+      ctaHref: initialReview.primaryCtaHref,
+      tone: needsInitialReview || initialReview.runningCount > 0 || summary.changes_pending > 0 ? "pending" : "approved",
     },
     {
       key: "source-posture",

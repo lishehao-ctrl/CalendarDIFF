@@ -86,7 +86,8 @@ export type ChangesWorkbenchManualSummary = {
 
 export type ChangesWorkbenchSummary = {
   changes_pending: number;
-  recommended_lane: "sources" | "changes" | "families" | null;
+  baseline_review_pending: number;
+  recommended_lane: "sources" | "initial_review" | "changes" | "families" | null;
   recommended_lane_reason_code: string;
   recommended_action_reason: string;
   sources: ChangesWorkbenchSourcesSummary;
@@ -157,10 +158,19 @@ export type SourceObservabilitySync = {
   progress?: SyncProgress | null;
 };
 
+export type SourceBootstrapSummary = {
+  imported_count: number;
+  review_required_count: number;
+  ignored_count: number;
+  conflict_count: number;
+  state: "idle" | "running" | "review_required" | "completed";
+};
+
 export type SourceObservabilityResponse = {
   source_id: number;
   active_request_id?: string | null;
   bootstrap: SourceObservabilitySync | null;
+  bootstrap_summary?: SourceBootstrapSummary | null;
   latest_replay: SourceObservabilitySync | null;
   active: SourceObservabilitySync | null;
   operator_guidance?: SourceOperatorGuidance | null;
@@ -238,6 +248,8 @@ export type ChangeItem = {
   entity_uid: string;
   change_type: string;
   change_origin: string;
+  intake_phase: "baseline" | "replay";
+  review_bucket: "initial_review" | "changes";
   detected_at: string;
   review_status: string;
   before_display: EventDisplay | null;

@@ -24,7 +24,9 @@ from app.db.models.input import (
 from app.db.models.notify import DigestSendLog, Notification, NotificationChannel, NotificationStatus
 from app.db.models.review import (
     Change,
+    ChangeIntakePhase,
     ChangeOrigin,
+    ChangeReviewBucket,
     ChangeType,
     EventEntity,
     EventEntityLifecycle,
@@ -36,6 +38,7 @@ from app.db.models.shared import IntegrationInbox, IntegrationOutbox, OutboxStat
 
 __all__ = [
     "Change",
+    "ChangeIntakePhase",
     "ChangeType",
     "CalendarComponentParseCache",
     "CalendarComponentParseCacheStatus",
@@ -46,6 +49,7 @@ __all__ = [
     "GmailMessageParseCache",
     "GmailMessageParseCacheStatus",
     "ChangeOrigin",
+    "ChangeReviewBucket",
     "IngestApplyLog",
     "IngestJob",
     "IngestJobStatus",

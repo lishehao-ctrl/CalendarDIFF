@@ -5,7 +5,14 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models.review import Change, ChangeOrigin, ChangeType, ReviewStatus
+from app.db.models.review import (
+    Change,
+    ChangeIntakePhase,
+    ChangeOrigin,
+    ChangeReviewBucket,
+    ChangeType,
+    ReviewStatus,
+)
 from app.modules.common.change_source_refs import (
     change_source_refs_as_dicts,
     normalize_source_refs,
@@ -19,6 +26,8 @@ def pending_change_same(
     row: Change,
     *,
     change_type: ChangeType,
+    intake_phase: ChangeIntakePhase,
+    review_bucket: ChangeReviewBucket,
     before_semantic_json: dict | None,
     after_semantic_json: dict | None,
     delta_seconds: int | None,
@@ -27,6 +36,8 @@ def pending_change_same(
     normalized_refs = [item.model_dump(mode="json") for item in normalize_source_refs(source_refs)]
     return (
         row.change_type == change_type
+        and row.intake_phase == intake_phase
+        and row.review_bucket == review_bucket
         and row.before_semantic_json == before_semantic_json
         and row.after_semantic_json == after_semantic_json
         and row.delta_seconds == delta_seconds
@@ -40,6 +51,8 @@ def upsert_pending_change(
     user_id: int,
     entity_uid: str,
     change_type: ChangeType,
+    intake_phase: ChangeIntakePhase,
+    review_bucket: ChangeReviewBucket,
     before_semantic_json: dict | None,
     after_semantic_json: dict | None,
     delta_seconds: int | None,
@@ -69,6 +82,8 @@ def upsert_pending_change(
             entity_uid=entity_uid,
             change_origin=ChangeOrigin.INGEST_PROPOSAL,
             change_type=change_type,
+            intake_phase=intake_phase,
+            review_bucket=review_bucket,
             detected_at=detected_at,
             before_semantic_json=before_semantic_json,
             after_semantic_json=after_semantic_json,
@@ -90,6 +105,8 @@ def upsert_pending_change(
     if pending_change_same(
         existing_pending,
         change_type=change_type,
+        intake_phase=intake_phase,
+        review_bucket=review_bucket,
         before_semantic_json=before_semantic_json,
         after_semantic_json=after_semantic_json,
         delta_seconds=delta_seconds,
@@ -102,6 +119,8 @@ def upsert_pending_change(
         return None
 
     existing_pending.change_type = change_type
+    existing_pending.intake_phase = intake_phase
+    existing_pending.review_bucket = review_bucket
     existing_pending.detected_at = detected_at
     existing_pending.before_semantic_json = before_semantic_json
     existing_pending.after_semantic_json = after_semantic_json

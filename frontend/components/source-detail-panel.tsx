@@ -10,6 +10,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { SourceSyncProgress } from "@/components/source-sync-progress";
 import { createOAuthSession, createSyncRequest, deleteSource, getSourceObservability, getSourceSyncHistory, listSources, updateSource } from "@/lib/api/sources";
 import { withBasePath } from "@/lib/demo-mode";
+import { deriveSourceImportState } from "@/lib/import-review";
 import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
 import { formatElapsedMs } from "@/lib/source-observability";
 import type { SourceObservabilitySync, SourceRow, SourceSyncHistoryResponse } from "@/lib/types";
@@ -177,8 +178,12 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
 
   const activeSync = observability.data?.active || null;
   const bootstrap = observability.data?.bootstrap || null;
+  const bootstrapSummary = observability.data?.bootstrap_summary || null;
   const latestReplay = observability.data?.latest_replay || null;
   const needsReconnect = Boolean(source.last_error_message) || source.oauth_connection_status === "not_connected";
+  const importState = deriveSourceImportState(source, observability.data);
+  const bootstrapConnector = bootstrap?.connector_result && typeof bootstrap.connector_result === "object" ? (bootstrap.connector_result as Record<string, unknown>) : null;
+  const bootstrapRecordsCount = typeof bootstrapConnector?.records_count === "number" ? bootstrapConnector.records_count : null;
 
   return (
     <div className="space-y-5">
@@ -270,6 +275,20 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
             ) : source.sync_progress ? (
               <SourceSyncProgress className="mt-4" progress={source.sync_progress} />
             ) : null}
+
+            <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/75 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Review phase</p>
+              <p className="mt-2 text-sm font-medium text-ink">
+                {importState.phase === "baseline_running"
+                  ? "Baseline import"
+                  : importState.phase === "initial_review_ready"
+                    ? "Initial Review"
+                    : importState.phase === "replay_review"
+                      ? "Replay review"
+                      : "Phase not exposed"}
+              </p>
+              <p className="mt-2 text-sm text-[#596270]">{importState.summary}</p>
+            </div>
           </div>
         </Card>
 
@@ -277,6 +296,22 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
           <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Bootstrap</p>
           <div className="mt-4">
             <SyncRunCard title="Bootstrap run" sync={bootstrap} />
+          </div>
+          <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/75 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Import summary</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              {usageFact("Imported", String(bootstrapSummary?.imported_count || 0))}
+              {usageFact("Needs review", String(bootstrapSummary?.review_required_count || 0))}
+              {usageFact("Ignored", String(bootstrapSummary?.ignored_count || 0))}
+              {usageFact("Conflicts", String(bootstrapSummary?.conflict_count || 0))}
+              {usageFact("Records scanned", bootstrapRecordsCount !== null ? String(bootstrapRecordsCount) : "—")}
+              {usageFact("Bootstrap state", formatStatusLabel(bootstrapSummary?.state, "Unknown"))}
+            </div>
+            {bootstrapSummary?.review_required_count ? (
+              <p className="mt-4 text-xs leading-5 text-[#6d7885]">
+                Baseline import still has items waiting in Initial Review. Clear them before treating this source as fully steady-state replay.
+              </p>
+            ) : null}
           </div>
         </Card>
 

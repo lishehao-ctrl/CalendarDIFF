@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -9,8 +9,11 @@ from sqlalchemy.orm import Session
 from app.db.models.runtime import ConnectorResultStatus, IngestResult
 from app.db.models.input import InputSource, InputSourceCursor, SourceKind, SyncRequest, SyncRequestStage, SyncRequestStatus
 from app.db.models.review import IngestApplyLog
+from app.modules.common.source_auto_sync_schedule import next_source_auto_sync_at
+from app.modules.common.source_monitoring_window import source_timezone_name
 from app.modules.runtime.apply.apply_outcome import ApplyOutcome
 from app.modules.runtime.apply.calendar_apply import apply_calendar_observations
+from app.modules.runtime.apply.change_intake_policy import classify_sync_request_intake_phase
 from app.modules.runtime.apply.gmail_apply import apply_gmail_observations
 from app.modules.runtime.apply.pending_proposal_rebuild import rebuild_pending_change_proposals
 from app.modules.sources.source_monitoring_window_rebind import apply_pending_monitoring_window_update_if_terminal
@@ -26,6 +29,11 @@ def apply_records(
     request_id: str,
 ) -> int:
     records = result.records if isinstance(result.records, list) else []
+    intake_phase = classify_sync_request_intake_phase(
+        db,
+        source_id=source.id,
+        request_id=request_id,
+    )
 
     if result.status == ConnectorResultStatus.NO_CHANGE and not records:
         return 0
@@ -51,6 +59,7 @@ def apply_records(
             records=records,
             applied_at=applied_at,
             request_id=request_id,
+            intake_phase=intake_phase,
         )
     else:
         return 0
@@ -65,6 +74,7 @@ def apply_records(
         source=source,
         affected_entity_uids=outcome.affected_entity_uids,
         applied_at=applied_at,
+        intake_phase=intake_phase,
         previous_observation_payloads=previous_observation_payloads,
     )
     return changes_created + outcome.direct_changes_created
@@ -172,8 +182,9 @@ def _apply_source_success_state(
         source.cursor.version += 1
 
     source.last_polled_at = result.fetched_at
-    source.next_poll_at = completed_at.astimezone(timezone.utc).replace(microsecond=0) + timedelta(
-        seconds=max(int(source.poll_interval_seconds), 30)
+    source.next_poll_at = next_source_auto_sync_at(
+        now=completed_at.astimezone(timezone.utc).replace(microsecond=0),
+        timezone_name=source_timezone_name(source),
     )
     source.last_error_code = None
     source.last_error_message = None
