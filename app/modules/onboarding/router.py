@@ -12,18 +12,18 @@ from app.modules.onboarding.schemas import (
     OnboardingCanvasIcsRequest,
     OnboardingGmailOAuthRequest,
     OnboardingGmailSkipRequest,
+    OnboardingMonitoringWindowRequest,
+    OnboardingMonitoringWindowResponse,
     OnboardingOAuthSessionCreateResponse,
     OnboardingRegisterRequest,
     OnboardingRegisterResponse,
     OnboardingSourceResponse,
     OnboardingStatusResponse,
-    OnboardingTermBindingRequest,
-    OnboardingTermBindingResponse,
     SourceHealthSummaryResponse,
 )
 from app.modules.onboarding.service import (
     OnboardingRegisterError,
-    apply_onboarding_term_binding,
+    apply_onboarding_monitoring_window,
     get_onboarding_status,
     register_onboarding,
     skip_onboarding_gmail,
@@ -114,19 +114,17 @@ def skip_gmail(
     return _serialize_onboarding_status(status_payload)
 
 
-@router.post("/term-binding", response_model=OnboardingStatusResponse)
-def save_term_binding(
-    payload: OnboardingTermBindingRequest,
+@router.post("/monitoring-window", response_model=OnboardingStatusResponse)
+def save_monitoring_window(
+    payload: OnboardingMonitoringWindowRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_authenticated_user_or_401),
 ) -> OnboardingStatusResponse:
     try:
-        status_payload = apply_onboarding_term_binding(
+        status_payload = apply_onboarding_monitoring_window(
             db,
             user=user,
-            term_key=payload.term_key,
-            term_from=payload.term_from.isoformat(),
-            term_to=payload.term_to.isoformat(),
+            monitor_since=payload.monitor_since.isoformat(),
         )
     except OnboardingRegisterError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
@@ -150,7 +148,7 @@ def _serialize_onboarding_status(status_payload) -> OnboardingStatusResponse:
         canvas_source=_serialize_onboarding_source(status_payload.canvas_source),
         gmail_source=_serialize_onboarding_source(status_payload.gmail_source),
         gmail_skipped=status_payload.gmail_skipped,
-        term_binding=_serialize_term_binding(status_payload.term_binding),
+        monitoring_window=_serialize_monitoring_window(status_payload.monitoring_window),
     )
 
 
@@ -161,18 +159,16 @@ def _serialize_onboarding_source(source_payload) -> OnboardingSourceResponse | N
         source_id=source_payload.source_id,
         provider=source_payload.provider,  # type: ignore[arg-type]
         connected=source_payload.connected,
-        has_term_binding=source_payload.has_term_binding,
+        has_monitoring_window=source_payload.has_monitoring_window,
         runtime_state=source_payload.runtime_state,  # type: ignore[arg-type]
         oauth_account_email=source_payload.oauth_account_email,
-        term_binding=_serialize_term_binding(source_payload.term_binding),
+        monitoring_window=_serialize_monitoring_window(source_payload.monitoring_window),
     )
 
 
-def _serialize_term_binding(term_binding) -> OnboardingTermBindingResponse | None:
-    if term_binding is None:
+def _serialize_monitoring_window(monitoring_window) -> OnboardingMonitoringWindowResponse | None:
+    if monitoring_window is None:
         return None
-    return OnboardingTermBindingResponse(
-        term_key=term_binding.term_key,
-        term_from=term_binding.term_from,
-        term_to=term_binding.term_to,
+    return OnboardingMonitoringWindowResponse(
+        monitor_since=monitoring_window.monitor_since,
     )

@@ -8,9 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource, SourceKind
 from app.db.models.review import SourceEventObservation
-from app.modules.common.source_term_window import (
+from app.modules.common.source_monitoring_window import (
     parse_iso_datetime,
-    parse_source_term_window,
+    parse_source_monitoring_window,
     semantic_due_date_in_window,
     source_timezone_name,
 )
@@ -130,11 +130,11 @@ def apply_calendar_observations(
         course_parse = extract_course_parse(payload=payload, source_facts=source_facts)
         semantic_draft = extract_semantic_event_draft(payload=payload, source_facts=source_facts)
         link_signals: dict = {}
-        term_window = parse_source_term_window(source, required=False)
+        term_window = parse_source_monitoring_window(source, required=False)
         if term_window is not None and not semantic_due_date_in_window(
             semantic_payload=semantic_draft,
             fallback_datetime=parse_iso_datetime(source_facts.get("source_dtstart_utc")),
-            term_window=term_window,
+            monitoring_window=term_window,
             timezone_name=source_timezone_name(source),
         ):
             retire_active_observation_for_unresolved_transition(
@@ -152,7 +152,7 @@ def apply_calendar_observations(
                 provider=source.provider,
                 external_event_id=external_event_id,
                 request_id=request_id,
-                reason_code="term_out_of_scope",
+                reason_code="monitoring_window_out_of_scope",
                 source_facts_json=source_facts,
                 semantic_event_draft_json=semantic_draft,
                 kind_resolution_json=None,

@@ -5,7 +5,7 @@ from typing import Any, cast
 
 from app.db.models.runtime import ConnectorResultStatus
 from app.db.models.input import InputSource
-from app.modules.common.source_term_window import calendar_component_in_window, parse_source_term_window, source_timezone_name
+from app.modules.common.source_monitoring_window import calendar_component_in_window, parse_source_monitoring_window, source_timezone_name
 from app.modules.runtime.connectors.connector_types import ConnectorFetchOutcome
 from app.modules.runtime.connectors.ics_delta import ICS_COMPONENT_FINGERPRINT_HASH_KEY, IcsDeltaParseError, build_ics_delta
 from app.modules.runtime.connectors.job_claiming import extract_ics_component_fingerprints
@@ -80,18 +80,18 @@ def fetch_calendar_delta(*, source: Any, emit_progress: Callable[[dict], None] |
         "ics_delta_removed_components": delta.removed_components_count,
         "ics_delta_invalid_components": delta.invalid_components,
     }
-    term_window = parse_source_term_window(input_source, required=False)
+    term_window = parse_source_monitoring_window(input_source, required=False)
     if term_window is not None:
         timezone_name = source_timezone_name(input_source)
         filtered_changed_components = [
-            component
-            for component in delta.changed_components
-            if calendar_component_in_window(
-                component_ical_b64=component.get("component_ical_b64"),
-                term_window=term_window,
-                timezone_name=timezone_name,
-            )
-        ]
+                component
+                for component in delta.changed_components
+                if calendar_component_in_window(
+                    component_ical_b64=component.get("component_ical_b64"),
+                    monitoring_window=term_window,
+                    timezone_name=timezone_name,
+                )
+            ]
     else:
         filtered_changed_components = delta.changed_components
 

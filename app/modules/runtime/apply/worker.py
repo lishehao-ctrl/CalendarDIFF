@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.db.models.input import SyncRequest, SyncRequestStage, SyncRequestStatus
 from app.db.models.shared import IntegrationInbox, IntegrationOutbox, OutboxStatus
 from app.modules.runtime.apply.apply import apply_ingest_result_idempotent
-from app.modules.sources.source_term_rebind import apply_pending_term_rebind_if_terminal
+from app.modules.sources.source_monitoring_window_rebind import apply_pending_monitoring_window_update_if_terminal
 from app.modules.runtime.kernel import build_sync_progress_payload, set_sync_runtime_state
 
 CORE_APPLY_CONSUMER = "core.ingest.apply"
@@ -105,7 +105,7 @@ def run_core_apply_tick(db: Session) -> int:
                     if sync_request.source is not None:
                         sync_request.source.last_error_code = "apply_failed"
                         sync_request.source.last_error_message = str(exc)[:MAX_SYNC_REQUEST_ERROR_LEN]
-                        apply_pending_term_rebind_if_terminal(
+                        apply_pending_monitoring_window_update_if_terminal(
                             db=db,
                             source=sync_request.source,
                             terminal_status=SyncRequestStatus.FAILED,

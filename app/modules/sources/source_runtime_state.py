@@ -8,8 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource, SyncRequest, SyncRequestStatus
-from app.modules.common.source_term_window import parse_source_term_window, source_timezone_name
-from app.modules.sources.source_term_rebind import has_pending_term_rebind
+from app.modules.common.source_monitoring_window import parse_source_monitoring_window, source_timezone_name
+from app.modules.sources.source_monitoring_window_rebind import has_pending_monitoring_window_update
 
 SourceLifecycleState = Literal["active", "inactive", "archived"]
 SourceSyncState = Literal["idle", "queued", "running"]
@@ -66,7 +66,7 @@ def derive_source_runtime_states(
             sync_state = "queued"
         else:
             sync_state = "idle"
-        config_state: SourceConfigState = "rebind_pending" if has_pending_term_rebind(source) else "stable"
+        config_state: SourceConfigState = "rebind_pending" if has_pending_monitoring_window_update(source) else "stable"
         projections[source.id] = SourceRuntimeStateProjection(
             lifecycle_state=lifecycle_state,
             sync_state=sync_state,
@@ -85,7 +85,7 @@ def _derive_lifecycle_state(
     source: InputSource,
     now: datetime,
 ) -> SourceLifecycleState:
-    term_window = parse_source_term_window(source, required=False)
+    term_window = parse_source_monitoring_window(source, required=False)
     if term_window is not None and term_window.is_expired(now=now, timezone_name=source_timezone_name(source)):
         return "archived"
     if source.is_active:

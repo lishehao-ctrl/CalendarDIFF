@@ -13,7 +13,7 @@ from app.modules.runtime.apply.apply_outcome import ApplyOutcome
 from app.modules.runtime.apply.calendar_apply import apply_calendar_observations
 from app.modules.runtime.apply.gmail_apply import apply_gmail_observations
 from app.modules.runtime.apply.pending_proposal_rebuild import rebuild_pending_change_proposals
-from app.modules.sources.source_term_rebind import apply_pending_term_rebind_if_terminal
+from app.modules.sources.source_monitoring_window_rebind import apply_pending_monitoring_window_update_if_terminal
 from app.modules.runtime.kernel import build_sync_progress_payload, set_sync_runtime_state
 
 
@@ -136,7 +136,7 @@ def apply_ingest_result_idempotent(db: Session, *, request_id: str) -> dict:
                 error_message=None,
                 when=now,
             )
-        apply_pending_term_rebind_if_terminal(
+        apply_pending_monitoring_window_update_if_terminal(
             db=db,
             source=source,
             terminal_status=SyncRequestStatus.SUCCEEDED,

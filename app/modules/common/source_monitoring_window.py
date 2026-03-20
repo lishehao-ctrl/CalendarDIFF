@@ -10,142 +10,122 @@ from icalendar import Calendar
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 
-class SourceTermWindowConfigError(ValueError):
+class SourceMonitoringWindowConfigError(ValueError):
     pass
 
 
-class SourceTermWindowModel(BaseModel):
-    term_key: str | None = Field(default=None, max_length=64)
-    term_from: date
-    term_to: date
+class SourceMonitoringWindowModel(BaseModel):
+    monitor_since: date = Field()
 
     model_config = {"extra": "forbid"}
 
     @model_validator(mode="after")
-    def _validate_order(self) -> "SourceTermWindowModel":
-        if self.term_to < self.term_from:
-            raise ValueError("term_to must be on or after term_from")
-        if isinstance(self.term_key, str):
-            normalized = self.term_key.strip()
-            self.term_key = normalized or None
-        if self.term_key is None:
-            self.term_key = _build_auto_term_key(term_from=self.term_from, term_to=self.term_to)
+    def _validate_model(self) -> "SourceMonitoringWindowModel":
         return self
 
 
 @dataclass(frozen=True)
-class SourceTermWindow:
-    term_key: str
-    term_from: date
-    term_to: date
-
-    @property
-    def bootstrap_from(self) -> date:
-        return self.term_from - timedelta(days=30)
-
-    @property
-    def monitor_from(self) -> date:
-        return self.term_from
-
-    @property
-    def monitor_until(self) -> date:
-        return self.term_to + timedelta(days=30)
-
-    @property
-    def archive_after(self) -> date:
-        return self.monitor_until
+class SourceMonitoringWindow:
+    monitor_since: date
 
     def to_config_json(self) -> dict[str, str]:
-        return {
-            "term_key": self.term_key,
-            "term_from": self.term_from.isoformat(),
-            "term_to": self.term_to.isoformat(),
-        }
+        return {"monitor_since": self.monitor_since.isoformat()}
 
     def contains_local_date(self, value: date | None) -> bool:
-        if value is None:
-            return False
-        return self.bootstrap_from <= value <= self.monitor_until
+        return value is not None and value >= self.monitor_since
 
     def contains_datetime(self, value: datetime | None, *, timezone_name: str | None) -> bool:
         local_date = datetime_to_local_date(value, timezone_name=timezone_name)
         return self.contains_local_date(local_date)
 
     def is_expired(self, *, now: datetime, timezone_name: str | None) -> bool:
-        local_date = datetime_to_local_date(now, timezone_name=timezone_name)
-        return local_date is not None and local_date > self.archive_after
+        del now, timezone_name
+        return False
 
     def has_started(self, *, now: datetime, timezone_name: str | None) -> bool:
         local_date = datetime_to_local_date(now, timezone_name=timezone_name)
-        return local_date is not None and local_date >= self.monitor_from
+        return local_date is not None and local_date >= self.monitor_since
 
     def monitor_start_at_utc(self, *, timezone_name: str | None) -> datetime:
         zone = _resolve_timezone(timezone_name)
-        local_start = datetime.combine(self.monitor_from, time.min, tzinfo=zone)
+        local_start = datetime.combine(self.monitor_since, time.min, tzinfo=zone)
         return local_start.astimezone(timezone.utc)
 
-    def gmail_query_bounds(self) -> tuple[str, str]:
-        start = self.bootstrap_from.strftime("%Y/%m/%d")
-        end_exclusive = (self.monitor_until + timedelta(days=1)).strftime("%Y/%m/%d")
+    def gmail_query_bounds(self, *, timezone_name: str | None) -> tuple[str, str]:
+        start = self.monitor_since.strftime("%Y/%m/%d")
+        today_local = datetime_to_local_date(datetime.now(timezone.utc), timezone_name=timezone_name) or datetime.now(timezone.utc).date()
+        end_exclusive = (today_local + timedelta(days=1)).strftime("%Y/%m/%d")
         return start, end_exclusive
 
 
-TERM_WINDOW_KEYS = ("term_key", "term_from", "term_to")
-TERM_REQUIRED_KEYS = ("term_from", "term_to")
+MONITORING_WINDOW_KEYS = ("monitor_since",)
+MONITORING_REQUIRED_KEYS = ("monitor_since",)
+LEGACY_TERM_KEYS = ("term_key", "term_from", "term_to")
+DEFAULT_MONITOR_LOOKBACK_DAYS = 90
 
 
-def normalize_term_window_config(*, config: dict[str, Any], required: bool) -> dict[str, Any]:
+def normalize_monitoring_window_config(
+    *,
+    config: dict[str, Any],
+    required: bool,
+    default_if_missing: bool = False,
+    timezone_name: str | None = None,
+) -> dict[str, Any]:
     normalized = dict(config)
-    present_required = [key for key in TERM_REQUIRED_KEYS if key in normalized and normalized.get(key) not in (None, "")]
-    if not present_required:
-        if required:
-            raise SourceTermWindowConfigError("config must include term_from and term_to")
+    window = parse_monitoring_window_config(normalized, required=False)
+    if window is None:
+        if required and not default_if_missing:
+            raise SourceMonitoringWindowConfigError("config must include monitor_since")
+        if default_if_missing:
+            normalized.update(_default_monitoring_window(timezone_name=timezone_name).to_config_json())
         return normalized
-    if len(present_required) != len(TERM_REQUIRED_KEYS):
-        raise SourceTermWindowConfigError("config must include term_from and term_to together")
-    window = parse_term_window_config(normalized, required=True)
+    for key in LEGACY_TERM_KEYS:
+        normalized.pop(key, None)
     normalized.update(window.to_config_json())
     return normalized
 
 
-def parse_term_window_config(config: Any, *, required: bool) -> SourceTermWindow | None:
+def parse_monitoring_window_config(config: Any, *, required: bool) -> SourceMonitoringWindow | None:
     if not isinstance(config, dict):
         if required:
-            raise SourceTermWindowConfigError("config must be an object")
+            raise SourceMonitoringWindowConfigError("config must be an object")
         return None
-    subset = {key: config.get(key) for key in TERM_WINDOW_KEYS if key in config}
-    present_required = [key for key in TERM_REQUIRED_KEYS if subset.get(key) not in (None, "")]
+
+    subset = {key: config.get(key) for key in MONITORING_WINDOW_KEYS if key in config}
+    legacy_monitor_since = _legacy_monitor_since(config)
+    if subset.get("monitor_since") in (None, "") and legacy_monitor_since is not None:
+        subset["monitor_since"] = legacy_monitor_since.isoformat()
+
+    present_required = [key for key in MONITORING_REQUIRED_KEYS if subset.get(key) not in (None, "")]
     if not present_required:
         if required:
-            raise SourceTermWindowConfigError("config must include term_from and term_to")
+            raise SourceMonitoringWindowConfigError("config must include monitor_since")
         return None
-    if len(present_required) != len(TERM_REQUIRED_KEYS):
-        raise SourceTermWindowConfigError("config must include term_from and term_to together")
     try:
-        model = SourceTermWindowModel.model_validate(subset)
+        model = SourceMonitoringWindowModel.model_validate(subset)
     except ValidationError as exc:
-        raise SourceTermWindowConfigError(_term_window_validation_message(exc)) from exc
-    return SourceTermWindow(term_key=model.term_key.strip(), term_from=model.term_from, term_to=model.term_to)
+        raise SourceMonitoringWindowConfigError(_monitoring_window_validation_message(exc)) from exc
+    return SourceMonitoringWindow(monitor_since=model.monitor_since)
 
 
-def _term_window_validation_message(exc: ValidationError) -> str:
+def _monitoring_window_validation_message(exc: ValidationError) -> str:
     detail = exc.errors()[0] if exc.errors() else {}
     location = detail.get("loc") or ()
     message = detail.get("msg")
     field = location[-1] if location else None
-    if isinstance(field, str) and field in TERM_WINDOW_KEYS:
+    if isinstance(field, str) and field in MONITORING_WINDOW_KEYS:
         if isinstance(message, str) and message.strip():
-            return f"invalid term window config: {field} ({message})"
-        return f"invalid term window config: {field}"
+            return f"invalid monitoring config: {field} ({message})"
+        return f"invalid monitoring config: {field}"
     if isinstance(message, str) and message.strip():
-        return f"invalid term window config: {message}"
-    return "invalid term window config"
+        return f"invalid monitoring config: {message}"
+    return "invalid monitoring config"
 
 
-def parse_source_term_window(source: Any, *, required: bool = False) -> SourceTermWindow | None:
+def parse_source_monitoring_window(source: Any, *, required: bool = False) -> SourceMonitoringWindow | None:
     source_config = getattr(source, "config", None)
     config_json = getattr(source_config, "config_json", None)
-    return parse_term_window_config(config_json, required=required)
+    return parse_monitoring_window_config(config_json, required=required)
 
 
 def source_timezone_name(source: Any) -> str | None:
@@ -179,16 +159,16 @@ def parse_iso_datetime(value: object) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
-def message_internal_date_in_window(*, internal_date: object, term_window: SourceTermWindow, timezone_name: str | None) -> bool:
+def message_internal_date_in_window(*, internal_date: object, monitoring_window: SourceMonitoringWindow, timezone_name: str | None) -> bool:
     parsed = parse_iso_datetime(internal_date)
-    return term_window.contains_datetime(parsed, timezone_name=timezone_name)
+    return monitoring_window.contains_datetime(parsed, timezone_name=timezone_name)
 
 
 def semantic_due_date_in_window(
     *,
     semantic_payload: dict[str, Any] | None,
     fallback_datetime: datetime | None,
-    term_window: SourceTermWindow,
+    monitoring_window: SourceMonitoringWindow,
     timezone_name: str | None,
 ) -> bool:
     if isinstance(semantic_payload, dict):
@@ -199,24 +179,24 @@ def semantic_due_date_in_window(
             except ValueError:
                 due_date_value = None
             else:
-                return term_window.contains_local_date(due_date_value)
-    return term_window.contains_datetime(fallback_datetime, timezone_name=timezone_name)
+                return monitoring_window.contains_local_date(due_date_value)
+    return monitoring_window.contains_datetime(fallback_datetime, timezone_name=timezone_name)
 
 
 def calendar_component_in_window(
     *,
     component_ical_b64: object,
-    term_window: SourceTermWindow,
+    monitoring_window: SourceMonitoringWindow,
     timezone_name: str | None,
 ) -> bool:
     if not isinstance(component_ical_b64, str) or not component_ical_b64.strip():
         return True
     component_datetime = extract_calendar_component_datetime(component_ical_b64)
     if component_datetime is not None:
-        return term_window.contains_datetime(component_datetime, timezone_name=timezone_name)
+        return monitoring_window.contains_datetime(component_datetime, timezone_name=timezone_name)
     component_date = extract_calendar_component_date(component_ical_b64)
     if component_date is not None:
-        return term_window.contains_local_date(component_date)
+        return monitoring_window.contains_local_date(component_date)
     return True
 
 
@@ -286,20 +266,31 @@ def _resolve_timezone(timezone_name: str | None) -> ZoneInfo:
         return ZoneInfo("UTC")
 
 
-def _build_auto_term_key(*, term_from: date, term_to: date) -> str:
-    return f"{term_from.isoformat()}__{term_to.isoformat()}"
+def _legacy_monitor_since(config: dict[str, Any]) -> date | None:
+    raw = config.get("term_from")
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        return date.fromisoformat(raw.strip())
+    except ValueError:
+        return None
+
+
+def _default_monitoring_window(*, timezone_name: str | None) -> SourceMonitoringWindow:
+    local_today = datetime_to_local_date(datetime.now(timezone.utc), timezone_name=timezone_name) or datetime.now(timezone.utc).date()
+    return SourceMonitoringWindow(monitor_since=local_today - timedelta(days=DEFAULT_MONITOR_LOOKBACK_DAYS))
 
 
 __all__ = [
-    "SourceTermWindow",
-    "SourceTermWindowConfigError",
+    "SourceMonitoringWindow",
+    "SourceMonitoringWindowConfigError",
     "calendar_component_in_window",
     "datetime_to_local_date",
     "message_internal_date_in_window",
-    "normalize_term_window_config",
+    "normalize_monitoring_window_config",
     "parse_iso_datetime",
-    "parse_source_term_window",
-    "parse_term_window_config",
+    "parse_monitoring_window_config",
+    "parse_source_monitoring_window",
     "semantic_due_date_in_window",
     "source_timezone_name",
 ]

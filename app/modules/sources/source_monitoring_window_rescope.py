@@ -9,40 +9,36 @@ from sqlalchemy.orm import Session
 from app.db.models.runtime import CalendarComponentParseTask, IngestUnresolvedRecord
 from app.db.models.input import IngestTriggerType, InputSource
 from app.db.models.review import Change, ChangeSourceRef, SourceEventObservation
-from app.modules.common.source_term_window import SourceTermWindow, source_timezone_name
+from app.modules.common.source_monitoring_window import SourceMonitoringWindow, source_timezone_name
 from app.modules.runtime.apply.pending_proposal_rebuild import rebuild_pending_change_proposals
 from app.modules.sources.sync_requests_service import enqueue_sync_request_idempotent_in_txn
 
 
 @dataclass(frozen=True)
-class SourceTermRescopeOutcome:
+class SourceMonitoringWindowRescopeOutcome:
     affected_entity_uids: set[str]
     changes_created: int
     pending_entity_uids: set[str]
     sync_request_id: str | None
 
 
-def term_window_changed(
+def monitoring_window_changed(
     *,
-    previous: SourceTermWindow | None,
-    current: SourceTermWindow | None,
+    previous: SourceMonitoringWindow | None,
+    current: SourceMonitoringWindow | None,
 ) -> bool:
     if previous is None or current is None:
         return previous != current
-    return (
-        previous.term_key != current.term_key
-        or previous.term_from != current.term_from
-        or previous.term_to != current.term_to
-    )
+    return previous.monitor_since != current.monitor_since
 
 
-def apply_source_term_rescope(
+def apply_source_monitoring_window_rescope(
     *,
     db: Session,
     source: InputSource,
-    term_window: SourceTermWindow,
+    monitoring_window: SourceMonitoringWindow,
     applied_at: datetime,
-) -> SourceTermRescopeOutcome:
+) -> SourceMonitoringWindowRescopeOutcome:
     affected_entity_uids = _collect_affected_entity_uids(db=db, source=source)
     _purge_source_scoped_state(db=db, source=source)
 
@@ -59,25 +55,21 @@ def apply_source_term_rescope(
 
     sync_request_id: str | None = None
     timezone_name = source_timezone_name(source)
-    if source.is_active and term_window.has_started(now=applied_at, timezone_name=timezone_name):
+    if source.is_active and monitoring_window.has_started(now=applied_at, timezone_name=timezone_name):
         sync_request = enqueue_sync_request_idempotent_in_txn(
             db,
             source=source,
             trigger_type=IngestTriggerType.MANUAL,
-            idempotency_key=(
-                f"term_rescope:{source.id}:{term_window.term_key}:{term_window.term_from.isoformat()}:{term_window.term_to.isoformat()}"
-            ),
+            idempotency_key=f"monitoring_window_rescope:{source.id}:{monitoring_window.monitor_since.isoformat()}",
             metadata={
-                "kind": "term_rescope",
-                "term_key": term_window.term_key,
-                "term_from": term_window.term_from.isoformat(),
-                "term_to": term_window.term_to.isoformat(),
+                "kind": "monitoring_window_rescope",
+                "monitor_since": monitoring_window.monitor_since.isoformat(),
             },
-            trace_id=f"term-rescope:{source.id}",
+            trace_id=f"monitoring-window-rescope:{source.id}",
         )
         sync_request_id = sync_request.request_id
 
-    return SourceTermRescopeOutcome(
+    return SourceMonitoringWindowRescopeOutcome(
         affected_entity_uids=affected_entity_uids,
         changes_created=changes_created,
         pending_entity_uids=pending_entity_uids,
@@ -123,7 +115,7 @@ def _purge_source_scoped_state(*, db: Session, source: InputSource) -> None:
 
 
 __all__ = [
-    "SourceTermRescopeOutcome",
-    "apply_source_term_rescope",
-    "term_window_changed",
+    "SourceMonitoringWindowRescopeOutcome",
+    "apply_source_monitoring_window_rescope",
+    "monitoring_window_changed",
 ]

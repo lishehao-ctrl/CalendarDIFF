@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, aliased
 from app.core.config import get_settings
 from app.db.models.runtime import IngestJob, IngestJobStatus
 from app.db.models.input import InputSource, SyncRequest, SyncRequestStage, SyncRequestStatus
-from app.modules.sources.source_term_rebind import apply_pending_term_rebind_if_terminal
+from app.modules.sources.source_monitoring_window_rebind import apply_pending_monitoring_window_update_if_terminal
 from app.modules.runtime.kernel import (
     JobContext,
     apply_dead_letter_transition,
@@ -93,7 +93,7 @@ def requeue_stale_claimed_jobs(db: Session) -> int:
             attempt_mode="set",
         )
         if source is not None:
-            apply_pending_term_rebind_if_terminal(
+            apply_pending_monitoring_window_update_if_terminal(
                 db=db,
                 source=source,
                 terminal_status=SyncRequestStatus.FAILED,

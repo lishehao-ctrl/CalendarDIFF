@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.db.models.runtime import ConnectorResultStatus, IngestJobStatus
 from app.db.models.input import SyncRequestStage, SyncRequestStatus
 from app.modules.runtime.connectors.connector_types import ConnectorFailureDecision
-from app.modules.sources.source_term_rebind import apply_pending_term_rebind_if_terminal
+from app.modules.sources.source_monitoring_window_rebind import apply_pending_monitoring_window_update_if_terminal
 from app.modules.runtime.kernel import (
     JobContext,
     apply_dead_letter_transition,
@@ -127,7 +127,7 @@ def apply_failure(
         attempt_mode="set",
     )
     if context.source is not None:
-        apply_pending_term_rebind_if_terminal(
+        apply_pending_monitoring_window_update_if_terminal(
             db=db,
             source=context.source,
             terminal_status=SyncRequestStatus.FAILED,

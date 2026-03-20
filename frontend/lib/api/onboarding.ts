@@ -20,10 +20,8 @@ export async function skipOnboardingGmail() {
   return apiPost<OnboardingStatus>("/onboarding/gmail-skip", {});
 }
 
-export async function saveOnboardingTermBinding(payload: {
-  term_key?: string | null;
-  term_from: string;
-  term_to: string;
+export async function saveOnboardingMonitoringWindow(payload: {
+  monitor_since: string;
 }) {
-  return apiPost<OnboardingStatus>("/onboarding/term-binding", payload);
+  return apiPost<OnboardingStatus>("/onboarding/monitoring-window", payload);
 }

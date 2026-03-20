@@ -12,10 +12,10 @@ from app.db.models.input import InputSource
 from app.db.models.review import EventEntity, EventEntityLifecycle
 from app.db.models.shared import CourseWorkItemLabelFamily
 from app.modules.common.course_identity import normalized_course_identity_key
-from app.modules.common.source_term_window import (
-    SourceTermWindow,
+from app.modules.common.source_monitoring_window import (
+    SourceMonitoringWindow,
     message_internal_date_in_window,
-    parse_source_term_window,
+    parse_source_monitoring_window,
     source_timezone_name,
 )
 from app.modules.runtime.connectors.connector_types import ConnectorFetchOutcome
@@ -32,7 +32,6 @@ from sqlalchemy.orm.exc import UnmappedInstanceError
 
 
 _DEFAULT_GMAIL_LABEL_IDS = ("INBOX",)
-_TERM_KEY_ACADEMIC_SCOPE_RE = re.compile(r"^\s*(?P<quarter>WI|SP|SU|FA)(?P<year2>\d{2})(?:\b|[^A-Za-z0-9].*)?$", re.IGNORECASE)
 _GMAIL_FETCH_PROGRESS_BATCH = 10
 _GMAIL_FETCH_TAIL_PROGRESS = 5
 _GMAIL_CONNECTOR_CHUNK_SIZE = 25
@@ -72,7 +71,7 @@ def fetch_gmail_changes(
     config_json = getattr(source_config, "config_json", None)
     config = config_json if isinstance(config_json, dict) else {}
     known_course_tokens = _known_course_tokens_for_source(input_source)
-    term_window = parse_source_term_window(input_source, required=False)
+    term_window = parse_source_monitoring_window(input_source, required=False)
     timezone_name = source_timezone_name(input_source)
     now = datetime.now(timezone.utc)
     if term_window is not None and term_window.is_expired(now=now, timezone_name=timezone_name):
@@ -251,7 +250,7 @@ def matches_gmail_source_filters(
     *,
     metadata: Any,
     config: dict,
-    term_window: SourceTermWindow | None = None,
+    term_window: SourceMonitoringWindow | None = None,
     timezone_name: str | None = None,
     known_course_tokens: set[str] | None = None,
 ) -> bool:
@@ -265,7 +264,7 @@ def matches_gmail_source_filters(
 
     if term_window is not None and not message_internal_date_in_window(
         internal_date=metadata_internal_date,
-        term_window=term_window,
+        monitoring_window=term_window,
         timezone_name=timezone_name,
     ):
         return False
@@ -322,7 +321,7 @@ def _bootstrap_gmail_messages(
     request_id: str,
     profile: Any,
     config: dict,
-    term_window: SourceTermWindow | None,
+    term_window: SourceMonitoringWindow | None,
     timezone_name: str | None,
     known_course_tokens: set[str],
     emit_progress: Callable[[dict], None] | None,
@@ -331,7 +330,7 @@ def _bootstrap_gmail_messages(
     if term_window is None:
         return _no_change(cursor_patch={"history_id": latest_history_id} if latest_history_id else {})
 
-    start_date, end_exclusive = term_window.gmail_query_bounds()
+    start_date, end_exclusive = term_window.gmail_query_bounds(timezone_name=timezone_name)
     query = f"after:{start_date} before:{end_exclusive}"
     try:
         message_ids = client.list_message_ids(
@@ -458,7 +457,7 @@ def _bootstrap_gmail_discovery(
     request_id: str,
     profile: Any,
     config: dict,
-    term_window: SourceTermWindow | None,
+    term_window: SourceMonitoringWindow | None,
     timezone_name: str | None,
     known_course_tokens: set[str],
     emit_progress: Callable[[dict], None] | None,
@@ -476,7 +475,7 @@ def _bootstrap_gmail_discovery(
         total=1,
         unit="steps",
     )
-    start_date, end_exclusive = term_window.gmail_query_bounds()
+    start_date, end_exclusive = term_window.gmail_query_bounds(timezone_name=timezone_name)
     query = f"after:{start_date} before:{end_exclusive}"
     try:
         message_ids = client.list_message_ids(
@@ -573,7 +572,7 @@ def _continue_gmail_connector_fetch(
     request_id: str,
     profile: Any,
     config: dict,
-    term_window: SourceTermWindow | None,
+    term_window: SourceMonitoringWindow | None,
     timezone_name: str | None,
     known_course_tokens: set[str],
     continuation_state: dict,
@@ -811,8 +810,7 @@ def _known_course_tokens_for_source(source: InputSource) -> set[str]:
         return set()
     if session is None or not isinstance(getattr(source, "user_id", None), int):
         return set()
-    term_window = parse_source_term_window(source, required=False)
-    academic_scope = _parse_academic_scope_from_term_key(term_window.term_key if term_window is not None else None)
+    term_window = parse_source_monitoring_window(source, required=False)
 
     tokens: set[str] = set()
     current_term_stems: set[tuple[str, int, str | None]] = set()
@@ -832,10 +830,7 @@ def _known_course_tokens_for_source(source: InputSource) -> set[str]:
     for course_dept, course_number, course_suffix, course_quarter, course_year2, due_date in entity_rows:
         if not _entity_matches_source_term(
             term_window=term_window,
-            academic_scope=academic_scope,
             due_date=due_date,
-            course_quarter=course_quarter,
-            course_year2=course_year2,
         ):
             continue
         stem = _course_stem(course_dept=course_dept, course_number=course_number, course_suffix=course_suffix)
@@ -857,56 +852,20 @@ def _known_course_tokens_for_source(source: InputSource) -> set[str]:
         stem = _course_stem(course_dept=course_dept, course_number=course_number, course_suffix=course_suffix)
         if stem is None:
             continue
-        if stem in current_term_stems or _course_mapping_matches_academic_scope(
-            academic_scope=academic_scope,
-            course_quarter=course_quarter,
-            course_year2=course_year2,
-        ):
+        del course_quarter, course_year2
+        if not current_term_stems or stem in current_term_stems:
             tokens.update(_course_identity_tokens(course_dept=course_dept, course_number=course_number, course_suffix=course_suffix))
     return tokens
 
 
-def _parse_academic_scope_from_term_key(term_key: object) -> tuple[str, int] | None:
-    if not isinstance(term_key, str) or not term_key.strip():
-        return None
-    match = _TERM_KEY_ACADEMIC_SCOPE_RE.match(term_key.strip())
-    if match is None:
-        return None
-    return (match.group("quarter").upper(), int(match.group("year2")))
-
-
 def _entity_matches_source_term(
     *,
-    term_window: SourceTermWindow | None,
-    academic_scope: tuple[str, int] | None,
+    term_window: SourceMonitoringWindow | None,
     due_date: object,
-    course_quarter: object,
-    course_year2: object,
 ) -> bool:
-    if term_window is not None and isinstance(due_date, date):
-        if term_window.term_from <= due_date <= term_window.term_to:
-            return True
-    return _course_mapping_matches_academic_scope(
-        academic_scope=academic_scope,
-        course_quarter=course_quarter,
-        course_year2=course_year2,
-    )
-
-
-def _course_mapping_matches_academic_scope(
-    *,
-    academic_scope: tuple[str, int] | None,
-    course_quarter: object,
-    course_year2: object,
-) -> bool:
-    if academic_scope is None:
-        return False
-    return (
-        isinstance(course_quarter, str)
-        and course_quarter.strip().upper() == academic_scope[0]
-        and isinstance(course_year2, int)
-        and course_year2 == academic_scope[1]
-    )
+    if term_window is None:
+        return True
+    return isinstance(due_date, date) and due_date >= term_window.monitor_since
 
 
 def _course_stem(*, course_dept: object, course_number: object, course_suffix: object) -> tuple[str, int, str | None] | None:

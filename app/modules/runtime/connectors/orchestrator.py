@@ -11,7 +11,7 @@ from app.contracts.events import new_event
 from app.db.models.runtime import IngestJob, IngestJobStatus
 from app.db.models.input import IngestTriggerType, InputSource, SyncRequest, SyncRequestStage, SyncRequestStatus
 from app.db.models.shared import IntegrationInbox, IntegrationOutbox, OutboxStatus
-from app.modules.common.source_term_window import parse_source_term_window, source_timezone_name
+from app.modules.common.source_monitoring_window import parse_source_monitoring_window, source_timezone_name
 from app.modules.runtime.kernel import build_sync_progress_payload, set_sync_runtime_state
 
 ORCHESTRATOR_SYNC_REQUEST_CONSUMER = "orchestrator.sync_requested"
@@ -42,7 +42,7 @@ def _enqueue_due_scheduler_requests(db: Session, *, worker_id: str) -> int:
     due_sources = db.scalars(due_stmt).all()
     created = 0
     for source in due_sources:
-        term_window = parse_source_term_window(source, required=False)
+        term_window = parse_source_monitoring_window(source, required=False)
         if term_window is not None and term_window.is_expired(now=now, timezone_name=source_timezone_name(source)):
             source.is_active = False
             source.next_poll_at = None

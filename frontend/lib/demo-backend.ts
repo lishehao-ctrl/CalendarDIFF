@@ -153,32 +153,26 @@ function createInitialDemoState(): DemoState {
         source_id: 1,
         provider: "ics",
         connected: true,
-        has_term_binding: true,
+        has_monitoring_window: true,
         runtime_state: "active",
-        term_binding: {
-          term_key: "WI26",
-          term_from: "2026-01-12",
-          term_to: "2026-03-21",
+        monitoring_window: {
+          monitor_since: "2025-12-12",
         },
       },
       gmail_source: {
         source_id: 2,
         provider: "gmail",
         connected: true,
-        has_term_binding: true,
+        has_monitoring_window: true,
         runtime_state: "active",
         oauth_account_email: "demo-inbox@school.edu",
-        term_binding: {
-          term_key: "WI26",
-          term_from: "2026-01-12",
-          term_to: "2026-03-21",
+        monitoring_window: {
+          monitor_since: "2025-12-12",
         },
       },
       gmail_skipped: false,
-      term_binding: {
-        term_key: "WI26",
-        term_from: "2026-01-12",
-        term_to: "2026-03-21",
+      monitoring_window: {
+        monitor_since: "2025-12-12",
       },
     },
     sources: [

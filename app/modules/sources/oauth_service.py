@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.oauth_config import build_frontend_oauth_return_url, build_frontend_sources_return_url, build_oauth_runtime_config
 from app.core.security import decrypt_secret, encrypt_secret
 from app.db.models.input import IngestTriggerType, InputSource, InputSourceCursor, InputSourceSecret, SyncRequest
-from app.modules.common.source_term_window import parse_source_term_window
+from app.modules.common.source_monitoring_window import parse_source_monitoring_window
 from app.modules.sources.sync_requests_service import enqueue_sync_request_idempotent
 from app.modules.runtime.connectors.clients.gmail_client import GmailClient, GmailOAuthTokens
 
@@ -99,7 +99,7 @@ def handle_gmail_oauth_callback(
         source.cursor = InputSourceCursor(source_id=source.id, version=1, cursor_json={})
     source.last_error_code = None
     source.last_error_message = None
-    term_window = parse_source_term_window(source, required=False)
+    term_window = parse_source_monitoring_window(source, required=False)
     if term_window is None:
         source.cursor.cursor_json = {}
         source.is_active = False

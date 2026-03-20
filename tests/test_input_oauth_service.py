@@ -44,7 +44,7 @@ def test_oauth_callback_preserves_existing_refresh_token_and_reactivates_source(
             source_kind="email",
             provider="gmail",
             display_name="Gmail Inbox",
-            config={"label_id": "INBOX", "term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
+            config={"label_id": "INBOX", "monitor_since": "2026-01-05"},
             secrets={},
         ),
     )
@@ -100,7 +100,7 @@ def test_oauth_callback_preserves_existing_refresh_token_and_reactivates_source(
     assert redirect_destination == "sources"
 
 
-def test_oauth_callback_without_term_binding_keeps_source_inactive_and_skips_sync(db_session) -> None:
+def test_oauth_callback_without_monitoring_window_keeps_source_inactive_and_skips_sync(db_session) -> None:
     user = User(
         email=None,
         notify_email="gmail-no-term@example.com",

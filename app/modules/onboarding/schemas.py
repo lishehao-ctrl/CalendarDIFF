@@ -13,8 +13,7 @@ OnboardingStageLiteral = Literal[
     "needs_user",
     "needs_canvas_ics",
     "needs_gmail_or_skip",
-    "needs_term_binding",
-    "needs_term_renewal",
+    "needs_monitoring_window",
     "ready",
 ]
 
@@ -42,20 +41,18 @@ class SourceHealthSummaryResponse(BaseModel):
     affected_provider: str | None = None
 
 
-class OnboardingTermBindingResponse(BaseModel):
-    term_key: str
-    term_from: date
-    term_to: date
+class OnboardingMonitoringWindowResponse(BaseModel):
+    monitor_since: date
 
 
 class OnboardingSourceResponse(BaseModel):
     source_id: int
     provider: Literal["ics", "gmail"]
     connected: bool
-    has_term_binding: bool
+    has_monitoring_window: bool
     runtime_state: SourceRuntimeStateLiteral
     oauth_account_email: str | None = None
-    term_binding: OnboardingTermBindingResponse | None = None
+    monitoring_window: OnboardingMonitoringWindowResponse | None = None
 
 
 class OnboardingStatusResponse(BaseModel):
@@ -67,7 +64,7 @@ class OnboardingStatusResponse(BaseModel):
     canvas_source: OnboardingSourceResponse | None = None
     gmail_source: OnboardingSourceResponse | None = None
     gmail_skipped: bool = False
-    term_binding: OnboardingTermBindingResponse | None = None
+    monitoring_window: OnboardingMonitoringWindowResponse | None = None
 
 
 class OnboardingRegisterResponse(BaseModel):
@@ -110,20 +107,10 @@ class OnboardingGmailSkipRequest(BaseModel):
     model_config = {"extra": "forbid"}
 
 
-class OnboardingTermBindingRequest(BaseModel):
-    term_key: str | None = Field(default=None, max_length=64)
-    term_from: date
-    term_to: date
+class OnboardingMonitoringWindowRequest(BaseModel):
+    monitor_since: date
 
     model_config = {"extra": "forbid"}
-
-    @field_validator("term_key")
-    @classmethod
-    def validate_term_key(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        stripped = value.strip()
-        return stripped or None
 
 
 class OnboardingOAuthSessionCreateResponse(BaseModel):

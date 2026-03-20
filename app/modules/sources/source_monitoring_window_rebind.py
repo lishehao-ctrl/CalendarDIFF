@@ -7,16 +7,19 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource, InputSourceConfig, SyncRequest, SyncRequestStatus
-from app.modules.common.source_term_window import (
-    SourceTermWindow,
-    normalize_term_window_config,
-    parse_source_term_window,
-    parse_term_window_config,
+from app.modules.common.source_monitoring_window import (
+    SourceMonitoringWindow,
+    normalize_monitoring_window_config,
+    parse_monitoring_window_config,
+    parse_source_monitoring_window,
     source_timezone_name,
 )
-from app.modules.sources.source_term_rescope import apply_source_term_rescope, term_window_changed
+from app.modules.sources.source_monitoring_window_rescope import (
+    apply_source_monitoring_window_rescope,
+    monitoring_window_changed,
+)
 
-PENDING_TERM_REBIND_KEY = "pending_term_rebind"
+PENDING_MONITORING_WINDOW_UPDATE_KEY = "pending_monitoring_window_update"
 INFLIGHT_SYNC_STATUSES = (SyncRequestStatus.QUEUED, SyncRequestStatus.RUNNING)
 TERMINAL_SYNC_STATUSES = {SyncRequestStatus.SUCCEEDED, SyncRequestStatus.FAILED}
 
@@ -33,19 +36,19 @@ def has_active_sync_requests(*, db: Session, source_id: int) -> bool:
     return row is not None
 
 
-def has_pending_term_rebind(source: InputSource) -> bool:
-    return pending_term_rebind_payload(source) is not None
+def has_pending_monitoring_window_update(source: InputSource) -> bool:
+    return pending_monitoring_window_update_payload(source) is not None
 
 
-def pending_term_rebind_payload(source: InputSource) -> dict[str, Any] | None:
+def pending_monitoring_window_update_payload(source: InputSource) -> dict[str, Any] | None:
     config_json = _source_config_json(source)
-    pending = config_json.get(PENDING_TERM_REBIND_KEY)
+    pending = config_json.get(PENDING_MONITORING_WINDOW_UPDATE_KEY)
     if isinstance(pending, dict):
         return dict(pending)
     return None
 
 
-def queue_pending_term_rebind(
+def queue_pending_monitoring_window_update(
     *,
     source: InputSource,
     requested_config: dict[str, Any],
@@ -53,11 +56,11 @@ def queue_pending_term_rebind(
     requested_by_user_id: int | None,
 ) -> None:
     next_config = dict(requested_config)
-    next_config.pop(PENDING_TERM_REBIND_KEY, None)
-    requested_window = parse_term_window_config(next_config, required=True)
+    next_config.pop(PENDING_MONITORING_WINDOW_UPDATE_KEY, None)
+    requested_window = parse_monitoring_window_config(next_config, required=True)
     config = _get_or_create_source_config(source)
     config_json = dict(config.config_json or {})
-    config_json[PENDING_TERM_REBIND_KEY] = _build_pending_term_rebind_payload(
+    config_json[PENDING_MONITORING_WINDOW_UPDATE_KEY] = _build_pending_monitoring_window_update_payload(
         requested_window=requested_window,
         requested_config=next_config,
         requested_at=requested_at,
@@ -66,7 +69,7 @@ def queue_pending_term_rebind(
     config.config_json = config_json
 
 
-def apply_pending_term_rebind_if_terminal(
+def apply_pending_monitoring_window_update_if_terminal(
     *,
     db: Session,
     source: InputSource,
@@ -75,48 +78,45 @@ def apply_pending_term_rebind_if_terminal(
 ) -> bool:
     if terminal_status not in TERMINAL_SYNC_STATUSES:
         return False
-    pending = pending_term_rebind_payload(source)
+    pending = pending_monitoring_window_update_payload(source)
     if pending is None:
         return False
 
     config = _get_or_create_source_config(source)
     active_config = dict(config.config_json or {})
-    previous_term_window = parse_source_term_window(source, required=False)
+    previous_window = parse_source_monitoring_window(source, required=False)
 
     requested_config_raw = pending.get("requested_config")
     if isinstance(requested_config_raw, dict):
         next_config = dict(requested_config_raw)
     else:
         next_config = dict(active_config)
-        for key in ("term_key", "term_from", "term_to"):
-            value = pending.get(key)
-            if isinstance(value, str) and value.strip():
-                next_config[key] = value.strip()
-    next_config.pop(PENDING_TERM_REBIND_KEY, None)
+        value = pending.get("monitor_since")
+        if isinstance(value, str) and value.strip():
+            next_config["monitor_since"] = value.strip()
+    next_config.pop(PENDING_MONITORING_WINDOW_UPDATE_KEY, None)
 
-    if source.provider in {"gmail", "ics"}:
-        normalized_next_config = normalize_term_window_config(config=next_config, required=True)
-    else:
-        normalized_next_config = normalize_term_window_config(config=next_config, required=False)
+    normalized_next_config = normalize_monitoring_window_config(
+        config=next_config,
+        required=source.provider in {"gmail", "ics"},
+        default_if_missing=False,
+    )
     config.config_json = normalized_next_config
 
-    next_term_window = parse_term_window_config(normalized_next_config, required=False)
+    next_window = parse_monitoring_window_config(normalized_next_config, required=False)
     timezone_name = source_timezone_name(source)
     if source.is_active:
-        if next_term_window is not None and next_term_window.is_expired(now=applied_at, timezone_name=timezone_name):
-            source.is_active = False
-            source.next_poll_at = None
-        elif next_term_window is not None:
-            source.next_poll_at = max(applied_at, next_term_window.monitor_start_at_utc(timezone_name=timezone_name))
+        if next_window is not None:
+            source.next_poll_at = max(applied_at, next_window.monitor_start_at_utc(timezone_name=timezone_name))
         else:
             source.next_poll_at = source.next_poll_at or applied_at
 
-    should_rescope = term_window_changed(previous=previous_term_window, current=next_term_window)
-    if should_rescope and next_term_window is not None:
-        apply_source_term_rescope(
+    should_rescope = monitoring_window_changed(previous=previous_window, current=next_window)
+    if should_rescope and next_window is not None:
+        apply_source_monitoring_window_rescope(
             db=db,
             source=source,
-            term_window=next_term_window,
+            monitoring_window=next_window,
             applied_at=applied_at,
         )
     return True
@@ -139,17 +139,15 @@ def _get_or_create_source_config(source: InputSource) -> InputSourceConfig:
     return config
 
 
-def _build_pending_term_rebind_payload(
+def _build_pending_monitoring_window_update_payload(
     *,
-    requested_window: SourceTermWindow,
+    requested_window: SourceMonitoringWindow,
     requested_config: dict[str, Any],
     requested_at: datetime,
     requested_by_user_id: int | None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
-        "term_key": requested_window.term_key,
-        "term_from": requested_window.term_from.isoformat(),
-        "term_to": requested_window.term_to.isoformat(),
+        "monitor_since": requested_window.monitor_since.isoformat(),
         "requested_config": dict(requested_config),
         "requested_at": requested_at.isoformat(),
     }
@@ -159,10 +157,10 @@ def _build_pending_term_rebind_payload(
 
 
 __all__ = [
-    "PENDING_TERM_REBIND_KEY",
-    "apply_pending_term_rebind_if_terminal",
+    "PENDING_MONITORING_WINDOW_UPDATE_KEY",
+    "apply_pending_monitoring_window_update_if_terminal",
     "has_active_sync_requests",
-    "has_pending_term_rebind",
-    "pending_term_rebind_payload",
-    "queue_pending_term_rebind",
+    "has_pending_monitoring_window_update",
+    "pending_monitoring_window_update_payload",
+    "queue_pending_monitoring_window_update",
 ]

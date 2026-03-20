@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 from app.db.models.runtime import ConnectorResultStatus
 from app.db.models.review import EventEntity, EventEntityLifecycle
@@ -17,6 +18,11 @@ from app.modules.runtime.connectors.gmail_fetcher import (
 from app.modules.sources.schemas import InputSourceCreateRequest
 from app.modules.sources.sources_service import create_input_source
 from app.modules.families.family_service import create_course_work_item_family
+
+
+def _expected_gmail_end_exclusive(timezone_name: str = "America/Los_Angeles") -> str:
+    local_today = datetime.now(timezone.utc).astimezone(ZoneInfo(timezone_name)).date()
+    return (local_today + timedelta(days=1)).strftime("%Y/%m/%d")
 
 
 def test_gmail_fetcher_missing_access_token_fails_auth(monkeypatch) -> None:
@@ -362,14 +368,12 @@ def test_gmail_filter_keeps_academic_non_target_with_course_token_for_secondary_
     )
 
 
-def test_gmail_fetcher_bootstraps_term_window_messages(monkeypatch) -> None:
+def test_gmail_fetcher_bootstraps_monitoring_window_messages(monkeypatch) -> None:
     source = SimpleNamespace(
         config=SimpleNamespace(
             config_json={
                 "label_id": "COURSE",
-                "term_key": "WI26",
-                "term_from": "2026-01-05",
-                "term_to": "2026-03-20",
+                "monitor_since": "2026-01-05",
             }
         ),
         cursor=SimpleNamespace(cursor_json={}),
@@ -383,7 +387,7 @@ def test_gmail_fetcher_bootstraps_term_window_messages(monkeypatch) -> None:
 
         def list_message_ids(self, *, access_token: str, query: str | None = None, label_ids=None):
             assert access_token == "token"
-            assert query == "after:2025/12/06 before:2026/04/20"
+            assert query == f"after:2026/01/05 before:{_expected_gmail_end_exclusive()}"
             assert label_ids == ["COURSE"]
             return ["m1", "m2"]
 
@@ -391,7 +395,7 @@ def test_gmail_fetcher_bootstraps_term_window_messages(monkeypatch) -> None:
             assert access_token == "token"
             internal_date = {
                 "m1": "2026-02-01T15:00:00+00:00",
-                "m2": "2026-05-01T15:00:00+00:00",
+                "m2": "2025-12-01T15:00:00+00:00",
             }[message_id]
             return SimpleNamespace(
                 message_id=message_id,
@@ -420,9 +424,7 @@ def test_gmail_fetcher_bootstrap_defaults_to_inbox_when_label_missing(monkeypatc
     source = SimpleNamespace(
         config=SimpleNamespace(
             config_json={
-                "term_key": "WI26",
-                "term_from": "2026-01-05",
-                "term_to": "2026-03-20",
+                "monitor_since": "2026-01-05",
             }
         ),
         cursor=SimpleNamespace(cursor_json={}),
@@ -437,7 +439,7 @@ def test_gmail_fetcher_bootstrap_defaults_to_inbox_when_label_missing(monkeypatc
 
         def list_message_ids(self, *, access_token: str, query: str | None = None, label_ids=None):
             assert access_token == "token"
-            assert query == "after:2025/12/06 before:2026/04/20"
+            assert query == f"after:2026/01/05 before:{_expected_gmail_end_exclusive()}"
             assert label_ids == ["INBOX"]
             return ["m1"]
 
@@ -470,9 +472,7 @@ def test_gmail_fetcher_emits_bootstrap_progress(monkeypatch) -> None:
         config=SimpleNamespace(
             config_json={
                 "label_id": "COURSE",
-                "term_key": "WI26",
-                "term_from": "2026-01-05",
-                "term_to": "2026-03-20",
+                "monitor_since": "2026-01-05",
             }
         ),
         cursor=SimpleNamespace(cursor_json={}),
@@ -487,7 +487,7 @@ def test_gmail_fetcher_emits_bootstrap_progress(monkeypatch) -> None:
 
         def list_message_ids(self, *, access_token: str, query: str | None = None, label_ids=None):
             assert access_token == "token"
-            assert query == "after:2025/12/06 before:2026/04/20"
+            assert query == f"after:2026/01/05 before:{_expected_gmail_end_exclusive()}"
             assert label_ids == ["COURSE"]
             return ["m1", "m2"]
 
@@ -526,9 +526,7 @@ def test_gmail_fetcher_emits_tail_progress_for_small_remaining_window(monkeypatc
         config=SimpleNamespace(
             config_json={
                 "label_id": "COURSE",
-                "term_key": "WI26",
-                "term_from": "2026-01-05",
-                "term_to": "2026-03-20",
+                "monitor_since": "2026-01-05",
             }
         ),
         cursor=SimpleNamespace(cursor_json={"history_id": "150"}),
@@ -574,7 +572,7 @@ def test_gmail_fetcher_emits_tail_progress_for_small_remaining_window(monkeypatc
     assert 12 in current_values
 
 
-def test_known_course_tokens_for_source_include_current_term_family_mappings(db_session) -> None:
+def test_known_course_tokens_for_source_include_recent_family_mappings(db_session) -> None:
     user = User(
         email=None,
         notify_email="tokens@example.com",
@@ -591,7 +589,7 @@ def test_known_course_tokens_for_source_include_current_term_family_mappings(db_
             source_kind="email",
             provider="gmail",
             display_name="Gmail Inbox",
-            config={"label_id": "INBOX", "term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
+            config={"label_id": "INBOX", "monitor_since": "2026-01-05"},
             secrets={},
         ),
     )
@@ -635,11 +633,11 @@ def test_known_course_tokens_for_source_include_current_term_family_mappings(db_
     assert "cse100" in tokens
     assert "math 20c" in tokens
     assert "math20c" in tokens
-    assert "chem 6a" not in tokens
-    assert "chem6a" not in tokens
+    assert "chem 6a" in tokens
+    assert "chem6a" in tokens
 
 
-def test_known_course_tokens_for_source_uses_current_term_entities_to_scope_mappings(db_session) -> None:
+def test_known_course_tokens_for_source_uses_recent_entities_to_scope_mappings(db_session) -> None:
     user = User(
         email=None,
         notify_email="tokens-entities@example.com",
@@ -656,12 +654,7 @@ def test_known_course_tokens_for_source_uses_current_term_entities_to_scope_mapp
             source_kind="email",
             provider="gmail",
             display_name="Gmail Inbox",
-            config={
-                "label_id": "INBOX",
-                "term_key": "2026-01-05__2026-03-20",
-                "term_from": "2026-01-05",
-                "term_to": "2026-03-20",
-            },
+            config={"label_id": "INBOX", "monitor_since": "2026-01-05"},
             secrets={},
         ),
     )
@@ -718,7 +711,7 @@ def test_known_course_tokens_for_source_uses_current_term_entities_to_scope_mapp
     assert "hist10" not in tokens
 
 
-def test_gmail_fetcher_bootstrap_uses_current_term_course_mapping_tokens(monkeypatch, db_session) -> None:
+def test_gmail_fetcher_bootstrap_uses_monitoring_window_course_mapping_tokens(monkeypatch, db_session) -> None:
     user = User(
         email=None,
         notify_email="tokens-bootstrap@example.com",
@@ -735,7 +728,7 @@ def test_gmail_fetcher_bootstrap_uses_current_term_course_mapping_tokens(monkeyp
             source_kind="email",
             provider="gmail",
             display_name="Gmail Inbox",
-            config={"label_id": "INBOX", "term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
+            config={"label_id": "INBOX", "monitor_since": "2026-01-05"},
             secrets={},
         ),
     )
@@ -768,7 +761,7 @@ def test_gmail_fetcher_bootstrap_uses_current_term_course_mapping_tokens(monkeyp
 
         def list_message_ids(self, *, access_token: str, query: str | None = None, label_ids=None):
             assert access_token == "token"
-            assert query == "after:2025/12/06 before:2026/04/20"
+            assert query == f"after:2026/01/05 before:{_expected_gmail_end_exclusive()}"
             assert label_ids == ["INBOX"]
             return ["m1", "m2"]
 
@@ -795,17 +788,15 @@ def test_gmail_fetcher_bootstrap_uses_current_term_course_mapping_tokens(monkeyp
 
     assert outcome.status == ConnectorResultStatus.CHANGED
     assert outcome.parse_payload is not None
-    assert [row["message_id"] for row in outcome.parse_payload["messages"]] == ["m1"]
+    assert [row["message_id"] for row in outcome.parse_payload["messages"]] == ["m1", "m2"]
 
 
-def test_calendar_fetcher_filters_changed_components_outside_term_window(monkeypatch) -> None:
+def test_calendar_fetcher_filters_changed_components_before_monitoring_window(monkeypatch) -> None:
     source = SimpleNamespace(
         id=100,
         config=SimpleNamespace(
             config_json={
-                "term_key": "WI26",
-                "term_from": "2026-01-05",
-                "term_to": "2026-03-20",
+                "monitor_since": "2026-01-05",
             }
         ),
         cursor=SimpleNamespace(cursor_json={}),
@@ -832,13 +823,13 @@ BEGIN:VEVENT
 UID:evt-in
 DTSTART:20260201T180000Z
 DTEND:20260201T190000Z
-SUMMARY:In term
+SUMMARY:In monitoring window
 END:VEVENT
 BEGIN:VEVENT
-UID:evt-out
-DTSTART:20260501T180000Z
-DTEND:20260501T190000Z
-SUMMARY:Out of term
+UID:evt-old
+DTSTART:20241201T180000Z
+DTEND:20241201T190000Z
+SUMMARY:Before monitoring window
 END:VEVENT
 END:VCALENDAR
 """

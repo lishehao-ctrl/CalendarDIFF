@@ -31,7 +31,7 @@ from app.db.models.shared import CourseWorkItemLabelFamily, IntegrationOutbox, U
 from app.modules.common.course_identity import normalize_label_token, normalized_course_identity_key
 from app.modules.runtime.apply.apply import apply_ingest_result_idempotent
 from app.modules.sources.schemas import InputSourcePatchRequest
-from app.modules.sources.source_term_rebind import PENDING_TERM_REBIND_KEY
+from app.modules.sources.source_monitoring_window_rebind import PENDING_MONITORING_WINDOW_UPDATE_KEY
 from app.modules.sources.sources_service import update_input_source
 from tests.support.payload_builders import build_course_parse, build_event_parts, build_gmail_payload, build_link_signals
 
@@ -265,8 +265,7 @@ def _seed_pending_change(
 
 def test_sources_api_runtime_state_matrix_is_consistent_and_source_specific(input_client, db_session, authenticate_client) -> None:
     user = _create_user(db_session, email="runtime-state-matrix@example.com")
-    current_term = {"term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"}
-    archived_term = {"term_key": "FA25", "term_from": "2025-09-20", "term_to": "2025-12-15"}
+    current_window = {"monitor_since": "2026-01-05"}
 
     active_idle = _create_source(
         db_session,
@@ -275,7 +274,7 @@ def test_sources_api_runtime_state_matrix_is_consistent_and_source_specific(inpu
         provider="gmail",
         source_key="runtime-active-idle",
         display_name="Runtime Active Idle",
-        config_json=current_term,
+        config_json=current_window,
         cursor_json={},
     )
     active_queued = _create_source(
@@ -285,7 +284,7 @@ def test_sources_api_runtime_state_matrix_is_consistent_and_source_specific(inpu
         provider="runtime-queued",
         source_key="runtime-active-queued",
         display_name="Runtime Active Queued",
-        config_json=current_term,
+        config_json=current_window,
     )
     active_running = _create_source(
         db_session,
@@ -294,7 +293,7 @@ def test_sources_api_runtime_state_matrix_is_consistent_and_source_specific(inpu
         provider="runtime-running",
         source_key="runtime-active-running",
         display_name="Runtime Active Running",
-        config_json=current_term,
+        config_json=current_window,
     )
     active_rebind = _create_source(
         db_session,
@@ -304,25 +303,13 @@ def test_sources_api_runtime_state_matrix_is_consistent_and_source_specific(inpu
         source_key="runtime-active-rebind",
         display_name="Runtime Active Rebind",
         config_json={
-            **current_term,
-            PENDING_TERM_REBIND_KEY: {
-                "term_key": "SP26",
-                "term_from": "2026-03-25",
-                "term_to": "2026-06-10",
-                "requested_config": {"term_key": "SP26", "term_from": "2026-03-25", "term_to": "2026-06-10"},
+            **current_window,
+            PENDING_MONITORING_WINDOW_UPDATE_KEY: {
+                "monitor_since": "2026-03-25",
+                "requested_config": {"monitor_since": "2026-03-25"},
                 "requested_at": "2026-03-14T10:00:00+00:00",
             },
         },
-    )
-    archived_idle = _create_source(
-        db_session,
-        user=user,
-        source_kind=SourceKind.CALENDAR,
-        provider="runtime-archived",
-        source_key="runtime-archived-idle",
-        display_name="Runtime Archived Idle",
-        is_active=False,
-        config_json=archived_term,
     )
     inactive_idle = _create_source(
         db_session,
@@ -332,7 +319,7 @@ def test_sources_api_runtime_state_matrix_is_consistent_and_source_specific(inpu
         source_key="runtime-inactive-idle",
         display_name="Runtime Inactive Idle",
         is_active=False,
-        config_json=current_term,
+        config_json=current_window,
     )
 
     _seed_sync_request(db_session, source=active_queued, request_id="runtime-queued-1", status=SyncRequestStatus.PENDING)
@@ -364,12 +351,7 @@ def test_sources_api_runtime_state_matrix_is_consistent_and_source_specific(inpu
     assert rows[active_rebind.id]["sync_state"] == "running"
     assert rows[active_rebind.id]["config_state"] == "rebind_pending"
     assert rows[active_rebind.id]["runtime_state"] == "rebind_pending"
-    assert rows[active_rebind.id]["config"][PENDING_TERM_REBIND_KEY]["term_key"] == "SP26"
-
-    assert rows[archived_idle.id]["lifecycle_state"] == "archived"
-    assert rows[archived_idle.id]["sync_state"] == "idle"
-    assert rows[archived_idle.id]["config_state"] == "stable"
-    assert rows[archived_idle.id]["runtime_state"] == "archived"
+    assert rows[active_rebind.id]["config"][PENDING_MONITORING_WINDOW_UPDATE_KEY]["monitor_since"] == "2026-03-25"
 
     assert rows[inactive_idle.id]["lifecycle_state"] == "inactive"
     assert rows[inactive_idle.id]["sync_state"] == "idle"
@@ -396,7 +378,7 @@ def test_idempotent_canonical_edit_sets_manual_support_true(client, db_session, 
         provider="ics",
         source_key="canonical-idempotent-source",
         display_name="Canonical Edit Source",
-        config_json={"term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
+        config_json={"monitor_since": "2026-01-05"},
         secrets_payload={"url": "https://example.com/canonical.ics"},
     )
     db_session.add(
@@ -462,7 +444,7 @@ def test_automatic_ingest_apply_does_not_set_manual_support(db_session) -> None:
         provider="gmail",
         source_key="ingest-manual-support-guard",
         display_name="Ingest Manual Support Guard",
-        config_json={"term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
+        config_json={"monitor_since": "2026-01-05"},
         secrets_payload={"access_token": "token"},
         cursor_json={"history_id": "111"},
     )
@@ -553,7 +535,7 @@ def test_gmail_rescope_preserves_manual_supported_entity_without_remaining_sourc
         provider="gmail",
         source_key="manual-gmail-rescope",
         display_name="Manual Gmail Rescope",
-        config_json={"term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
+        config_json={"monitor_since": "2026-01-05"},
         secrets_payload={"access_token": "token"},
         cursor_json={"history_id": "222"},
     )
@@ -611,7 +593,7 @@ def test_gmail_rescope_preserves_manual_supported_entity_without_remaining_sourc
         db_session,
         source=source,
         payload=InputSourcePatchRequest(
-            config={"term_key": "SP99", "term_from": "2099-04-01", "term_to": "2099-06-01"},
+            config={"monitor_since": "2099-04-01"},
         ),
     )
     db_session.expire_all()
@@ -649,7 +631,7 @@ def test_manual_supported_entity_rescope_with_remaining_matching_source_rejects_
         provider="ics",
         source_key="manual-match-calendar",
         display_name="Manual Match Calendar",
-        config_json={"term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
+        config_json={"monitor_since": "2026-01-05"},
         secrets_payload={"url": "https://example.com/calendar.ics"},
         cursor_json={"etag": "etag-1"},
     )
@@ -660,7 +642,7 @@ def test_manual_supported_entity_rescope_with_remaining_matching_source_rejects_
         provider="gmail",
         source_key="manual-match-gmail",
         display_name="Manual Match Gmail",
-        config_json={"term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
+        config_json={"monitor_since": "2026-01-05"},
         secrets_payload={"access_token": "token"},
         cursor_json={"history_id": "333"},
     )
@@ -750,7 +732,7 @@ def test_manual_supported_entity_rescope_with_remaining_matching_source_rejects_
         db_session,
         source=calendar_source,
         payload=InputSourcePatchRequest(
-            config={"term_key": "SP99", "term_from": "2099-04-01", "term_to": "2099-06-01"},
+            config={"monitor_since": "2099-04-01"},
         ),
     )
     db_session.expire_all()
@@ -783,7 +765,7 @@ def test_manual_supported_entity_rescope_with_remaining_conflicting_source_keeps
         provider="ics",
         source_key="manual-conflict-calendar",
         display_name="Manual Conflict Calendar",
-        config_json={"term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
+        config_json={"monitor_since": "2026-01-05"},
         secrets_payload={"url": "https://example.com/calendar.ics"},
         cursor_json={"etag": "etag-2"},
     )
@@ -794,7 +776,7 @@ def test_manual_supported_entity_rescope_with_remaining_conflicting_source_keeps
         provider="gmail",
         source_key="manual-conflict-gmail",
         display_name="Manual Conflict Gmail",
-        config_json={"term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
+        config_json={"monitor_since": "2026-01-05"},
         secrets_payload={"access_token": "token"},
         cursor_json={"history_id": "444"},
     )
@@ -884,7 +866,7 @@ def test_manual_supported_entity_rescope_with_remaining_conflicting_source_keeps
         db_session,
         source=calendar_source,
         payload=InputSourcePatchRequest(
-            config={"term_key": "SP99", "term_from": "2099-04-01", "term_to": "2099-06-01"},
+            config={"monitor_since": "2099-04-01"},
         ),
     )
     db_session.expire_all()

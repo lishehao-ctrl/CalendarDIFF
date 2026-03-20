@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarDays, CheckCircle2, Mailbox, ArrowRight, RefreshCw } from "lucide-react";
+import { CalendarDays, CheckCircle2, Mailbox, RefreshCw } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import { ErrorState, LoadingState } from "@/components/data-states";
 import {
   getOnboardingStatus,
   saveOnboardingCanvasIcs,
-  saveOnboardingTermBinding,
+  saveOnboardingMonitoringWindow,
   skipOnboardingGmail,
   startOnboardingGmailOAuth,
 } from "@/lib/api/onboarding";
@@ -20,13 +20,13 @@ import { useApiResource } from "@/lib/use-api-resource";
 import type { OnboardingStage, OnboardingStatus } from "@/lib/types";
 
 const stepOrder: Array<{
-  id: "canvas" | "gmail" | "term";
+  id: "canvas" | "gmail" | "monitoring";
   title: string;
   description: string;
 }> = [
   { id: "canvas", title: "Canvas ICS", description: "Required intake source" },
   { id: "gmail", title: "Gmail", description: "Optional email lane" },
-  { id: "term", title: "Term", description: "Processing window" },
+  { id: "monitoring", title: "Monitoring", description: "How far back to include" },
 ];
 
 function currentStepIndex(stage: OnboardingStage) {
@@ -35,26 +35,28 @@ function currentStepIndex(stage: OnboardingStage) {
   return 2;
 }
 
-function stageTitle(stage: OnboardingStage) {
-  if (stage === "needs_term_renewal") {
-    return "Set the next term before you continue.";
-  }
+function stageTitle() {
   return "Connect sources once, then enter the workspace with the right scope.";
+}
+
+function defaultMonitoringStart() {
+  const now = new Date();
+  now.setDate(now.getDate() - 90);
+  return now.toISOString().slice(0, 10);
 }
 
 export function OnboardingWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data, loading, error, refresh } = useApiResource<OnboardingStatus>(() => getOnboardingStatus(), []);
+  const defaultStart = defaultMonitoringStart();
   const [canvasIcsUrl, setCanvasIcsUrl] = useState("");
-  const [termKey, setTermKey] = useState("");
-  const [termFrom, setTermFrom] = useState("");
-  const [termTo, setTermTo] = useState("");
+  const [monitorSince, setMonitorSince] = useState("");
   const [banner, setBanner] = useState<{ tone: "info" | "error"; text: string } | null>(null);
   const [savingCanvas, setSavingCanvas] = useState(false);
   const [startingGmail, setStartingGmail] = useState(false);
   const [skippingGmail, setSkippingGmail] = useState(false);
-  const [savingTerm, setSavingTerm] = useState(false);
+  const [savingMonitoring, setSavingMonitoring] = useState(false);
 
   useEffect(() => {
     if (!data) {
@@ -64,12 +66,8 @@ export function OnboardingWizard() {
       router.replace("/");
       return;
     }
-    if (data.term_binding) {
-      setTermKey((current) => current || data.term_binding?.term_key || "");
-      setTermFrom((current) => current || data.term_binding?.term_from || "");
-      setTermTo((current) => current || data.term_binding?.term_to || "");
-    }
-  }, [data, router]);
+    setMonitorSince((current) => current || data.monitoring_window?.monitor_since || defaultStart);
+  }, [data, defaultStart, router]);
 
   useEffect(() => {
     const oauthStatus = searchParams.get("oauth_status");
@@ -139,17 +137,15 @@ export function OnboardingWizard() {
     }
   }
 
-  async function submitTerm() {
-    if (!termFrom || !termTo) {
+  async function submitMonitoringWindow() {
+    if (!monitorSince) {
       return;
     }
-    setSavingTerm(true);
+    setSavingMonitoring(true);
     setBanner(null);
     try {
-      const next = await saveOnboardingTermBinding({
-        term_key: termKey.trim() || null,
-        term_from: termFrom,
-        term_to: termTo,
+      const next = await saveOnboardingMonitoringWindow({
+        monitor_since: monitorSince,
       });
       setBanner({ tone: "info", text: next.message });
       if (next.stage === "ready") {
@@ -159,9 +155,9 @@ export function OnboardingWizard() {
       }
       await refresh();
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to save the term window." });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to save the monitoring window." });
     } finally {
-      setSavingTerm(false);
+      setSavingMonitoring(false);
     }
   }
 
@@ -184,18 +180,14 @@ export function OnboardingWizard() {
         <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="max-w-3xl">
             <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">Onboarding</p>
-            <h1 className="mt-3 text-3xl font-semibold text-ink md:text-4xl">{stageTitle(data.stage)}</h1>
+            <h1 className="mt-3 text-3xl font-semibold text-ink md:text-4xl">{stageTitle()}</h1>
             <p className="mt-4 text-sm leading-7 text-[#596270]">
-              CalendarDIFF now treats your term as a real processing boundary. Set up the required sources, decide whether Gmail should join this term, and then save the term window once.
+              Connect the required sources, decide whether Gmail joins, and choose how far back CalendarDIFF should start monitoring this workspace.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Badge tone="pending">
-                {data.stage === "needs_term_renewal" ? "Term renewal required" : "Onboarding required"}
-              </Badge>
-              {data.term_binding ? (
-                <Badge tone="default">
-                  Current term {data.term_binding.term_from} to {data.term_binding.term_to}
-                </Badge>
+              <Badge tone="pending">Onboarding required</Badge>
+              {data.monitoring_window ? (
+                <Badge tone="default">Monitoring from {data.monitoring_window.monitor_since}</Badge>
               ) : null}
             </div>
           </div>
@@ -207,7 +199,7 @@ export function OnboardingWizard() {
                 const complete =
                   (step.id === "canvas" && !!data.canvas_source?.connected) ||
                   (step.id === "gmail" && (!!data.gmail_source?.connected || data.gmail_skipped || stepIndex > 1)) ||
-                  (step.id === "term" && !!data.term_binding && data.stage === "ready");
+                  (step.id === "monitoring" && !!data.monitoring_window && data.stage === "ready");
                 return (
                   <div key={step.id} className="flex items-start gap-3 rounded-[1.1rem] border border-line/80 bg-white/70 p-3">
                     <div className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-2xl ${complete ? "bg-[rgba(77,124,15,0.12)] text-moss" : active ? "bg-[rgba(31,94,255,0.12)] text-cobalt" : "bg-[rgba(20,32,44,0.06)] text-[#6d7885]"}`}>
@@ -257,7 +249,7 @@ export function OnboardingWizard() {
                 onChange={(event) => setCanvasIcsUrl(event.target.value)}
               />
               <p className="text-xs leading-5 text-[#6d7885]">
-                You can find this on the Canvas Calendar page. Once this is saved, Gmail becomes optional and the term step unlocks after that.
+                You can find this on the Canvas Calendar page. Once this is saved, Gmail becomes optional and the monitoring step unlocks after that.
               </p>
               <Button className="w-full md:w-auto" disabled={savingCanvas || !canvasIcsUrl.trim()} onClick={() => void submitCanvasIcs()}>
                 {savingCanvas ? "Saving Canvas ICS..." : "Save Canvas ICS"}
@@ -292,7 +284,7 @@ export function OnboardingWizard() {
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Optional</p>
-              <h2 className="mt-2 text-2xl font-semibold">Decide whether Gmail joins this term</h2>
+              <h2 className="mt-2 text-2xl font-semibold">Decide whether Gmail joins this workspace</h2>
               <p className="mt-2 text-sm leading-6 text-[#596270]">
                 Gmail adds email-only deadline changes and directive-style notices. You can connect it now or skip it and continue with Canvas only.
               </p>
@@ -307,7 +299,7 @@ export function OnboardingWizard() {
                   : "No mailbox connected yet"}
               </p>
               <p className="mt-2 text-sm leading-6 text-[#596270]">
-                The OAuth callback will return you here. If you connect Gmail now, it will use the same term scope once the term step is saved.
+                The OAuth callback will return you here. If you connect Gmail now, it will use the same monitoring start once the last step is saved.
               </p>
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button disabled={startingGmail} onClick={() => void connectGmail()}>
@@ -321,62 +313,65 @@ export function OnboardingWizard() {
             <Card className="bg-white/60 p-5">
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">What happens if you skip?</p>
               <p className="mt-3 text-sm leading-6 text-[#596270]">
-                You can still enter the workspace with Canvas only. Later, if you decide to add Gmail from Sources, it will inherit the active term automatically.
+                You can still enter the workspace with Canvas only. Later, if you decide to add Gmail from Sources, it will inherit the same monitoring start automatically.
               </p>
             </Card>
           </div>
         </Card>
       ) : null}
 
-      {(data.stage === "needs_term_binding" || data.stage === "needs_term_renewal") ? (
+      {data.stage === "needs_monitoring_window" ? (
         <Card className="p-6 md:p-7">
           <div className="flex items-start gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(31,94,255,0.1)] text-cobalt">
               <RefreshCw className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">
-                {data.stage === "needs_term_renewal" ? "Renewal required" : "Required"}
-              </p>
-              <h2 className="mt-2 text-2xl font-semibold">
-                {data.stage === "needs_term_renewal" ? "Choose the next term window" : "Set the term window"}
-              </h2>
+              <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Required</p>
+              <h2 className="mt-2 text-2xl font-semibold">Choose how far back to monitor</h2>
               <p className="mt-2 text-sm leading-6 text-[#596270]">
-                This window decides which Gmail and Canvas content is monitored for the current workspace. `term_key` is optional and mainly useful if you want a friendlier management label.
+                CalendarDIFF defaults to the last 90 days. Move this earlier if you want older assignments, exams, or project changes included on first sync.
+              </p>
+              <p className="mt-2 text-sm leading-6 text-[#596270]">
+                Nothing starts syncing until you save this step.
               </p>
             </div>
           </div>
           <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_320px]">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="md:col-span-2">
-                <label className="block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="term-key">
-                  Term key (optional)
-                </label>
-                <Input id="term-key" placeholder="WI26" value={termKey} onChange={(event) => setTermKey(event.target.value)} />
-              </div>
+            <div className="grid gap-4">
               <div>
-                <label className="block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="term-from">
-                  Term from
+                <label className="block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="monitor-since">
+                  Start monitoring from
                 </label>
-                <Input id="term-from" type="date" value={termFrom} onChange={(event) => setTermFrom(event.target.value)} />
+                <Input id="monitor-since" type="date" value={monitorSince} onChange={(event) => setMonitorSince(event.target.value)} />
+                <p className="mt-2 text-xs leading-5 text-[#6d7885]">
+                  Recommended default: {defaultStart}. Choose an earlier date only if you want to pull in older coursework or older email changes.
+                </p>
               </div>
-              <div>
-                <label className="block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="term-to">
-                  Term to
-                </label>
-                <Input id="term-to" type="date" value={termTo} onChange={(event) => setTermTo(event.target.value)} />
-              </div>
-              <div className="md:col-span-2">
-                <Button className="w-full md:w-auto" disabled={savingTerm || !termFrom || !termTo} onClick={() => void submitTerm()}>
-                  {savingTerm
-                    ? (data.stage === "needs_term_renewal" ? "Renewing term..." : "Saving term...")
-                    : (data.stage === "needs_term_renewal" ? "Renew term" : "Save term and continue")}
+              <div className="flex flex-wrap gap-3">
+                <Button className="w-full md:w-auto" disabled={savingMonitoring || !monitorSince} onClick={() => void submitMonitoringWindow()}>
+                  {savingMonitoring
+                    ? "Saving monitoring window..."
+                    : monitorSince === defaultStart
+                      ? "Use last 90 days and continue"
+                      : "Save custom start date and continue"}
                 </Button>
+                {monitorSince !== defaultStart ? (
+                  <Button variant="ghost" disabled={savingMonitoring} onClick={() => setMonitorSince(defaultStart)}>
+                    Reset to last 90 days
+                  </Button>
+                ) : null}
               </div>
             </div>
             <Card className="bg-white/60 p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Connected sources</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">What this controls</p>
               <div className="mt-4 space-y-3 text-sm text-[#314051]">
+                <p>Default setup starts 90 days back.</p>
+                <p>Choose an earlier date if you need older coursework or prior changes pulled into the workspace.</p>
+                <p>This is a monitoring scope, not a semester label. Future updates still appear normally.</p>
+              </div>
+              <p className="mt-5 text-xs uppercase tracking-[0.18em] text-[#6d7885]">Connected sources</p>
+              <div className="mt-3 space-y-3 text-sm text-[#314051]">
                 <div className="rounded-[1rem] border border-line/80 bg-white/70 p-4">
                   <p className="font-medium text-ink">Canvas ICS</p>
                   <p className="mt-1 text-[#596270]">

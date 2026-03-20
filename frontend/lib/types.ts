@@ -9,14 +9,11 @@ export type OnboardingStage =
   | "needs_user"
   | "needs_canvas_ics"
   | "needs_gmail_or_skip"
-  | "needs_term_binding"
-  | "needs_term_renewal"
+  | "needs_monitoring_window"
   | "ready";
 
-export type OnboardingTermBinding = {
-  term_key: string;
-  term_from: string;
-  term_to: string;
+export type OnboardingMonitoringWindow = {
+  monitor_since: string;
 };
 
 export type SyncProgress = {
@@ -42,10 +39,10 @@ export type OnboardingSource = {
   source_id: number;
   provider: "ics" | "gmail";
   connected: boolean;
-  has_term_binding: boolean;
+  has_monitoring_window: boolean;
   runtime_state: "active" | "inactive" | "archived" | "queued" | "running" | "rebind_pending";
   oauth_account_email?: string | null;
-  term_binding: OnboardingTermBinding | null;
+  monitoring_window: OnboardingMonitoringWindow | null;
 };
 
 export type OnboardingStatus = {
@@ -57,7 +54,7 @@ export type OnboardingStatus = {
   canvas_source: OnboardingSource | null;
   gmail_source: OnboardingSource | null;
   gmail_skipped: boolean;
-  term_binding: OnboardingTermBinding | null;
+  monitoring_window: OnboardingMonitoringWindow | null;
 };
 
 export type ChangesWorkbenchSourcesSummary = {

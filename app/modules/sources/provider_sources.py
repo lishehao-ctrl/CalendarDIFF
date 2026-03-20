@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource, SourceKind
-from app.modules.common.source_term_window import normalize_term_window_config
+from app.modules.common.source_monitoring_window import normalize_monitoring_window_config
 from app.modules.sources.schemas import InputSourceCreateRequest, InputSourcePatchRequest
 
 CANVAS_ICS_SOURCE_KEY = "canvas_ics"
@@ -104,10 +104,10 @@ def normalize_source_create_request(payload: InputSourceCreateRequest) -> Normal
         source_kind = SourceKind.CALENDAR
         source_key = CANVAS_ICS_SOURCE_KEY
         display_name = CANVAS_ICS_DISPLAY_NAME
-        config = normalize_term_window_config(config=config, required=True)
+        config = normalize_monitoring_window_config(config=config, required=True, default_if_missing=True)
         secrets = normalize_ics_secrets(payload.secrets)
     elif normalized_provider == "gmail":
-        config = normalize_term_window_config(config=config, required=True)
+        config = normalize_monitoring_window_config(config=config, required=True, default_if_missing=True)
 
     return NormalizedSourceCreate(
         source_kind=source_kind,
@@ -126,7 +126,7 @@ def normalize_source_patch_request(*, source: InputSource, payload: InputSourceP
             allow_display_name_update=False,
             is_active=payload.is_active,
             poll_interval_seconds=payload.poll_interval_seconds,
-            config=normalize_term_window_config(config=dict(payload.config), required=True) if payload.config is not None else None,
+            config=normalize_monitoring_window_config(config=dict(payload.config), required=True, default_if_missing=True) if payload.config is not None else None,
             secrets=normalize_ics_secrets(payload.secrets) if payload.secrets is not None else None,
             force_source_key=CANVAS_ICS_SOURCE_KEY,
             force_display_name=CANVAS_ICS_DISPLAY_NAME,
@@ -138,7 +138,7 @@ def normalize_source_patch_request(*, source: InputSource, payload: InputSourceP
             allow_display_name_update=True,
             is_active=payload.is_active,
             poll_interval_seconds=payload.poll_interval_seconds,
-            config=normalize_term_window_config(config=dict(payload.config), required=True) if payload.config is not None else None,
+            config=normalize_monitoring_window_config(config=dict(payload.config), required=True, default_if_missing=True) if payload.config is not None else None,
             secrets=dict(payload.secrets) if payload.secrets is not None else None,
         )
 

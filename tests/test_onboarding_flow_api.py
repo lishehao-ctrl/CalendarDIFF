@@ -22,7 +22,7 @@ def _create_user(db_session, *, email: str) -> User:
     return user
 
 
-def test_onboarding_progresses_from_canvas_to_skip_to_term_ready(input_client, db_session, authenticate_client) -> None:
+def test_onboarding_progresses_from_canvas_to_skip_to_monitoring_ready(input_client, db_session, authenticate_client) -> None:
     user = _create_user(db_session, email="onboarding-flow@example.com")
     authenticate_client(input_client, user=user)
 
@@ -45,21 +45,19 @@ def test_onboarding_progresses_from_canvas_to_skip_to_term_ready(input_client, d
         json={},
     )
     assert skip_response.status_code == 200
-    assert skip_response.json()["stage"] == "needs_term_binding"
+    assert skip_response.json()["stage"] == "needs_monitoring_window"
     assert skip_response.json()["gmail_skipped"] is True
 
     term_response = input_client.post(
-        "/onboarding/term-binding",
+        "/onboarding/monitoring-window",
         headers={"X-API-Key": "test-api-key"},
-        json={"term_from": "2026-01-05", "term_to": "2026-03-20"},
+        json={"monitor_since": "2026-01-05"},
     )
     assert term_response.status_code == 200
     payload = term_response.json()
     assert payload["stage"] == "ready"
-    assert payload["term_binding"] == {
-        "term_key": "2026-01-05__2026-03-20",
-        "term_from": "2026-01-05",
-        "term_to": "2026-03-20",
+    assert payload["monitoring_window"] == {
+        "monitor_since": "2026-01-05",
     }
 
     db_session.expire_all()
@@ -67,11 +65,11 @@ def test_onboarding_progresses_from_canvas_to_skip_to_term_ready(input_client, d
     assert source is not None
     assert source.is_active is True
     assert source.config is not None
-    assert source.config.config_json["term_key"] == "2026-01-05__2026-03-20"
+    assert source.config.config_json["monitor_since"] == "2026-01-05"
 
 
-def test_onboarding_status_reports_term_renewal_for_expired_canvas_source(input_client, db_session, authenticate_client) -> None:
-    user = _create_user(db_session, email="term-renewal@example.com")
+def test_onboarding_status_accepts_older_monitoring_start(input_client, db_session, authenticate_client) -> None:
+    user = _create_user(db_session, email="monitoring-window@example.com")
     user.gmail_onboarding_skipped_at = datetime.now(timezone.utc)
     db_session.commit()
     authenticate_client(input_client, user=user)
@@ -81,14 +79,14 @@ def test_onboarding_status_reports_term_renewal_for_expired_canvas_source(input_
         headers={"X-API-Key": "test-api-key"},
         json={"url": "https://example.com/expired.ics"},
     )
-    term_response = input_client.post(
-        "/onboarding/term-binding",
+    monitoring_response = input_client.post(
+        "/onboarding/monitoring-window",
         headers={"X-API-Key": "test-api-key"},
-        json={"term_key": "WI20", "term_from": "2020-01-05", "term_to": "2020-03-20"},
+        json={"monitor_since": "2020-01-05"},
     )
-    assert term_response.status_code == 200
-    assert term_response.json()["stage"] == "needs_term_renewal"
+    assert monitoring_response.status_code == 200
+    assert monitoring_response.json()["stage"] == "ready"
 
     status_response = input_client.get("/onboarding/status", headers={"X-API-Key": "test-api-key"})
     assert status_response.status_code == 200
-    assert status_response.json()["stage"] == "needs_term_renewal"
+    assert status_response.json()["stage"] == "ready"

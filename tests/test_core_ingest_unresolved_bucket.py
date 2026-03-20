@@ -181,53 +181,6 @@ def test_missing_course_identity_isolated_to_unresolved_bucket_without_review_si
     assert int(outbox_count or 0) == 0
 
 
-def test_calendar_term_out_of_scope_isolated_to_unresolved_bucket(db_session: Session) -> None:
-    user, source = _create_source(
-        db_session,
-        source_kind=SourceKind.CALENDAR,
-        provider="ics",
-        source_key="calendar-term-gated-source",
-        config_json={"term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
-    )
-    due_at = datetime(2026, 5, 2, 18, 0, tzinfo=timezone.utc)
-    payload = build_calendar_payload(
-        external_event_id="evt-calendar-off-term",
-        title="Late Homework",
-        start_at=due_at,
-        end_at=due_at + timedelta(hours=1),
-        course_parse=build_course_parse(dept="CSE", number=120, quarter="WI", year2=26, confidence=0.9, evidence="CSE120"),
-        semantic_parse=build_semantic_parse(
-            raw_type="Homework",
-            event_name="Late Homework",
-            ordinal=9,
-            due_at=due_at,
-            confidence=0.8,
-            evidence="late",
-        ),
-    )
-    _seed_result(
-        db_session,
-        source=source,
-        request_id="calendar-off-term-1",
-        records=[{"record_type": "calendar.event.extracted", "payload": payload}],
-    )
-
-    apply_result = apply_ingest_result_idempotent(db_session, request_id="calendar-off-term-1")
-    assert apply_result["changes_created"] == 0
-
-    unresolved = db_session.scalar(
-        select(IngestUnresolvedRecord).where(
-            IngestUnresolvedRecord.source_id == source.id,
-            IngestUnresolvedRecord.external_event_id == "evt-calendar-off-term",
-            IngestUnresolvedRecord.is_active.is_(True),
-        )
-    )
-    assert unresolved is not None
-    assert unresolved.reason_code == "term_out_of_scope"
-    assert int(db_session.scalar(select(func.count(SourceEventObservation.id)).where(SourceEventObservation.source_id == source.id)) or 0) == 0
-    assert int(db_session.scalar(select(func.count(Change.id)).where(Change.user_id == user.id)) or 0) == 0
-
-
 def test_missing_course_identity_for_gmail_creates_no_link_side_effects(db_session: Session) -> None:
     user, source = _create_source(
         db_session,
@@ -273,52 +226,6 @@ def test_missing_course_identity_for_gmail_creates_no_link_side_effects(db_sessi
     assert int(observation_count or 0) == 0
     assert int(change_count or 0) == 0
     assert int(outbox_count or 0) == 0
-
-
-def test_gmail_term_out_of_scope_isolated_to_unresolved_bucket(db_session: Session) -> None:
-    user, source = _create_source(
-        db_session,
-        source_kind=SourceKind.EMAIL,
-        provider="gmail",
-        source_key="gmail-term-gated-source",
-        config_json={"term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
-    )
-    due_at = datetime(2026, 5, 5, 12, 0, tzinfo=timezone.utc)
-    payload = build_gmail_payload(
-        message_id="msg-gmail-off-term",
-        title="Future Homework",
-        due_at=due_at,
-        course_parse=build_course_parse(dept="CSE", number=120, quarter="WI", year2=26, confidence=0.9, evidence="CSE120"),
-        semantic_parse=build_semantic_parse(
-            raw_type="Homework",
-            event_name="Future Homework",
-            ordinal=10,
-            due_at=due_at,
-            confidence=0.8,
-            evidence="future",
-        ),
-    )
-    _seed_result(
-        db_session,
-        source=source,
-        request_id="gmail-off-term-1",
-        records=[{"record_type": "gmail.message.extracted", "payload": payload}],
-    )
-
-    apply_result = apply_ingest_result_idempotent(db_session, request_id="gmail-off-term-1")
-    assert apply_result["changes_created"] == 0
-
-    unresolved = db_session.scalar(
-        select(IngestUnresolvedRecord).where(
-            IngestUnresolvedRecord.source_id == source.id,
-            IngestUnresolvedRecord.external_event_id == "msg-gmail-off-term",
-            IngestUnresolvedRecord.is_active.is_(True),
-        )
-    )
-    assert unresolved is not None
-    assert unresolved.reason_code == "term_out_of_scope"
-    assert int(db_session.scalar(select(func.count(SourceEventObservation.id)).where(SourceEventObservation.source_id == source.id)) or 0) == 0
-    assert int(db_session.scalar(select(func.count(Change.id)).where(Change.user_id == user.id)) or 0) == 0
 
 
 def test_gmail_lab_update_isolated_as_product_scope_excluded(db_session: Session) -> None:

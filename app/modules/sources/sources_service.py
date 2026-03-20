@@ -9,7 +9,11 @@ from sqlalchemy.orm import Session
 from app.core.security import encrypt_secret
 from app.db.models.input import InputSource, InputSourceConfig, InputSourceCursor, InputSourceSecret
 from app.db.models.shared import User
-from app.modules.common.source_term_window import parse_source_term_window, parse_term_window_config, source_timezone_name
+from app.modules.common.source_monitoring_window import (
+    parse_monitoring_window_config,
+    parse_source_monitoring_window,
+    source_timezone_name,
+)
 from app.modules.sources.provider_sources import (
     CANVAS_ICS_DISPLAY_NAME,
     CANVAS_ICS_SOURCE_KEY,
@@ -22,11 +26,14 @@ from app.modules.sources.provider_sources import (
     normalize_source_patch_request,
 )
 from app.modules.sources.schemas import InputSourceCreateRequest, InputSourcePatchRequest
-from app.modules.sources.source_term_rebind import (
+from app.modules.sources.source_monitoring_window_rebind import (
     has_active_sync_requests,
-    queue_pending_term_rebind,
+    queue_pending_monitoring_window_update,
 )
-from app.modules.sources.source_term_rescope import apply_source_term_rescope, term_window_changed
+from app.modules.sources.source_monitoring_window_rescope import (
+    apply_source_monitoring_window_rescope,
+    monitoring_window_changed,
+)
 
 
 def list_input_sources(db: Session, *, user_id: int, status: str = "active") -> list[InputSource]:
@@ -65,7 +72,7 @@ def create_input_source(db: Session, *, user: User, payload: InputSourceCreateRe
 
     now = datetime.now(timezone.utc)
     initial_next_poll_at = now
-    term_window = parse_term_window_config(normalized.config, required=False)
+    term_window = parse_monitoring_window_config(normalized.config, required=False)
     if term_window is not None:
         initial_next_poll_at = max(now, term_window.monitor_start_at_utc(timezone_name=user.timezone_name))
     source = InputSource(
@@ -115,17 +122,18 @@ def upsert_canvas_ics_source(
     *,
     user: User,
     url: str,
-    term_key: str,
-    term_from: str,
-    term_to: str,
+    monitor_since: str | None = None,
     poll_interval_seconds: int = 900,
 ) -> InputSource:
     existing = get_canvas_ics_source_for_user(db, user_id=user.id)
+    config: dict[str, str] = {}
+    if isinstance(monitor_since, str) and monitor_since.strip():
+        config["monitor_since"] = monitor_since.strip()
     if existing is not None:
         payload = InputSourcePatchRequest(
             is_active=True,
             poll_interval_seconds=poll_interval_seconds,
-            config={"term_key": term_key, "term_from": term_from, "term_to": term_to},
+            config=config,
             secrets={"url": url},
         )
         return update_input_source(db, source=existing, payload=payload)
@@ -137,7 +145,7 @@ def upsert_canvas_ics_source(
             source_kind="calendar",
             provider="ics",
             poll_interval_seconds=poll_interval_seconds,
-            config={"term_key": term_key, "term_from": term_from, "term_to": term_to},
+            config=config,
             secrets={"url": url},
         ),
     )
@@ -151,7 +159,7 @@ def update_input_source(
 ) -> InputSource:
     now = datetime.now(timezone.utc)
     normalized = normalize_source_patch_request(source=source, payload=payload)
-    previous_term_window = parse_source_term_window(source, required=False)
+    previous_term_window = parse_source_monitoring_window(source, required=False)
     next_term_window = previous_term_window
     should_rescope_term_window = False
     config_term_rebind_queued = False
@@ -166,10 +174,10 @@ def update_input_source(
             source.next_poll_at = now + timedelta(seconds=normalized.poll_interval_seconds)
     if normalized.config is not None:
         requested_config = dict(normalized.config)
-        requested_term_window = parse_term_window_config(requested_config, required=False)
-        requested_term_changed = term_window_changed(previous=previous_term_window, current=requested_term_window)
+        requested_term_window = parse_monitoring_window_config(requested_config, required=False)
+        requested_term_changed = monitoring_window_changed(previous=previous_term_window, current=requested_term_window)
         if requested_term_changed and has_active_sync_requests(db=db, source_id=source.id):
-            queue_pending_term_rebind(
+            queue_pending_monitoring_window_update(
                 source=source,
                 requested_config=requested_config,
                 requested_at=now,
@@ -183,8 +191,8 @@ def update_input_source(
                 source.config = InputSourceConfig(source_id=source.id, schema_version=1, config_json=requested_config)
             else:
                 source.config.config_json = requested_config
-            next_term_window = parse_source_term_window(source, required=False)
-            should_rescope_term_window = term_window_changed(previous=previous_term_window, current=next_term_window)
+            next_term_window = parse_source_monitoring_window(source, required=False)
+            should_rescope_term_window = monitoring_window_changed(previous=previous_term_window, current=next_term_window)
             if source.is_active:
                 if next_term_window is not None and next_term_window.is_expired(
                     now=now,
@@ -208,7 +216,7 @@ def update_input_source(
         if normalized.reactivate_on_secret_update and payload.is_active is None and not source.is_active:
             source.is_active = True
         if normalized.reactivate_on_secret_update and source.next_poll_at is None:
-            term_window = next_term_window if next_term_window is not None else parse_source_term_window(source, required=False)
+            term_window = next_term_window if next_term_window is not None else parse_source_monitoring_window(source, required=False)
             if term_window is not None:
                 source.next_poll_at = max(now, term_window.monitor_start_at_utc(timezone_name=source_timezone_name(source)))
             else:
@@ -218,7 +226,7 @@ def update_input_source(
     if normalized.force_display_name is not None:
         source.display_name = normalized.force_display_name
     if normalized.is_active is True and source.next_poll_at is None:
-        term_window = next_term_window if next_term_window is not None else parse_source_term_window(source, required=False)
+        term_window = next_term_window if next_term_window is not None else parse_source_monitoring_window(source, required=False)
         if term_window is not None:
             if term_window.is_expired(now=now, timezone_name=source_timezone_name(source)):
                 source.is_active = False
@@ -230,10 +238,10 @@ def update_input_source(
     if normalized.is_active is False:
         source.next_poll_at = None
     if should_rescope_term_window and next_term_window is not None and not config_term_rebind_queued:
-        apply_source_term_rescope(
+        apply_source_monitoring_window_rescope(
             db=db,
             source=source,
-            term_window=next_term_window,
+            monitoring_window=next_term_window,
             applied_at=now,
         )
     db.commit()

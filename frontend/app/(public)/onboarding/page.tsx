@@ -15,11 +15,11 @@ export default async function OnboardingPage() {
           <div className="mb-6 max-w-3xl">
             <p className="text-xs uppercase tracking-[0.24em] text-[#6d7885]">Onboarding</p>
             <h1 className="mt-3 text-4xl font-semibold leading-tight text-ink md:text-5xl">
-              Connect sources and define the term before the workspace opens.
+              Connect sources and choose the initial monitoring range before the workspace opens.
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-[#596270]">
               This flow stays separate from the main workspace on purpose. Finish Canvas, choose whether Gmail joins,
-              and save the term window once. After that, Overview becomes your default entry point.
+              and decide how far back CalendarDIFF should look on first sync. After that, Overview becomes your default entry point.
             </p>
           </div>
           <OnboardingWizard />

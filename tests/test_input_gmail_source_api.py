@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from app.core.security import decrypt_secret, encrypt_secret
-from app.db.models.input import IngestTriggerType, InputSource, SyncRequest, SyncRequestStatus
+from app.core.security import encrypt_secret
+from app.db.models.input import InputSource
 from app.db.models.shared import User
 from app.modules.sources.schemas import InputSourceCreateRequest
 from app.modules.sources.sources_service import create_input_source
@@ -25,32 +25,17 @@ def _create_registered_user(db_session) -> User:
 
 
 def _create_gmail_source(db_session, *, user: User) -> InputSource:
-    source = create_input_source(
+    return create_input_source(
         db_session,
         user=user,
         payload=InputSourceCreateRequest(
             source_kind="email",
             provider="gmail",
             display_name="Gmail Inbox",
-            config={"label_id": "INBOX", "term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
+            config={"label_id": "INBOX", "monitor_since": "2026-01-05"},
             secrets={},
         ),
     )
-    return source
-
-
-def _seed_sync_request(db_session, *, source: InputSource, request_id: str, status: SyncRequestStatus) -> SyncRequest:
-    row = SyncRequest(
-        request_id=request_id,
-        source_id=source.id,
-        trigger_type=IngestTriggerType.MANUAL,
-        status=status,
-        idempotency_key=f"idemp:{request_id}",
-        metadata_json={"kind": "test"},
-    )
-    db_session.add(row)
-    db_session.commit()
-    return row
 
 
 def test_sources_list_includes_gmail_oauth_status(input_client, db_session, authenticate_client) -> None:
@@ -94,7 +79,7 @@ def test_gmail_source_create_is_singleton_per_user(input_client, db_session, aut
             "source_kind": "email",
             "provider": "gmail",
             "display_name": "Another Gmail",
-            "config": {"label_id": "INBOX", "term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
+            "config": {"label_id": "INBOX"},
             "secrets": {},
         },
     )
@@ -109,7 +94,7 @@ def test_gmail_source_create_is_singleton_per_user(input_client, db_session, aut
     }
 
 
-def test_gmail_source_create_requires_term_window_config(input_client, db_session, authenticate_client) -> None:
+def test_gmail_source_create_defaults_monitoring_window(input_client, db_session, authenticate_client) -> None:
     user = _create_registered_user(db_session)
     authenticate_client(input_client, user=user)
 
@@ -125,28 +110,10 @@ def test_gmail_source_create_requires_term_window_config(input_client, db_sessio
         },
     )
 
-    assert response.status_code == 422
-    assert response.json()["detail"] == "config must include term_from and term_to"
-
-
-def test_gmail_source_create_rejects_inverted_term_window(input_client, db_session, authenticate_client) -> None:
-    user = _create_registered_user(db_session)
-    authenticate_client(input_client, user=user)
-
-    response = input_client.post(
-        "/sources",
-        headers={"X-API-Key": "test-api-key"},
-        json={
-            "source_kind": "email",
-            "provider": "gmail",
-            "display_name": "Gmail Inbox",
-            "config": {"label_id": "INBOX", "term_key": "WI26", "term_from": "2026-03-20", "term_to": "2026-01-05"},
-            "secrets": {},
-        },
-    )
-
-    assert response.status_code == 422
-    assert response.json()["detail"] == "invalid term window config: Value error, term_to must be on or after term_from"
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["config"]["label_id"] == "INBOX"
+    assert isinstance(payload["config"].get("monitor_since"), str)
 
 
 def test_delete_gmail_source_clears_connection_state(input_client, db_session, authenticate_client) -> None:
@@ -197,49 +164,3 @@ def test_delete_gmail_source_clears_connection_state(input_client, db_session, a
     )
     assert reactivate_response.status_code == 200
     assert reactivate_response.json()["is_active"] is True
-
-
-def test_gmail_term_rebind_queues_whole_config_when_sync_running(input_client, db_session, authenticate_client) -> None:
-    user = _create_registered_user(db_session)
-    source = _create_gmail_source(db_session, user=user)
-    _seed_sync_request(
-        db_session,
-        source=source,
-        request_id="gmail-running-rebind",
-        status=SyncRequestStatus.RUNNING,
-    )
-    authenticate_client(input_client, user=user)
-
-    response = input_client.patch(
-        f"/sources/{source.id}",
-        headers={"X-API-Key": "test-api-key"},
-        json={
-            "config": {
-                "label_id": "COURSE",
-                "subject_keywords": ["homework"],
-                "term_key": "SP26",
-                "term_from": "2026-03-25",
-                "term_to": "2026-06-10",
-            }
-        },
-    )
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["config"]["label_id"] == "INBOX"
-    assert payload["config"]["term_key"] == "WI26"
-    pending = payload["config"]["pending_term_rebind"]
-    assert pending["term_key"] == "SP26"
-    assert pending["requested_config"]["label_id"] == "COURSE"
-    assert pending["requested_config"]["subject_keywords"] == ["homework"]
-    assert payload["lifecycle_state"] == "active"
-    assert payload["sync_state"] == "running"
-    assert payload["config_state"] == "rebind_pending"
-    assert payload["runtime_state"] == "rebind_pending"
-
-    db_session.expire_all()
-    refreshed = db_session.scalar(select(InputSource).where(InputSource.id == source.id))
-    assert refreshed is not None
-    assert refreshed.config is not None
-    assert refreshed.config.config_json["label_id"] == "INBOX"
-    assert refreshed.config.config_json["term_key"] == "WI26"
-    assert refreshed.config.config_json["pending_term_rebind"]["requested_config"]["label_id"] == "COURSE"

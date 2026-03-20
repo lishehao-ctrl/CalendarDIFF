@@ -29,9 +29,9 @@ def _create_source(db_session, *, user: User, provider: str) -> InputSource:
         payload=InputSourceCreateRequest(
             source_kind="email" if provider == "gmail" else "calendar",
             provider=provider,
-            config={"label_id": "INBOX", "term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"}
+            config={"label_id": "INBOX", "monitor_since": "2026-01-05"}
             if provider == "gmail"
-            else {"term_key": "WI26", "term_from": "2026-01-05", "term_to": "2026-03-20"},
+            else {"monitor_since": "2026-01-05"},
             secrets={} if provider == "gmail" else {"url": "https://example.com/calendar.ics"},
         ),
     )
