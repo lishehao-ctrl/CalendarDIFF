@@ -15,10 +15,10 @@ router = APIRouter(tags=["health"])
 
 @router.get("/health")
 def health(request: Request, db: Session = Depends(get_db)) -> dict[str, object]:
-    del request
     now = datetime.now(timezone.utc)
     db_ok = False
     db_error: str | None = None
+    schema_guard_error = getattr(request.app.state, "schema_guard_error", None)
     try:
         db.execute(text("SELECT 1"))
         db_ok = True
@@ -41,6 +41,8 @@ def health(request: Request, db: Session = Depends(get_db)) -> dict[str, object]
     if db_ok:
         scheduler_summary["database_dialect"] = db.get_bind().dialect.name
         scheduler_summary["lock_backend"] = "postgres_advisory"
+    scheduler_summary["schema_guard_blocked"] = bool(schema_guard_error)
+    scheduler_summary["schema_guard_message"] = schema_guard_error
 
     return {
         "status": "ok" if db_ok else "degraded",

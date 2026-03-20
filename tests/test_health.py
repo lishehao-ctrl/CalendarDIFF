@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from fastapi.testclient import TestClient
+from sqlalchemy import text
+
+from app.core.config import get_settings
 from app.db.models.input import InputSource, SourceKind
+from app.db.session import reset_engine
 from app.db.models.shared import User
 
 
@@ -66,3 +71,24 @@ def test_health_reports_global_next_expected_check(client, db_session) -> None:
     assert scheduler["next_expected_source_id"] == source_early.id
     next_expected = datetime.fromisoformat(scheduler["next_expected_check_at"].replace("Z", "+00:00"))
     assert next_expected == datetime(2026, 2, 21, 10, 15, tzinfo=timezone.utc)
+
+
+def test_health_returns_503_when_required_schema_column_is_missing(db_engine) -> None:
+    with db_engine.begin() as conn:
+        conn.execute(text("ALTER TABLE users DROP COLUMN IF EXISTS timezone_source"))
+
+    get_settings.cache_clear()
+    reset_engine()
+    from services.app_api.main import app as public_api_app
+
+    try:
+        with TestClient(public_api_app) as client:
+            response = client.get("/health", headers={"X-API-Key": "test-api-key"})
+        assert response.status_code == 503
+        assert "Database schema is not ready for this app version." in response.json()["detail"]
+        assert "missing columns: users.timezone_source" in response.json()["detail"]
+    finally:
+        with db_engine.begin() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone_source VARCHAR(32) NOT NULL DEFAULT 'manual'"))
+        get_settings.cache_clear()
+        reset_engine()

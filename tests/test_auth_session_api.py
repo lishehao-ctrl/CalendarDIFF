@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from fastapi.testclient import TestClient
+from sqlalchemy import text, select
 
+from app.core.config import get_settings
 from app.db.models.shared import User
+from app.db.session import reset_engine
 from app.modules.auth.service import _hash_password
 
 
@@ -111,3 +114,28 @@ def test_login_does_not_override_manual_timezone(input_client, db_session) -> No
     assert login_response.status_code == 200
     assert login_response.json()["user"]["timezone_name"] == "UTC"
     assert login_response.json()["user"]["timezone_source"] == "manual"
+
+
+def test_register_returns_503_when_schema_shape_is_stamped_but_incomplete(db_engine) -> None:
+    with db_engine.begin() as conn:
+        conn.execute(text("ALTER TABLE users DROP COLUMN IF EXISTS timezone_source"))
+
+    get_settings.cache_clear()
+    reset_engine()
+    from services.app_api.main import app as public_api_app
+
+    try:
+        with TestClient(public_api_app) as client:
+            response = client.post(
+                "/auth/register",
+                headers={"X-API-Key": "test-api-key"},
+                json={"notify_email": "schema-broken@example.com", "password": "password123", "timezone_name": "America/Los_Angeles"},
+            )
+        assert response.status_code == 503
+        assert "Database schema is not ready for this app version." in response.json()["detail"]
+        assert "missing columns: users.timezone_source" in response.json()["detail"]
+    finally:
+        with db_engine.begin() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone_source VARCHAR(32) NOT NULL DEFAULT 'manual'"))
+        get_settings.cache_clear()
+        reset_engine()
