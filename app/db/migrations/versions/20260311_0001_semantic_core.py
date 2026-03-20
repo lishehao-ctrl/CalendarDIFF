@@ -1,7 +1,7 @@
 """semantic-only fresh baseline
 
 Revision ID: 20260311_0001_semantic_core
-Revises:
+Revises: 20260309_0015_drop_legacy_kinds
 Create Date: 2026-03-11 12:00:00
 """
 
@@ -14,7 +14,7 @@ from app.db.base import Base
 from app.db.model_registry import load_all_models
 
 revision = "20260311_0001_semantic_core"
-down_revision = None
+down_revision = "20260309_0015_drop_legacy_kinds"
 branch_labels = None
 depends_on = None
 
