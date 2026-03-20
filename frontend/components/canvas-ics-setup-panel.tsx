@@ -32,7 +32,7 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
       return;
     }
     const intervalId = window.setInterval(() => {
-      void refresh();
+      void refresh({ background: true });
     }, 2000);
     return () => window.clearInterval(intervalId);
   }, [refresh, source]);
@@ -169,7 +169,7 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
               <p className="mt-2">Source: {source ? `#${source.source_id}` : "Will be created on first save"}</p>
               <p className="mt-2">Last polled: {formatDateTime(source?.last_polled_at, "Never")}</p>
             </div>
-            <SourceSyncProgress className="mt-4" progress={source?.sync_progress} />
+            <SourceSyncProgress className="mt-4" progress={source?.sync_progress} stableLabel="Syncing Canvas source" />
             {source ? (
               <div className="mt-5">
                 <Button variant="ghost" onClick={() => void archive()} disabled={busyArchive}>

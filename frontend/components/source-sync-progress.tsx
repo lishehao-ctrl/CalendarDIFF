@@ -6,9 +6,11 @@ import type { SyncProgress } from "@/lib/types";
 export function SourceSyncProgress({
   progress,
   className,
+  stableLabel,
 }: {
   progress: SyncProgress | null | undefined;
   className?: string;
+  stableLabel?: string;
 }) {
   if (!progress) {
     return null;
@@ -19,12 +21,15 @@ export function SourceSyncProgress({
   const percent = typeof progress.percent === "number" ? Math.max(0, Math.min(100, progress.percent)) : null;
   const hasBar = current !== null && total !== null && total > 0 && percent !== null;
   const unit = progress.unit ? ` ${progress.unit}` : "";
+  const title = stableLabel || progress.label;
+  const stepLabel = stableLabel && progress.label && progress.label !== stableLabel ? progress.label : null;
 
   return (
     <div className={cn("rounded-[1.15rem] border border-[rgba(31,94,255,0.14)] bg-[rgba(31,94,255,0.05)] px-4 py-3", className)}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-ink">{progress.label}</p>
+          <p className="text-sm font-medium text-ink">{title}</p>
+          {stepLabel ? <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-[#6d7885]">{stepLabel}</p> : null}
           {progress.detail ? <p className="mt-1 text-xs leading-5 text-[#596270]">{progress.detail}</p> : null}
         </div>
         {current !== null && total !== null ? (

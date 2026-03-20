@@ -29,7 +29,7 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
       return;
     }
     const intervalId = window.setInterval(() => {
-      void refresh();
+      void refresh({ background: true });
     }, 2000);
     return () => window.clearInterval(intervalId);
   }, [refresh, source]);
@@ -148,7 +148,7 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
               <p className="mt-2">Label: INBOX</p>
               {source?.oauth_account_email ? <p className="mt-2">Account: {source.oauth_account_email}</p> : null}
             </div>
-            <SourceSyncProgress className="mt-4" progress={source?.sync_progress} />
+            <SourceSyncProgress className="mt-4" progress={source?.sync_progress} stableLabel="Syncing Gmail source" />
             {source ? (
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button variant="ghost" onClick={() => void archive()} disabled={disconnecting}>
