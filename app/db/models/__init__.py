@@ -1,7 +1,11 @@
 """Bounded-context SQLAlchemy model package."""
 
-from app.db.models.ingestion import (
+from app.db.models.runtime import (
+    CalendarComponentParseCache,
+    CalendarComponentParseCacheStatus,
     ConnectorResultStatus,
+    GmailMessageParseCache,
+    GmailMessageParseCacheStatus,
     IngestJob,
     IngestJobStatus,
     IngestResult,
@@ -33,10 +37,14 @@ from app.db.models.shared import IntegrationInbox, IntegrationOutbox, OutboxStat
 __all__ = [
     "Change",
     "ChangeType",
+    "CalendarComponentParseCache",
+    "CalendarComponentParseCacheStatus",
     "ConnectorResultStatus",
     "DigestSendLog",
     "EventEntity",
     "EventEntityLifecycle",
+    "GmailMessageParseCache",
+    "GmailMessageParseCacheStatus",
     "ChangeOrigin",
     "IngestApplyLog",
     "IngestJob",

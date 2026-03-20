@@ -210,8 +210,8 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
               {!source ? (
                 <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/70 px-4 py-3 text-sm text-[#314051]">
                   This workspace does not currently have a Canvas source record. Re-run setup from{" "}
-                  <Link href={withBasePath(basePath, "/setup")} className="font-medium text-cobalt underline-offset-4 hover:underline">
-                    setup
+                  <Link href={withBasePath(basePath, "/onboarding")} className="font-medium text-cobalt underline-offset-4 hover:underline">
+                    onboarding
                   </Link>{" "}
                   if you need to reconnect the required calendar intake.
                 </div>

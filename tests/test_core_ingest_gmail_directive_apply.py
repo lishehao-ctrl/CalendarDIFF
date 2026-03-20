@@ -4,12 +4,12 @@ from datetime import date, datetime, timezone
 
 from sqlalchemy import func, select
 
-from app.db.models.ingestion import ConnectorResultStatus, IngestResult, IngestUnresolvedRecord
+from app.db.models.runtime import ConnectorResultStatus, IngestResult, IngestUnresolvedRecord
 from app.db.models.input import IngestTriggerType, InputSource, InputSourceConfig, SourceKind, SyncRequest, SyncRequestStatus
 from app.db.models.review import Change, ChangeType, EventEntity, EventEntityLifecycle, ReviewStatus, SourceEventObservation
 from app.db.models.shared import CourseWorkItemLabelFamily, IntegrationOutbox, User
 from app.modules.common.course_identity import normalize_label_token, normalized_course_identity_key
-from app.modules.core_ingest.apply import apply_ingest_result_idempotent
+from app.modules.runtime.apply.apply import apply_ingest_result_idempotent
 
 
 def _create_user_source_and_family(db_session) -> tuple[User, InputSource, CourseWorkItemLabelFamily]:
@@ -218,7 +218,7 @@ def test_gmail_directive_move_weekday_with_ordinal_list_creates_due_changed(db_s
 
     outbox_count = int(
         db_session.scalar(
-            select(func.count(IntegrationOutbox.id)).where(IntegrationOutbox.event_type == "review.pending.created")
+            select(func.count(IntegrationOutbox.id)).where(IntegrationOutbox.event_type == "changes.pending.created")
         )
         or 0
     )

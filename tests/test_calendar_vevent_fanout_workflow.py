@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.models.ingestion import (
+from app.db.models.runtime import (
     CalendarComponentParseStatus,
     CalendarComponentParseTask,
     ConnectorResultStatus,
@@ -16,11 +16,11 @@ from app.db.models.ingestion import (
 )
 from app.db.models.input import IngestTriggerType, InputSource, SourceKind, SyncRequest, SyncRequestStatus
 from app.db.models.shared import User
-from app.modules.ingestion.calendar_fanout_contract import CALENDAR_REDUCE_REASON
-from app.modules.ingestion.connector_dispatch import dispatch_pending_llm_enqueues
-from app.modules.llm_runtime.message_processor import process_parse_task_message
-from app.modules.llm_runtime.parse_pipeline import RateLimitRejected
-from app.modules.runtime_kernel.parse_task_queue import ParseTaskMessage
+from app.modules.runtime.connectors.calendar_fanout_contract import CALENDAR_REDUCE_REASON
+from app.modules.runtime.connectors.connector_dispatch import dispatch_pending_llm_enqueues
+from app.modules.runtime.llm.message_processor import process_parse_task_message
+from app.modules.runtime.llm.parse_pipeline import RateLimitRejected
+from app.modules.runtime.kernel.parse_task_queue import ParseTaskMessage
 
 
 def _vevent_component(*, uid: str, recurrence_id: str | None, summary: str) -> dict:
@@ -112,10 +112,10 @@ def _dispatch_calendar_job(db_session: Session, monkeypatch, *, request_id: str,
         job_status=IngestJobStatus.CLAIMED,
     )
     enqueued: list[dict] = []
-    monkeypatch.setattr("app.modules.ingestion.connector_dispatch.get_parse_queue_redis_client", lambda: object())
-    monkeypatch.setattr("app.modules.ingestion.connector_dispatch.ensure_parse_queue_group", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.modules.runtime.connectors.connector_dispatch.get_parse_queue_redis_client", lambda: object())
+    monkeypatch.setattr("app.modules.runtime.connectors.connector_dispatch.ensure_parse_queue_group", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
-        "app.modules.ingestion.connector_dispatch.enqueue_parse_task",
+        "app.modules.runtime.connectors.connector_dispatch.enqueue_parse_task",
         lambda **kwargs: enqueued.append(dict(kwargs)) or f"msg-{len(enqueued)}",
     )
     dispatched = dispatch_pending_llm_enqueues(db_session)
@@ -180,7 +180,7 @@ def test_calendar_fanout_end_to_end_component_success_then_reduce(db_session: Se
     component_reason = next(row["reason"] for row in enqueued if str(row["reason"]).startswith("calendar_component:"))
 
     monkeypatch.setattr(
-        "app.modules.llm_runtime.calendar_fanout.parse_calendar_changed_component_with_llm",
+        "app.modules.runtime.llm.calendar_fanout.parse_calendar_changed_component_with_llm",
         lambda **_kwargs: [
             {
                 "record_type": "calendar.event.extracted",
@@ -212,7 +212,7 @@ def test_calendar_fanout_end_to_end_component_success_then_reduce(db_session: Se
         ],
     )
     monkeypatch.setattr(
-        "app.modules.llm_runtime.calendar_fanout.enqueue_parse_task",
+        "app.modules.runtime.llm.calendar_fanout.enqueue_parse_task",
         lambda **_kwargs: "msg-reduce",
     )
 
@@ -285,11 +285,11 @@ def test_calendar_fanout_rate_limited_component_requeues_without_failing(db_sess
     scheduled: list[dict] = []
 
     monkeypatch.setattr(
-        "app.modules.llm_runtime.calendar_fanout.parse_calendar_changed_component_with_llm",
+        "app.modules.runtime.llm.calendar_fanout.parse_calendar_changed_component_with_llm",
         lambda **_kwargs: (_ for _ in ()).throw(RateLimitRejected(reason="target_cap")),
     )
     monkeypatch.setattr(
-        "app.modules.llm_runtime.calendar_fanout.schedule_parse_retry",
+        "app.modules.runtime.llm.calendar_fanout.schedule_parse_retry",
         lambda **kwargs: scheduled.append(dict(kwargs)),
     )
 
@@ -392,7 +392,7 @@ def test_calendar_fanout_component_unresolved_is_persisted_and_reducer_waits_for
     )
     component_reason = next(row["reason"] for row in enqueued if str(row["reason"]).startswith("calendar_component:"))
     monkeypatch.setattr(
-        "app.modules.llm_runtime.calendar_fanout.enqueue_parse_task",
+        "app.modules.runtime.llm.calendar_fanout.enqueue_parse_task",
         lambda **_kwargs: "msg-reduce-unresolved",
     )
 
@@ -492,6 +492,11 @@ def test_calendar_fanout_reducer_waits_until_all_children_terminal(
     task_b.status = CalendarComponentParseStatus.PENDING
     task_b.started_at = datetime.now(timezone.utc)
     db_session.commit()
+    scheduled: list[dict] = []
+    monkeypatch.setattr(
+        "app.modules.runtime.llm.calendar_fanout.schedule_parse_retry",
+        lambda **kwargs: scheduled.append(dict(kwargs)),
+    )
 
     first_reduce_ack = process_parse_task_message(
         message=ParseTaskMessage(
@@ -508,6 +513,8 @@ def test_calendar_fanout_reducer_waits_until_all_children_terminal(
     )
     assert first_reduce_ack is True
     assert db_session.scalar(select(IngestResult).where(IngestResult.request_id == "fanout-reduce-wait-1")) is None
+    assert scheduled
+    assert scheduled[0]["reason"] == CALENDAR_REDUCE_REASON
 
     task_b = db_session.scalar(
         select(CalendarComponentParseTask).where(
@@ -598,9 +605,14 @@ def test_calendar_fanout_reducer_requeues_stale_pending_component(
     db_session.commit()
 
     requeued: list[dict] = []
+    scheduled: list[dict] = []
     monkeypatch.setattr(
-        "app.modules.llm_runtime.calendar_fanout.enqueue_parse_task",
+        "app.modules.runtime.llm.calendar_fanout.enqueue_parse_task",
         lambda **kwargs: requeued.append(dict(kwargs)) or "msg-requeued",
+    )
+    monkeypatch.setattr(
+        "app.modules.runtime.llm.calendar_fanout.schedule_parse_retry",
+        lambda **kwargs: scheduled.append(dict(kwargs)),
     )
 
     first_reduce_ack = process_parse_task_message(
@@ -619,6 +631,7 @@ def test_calendar_fanout_reducer_requeues_stale_pending_component(
     assert first_reduce_ack is True
     assert requeued
     assert requeued[0]["reason"] == "calendar_component:evt-b#"
+    assert scheduled and scheduled[0]["reason"] == CALENDAR_REDUCE_REASON
 
     db_session.expire_all()
     task_b = db_session.scalar(
@@ -688,9 +701,14 @@ def test_calendar_fanout_reducer_requeues_never_started_pending_when_no_running_
     db_session.commit()
 
     requeued: list[dict] = []
+    scheduled: list[dict] = []
     monkeypatch.setattr(
-        "app.modules.llm_runtime.calendar_fanout.enqueue_parse_task",
+        "app.modules.runtime.llm.calendar_fanout.enqueue_parse_task",
         lambda **kwargs: requeued.append(dict(kwargs)) or "msg-requeued",
+    )
+    monkeypatch.setattr(
+        "app.modules.runtime.llm.calendar_fanout.schedule_parse_retry",
+        lambda **kwargs: scheduled.append(dict(kwargs)),
     )
 
     reduce_ack = process_parse_task_message(
@@ -709,6 +727,7 @@ def test_calendar_fanout_reducer_requeues_never_started_pending_when_no_running_
     assert reduce_ack is True
     assert requeued
     assert requeued[0]["reason"] == "calendar_component:evt-b#"
+    assert scheduled and scheduled[0]["reason"] == CALENDAR_REDUCE_REASON
 
     db_session.expire_all()
     task_b = db_session.scalar(
@@ -719,3 +738,81 @@ def test_calendar_fanout_reducer_requeues_never_started_pending_when_no_running_
     )
     assert task_b is not None
     assert task_b.error_code == "llm_component_requeued"
+
+
+def test_calendar_fanout_reducer_does_not_duplicate_future_reduce_retry(
+    db_session: Session,
+    db_session_factory: sessionmaker,
+    monkeypatch,
+) -> None:
+    parse_payload = {
+        "kind": "calendar_delta",
+        "changed_components": [
+            _vevent_component(uid="evt-a", recurrence_id=None, summary="A"),
+            _vevent_component(uid="evt-b", recurrence_id=None, summary="B"),
+        ],
+        "removed_component_keys": [],
+    }
+    source, _sync_request, job, _enqueued = _dispatch_calendar_job(
+        db_session,
+        monkeypatch,
+        request_id="fanout-reduce-retry-dedupe-1",
+        parse_payload=parse_payload,
+    )
+    task_a = db_session.scalar(
+        select(CalendarComponentParseTask).where(
+            CalendarComponentParseTask.request_id == "fanout-reduce-retry-dedupe-1",
+            CalendarComponentParseTask.component_key == "evt-a#",
+        )
+    )
+    task_b = db_session.scalar(
+        select(CalendarComponentParseTask).where(
+            CalendarComponentParseTask.request_id == "fanout-reduce-retry-dedupe-1",
+            CalendarComponentParseTask.component_key == "evt-b#",
+        )
+    )
+    assert task_a is not None and task_b is not None
+    task_a.status = CalendarComponentParseStatus.SUCCEEDED
+    task_a.parsed_record_json = {
+        "record_type": "calendar.event.extracted",
+        "payload": {
+            "source_facts": {
+                "external_event_id": "evt-a",
+                "component_key": "evt-a#",
+                "source_title": "A",
+                "source_dtstart_utc": "2026-03-01T10:00:00+00:00",
+                "source_dtend_utc": "2026-03-01T11:00:00+00:00",
+            },
+            "semantic_event_draft": {},
+            "link_signals": {},
+        },
+    }
+    task_b.status = CalendarComponentParseStatus.RUNNING
+    task_b.started_at = datetime.now(timezone.utc)
+    job.payload_json = {
+        **(job.payload_json if isinstance(job.payload_json, dict) else {}),
+        "calendar_reduce_retry_due_at": (datetime.now(timezone.utc) + timedelta(seconds=30)).isoformat(),
+    }
+    db_session.commit()
+
+    scheduled: list[dict] = []
+    monkeypatch.setattr(
+        "app.modules.runtime.llm.calendar_fanout.schedule_parse_retry",
+        lambda **kwargs: scheduled.append(dict(kwargs)),
+    )
+
+    reduce_ack = process_parse_task_message(
+        message=ParseTaskMessage(
+            message_id="msg-reduce-retry-dedupe",
+            request_id="fanout-reduce-retry-dedupe-1",
+            source_id=source.id,
+            attempt=0,
+            reason=CALENDAR_REDUCE_REASON,
+        ),
+        redis_client=object(),  # type: ignore[arg-type]
+        session_factory=db_session_factory,
+        worker_id="llm-worker-test",
+        stream_key="llm:parse:stream",
+    )
+    assert reduce_ack is True
+    assert scheduled == []

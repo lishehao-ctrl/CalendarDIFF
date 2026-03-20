@@ -5,7 +5,7 @@ import time
 
 import anyio
 
-from app.runtime import worker_loop
+from app.modules.runtime import worker_loop
 
 
 def test_read_tick_seconds_falls_back_on_invalid(monkeypatch) -> None:

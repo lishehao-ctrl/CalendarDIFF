@@ -10,10 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   createManualEvent,
   deleteManualEvent,
-  listCourseWorkItemFamilies,
   listManualEvents,
   updateManualEvent,
-} from "@/lib/api/users";
+} from "@/lib/api/manual";
+import { listFamilies } from "@/lib/api/families";
 import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime, formatSemanticDue } from "@/lib/presenters";
 import type { CourseWorkItemFamily, ManualEvent } from "@/lib/types";
@@ -125,7 +125,7 @@ function SectionButton({
 }
 
 export function ManualWorkbenchPanel() {
-  const families = useApiResource<CourseWorkItemFamily[]>(() => listCourseWorkItemFamilies(), []);
+  const families = useApiResource<CourseWorkItemFamily[]>(() => listFamilies(), []);
   const manualEvents = useApiResource<ManualEvent[]>(() => listManualEvents(), []);
 
   const [banner, setBanner] = useState<Banner>(null);

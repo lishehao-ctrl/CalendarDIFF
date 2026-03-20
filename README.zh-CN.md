@@ -4,7 +4,6 @@ CalendarDIFF 现在默认只运行一个后端进程。
 
 ## 默认运行时
 - 后端入口：`services.app_api.main:app`
-- 兼容别名：`services.public_api.main:app`
 - 前端：`frontend/` 下的 Next.js
 - 基础设施：PostgreSQL + Redis
 - 默认端口：
@@ -51,13 +50,11 @@ SERVICE_NAME=backend RUN_MIGRATIONS=true PORT=8200 ./scripts/start_service.sh
 
 ## 公开 HTTP 接口
 - `/auth/*`
-- `/profile/me`
+- `/settings/profile`
 - `/sources/*`
-- `/review/changes*`
-- `/review/links*`
-- `/review/course-work-item-families*`
-- `/review/course-work-item-raw-types*`
-- `/events/manual*`
+- `/changes*`
+- `/families*`
+- `/manual/events*`
 - `/onboarding/*`
 - `/health`
 

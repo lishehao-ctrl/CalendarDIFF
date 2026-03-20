@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-from app.db.models.ingestion import ConnectorResultStatus
-from app.modules.ingestion import calendar_fetcher
-from app.modules.sync.types import FetchResult
+from app.db.models.runtime import ConnectorResultStatus
+from app.modules.runtime.connectors import calendar_fetcher
+from app.modules.runtime.connectors.clients.types import FetchResult
 
 
 def _source(*, cursor_json: dict) -> SimpleNamespace:

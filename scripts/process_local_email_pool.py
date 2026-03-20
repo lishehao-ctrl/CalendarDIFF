@@ -19,8 +19,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.core.config import get_settings
-from app.modules.ingestion.llm_parsers.contracts import ParserContext
-from app.modules.ingestion.llm_parsers.gmail_parser import parse_gmail_payload
+from app.modules.runtime.connectors.llm_parsers.contracts import ParserContext
+from app.modules.runtime.connectors.llm_parsers.gmail_parser import parse_gmail_payload
 from app.modules.llm_gateway.runtime_control import (
     reset_llm_invoke_observer,
     reset_session_cache_mode_override,

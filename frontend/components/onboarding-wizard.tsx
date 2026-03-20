@@ -39,7 +39,7 @@ function stageTitle(stage: OnboardingStage) {
   if (stage === "needs_term_renewal") {
     return "Set the next term before you continue.";
   }
-  return "Connect sources once, then enter the review workspace with the right scope.";
+  return "Connect sources once, then enter the workspace with the right scope.";
 }
 
 export function OnboardingWizard() {
@@ -183,7 +183,7 @@ export function OnboardingWizard() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.16),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(215,90,45,0.14),transparent_28%)]" />
         <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="max-w-3xl">
-            <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">Setup</p>
+            <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">Onboarding</p>
             <h1 className="mt-3 text-3xl font-semibold text-ink md:text-4xl">{stageTitle(data.stage)}</h1>
             <p className="mt-4 text-sm leading-7 text-[#596270]">
               CalendarDIFF now treats your term as a real processing boundary. Set up the required sources, decide whether Gmail should join this term, and then save the term window once.
@@ -321,7 +321,7 @@ export function OnboardingWizard() {
             <Card className="bg-white/60 p-5">
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">What happens if you skip?</p>
               <p className="mt-3 text-sm leading-6 text-[#596270]">
-                You can still enter the dashboard with Canvas only. Later, if you decide to add Gmail from Sources, it will inherit the active term automatically.
+                You can still enter the workspace with Canvas only. Later, if you decide to add Gmail from Sources, it will inherit the active term automatically.
               </p>
             </Card>
           </div>
@@ -400,7 +400,7 @@ export function OnboardingWizard() {
       ) : null}
 
       <Card className="p-5 text-sm text-[#596270]">
-        Need to manage sources after setup? You can do that later from <Link href="/sources" className="font-medium text-cobalt">Sources</Link>, but the dashboard only unlocks once the required onboarding step finishes.
+        Need to manage sources after onboarding? You can do that later from <Link href="/sources" className="font-medium text-cobalt">Sources</Link>, but the main workspace only opens once the required onboarding step finishes.
       </Card>
     </div>
   );

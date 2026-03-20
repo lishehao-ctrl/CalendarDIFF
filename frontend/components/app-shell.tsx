@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   BellDot,
+  CircleAlert,
   GitCompareArrows,
   LayoutDashboard,
   Link2,
@@ -19,7 +20,7 @@ import {
   X
 } from "lucide-react";
 import { LogoutButton } from "@/components/logout-button";
-import { updateCurrentUser } from "@/lib/api/users";
+import { updateSettingsProfile } from "@/lib/api/settings";
 import { getBrowserTimeZone } from "@/lib/browser-timezone";
 import { withBasePath } from "@/lib/demo-mode";
 import type { OnboardingStage } from "@/lib/types";
@@ -37,8 +38,8 @@ type SessionUser = {
 
 const items: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; description: string }> = [
   { href: "/", label: "Overview", icon: LayoutDashboard, description: "Next action" },
-  { href: "/sources", label: "Sources", icon: BellDot, description: "Intake health" },
-  { href: "/review/changes", label: "Changes", icon: GitCompareArrows, description: "Review lane" },
+  { href: "/sources", label: "Sources", icon: BellDot, description: "Connection and runtime" },
+  { href: "/changes", label: "Changes", icon: GitCompareArrows, description: "Primary workspace" },
   { href: "/families", label: "Families", icon: Link2, description: "Naming" },
   { href: "/manual", label: "Manual", icon: Pencil, description: "Repairs" },
   { href: "/settings", label: "Settings", icon: Settings2, description: "Preferences" }
@@ -57,7 +58,6 @@ function NavContentWithItems({
   pathname,
   items,
   onNavigate,
-  onboardingReady,
   collapsed,
   onToggleCollapse,
   logoutRedirectTo = "/login",
@@ -65,7 +65,6 @@ function NavContentWithItems({
   pathname: string;
   items: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; description: string }>;
   onNavigate?: () => void;
-  onboardingReady: boolean;
   collapsed: boolean;
   onToggleCollapse?: () => void;
   logoutRedirectTo?: string;
@@ -105,13 +104,6 @@ function NavContentWithItems({
             </button>
           ) : null}
         </div>
-        <div className={animatedTextBlock(collapsed, "max-w-[260px]")}>
-          <p className="text-sm leading-6 text-[#314051]">
-            {onboardingReady
-              ? "Changes first. Sources when intake drifts."
-              : "Finish setup to unlock the workspace."}
-          </p>
-        </div>
       </div>
       <nav className={cn("flex flex-1 flex-col", collapsed ? "gap-3" : "gap-2")}>
         {items.map(({ href, label, icon: Icon, description }) => {
@@ -150,13 +142,6 @@ function NavContentWithItems({
         })}
       </nav>
       <div className={cn("mt-6", collapsed ? "flex justify-center" : "space-y-3")}>
-        <div className={animatedTextBlock(collapsed, "max-w-[260px]")}>
-          <div className="rounded-[1.25rem] border border-line/80 bg-white/55 p-4 text-sm text-[#596270]">
-            {onboardingReady
-              ? "Changes for time truth. Families for naming truth."
-              : "Setup is still required."}
-          </div>
-        </div>
         <LogoutButton collapsed={collapsed} redirectTo={logoutRedirectTo} />
       </div>
     </>
@@ -177,16 +162,7 @@ export function AppShell({
   const [desktopNavCollapsed, setDesktopNavCollapsed] = useState(false);
   const [timezoneSynced, setTimezoneSynced] = useState(false);
   const onboardingReady = sessionUser.onboarding_stage === "ready";
-  const navItems = onboardingReady
-    ? items.map((item) => ({ ...item, href: withBasePath(basePath, item.href) }))
-    : [
-        {
-          href: withBasePath(basePath, "/setup"),
-          label: "Setup",
-          icon: Sparkles,
-          description: "Connect sources and set the active term",
-        },
-      ] as const;
+  const navItems = items.map((item) => ({ ...item, href: withBasePath(basePath, item.href) }));
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -218,7 +194,7 @@ export function AppShell({
 
     let cancelled = false;
 
-    void updateCurrentUser({
+    void updateSettingsProfile({
       timezone_name: browserTimeZone,
       timezone_source: "auto",
     })
@@ -245,7 +221,6 @@ export function AppShell({
         <NavContentWithItems
           pathname={pathname}
           items={navItems}
-          onboardingReady={onboardingReady}
           collapsed={desktopNavCollapsed}
           onToggleCollapse={() => setDesktopNavCollapsed((current) => !current)}
           logoutRedirectTo={basePath ? withBasePath(basePath, "/") : "/login"}
@@ -269,7 +244,7 @@ export function AppShell({
                 <Dialog.Overlay className="fixed inset-0 z-40 bg-[rgba(20,32,44,0.38)] backdrop-blur-sm" />
                 <Dialog.Content className="fixed inset-y-0 left-0 z-50 w-[88vw] max-w-sm border-r border-line bg-card p-5 shadow-[var(--shadow-panel)]">
                   <Dialog.Title className="sr-only">Navigation menu</Dialog.Title>
-                  <Dialog.Description className="sr-only">Navigate between overview, sources, review, family management, manual maintenance, and settings pages.</Dialog.Description>
+                  <Dialog.Description className="sr-only">Navigate between Overview, Sources, Changes, Families, Manual, and Settings.</Dialog.Description>
                   <div className="mb-4 flex items-center justify-end">
                     <Dialog.Close asChild>
                       <button aria-label="Close navigation" className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(20,32,44,0.06)] text-ink">
@@ -281,13 +256,28 @@ export function AppShell({
                     pathname={pathname}
                     items={navItems}
                     onNavigate={() => setMobileNavOpen(false)}
-                    onboardingReady={onboardingReady}
                     collapsed={false}
                     logoutRedirectTo={basePath ? withBasePath(basePath, "/") : "/login"}
                   />
                 </Dialog.Content>
               </Dialog.Portal>
             </Dialog.Root>
+          </div>
+        </div>
+        <div className="animate-surface-enter flex flex-col gap-3 rounded-[1.45rem] border border-line/70 bg-card px-4 py-4 shadow-[var(--shadow-panel)] md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">Workspace status</p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-sm text-[#314051]">
+            <span className="rounded-full border border-line/80 bg-white/80 px-3 py-1.5">{sessionUser.notify_email}</span>
+            <span className="rounded-full border border-line/80 bg-white/80 px-3 py-1.5">{sessionUser.timezone_name}</span>
+            <span className={cn(
+              "inline-flex items-center gap-2 rounded-full border px-3 py-1.5",
+              onboardingReady ? "border-[rgba(77,124,15,0.18)] bg-[rgba(77,124,15,0.08)] text-[#3f5f12]" : "border-[rgba(215,90,45,0.18)] bg-[rgba(215,90,45,0.08)] text-[#8a472d]",
+            )}>
+              <CircleAlert className="h-4 w-4" />
+              {onboardingReady ? "System ready" : "Onboarding required"}
+            </span>
           </div>
         </div>
         {children}

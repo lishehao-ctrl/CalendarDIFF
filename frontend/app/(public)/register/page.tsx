@@ -5,7 +5,7 @@ import { LoginPageClient } from "@/components/login-page-client";
 export default async function RegisterPage() {
   const session = await getServerSession();
   if (session) {
-    redirect(session.user.onboarding_stage === "ready" ? "/" : "/setup");
+    redirect(session.user.onboarding_stage === "ready" ? "/" : "/onboarding");
   }
   return <LoginPageClient mode="register" />;
 }

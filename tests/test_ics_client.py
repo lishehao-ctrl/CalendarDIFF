@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import httpx
 
-from app.modules.sync.ics_client import ICSClient
+from app.modules.runtime.connectors.clients.ics_client import ICSClient
 
 
 def test_fetch_sends_conditional_headers_and_handles_304(monkeypatch) -> None:
@@ -30,7 +30,7 @@ def test_fetch_sends_conditional_headers_and_handles_304(monkeypatch) -> None:
             captured_headers.append(headers or {})
             return response
 
-    monkeypatch.setattr("app.modules.sync.ics_client.httpx.Client", FakeClient)
+    monkeypatch.setattr("app.modules.runtime.connectors.clients.ics_client.httpx.Client", FakeClient)
 
     client = ICSClient()
     result = client.fetch(
@@ -79,7 +79,7 @@ def test_fetch_returns_content_for_200(monkeypatch) -> None:
             captured_headers.append(headers)
             return response
 
-    monkeypatch.setattr("app.modules.sync.ics_client.httpx.Client", FakeClient)
+    monkeypatch.setattr("app.modules.runtime.connectors.clients.ics_client.httpx.Client", FakeClient)
 
     client = ICSClient()
     result = client.fetch("https://example.com/calendar.ics", source_id=2)

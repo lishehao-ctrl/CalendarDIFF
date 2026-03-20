@@ -4,11 +4,11 @@ from dataclasses import dataclass, field
 
 import pytest
 
-import app.modules.ingestion.llm_parsers.calendar_parser as calendar_parser
-import app.modules.ingestion.llm_parsers.gmail_parser as gmail_parser
-import app.modules.ingestion.llm_parsers.semantic_orchestrator as semantic_orchestrator
-from app.modules.core_ingest.payload_contracts import validate_gmail_directive_payload, validate_gmail_payload
-from app.modules.ingestion.llm_parsers.contracts import LlmParseError, ParserContext
+import app.modules.runtime.connectors.llm_parsers.calendar_parser as calendar_parser
+import app.modules.runtime.connectors.llm_parsers.gmail_parser as gmail_parser
+import app.modules.runtime.connectors.llm_parsers.semantic_orchestrator as semantic_orchestrator
+from app.modules.runtime.apply.payload_contracts import validate_gmail_directive_payload, validate_gmail_payload
+from app.modules.runtime.connectors.llm_parsers.contracts import LlmParseError, ParserContext
 from app.modules.llm_gateway.retry_policy import LLM_FORMAT_MAX_ATTEMPTS
 
 

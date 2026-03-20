@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.db.models.review import Change, ChangeOrigin, ChangeType, ReviewStatus
 from app.db.models.shared import IntegrationOutbox, OutboxStatus, User
-from app.modules.core_ingest.pending_review_outbox import emit_review_pending_created_event
+from app.modules.runtime.apply.pending_change_outbox import emit_change_pending_created_event
 
 
 def _seed_user_and_changes(db_session) -> tuple[User, list[Change]]:
@@ -45,11 +45,11 @@ def _seed_user_and_changes(db_session) -> tuple[User, list[Change]]:
     return user, changes
 
 
-def test_emit_review_pending_created_event_contract(db_session) -> None:
+def test_emit_change_pending_created_event_contract(db_session) -> None:
     user, changes = _seed_user_and_changes(db_session)
     detected_at = datetime.now(timezone.utc)
 
-    emit_review_pending_created_event(
+    emit_change_pending_created_event(
         db=db_session,
         user_id=user.id,
         changes=changes,
@@ -59,7 +59,7 @@ def test_emit_review_pending_created_event_contract(db_session) -> None:
 
     row = db_session.scalar(
         select(IntegrationOutbox).where(
-            IntegrationOutbox.event_type == "review.pending.created",
+            IntegrationOutbox.event_type == "changes.pending.created",
             IntegrationOutbox.aggregate_type == "change_batch",
         )
     )

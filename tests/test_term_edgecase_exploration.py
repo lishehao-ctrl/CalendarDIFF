@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from sqlalchemy import func, select
 
 from app.core.security import encrypt_secret
-from app.db.models.ingestion import ConnectorResultStatus, IngestResult, IngestUnresolvedRecord
+from app.db.models.runtime import ConnectorResultStatus, IngestResult, IngestUnresolvedRecord
 from app.db.models.input import IngestTriggerType, InputSource, InputSourceConfig, InputSourceCursor, InputSourceSecret, SourceKind, SyncRequest, SyncRequestStatus
 from app.db.models.review import (
     Change,
@@ -21,11 +21,11 @@ from app.db.models.review import (
 )
 from app.db.models.shared import CourseWorkItemLabelFamily, IntegrationOutbox, User
 from app.modules.common.course_identity import normalize_label_token, normalized_course_identity_key
-from app.modules.core_ingest.apply import apply_ingest_result_idempotent
-from app.modules.ingestion.calendar_fetcher import fetch_calendar_delta
-from app.modules.ingestion.gmail_fetcher import fetch_gmail_changes
-from app.modules.input_control_plane.schemas import InputSourcePatchRequest
-from app.modules.input_control_plane.sources_service import update_input_source
+from app.modules.runtime.apply.apply import apply_ingest_result_idempotent
+from app.modules.runtime.connectors.calendar_fetcher import fetch_calendar_delta
+from app.modules.runtime.connectors.gmail_fetcher import fetch_gmail_changes
+from app.modules.sources.schemas import InputSourcePatchRequest
+from app.modules.sources.sources_service import update_input_source
 from tests.support.payload_builders import build_course_parse, build_event_parts, build_gmail_payload, build_link_signals
 
 
@@ -308,8 +308,8 @@ def test_gmail_fetcher_boundary_midnight_uses_source_timezone(monkeypatch) -> No
                 label_ids=["COURSE"],
             )
 
-    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher.decode_source_secrets", lambda _source: {"access_token": "token"})
-    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher.GmailClient", _FakeGmailClient)
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher.decode_source_secrets", lambda _source: {"access_token": "token"})
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher.GmailClient", _FakeGmailClient)
 
     outcome = fetch_gmail_changes(source=source, request_id="req-boundary")
 
@@ -371,8 +371,8 @@ END:VCALENDAR
 """
             return _FakeFetched(content)
 
-    monkeypatch.setattr("app.modules.ingestion.calendar_fetcher.decode_source_secrets", lambda _source: {"url": "https://example.com/calendar.ics"})
-    monkeypatch.setattr("app.modules.ingestion.calendar_fetcher.ICSClient", _FakeIcsClient)
+    monkeypatch.setattr("app.modules.runtime.connectors.calendar_fetcher.decode_source_secrets", lambda _source: {"url": "https://example.com/calendar.ics"})
+    monkeypatch.setattr("app.modules.runtime.connectors.calendar_fetcher.ICSClient", _FakeIcsClient)
 
     outcome = fetch_calendar_delta(source=source)
 
@@ -483,7 +483,7 @@ def test_gmail_semantic_due_date_controls_term_gate_when_message_timestamp_disag
     outbox_count = int(
         db_session.scalar(
             select(func.count(IntegrationOutbox.id)).where(
-                IntegrationOutbox.event_type == "review.pending.created",
+                IntegrationOutbox.event_type == "changes.pending.created",
                 IntegrationOutbox.aggregate_type == "change_batch",
             )
         )
@@ -565,7 +565,7 @@ def test_repeated_identical_gmail_replay_does_not_duplicate_pending_change_or_ou
     outbox_count = int(
         db_session.scalar(
             select(func.count(IntegrationOutbox.id)).where(
-                IntegrationOutbox.event_type == "review.pending.created",
+                IntegrationOutbox.event_type == "changes.pending.created",
                 IntegrationOutbox.aggregate_type == "change_batch",
             )
         )
@@ -958,7 +958,7 @@ def test_gmail_directive_partial_apply_isolates_out_of_scope_matches(db_session)
     outbox_count = int(
         db_session.scalar(
             select(func.count(IntegrationOutbox.id)).where(
-                IntegrationOutbox.event_type == "review.pending.created",
+                IntegrationOutbox.event_type == "changes.pending.created",
                 IntegrationOutbox.aggregate_type == "change_batch",
             )
         )
@@ -1073,7 +1073,7 @@ def test_gmail_directive_partial_apply_isolates_noop_matches(db_session) -> None
     outbox_count = int(
         db_session.scalar(
             select(func.count(IntegrationOutbox.id)).where(
-                IntegrationOutbox.event_type == "review.pending.created",
+                IntegrationOutbox.event_type == "changes.pending.created",
                 IntegrationOutbox.aggregate_type == "change_batch",
             )
         )

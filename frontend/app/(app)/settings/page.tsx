@@ -7,7 +7,8 @@ export default async function SettingsPage() {
     <div className="space-y-4">
       <div className="px-1">
         <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">Settings</p>
-        <h1 className="mt-1 text-2xl font-semibold text-ink">Workspace settings</h1>
+        <h1 className="mt-1 text-2xl font-semibold text-ink">Account and timezone</h1>
+        <p className="mt-2 text-sm text-[#596270]">Settings only owns account identity, timezone, and notification defaults.</p>
       </div>
       <SettingsPanel />
     </div>

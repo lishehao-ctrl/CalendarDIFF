@@ -1,5 +1,10 @@
 import { apiDelete, apiGet, apiPatch, apiPost, buildQuery } from "@/lib/api/client";
-import type { SourceRow, SyncStatus } from "@/lib/types";
+import type {
+  SourceObservabilityResponse,
+  SourceRow,
+  SourceSyncHistoryResponse,
+  SyncStatus,
+} from "@/lib/types";
 
 export async function listSources(params?: { status?: "active" | "archived" | "all" }) {
   return apiGet<SourceRow[]>(`/sources${buildQuery({ status: params?.status || "active" })}`);
@@ -27,4 +32,12 @@ export async function getSyncRequest(requestId: string) {
 
 export async function createOAuthSession(sourceId: number, payload: Record<string, unknown>) {
   return apiPost<{ authorization_url: string }>(`/sources/${sourceId}/oauth-sessions`, payload);
+}
+
+export async function getSourceObservability(sourceId: number) {
+  return apiGet<SourceObservabilityResponse>(`/sources/${sourceId}/observability`);
+}
+
+export async function getSourceSyncHistory(sourceId: number, params?: { limit?: number }) {
+  return apiGet<SourceSyncHistoryResponse>(`/sources/${sourceId}/sync-history${buildQuery({ limit: params?.limit })}`);
 }

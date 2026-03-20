@@ -35,9 +35,9 @@ def _iter_scan_targets() -> list[Path]:
 
 def test_llm_parser_call_sites_are_restricted() -> None:
     allowed_call_sites = {
-        (REPO_ROOT / "app" / "modules" / "llm_runtime" / "parse_pipeline.py").resolve(),
-        (REPO_ROOT / "app" / "modules" / "ingestion" / "llm_parsers" / "calendar_parser.py").resolve(),
-        (REPO_ROOT / "app" / "modules" / "ingestion" / "llm_parsers" / "gmail_parser.py").resolve(),
+        (REPO_ROOT / "app" / "modules" / "runtime" / "llm" / "parse_pipeline.py").resolve(),
+        (REPO_ROOT / "app" / "modules" / "runtime" / "connectors" / "llm_parsers" / "calendar_parser.py").resolve(),
+        (REPO_ROOT / "app" / "modules" / "runtime" / "connectors" / "llm_parsers" / "gmail_parser.py").resolve(),
     }
     pattern = re.compile(r"\b(parse_gmail_payload|parse_calendar_content)\s*\(")
     violations: list[str] = []
@@ -53,9 +53,9 @@ def test_llm_parser_call_sites_are_restricted() -> None:
 
 
 def test_connector_runtime_does_not_import_direct_llm_parser_or_gateway() -> None:
-    connector_path = REPO_ROOT / "app" / "modules" / "ingestion" / "connector_runtime.py"
+    connector_path = REPO_ROOT / "app" / "modules" / "runtime" / "connectors" / "connector_runtime.py"
     content = connector_path.read_text(encoding="utf-8")
-    assert "app.modules.ingestion.llm_parsers" not in content
+    assert "app.modules.runtime.connectors.llm_parsers" not in content
     assert "invoke_llm_json" not in content
 
 

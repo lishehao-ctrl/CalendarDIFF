@@ -62,7 +62,7 @@ export async function requireServerSession(): Promise<ServerSession> {
 export async function requireReadyServerSession(): Promise<ServerSession> {
   const session = await requireServerSession();
   if (session.user.onboarding_stage !== "ready") {
-    redirect("/setup");
+    redirect("/onboarding");
   }
   return session;
 }

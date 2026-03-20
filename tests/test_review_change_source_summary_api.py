@@ -112,7 +112,7 @@ def test_review_changes_created_exposes_primary_source_summary(client, db_sessio
     )
     db_session.commit()
 
-    response = client.get("/review/changes?review_status=pending&limit=1", headers=auth_headers(client, user=user))
+    response = client.get("/changes?review_status=pending&limit=1", headers=auth_headers(client, user=user))
     assert response.status_code == 200
     payload = response.json()[0]
     assert payload["primary_source"]["source_id"] == source.id
@@ -204,7 +204,7 @@ def test_review_changes_removed_uses_persisted_source_refs_for_summary(client, d
     )
     db_session.commit()
 
-    response = client.get("/review/changes?review_status=pending&limit=1", headers=auth_headers(client, user=user))
+    response = client.get("/changes?review_status=pending&limit=1", headers=auth_headers(client, user=user))
     assert response.status_code == 200
     payload = response.json()[0]
     assert payload["primary_source"]["source_id"] == source.id

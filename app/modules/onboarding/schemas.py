@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.modules.input_control_plane.schemas import SourceRuntimeStateLiteral
+from app.modules.sources.schemas import SourceRuntimeStateLiteral
 
 SourceHealthStatusLiteral = Literal["healthy", "attention", "disconnected"]
 OnboardingStageLiteral = Literal[

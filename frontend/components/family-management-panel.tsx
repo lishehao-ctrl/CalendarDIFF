@@ -1,24 +1,24 @@
 "use client";
 
-import Link from "next/link";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRightLeft, ChevronDown, ChevronUp, Search, Sparkles } from "lucide-react";
+import { Plus, Search, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import {
-  decideRawTypeSuggestion,
-  getCourseWorkItemFamilyStatus,
-  listCourseWorkItemFamilies,
-  listCourseWorkItemRawTypes,
-  listKnownCourseKeys,
-  listRawTypeSuggestions,
-  moveCourseRawTypeToFamily,
-  updateCourseWorkItemFamily,
-} from "@/lib/api/users";
-import { withBasePath } from "@/lib/demo-mode";
+  createFamily,
+  decideFamilyRawTypeSuggestion,
+  getFamiliesStatus,
+  listFamilies,
+  listFamilyCourses,
+  listFamilyRawTypeSuggestions,
+  listFamilyRawTypes,
+  relinkFamilyRawType,
+  updateFamily,
+} from "@/lib/api/families";
 import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime } from "@/lib/presenters";
 import type {
@@ -29,6 +29,8 @@ import type {
   RawTypeSuggestionItem,
 } from "@/lib/types";
 
+type WorkspaceArea = "families" | "raw-types" | "suggestions";
+
 type CourseIdentityForm = {
   course_dept: string;
   course_number: string;
@@ -37,15 +39,11 @@ type CourseIdentityForm = {
   course_year2: string;
 };
 
-type FamilyWorkspaceResources = {
-  families: ReturnType<typeof useApiResource<CourseWorkItemFamily[]>>;
-  status: ReturnType<typeof useApiResource<CourseWorkItemFamilyStatus>>;
-  courses: ReturnType<typeof useApiResource<{ courses: CourseIdentity[] }>>;
-  rawTypes: ReturnType<typeof useApiResource<CourseWorkItemRawType[]>>;
-  suggestions: ReturnType<typeof useApiResource<RawTypeSuggestionItem[]>>;
-};
-
-type FamilyDetailSection = "overview" | "duplicates" | "relink" | "advanced";
+const PAGE_SIZE = {
+  families: 8,
+  rawTypes: 10,
+  suggestions: 8,
+} as const;
 
 function emptyCourseIdentity(): CourseIdentityForm {
   return { course_dept: "", course_number: "", course_suffix: "", course_quarter: "", course_year2: "" };
@@ -68,24 +66,54 @@ function normalizeCourseIdentityForm(identity: CourseIdentityForm) {
   };
 }
 
-function compareFamilyRows(left: CourseWorkItemFamily, right: CourseWorkItemFamily) {
-  const courseCompare = left.course_display.localeCompare(right.course_display);
-  if (courseCompare !== 0) return courseCompare;
-  const labelCompare = left.canonical_label.localeCompare(right.canonical_label);
-  if (labelCompare !== 0) return labelCompare;
-  return left.id - right.id;
+function parseRawTypeKeywords(input: string) {
+  const seen = new Set<string>();
+  return input
+    .split(/[\n,;，]+/)
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .filter((value) => {
+      const normalized = value.toLowerCase();
+      if (seen.has(normalized)) {
+        return false;
+      }
+      seen.add(normalized);
+      return true;
+    });
 }
 
-function familyMatchesCourse(family: CourseWorkItemFamily, selectedCourse: string | null) {
-  return !selectedCourse || family.course_display === selectedCourse;
+function dedupeCourses(courses: CourseIdentity[], families: CourseWorkItemFamily[]) {
+  const deduped = new Map<string, CourseIdentity>();
+  for (const course of courses) {
+    if (!deduped.has(course.course_display)) {
+      deduped.set(course.course_display, course);
+    }
+  }
+  for (const family of families) {
+    if (!deduped.has(family.course_display)) {
+      deduped.set(family.course_display, {
+        course_display: family.course_display,
+        course_dept: family.course_dept,
+        course_number: family.course_number,
+        course_suffix: family.course_suffix,
+        course_quarter: family.course_quarter,
+        course_year2: family.course_year2,
+      });
+    }
+  }
+  return Array.from(deduped.values()).sort((left, right) => left.course_display.localeCompare(right.course_display));
 }
 
-function rawTypeMatchesCourse(rawType: CourseWorkItemRawType, selectedCourse: string | null) {
-  return !selectedCourse || rawType.course_display === selectedCourse;
+function familyMatchesQuery(family: CourseWorkItemFamily, query: string) {
+  if (!query) return true;
+  const haystack = [family.course_display, family.canonical_label, ...family.raw_types].join(" ").toLowerCase();
+  return haystack.includes(query);
 }
 
-function suggestionMatchesCourse(suggestion: RawTypeSuggestionItem, selectedCourse: string | null) {
-  return !selectedCourse || suggestion.course_display === selectedCourse;
+function rawTypeMatchesQuery(rawType: CourseWorkItemRawType, familyLabel: string, query: string) {
+  if (!query) return true;
+  const haystack = [rawType.course_display, rawType.raw_type, familyLabel].join(" ").toLowerCase();
+  return haystack.includes(query);
 }
 
 function suggestionMatchesQuery(suggestion: RawTypeSuggestionItem, query: string) {
@@ -104,384 +132,252 @@ function suggestionMatchesQuery(suggestion: RawTypeSuggestionItem, query: string
   return haystack.includes(query);
 }
 
-function familyMatchesQuery(family: CourseWorkItemFamily, query: string) {
-  if (!query) return true;
-  const haystack = [family.course_display, family.canonical_label, ...family.raw_types].join(" ").toLowerCase();
-  return haystack.includes(query);
+function compareFamilies(left: CourseWorkItemFamily, right: CourseWorkItemFamily) {
+  const courseCompare = left.course_display.localeCompare(right.course_display);
+  if (courseCompare !== 0) return courseCompare;
+  const labelCompare = left.canonical_label.localeCompare(right.canonical_label);
+  if (labelCompare !== 0) return labelCompare;
+  return left.id - right.id;
 }
 
-function buildNeedsAttentionFamilies(families: CourseWorkItemFamily[], suggestions: RawTypeSuggestionItem[]) {
-  const suggestionFamilyIds = new Map<number, number>();
-
-  for (const suggestion of suggestions) {
-    if (typeof suggestion.source_family_id === "number") {
-      suggestionFamilyIds.set(suggestion.source_family_id, (suggestionFamilyIds.get(suggestion.source_family_id) || 0) + 1);
-    }
-    if (typeof suggestion.suggested_family_id === "number") {
-      suggestionFamilyIds.set(suggestion.suggested_family_id, (suggestionFamilyIds.get(suggestion.suggested_family_id) || 0) + 1);
-    }
-  }
-
-  return families
-    .filter((family) => suggestionFamilyIds.has(family.id) || family.raw_types.length >= 3)
-    .sort((left, right) => {
-      const leftSuggestionCount = suggestionFamilyIds.get(left.id) || 0;
-      const rightSuggestionCount = suggestionFamilyIds.get(right.id) || 0;
-      if (rightSuggestionCount !== leftSuggestionCount) return rightSuggestionCount - leftSuggestionCount;
-      if (right.raw_types.length !== left.raw_types.length) return right.raw_types.length - left.raw_types.length;
-      return compareFamilyRows(left, right);
-    });
-}
-
-function familyAttentionReason(family: CourseWorkItemFamily, suggestions: RawTypeSuggestionItem[]) {
-  const relatedSuggestions = suggestions.filter((suggestion) => suggestion.source_family_id === family.id || suggestion.suggested_family_id === family.id);
-  if (relatedSuggestions.length > 0) {
-    return `${relatedSuggestions.length} pending duplicate clue${relatedSuggestions.length === 1 ? "" : "s"}`;
-  }
-  if (family.raw_types.length >= 3) {
-    return `${family.raw_types.length} raw labels`;
-  }
-  return "Needs review";
-}
-
-function dedupeCourses(courses: CourseIdentity[]) {
-  const deduped = new Map<string, CourseIdentity>();
-  for (const course of courses) {
-    if (!deduped.has(course.course_display)) {
-      deduped.set(course.course_display, course);
-    }
-  }
-  return Array.from(deduped.values()).sort((left, right) => left.course_display.localeCompare(right.course_display));
-}
-
-function splitCourseChips(courses: CourseIdentity[], selectedCourse: string | null, maxVisible = 3) {
-  const primaryMap = new Map<string, CourseIdentity>();
-  for (const course of courses.slice(0, maxVisible)) {
-    primaryMap.set(course.course_display, course);
-  }
-  if (selectedCourse) {
-    const selected = courses.find((course) => course.course_display === selectedCourse);
-    if (selected) {
-      primaryMap.set(selected.course_display, selected);
-    }
-  }
-  const primary = Array.from(primaryMap.values());
-  const overflow = courses.filter((course) => !primaryMap.has(course.course_display));
-  return { primary, overflow };
-}
-
-function useFamilyWorkspaceResources(): FamilyWorkspaceResources {
+function paginateRows<T>(rows: T[], page: number, pageSize: number) {
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const start = (safePage - 1) * pageSize;
   return {
-    families: useApiResource<CourseWorkItemFamily[]>(() => listCourseWorkItemFamilies(), []),
-    status: useApiResource<CourseWorkItemFamilyStatus>(() => getCourseWorkItemFamilyStatus(), []),
-    courses: useApiResource<{ courses: CourseIdentity[] }>(() => listKnownCourseKeys(), []),
-    rawTypes: useApiResource<CourseWorkItemRawType[]>(() => listCourseWorkItemRawTypes(), []),
-    suggestions: useApiResource<RawTypeSuggestionItem[]>(() => listRawTypeSuggestions({ status: "pending", limit: 100 }), []),
+    page: safePage,
+    totalPages,
+    rows: rows.slice(start, start + pageSize),
   };
 }
 
-function renderWorkspaceState(resources: FamilyWorkspaceResources) {
-  if (resources.families.loading || resources.status.loading || resources.courses.loading || resources.rawTypes.loading || resources.suggestions.loading) {
-    return <LoadingState label="families" />;
-  }
-  if (resources.families.error) return <ErrorState message={`Families list failed to load. ${resources.families.error}`} />;
-  if (resources.status.error) return <ErrorState message={`Families status failed to load. ${resources.status.error}`} />;
-  if (resources.courses.error) return <ErrorState message={`Course filter data failed to load. ${resources.courses.error}`} />;
-  if (resources.rawTypes.error) return <ErrorState message={`Raw label data failed to load. ${resources.rawTypes.error}`} />;
-  if (resources.suggestions.error) return <ErrorState message={`Duplicate clues failed to load. ${resources.suggestions.error}`} />;
-  return null;
-}
-
-function CompactFilters({
-  query,
-  onQueryChange,
-  selectedCourse,
-  onSelectCourse,
-  courses,
+function PaginationControls({
+  page,
+  totalPages,
+  onPageChange,
 }: {
-  query: string;
-  onQueryChange: (value: string) => void;
-  selectedCourse: string | null;
-  onSelectCourse: (value: string | null) => void;
-  courses: CourseIdentity[];
+  page: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const { primary, overflow } = useMemo(() => splitCourseChips(courses, selectedCourse), [courses, selectedCourse]);
-
+  if (totalPages <= 1) {
+    return null;
+  }
   return (
-    <div className="space-y-3">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-      <div className="relative min-w-0 flex-1 lg:max-w-md">
-        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7d8794]" />
-        <Input
-          className="pl-11"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="Filter by course, family, or raw label"
-        />
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant={selectedCourse === null ? "secondary" : "ghost"} onClick={() => onSelectCourse(null)}>
-          All courses
+    <div className="mt-4 flex items-center justify-between gap-3 border-t border-line/80 pt-4 text-sm text-[#596270]">
+      <span>Page {page} of {totalPages}</span>
+      <div className="flex gap-2">
+        <Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
+          Previous
         </Button>
-        {primary.map((course) => (
-          <Button
-            key={course.course_display}
-            size="sm"
-            variant={selectedCourse === course.course_display ? "secondary" : "ghost"}
-            onClick={() => {
-              onSelectCourse(course.course_display);
-              setMenuOpen(false);
-            }}
-          >
-            {course.course_display}
-          </Button>
-        ))}
-        {overflow.length > 0 ? (
-          <Button size="sm" variant={menuOpen ? "secondary" : "ghost"} onClick={() => setMenuOpen((current) => !current)}>
-            More
-            {menuOpen ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
-          </Button>
-        ) : null}
+        <Button size="sm" variant="ghost" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
+          Next
+        </Button>
       </div>
-    </div>
-      {menuOpen ? (
-        <Card className="animate-section-enter p-4">
-          <div className="flex flex-wrap gap-2">
-            {overflow.map((course) => (
-              <Button
-                key={course.course_display}
-                size="sm"
-                variant={selectedCourse === course.course_display ? "secondary" : "ghost"}
-                onClick={() => {
-                  onSelectCourse(course.course_display);
-                  setMenuOpen(false);
-                }}
-              >
-                {course.course_display}
-              </Button>
-            ))}
-          </div>
-        </Card>
-      ) : null}
     </div>
   );
 }
 
 export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) {
-  const resources = useFamilyWorkspaceResources();
-  const workspaceState = renderWorkspaceState(resources);
-  const [courseQuery, setCourseQuery] = useState("");
-  const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
+  void basePath;
+  const families = useApiResource<CourseWorkItemFamily[]>(() => listFamilies(), []);
+  const status = useApiResource<CourseWorkItemFamilyStatus>(() => getFamiliesStatus(), []);
+  const courses = useApiResource<{ courses: CourseIdentity[] }>(() => listFamilyCourses(), []);
+  const rawTypes = useApiResource<CourseWorkItemRawType[]>(() => listFamilyRawTypes(), []);
+  const suggestions = useApiResource<RawTypeSuggestionItem[]>(() => listFamilyRawTypeSuggestions({ status: "pending", limit: 100 }), []);
 
-  const deferredQuery = useDeferredValue(courseQuery.trim().toLowerCase());
-  const courseOptions = useMemo(() => dedupeCourses(resources.courses.data?.courses || []), [resources.courses.data]);
-  const visibleFamilies = useMemo(() => {
-    return [...(resources.families.data || [])]
-      .sort(compareFamilyRows)
-      .filter((family) => familyMatchesCourse(family, selectedCourse))
-      .filter((family) => familyMatchesQuery(family, deferredQuery));
-  }, [deferredQuery, resources.families.data, selectedCourse]);
-  const visibleSuggestions = useMemo(() => {
-    return (resources.suggestions.data || [])
-      .filter((suggestion) => suggestionMatchesCourse(suggestion, selectedCourse))
-      .filter((suggestion) => suggestionMatchesQuery(suggestion, deferredQuery));
-  }, [deferredQuery, resources.suggestions.data, selectedCourse]);
-  const attentionFamilies = useMemo(() => buildNeedsAttentionFamilies(visibleFamilies, visibleSuggestions), [visibleFamilies, visibleSuggestions]);
-
-  if (workspaceState) {
-    return workspaceState;
-  }
-
-  return (
-    <div className="space-y-5">
-      <Card className="animate-surface-enter relative overflow-hidden p-6 md:p-7">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.13),transparent_36%),radial-gradient(circle_at_84%_20%,rgba(215,90,45,0.11),transparent_24%)]" />
-        <div className="relative space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="max-w-3xl">
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Families</p>
-              <h2 className="mt-3 text-3xl font-semibold text-ink">Review naming drift.</h2>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Badge tone="pending">{attentionFamilies.length} to review</Badge>
-              <Badge tone="info">{visibleSuggestions.length} merge clues</Badge>
-            </div>
-          </div>
-
-          <CompactFilters
-            query={courseQuery}
-            onQueryChange={setCourseQuery}
-            selectedCourse={selectedCourse}
-            onSelectCourse={setSelectedCourse}
-            courses={courseOptions}
-          />
-        </div>
-      </Card>
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Card className="animate-surface-enter animate-surface-delay-1 p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Needs attention</p>
-              <h3 className="mt-1 text-lg font-semibold text-ink">Families to review</h3>
-            </div>
-            <Badge tone="pending">{attentionFamilies.length}</Badge>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            {attentionFamilies.length === 0 ? (
-              <EmptyState title="No family drift right now" description="Nothing in the current slice needs family cleanup." />
-            ) : (
-              attentionFamilies.slice(0, 8).map((family) => (
-                <Link
-                  key={family.id}
-                  href={withBasePath(basePath, `/families/${family.id}`)}
-                  className="animate-surface-enter interactive-lift block rounded-[1.1rem] border border-line/80 bg-white/72 p-4 transition-all duration-300 hover:-translate-y-0.5 hover:bg-white"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{family.course_display}</p>
-                      <p className="mt-2 font-medium text-ink">{family.canonical_label}</p>
-                      <p className="mt-2 text-sm text-[#596270]">{familyAttentionReason(family, visibleSuggestions)}</p>
-                    </div>
-                    <Badge tone={family.raw_types.length >= 3 ? "pending" : "info"}>{family.raw_types.length} raw</Badge>
-                  </div>
-                </Link>
-              ))
-            )}
-          </div>
-        </Card>
-
-        <Card className="animate-surface-enter animate-surface-delay-2 p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Likely duplicates</p>
-              <h3 className="mt-1 text-lg font-semibold text-ink">Merge clues</h3>
-            </div>
-            <Badge tone="info">{visibleSuggestions.length}</Badge>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            {visibleSuggestions.length === 0 ? (
-              <div className="rounded-[1.1rem] border border-dashed border-line/80 bg-white/40 p-5 text-sm text-[#596270]">
-                No duplicate clues in the current slice.
-              </div>
-            ) : (
-              visibleSuggestions.slice(0, 8).map((suggestion) => (
-                <div key={suggestion.id} className="rounded-[1.1rem] border border-line/80 bg-white/72 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2 text-sm font-medium text-ink">
-                        <ArrowRightLeft className="h-4 w-4 text-cobalt" />
-                        {suggestion.source_family_name || "Unknown"} → {suggestion.suggested_family_name || "Target"}
-                      </div>
-                      <p className="mt-2 text-xs uppercase tracking-[0.18em] text-[#6d7885]">{suggestion.course_display}</p>
-                      <p className="mt-2 text-sm text-[#596270]">{suggestion.source_raw_type || "Unknown"} → {suggestion.suggested_raw_type || "Suggested"}</p>
-                    </div>
-                    <Badge tone="info">{Math.round(suggestion.confidence * 100)}%</Badge>
-                  </div>
-                  <div className="mt-4">
-                    <Button asChild size="sm" variant="ghost">
-                      <Link href={withBasePath(basePath, `/families/${suggestion.suggested_family_id || suggestion.source_family_id || ""}`)}>
-                        Open family
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-export function FamilyDetailPanel({ familyId, basePath = "" }: { familyId: number; basePath?: string }) {
-  const resources = useFamilyWorkspaceResources();
-  const workspaceState = renderWorkspaceState(resources);
+  const [workspaceArea, setWorkspaceArea] = useState<WorkspaceArea>("families");
+  const [query, setQuery] = useState("");
+  const [selectedCourse, setSelectedCourse] = useState<string>("all");
+  const [selectedFamilyId, setSelectedFamilyId] = useState<number | null>(null);
+  const [familyPage, setFamilyPage] = useState(1);
+  const [rawTypePage, setRawTypePage] = useState(1);
+  const [suggestionPage, setSuggestionPage] = useState(1);
   const [banner, setBanner] = useState<{ tone: "info" | "error"; text: string } | null>(null);
-  const [busyFamily, setBusyFamily] = useState<number | null>(null);
+  const [busyFamilyId, setBusyFamilyId] = useState<number | null>(null);
+  const [busyCreate, setBusyCreate] = useState(false);
+  const [busyRawTypeId, setBusyRawTypeId] = useState<number | null>(null);
   const [busySuggestionId, setBusySuggestionId] = useState<number | null>(null);
-  const [busyMoveId, setBusyMoveId] = useState<number | null>(null);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState<FamilyDetailSection>("overview");
-  const [draftCourseIdentity, setDraftCourseIdentity] = useState<CourseIdentityForm>(emptyCourseIdentity());
+  const [createOpen, setCreateOpen] = useState(false);
   const [draftLabel, setDraftLabel] = useState("");
+  const [newCourseIdentity, setNewCourseIdentity] = useState<CourseIdentityForm>(emptyCourseIdentity());
+  const [newCanonicalLabel, setNewCanonicalLabel] = useState("");
+  const [newRawTypesInput, setNewRawTypesInput] = useState("");
+  const [rawTypeTargets, setRawTypeTargets] = useState<Record<number, string>>({});
 
-  const family = useMemo(
-    () => (resources.families.data || []).find((item) => item.id === familyId) || null,
-    [familyId, resources.families.data],
+  const deferredQuery = useDeferredValue(query.trim().toLowerCase());
+  const familyRows = useMemo(() => [...(families.data || [])].sort(compareFamilies), [families.data]);
+  const courseOptions = useMemo(() => dedupeCourses(courses.data?.courses || [], familyRows), [courses.data, familyRows]);
+  const familyLabelById = useMemo(
+    () => Object.fromEntries(familyRows.map((family) => [family.id, family.canonical_label])),
+    [familyRows],
   );
-  const selectedSuggestions = useMemo(() => {
-    if (!family) return [];
-    return (resources.suggestions.data || []).filter((suggestion) => suggestion.source_family_id === family.id || suggestion.suggested_family_id === family.id);
-  }, [family, resources.suggestions.data]);
-  const selectedRawTypes = useMemo(() => {
-    if (!family) return [];
-    return (resources.rawTypes.data || [])
-      .filter((rawType) => rawType.family_id === family.id)
-      .sort((left, right) => left.raw_type.localeCompare(right.raw_type));
-  }, [family, resources.rawTypes.data]);
-  const moveCandidates = useMemo(() => {
-    if (!family) return [];
-    return (resources.rawTypes.data || [])
-      .filter((rawType) => rawType.course_display === family.course_display && rawType.family_id !== family.id)
-      .sort((left, right) => left.raw_type.localeCompare(right.raw_type));
-  }, [family, resources.rawTypes.data]);
+  const selectedCourseRows = useMemo(
+    () => familyRows.filter((family) => selectedCourse === "all" || family.course_display === selectedCourse),
+    [familyRows, selectedCourse],
+  );
+  const visibleFamilies = useMemo(
+    () => selectedCourseRows.filter((family) => familyMatchesQuery(family, deferredQuery)),
+    [deferredQuery, selectedCourseRows],
+  );
+  const visibleRawTypes = useMemo(
+    () =>
+      (rawTypes.data || []).filter((rawType) => {
+        if (selectedCourse !== "all" && rawType.course_display !== selectedCourse) {
+          return false;
+        }
+        return rawTypeMatchesQuery(rawType, familyLabelById[rawType.family_id] || "", deferredQuery);
+      }),
+    [deferredQuery, familyLabelById, rawTypes.data, selectedCourse],
+  );
+  const visibleSuggestions = useMemo(
+    () =>
+      (suggestions.data || []).filter((suggestion) => {
+        if (selectedCourse !== "all" && suggestion.course_display !== selectedCourse) {
+          return false;
+        }
+        return suggestionMatchesQuery(suggestion, deferredQuery);
+      }),
+    [deferredQuery, selectedCourse, suggestions.data],
+  );
 
   useEffect(() => {
-    if (!family) return;
-    setDraftLabel(family.canonical_label);
-    setDraftCourseIdentity({
-      course_dept: family.course_dept,
-      course_number: String(family.course_number),
-      course_suffix: family.course_suffix || "",
-      course_quarter: family.course_quarter || "",
-      course_year2: family.course_year2 != null ? String(family.course_year2).padStart(2, "0") : "",
+    setFamilyPage(1);
+    setRawTypePage(1);
+    setSuggestionPage(1);
+  }, [deferredQuery, selectedCourse, workspaceArea]);
+
+  useEffect(() => {
+    if (visibleFamilies.length === 0) {
+      setSelectedFamilyId(null);
+      return;
+    }
+    if (!selectedFamilyId || !visibleFamilies.some((family) => family.id === selectedFamilyId)) {
+      setSelectedFamilyId(visibleFamilies[0].id);
+    }
+  }, [selectedFamilyId, visibleFamilies]);
+
+  const selectedFamily = useMemo(
+    () => visibleFamilies.find((family) => family.id === selectedFamilyId) || visibleFamilies[0] || null,
+    [selectedFamilyId, visibleFamilies],
+  );
+  const selectedFamilyRawTypes = useMemo(
+    () =>
+      selectedFamily
+        ? (rawTypes.data || [])
+            .filter((rawType) => rawType.family_id === selectedFamily.id)
+            .sort((left, right) => left.raw_type.localeCompare(right.raw_type))
+        : [],
+    [rawTypes.data, selectedFamily],
+  );
+
+  useEffect(() => {
+    if (!selectedFamily) {
+      setDraftLabel("");
+      return;
+    }
+    setDraftLabel(selectedFamily.canonical_label);
+  }, [selectedFamily]);
+
+  useEffect(() => {
+    if (selectedCourse === "all") {
+      return;
+    }
+    const scopedCourse = courseOptions.find((course) => course.course_display === selectedCourse);
+    if (!scopedCourse) {
+      return;
+    }
+    setNewCourseIdentity((current) => {
+      if (current.course_dept || current.course_number || current.course_quarter || current.course_year2) {
+        return current;
+      }
+      return {
+        course_dept: scopedCourse.course_dept,
+        course_number: String(scopedCourse.course_number),
+        course_suffix: scopedCourse.course_suffix || "",
+        course_quarter: scopedCourse.course_quarter || "",
+        course_year2: scopedCourse.course_year2 != null ? String(scopedCourse.course_year2).padStart(2, "0") : "",
+      };
     });
-  }, [family]);
+  }, [courseOptions, selectedCourse]);
 
-  useEffect(() => {
-    if (activeSection === "duplicates" && selectedSuggestions.length === 0) {
-      setActiveSection("overview");
-    }
-    if (activeSection === "relink" && moveCandidates.length === 0) {
-      setActiveSection("overview");
-    }
-  }, [activeSection, moveCandidates.length, selectedSuggestions.length]);
+  const pagedFamilies = paginateRows(visibleFamilies, familyPage, PAGE_SIZE.families);
+  const pagedRawTypes = paginateRows(visibleRawTypes, rawTypePage, PAGE_SIZE.rawTypes);
+  const pagedSuggestions = paginateRows(visibleSuggestions, suggestionPage, PAGE_SIZE.suggestions);
+  const newRawTypes = useMemo(() => parseRawTypeKeywords(newRawTypesInput), [newRawTypesInput]);
 
   async function refreshAll() {
-    await Promise.all([
-      resources.families.refresh(),
-      resources.status.refresh(),
-      resources.courses.refresh(),
-      resources.rawTypes.refresh(),
-      resources.suggestions.refresh(),
-    ]);
+    await Promise.all([families.refresh(), status.refresh(), courses.refresh(), rawTypes.refresh(), suggestions.refresh()]);
   }
 
-  async function saveFamily() {
-    if (!family) return;
+  async function saveSelectedFamily() {
+    if (!selectedFamily) return;
     const canonicalLabel = draftLabel.trim();
-    const identity = normalizeCourseIdentityForm(draftCourseIdentity);
-    if (!canonicalLabel || !identity) return;
+    if (!canonicalLabel) {
+      setBanner({ tone: "error", text: "Family label is required." });
+      return;
+    }
 
-    setBusyFamily(family.id);
+    setBusyFamilyId(selectedFamily.id);
     setBanner(null);
     try {
-      await updateCourseWorkItemFamily(family.id, {
-        ...identity,
+      await updateFamily(selectedFamily.id, {
         canonical_label: canonicalLabel,
-        raw_types: selectedRawTypes.map((item) => item.raw_type),
+        raw_types: selectedFamilyRawTypes.map((rawType) => rawType.raw_type),
       });
       setBanner({ tone: "info", text: `Updated ${canonicalLabel}.` });
       await refreshAll();
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to update family" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to update family." });
     } finally {
-      setBusyFamily(null);
+      setBusyFamilyId(null);
+    }
+  }
+
+  async function createNewFamily() {
+    const identity = normalizeCourseIdentityForm(newCourseIdentity);
+    const canonicalLabel = newCanonicalLabel.trim();
+    if (!identity || !canonicalLabel) {
+      setBanner({ tone: "error", text: "New family needs course identity and canonical label." });
+      return;
+    }
+
+    setBusyCreate(true);
+    setBanner(null);
+    try {
+      await createFamily({
+        ...identity,
+        canonical_label: canonicalLabel,
+        raw_types: newRawTypes,
+      });
+      setNewCanonicalLabel("");
+      setNewRawTypesInput("");
+      setCreateOpen(false);
+      setBanner({ tone: "info", text: `Created ${canonicalLabel}.` });
+      await refreshAll();
+    } catch (err) {
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to create family." });
+    } finally {
+      setBusyCreate(false);
+    }
+  }
+
+  async function moveRawType(rawType: CourseWorkItemRawType) {
+    const familyId = Number(rawTypeTargets[rawType.id] || rawType.family_id);
+    if (!Number.isFinite(familyId) || familyId === rawType.family_id) {
+      return;
+    }
+
+    setBusyRawTypeId(rawType.id);
+    setBanner(null);
+    try {
+      await relinkFamilyRawType({ raw_type_id: rawType.id, family_id: familyId, note: "ui_family_governance" });
+      setBanner({ tone: "info", text: `Moved ${rawType.raw_type} into its new family.` });
+      await refreshAll();
+    } catch (err) {
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to move raw type." });
+    } finally {
+      setBusyRawTypeId(null);
     }
   }
 
@@ -489,163 +385,304 @@ export function FamilyDetailPanel({ familyId, basePath = "" }: { familyId: numbe
     setBusySuggestionId(suggestionId);
     setBanner(null);
     try {
-      await decideRawTypeSuggestion(suggestionId, { decision, note: `ui_${decision}` });
+      await decideFamilyRawTypeSuggestion(suggestionId, { decision, note: `ui_${decision}` });
       setBanner({
         tone: "info",
         text:
           decision === "approve"
-            ? "Approved duplicate clue."
+            ? "Suggestion approved."
             : decision === "reject"
-              ? "Rejected duplicate clue."
-              : "Dismissed duplicate clue.",
+              ? "Suggestion rejected."
+              : "Suggestion dismissed.",
       });
       await refreshAll();
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to update duplicate clue" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to update suggestion." });
     } finally {
       setBusySuggestionId(null);
     }
   }
 
-  async function moveRawType(rawTypeId: number) {
-    if (!family) return;
-    setBusyMoveId(rawTypeId);
-    setBanner(null);
-    try {
-      await moveCourseRawTypeToFamily({ raw_type_id: rawTypeId, family_id: family.id, note: "ui_manual_relink" });
-      setBanner({ tone: "info", text: "Moved raw label into this family." });
-      await refreshAll();
-    } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to move raw label" });
-    } finally {
-      setBusyMoveId(null);
-    }
+  if (families.loading || status.loading || courses.loading || rawTypes.loading || suggestions.loading) {
+    return <LoadingState label="families" />;
   }
-
-  if (workspaceState) {
-    return workspaceState;
-  }
-
-  if (!family) {
-    return <EmptyState title="Family not found" description="This family no longer exists in the current workspace state." />;
-  }
-
-  const sectionOptions: Array<{ id: FamilyDetailSection; label: string; hidden?: boolean }> = [
-    { id: "overview", label: "Overview" },
-    { id: "duplicates", label: "Duplicates", hidden: selectedSuggestions.length === 0 },
-    { id: "relink", label: "Relink", hidden: moveCandidates.length === 0 },
-    { id: "advanced", label: "Advanced" },
-  ];
+  if (families.error) return <ErrorState message={`Families failed to load. ${families.error}`} />;
+  if (status.error) return <ErrorState message={`Families status failed to load. ${status.error}`} />;
+  if (courses.error) return <ErrorState message={`Course scope failed to load. ${courses.error}`} />;
+  if (rawTypes.error) return <ErrorState message={`Raw types failed to load. ${rawTypes.error}`} />;
+  if (suggestions.error) return <ErrorState message={`Suggestions failed to load. ${suggestions.error}`} />;
 
   return (
     <div className="space-y-5">
-      <Card className="animate-surface-enter p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <Button asChild size="sm" variant="ghost">
-              <Link href={withBasePath(basePath, "/families")}>
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Families
-              </Link>
-            </Button>
-            <p className="mt-4 text-xs uppercase tracking-[0.18em] text-[#6d7885]">Family detail</p>
-            <h2 className="mt-2 text-3xl font-semibold text-ink">{family.canonical_label}</h2>
-            <p className="mt-2 text-sm text-[#596270]">{family.course_display}</p>
+      <Card className="animate-surface-enter relative overflow-hidden p-6 md:p-7">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.13),transparent_36%),radial-gradient(circle_at_84%_20%,rgba(215,90,45,0.11),transparent_24%)]" />
+        <div className="relative space-y-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-3xl">
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Families</p>
+              <h2 className="mt-3 text-3xl font-semibold text-ink">Govern naming and relink raw labels.</h2>
+              <p className="mt-3 text-sm text-[#596270]">Pick a course. Then work one subarea.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="info">{familyRows.length} families</Badge>
+              <Badge tone="info">{(rawTypes.data || []).length} raw types</Badge>
+              <Badge tone={visibleSuggestions.length > 0 ? "pending" : "approved"}>{visibleSuggestions.length} suggestions</Badge>
+            </div>
           </div>
+
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px]">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7d8794]" />
+              <Input
+                className="pl-11"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search families, raw types, or suggestions"
+              />
+            </div>
+            <select
+              aria-label="Filter families by course"
+              className="h-11 rounded-2xl border border-line bg-white/80 px-4 text-sm text-ink outline-none transition focus:border-cobalt focus:bg-white"
+              value={selectedCourse}
+              onChange={(event) => setSelectedCourse(event.target.value)}
+            >
+              <option value="all">All courses</option>
+              {courseOptions.map((course) => (
+                <option key={course.course_display} value={course.course_display}>
+                  {course.course_display}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex flex-wrap gap-2">
-            <Badge tone={selectedSuggestions.length > 0 || selectedRawTypes.length >= 3 ? "pending" : "approved"}>
-              {selectedSuggestions.length > 0 || selectedRawTypes.length >= 3 ? "Needs attention" : "Stable"}
-            </Badge>
-            <Badge tone="info">{selectedRawTypes.length} raw labels</Badge>
+            <Button size="sm" variant={workspaceArea === "families" ? "secondary" : "ghost"} onClick={() => setWorkspaceArea("families")}>
+              Families
+            </Button>
+            <Button size="sm" variant={workspaceArea === "raw-types" ? "secondary" : "ghost"} onClick={() => setWorkspaceArea("raw-types")}>
+              Raw Types
+            </Button>
+            <Button size="sm" variant={workspaceArea === "suggestions" ? "secondary" : "ghost"} onClick={() => setWorkspaceArea("suggestions")}>
+              Suggestions
+            </Button>
+            <Badge tone="info">Last rebuild {formatDateTime(status.data?.last_rebuilt_at, "Never")}</Badge>
           </div>
         </div>
       </Card>
 
       {banner ? (
-        <Card className={banner.tone === "error" ? "animate-surface-enter border-[#efc4b5] bg-[#fff3ef] p-4" : "animate-surface-enter border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] p-4"}>
+        <Card className={banner.tone === "error" ? "border-[#efc4b5] bg-[#fff3ef] p-4" : "border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] p-4"}>
           <p className="text-sm text-[#314051]">{banner.text}</p>
         </Card>
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-4">
-        <Card className="animate-surface-enter animate-surface-delay-1 p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Status</p>
-          <p className="mt-2 text-sm font-medium text-ink">{familyAttentionReason(family, selectedSuggestions)}</p>
-        </Card>
-        <Card className="animate-surface-enter animate-surface-delay-1 p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Duplicate clues</p>
-          <p className="mt-2 text-sm font-medium text-ink">{selectedSuggestions.length}</p>
-        </Card>
-        <Card className="animate-surface-enter animate-surface-delay-2 p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Relink candidates</p>
-          <p className="mt-2 text-sm font-medium text-ink">{moveCandidates.length}</p>
-        </Card>
-        <Card className="animate-surface-enter animate-surface-delay-2 p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Last rebuild</p>
-          <p className="mt-2 text-sm font-medium text-ink">{formatDateTime(resources.status.data?.last_rebuilt_at, "Never")}</p>
-        </Card>
-      </div>
-
-      <div className="inline-flex flex-wrap gap-2 rounded-full border border-line/80 bg-white/72 p-2">
-        {sectionOptions
-          .filter((section) => !section.hidden)
-          .map((section) => (
-            <Button
-              key={section.id}
-              size="sm"
-              variant={activeSection === section.id ? "secondary" : "ghost"}
-              onClick={() => setActiveSection(section.id)}
-            >
-              {section.label}
-            </Button>
-          ))}
-      </div>
-
-      {activeSection === "overview" ? (
-        <div className="space-y-4">
-          <Card className="animate-surface-enter animate-surface-delay-1 p-5">
-            <div className="flex flex-wrap items-start justify-between gap-4">
+      {workspaceArea === "families" ? (
+        <div className="grid gap-4 xl:grid-cols-[minmax(340px,0.9fr)_minmax(0,1.1fr)]">
+          <Card className="animate-surface-enter p-5">
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Canonical rename</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Families</p>
+                <h3 className="mt-1 text-lg font-semibold text-ink">Canonical family list</h3>
               </div>
-              <Button onClick={() => void saveFamily()} disabled={busyFamily === family.id || !draftLabel.trim()}>
-                {busyFamily === family.id ? "Saving..." : "Save family"}
+              <Button size="sm" variant={createOpen ? "secondary" : "ghost"} onClick={() => setCreateOpen((current) => !current)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add family
               </Button>
             </div>
-            <div className="mt-4">
-              <Input value={draftLabel} onChange={(event) => setDraftLabel(event.target.value)} placeholder="Canonical label" />
+
+            {createOpen ? (
+              <div className="mt-4 rounded-[1.15rem] border border-line/80 bg-white/70 p-4">
+                <p className="text-sm font-medium text-ink">Create family</p>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <Input value={newCanonicalLabel} onChange={(event) => setNewCanonicalLabel(event.target.value)} placeholder="Canonical label" />
+                  <Input value={newCourseIdentity.course_dept} onChange={(event) => setNewCourseIdentity((current) => ({ ...current, course_dept: event.target.value }))} placeholder="Dept" />
+                  <Input value={newCourseIdentity.course_number} onChange={(event) => setNewCourseIdentity((current) => ({ ...current, course_number: event.target.value }))} placeholder="Number" />
+                  <Input value={newCourseIdentity.course_suffix} onChange={(event) => setNewCourseIdentity((current) => ({ ...current, course_suffix: event.target.value }))} placeholder="Suffix" />
+                  <Input value={newCourseIdentity.course_quarter} onChange={(event) => setNewCourseIdentity((current) => ({ ...current, course_quarter: event.target.value }))} placeholder="Quarter" />
+                  <Input value={newCourseIdentity.course_year2} onChange={(event) => setNewCourseIdentity((current) => ({ ...current, course_year2: event.target.value }))} placeholder="Year2" />
+                </div>
+                <div className="mt-4">
+                  <Textarea
+                    className="min-h-[96px]"
+                    value={newRawTypesInput}
+                    onChange={(event) => setNewRawTypesInput(event.target.value)}
+                    placeholder={"Raw labels to attach\nhomework\nproblem set"}
+                  />
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {newRawTypes.map((rawType) => (
+                    <Badge key={rawType} tone="info">
+                      {rawType}
+                    </Badge>
+                  ))}
+                </div>
+                <div className="mt-4">
+                  <Button onClick={() => void createNewFamily()} disabled={busyCreate}>
+                    {busyCreate ? "Creating..." : "Create family"}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mt-4 space-y-3">
+              {pagedFamilies.rows.length === 0 ? (
+                <EmptyState title="No families in this slice" description="Switch course scope or search terms to find a family." />
+              ) : (
+                pagedFamilies.rows.map((family) => (
+                  <button
+                    key={family.id}
+                    type="button"
+                    onClick={() => setSelectedFamilyId(family.id)}
+                    className={`block w-full rounded-[1.15rem] border p-4 text-left transition-all duration-300 ${
+                      selectedFamily?.id === family.id
+                        ? "border-[rgba(31,94,255,0.24)] bg-white shadow-[0_16px_32px_rgba(20,32,44,0.08)]"
+                        : "border-line/80 bg-white/72 hover:-translate-y-0.5 hover:bg-white"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{family.course_display}</p>
+                        <p className="mt-2 font-medium text-ink">{family.canonical_label}</p>
+                        <p className="mt-2 text-sm text-[#596270]">Updated {formatDateTime(family.updated_at)}</p>
+                      </div>
+                      <Badge tone="info">{family.raw_types.length} raw</Badge>
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
+
+            <PaginationControls page={pagedFamilies.page} totalPages={pagedFamilies.totalPages} onPageChange={setFamilyPage} />
           </Card>
 
-          <Card className="animate-surface-enter animate-surface-delay-2 p-5">
-            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Observed labels</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {selectedRawTypes.map((rawType) => (
-                <Badge key={`${family.id}-${rawType.id}`} tone="info">
-                  {rawType.raw_type}
-                </Badge>
-              ))}
-            </div>
+          <Card className="animate-surface-enter p-5">
+            {selectedFamily ? (
+              <div>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Selected family</p>
+                    <h3 className="mt-1 text-lg font-semibold text-ink">{selectedFamily.canonical_label}</h3>
+                    <p className="mt-2 text-sm text-[#596270]">{selectedFamily.course_display}</p>
+                  </div>
+                  <Badge tone={selectedFamilyRawTypes.length >= 3 ? "pending" : "info"}>{selectedFamilyRawTypes.length} raw labels</Badge>
+                </div>
+
+                <div className="mt-5 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Canonical rename</p>
+                    </div>
+                    <Button size="sm" onClick={() => void saveSelectedFamily()} disabled={busyFamilyId === selectedFamily.id}>
+                      {busyFamilyId === selectedFamily.id ? "Saving..." : "Save family"}
+                    </Button>
+                  </div>
+                  <Input className="mt-4" value={draftLabel} onChange={(event) => setDraftLabel(event.target.value)} placeholder="Canonical label" />
+                </div>
+
+                <div className="mt-4 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Observed raw labels</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {selectedFamilyRawTypes.length > 0 ? (
+                      selectedFamilyRawTypes.map((rawType) => (
+                        <Badge key={rawType.id} tone="info">
+                          {rawType.raw_type}
+                        </Badge>
+                      ))
+                    ) : (
+                      <p className="text-sm text-[#596270]">No raw labels attached yet.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <EmptyState title="No family selected" description="Pick a family from the list to edit its canonical label." />
+            )}
           </Card>
         </div>
       ) : null}
 
-      {activeSection === "duplicates" ? (
-        <Card className="animate-surface-enter animate-surface-delay-2 p-5">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-cobalt" />
-            <p className="text-sm font-medium text-ink">Duplicate clues</p>
+      {workspaceArea === "raw-types" ? (
+        <Card className="animate-surface-enter p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Raw Types</p>
+              <h3 className="mt-1 text-lg font-semibold text-ink">Relink observed labels</h3>
+            </div>
+            <Badge tone="info">{visibleRawTypes.length}</Badge>
           </div>
+
           <div className="mt-4 space-y-3">
-            {selectedSuggestions.length === 0 ? (
-              <p className="text-sm text-[#596270]">No duplicate clues are attached to this family.</p>
+            {pagedRawTypes.rows.length === 0 ? (
+              <EmptyState title="No raw types in this slice" description="Change the course scope or search terms to expose raw labels." />
             ) : (
-              selectedSuggestions.map((suggestion) => (
-                <div key={suggestion.id} className="rounded-[1rem] border border-line/80 bg-white/80 p-4">
-                  <p className="text-sm font-medium text-ink">
-                    {suggestion.source_raw_type || "Unknown"} → {suggestion.suggested_family_name || "Target"}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
+              pagedRawTypes.rows.map((rawType) => {
+                const targetFamilies = familyRows.filter((family) => family.course_display === rawType.course_display);
+                const currentTarget = rawTypeTargets[rawType.id] || String(rawType.family_id);
+                return (
+                  <div key={rawType.id} className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-ink">{rawType.raw_type}</p>
+                        <p className="mt-1 text-sm text-[#596270]">{rawType.course_display}</p>
+                        <p className="mt-2 text-sm text-[#314051]">Current family: {familyLabelById[rawType.family_id] || `Family #${rawType.family_id}`}</p>
+                      </div>
+                      <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+                        <select
+                          aria-label={`Select target family for ${rawType.raw_type}`}
+                          className="h-11 min-w-[220px] rounded-2xl border border-line bg-white/85 px-4 text-sm text-ink outline-none transition focus:border-cobalt focus:bg-white"
+                          value={currentTarget}
+                          onChange={(event) => setRawTypeTargets((current) => ({ ...current, [rawType.id]: event.target.value }))}
+                        >
+                          {targetFamilies.map((family) => (
+                            <option key={family.id} value={String(family.id)}>
+                              {family.canonical_label}
+                            </option>
+                          ))}
+                        </select>
+                        <Button size="sm" disabled={busyRawTypeId === rawType.id || currentTarget === String(rawType.family_id)} onClick={() => void moveRawType(rawType)}>
+                          {busyRawTypeId === rawType.id ? "Moving..." : "Move"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <PaginationControls page={pagedRawTypes.page} totalPages={pagedRawTypes.totalPages} onPageChange={setRawTypePage} />
+        </Card>
+      ) : null}
+
+      {workspaceArea === "suggestions" ? (
+        <Card className="animate-surface-enter p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Suggestions</p>
+              <h3 className="mt-1 text-lg font-semibold text-ink">Review likely duplicates</h3>
+            </div>
+            <Badge tone={visibleSuggestions.length > 0 ? "pending" : "approved"}>{visibleSuggestions.length}</Badge>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {pagedSuggestions.rows.length === 0 ? (
+              <EmptyState title="No suggestions in this slice" description="No duplicate clue is waiting for a decision here." />
+            ) : (
+              pagedSuggestions.rows.map((suggestion) => (
+                <div key={suggestion.id} className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{suggestion.course_display}</p>
+                      <div className="mt-2 flex items-center gap-2 text-sm font-medium text-ink">
+                        <Sparkles className="h-4 w-4 text-cobalt" />
+                        {suggestion.source_family_name || "Unknown family"} → {suggestion.suggested_family_name || "Suggested family"}
+                      </div>
+                      <p className="mt-2 text-sm text-[#596270]">{suggestion.source_raw_type || "Unknown"} → {suggestion.suggested_raw_type || "Suggested"}</p>
+                    </div>
+                    <Badge tone="info">{Math.round(suggestion.confidence * 100)}%</Badge>
+                  </div>
+                  {suggestion.evidence ? <p className="mt-4 text-sm leading-6 text-[#596270]">{suggestion.evidence}</p> : null}
+                  <div className="mt-4 flex flex-wrap gap-2">
                     <Button size="sm" disabled={busySuggestionId === suggestion.id} onClick={() => void decideSuggestion(suggestion.id, "approve")}>
                       {busySuggestionId === suggestion.id ? "Applying..." : "Approve"}
                     </Button>
@@ -660,78 +697,8 @@ export function FamilyDetailPanel({ familyId, basePath = "" }: { familyId: numbe
               ))
             )}
           </div>
-        </Card>
-      ) : null}
 
-      {activeSection === "relink" ? (
-        <Card className="animate-surface-enter animate-surface-delay-2 p-5">
-          <p className="text-sm font-medium text-ink">Raw-label relink</p>
-          <div className="mt-4 space-y-3">
-            {moveCandidates.length === 0 ? (
-              <p className="text-sm text-[#596270]">No raw-label relink candidates for this family.</p>
-            ) : (
-              moveCandidates.map((rawType) => (
-                <div key={rawType.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border border-line/80 bg-white/80 p-4">
-                  <div>
-                    <p className="text-sm font-medium text-ink">{rawType.raw_type}</p>
-                    <p className="mt-1 text-xs text-[#596270]">Currently attached to family #{rawType.family_id}</p>
-                  </div>
-                  <Button size="sm" disabled={busyMoveId === rawType.id} onClick={() => void moveRawType(rawType.id)}>
-                    {busyMoveId === rawType.id ? "Moving..." : "Move here"}
-                  </Button>
-                </div>
-              ))
-            )}
-          </div>
-        </Card>
-      ) : null}
-
-      {activeSection === "advanced" ? (
-        <Card className="animate-surface-enter animate-surface-delay-2 p-5">
-          <button type="button" className="flex w-full items-center justify-between gap-4 text-left" onClick={() => setAdvancedOpen((current) => !current)}>
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Advanced</p>
-              <p className="mt-1 text-sm font-medium text-ink">Course identity fields</p>
-            </div>
-            {advancedOpen ? <ChevronUp className="h-4 w-4 text-[#6d7885]" /> : <ChevronDown className="h-4 w-4 text-[#6d7885]" />}
-          </button>
-
-          {advancedOpen ? (
-            <div className="mt-4 space-y-4">
-              <div className="grid gap-3 md:grid-cols-5">
-                <Input
-                  value={draftCourseIdentity.course_dept}
-                  onChange={(event) => setDraftCourseIdentity((prev) => ({ ...prev, course_dept: event.target.value }))}
-                  placeholder="Dept"
-                />
-                <Input
-                  value={draftCourseIdentity.course_number}
-                  onChange={(event) => setDraftCourseIdentity((prev) => ({ ...prev, course_number: event.target.value }))}
-                  placeholder="Number"
-                />
-                <Input
-                  value={draftCourseIdentity.course_suffix}
-                  onChange={(event) => setDraftCourseIdentity((prev) => ({ ...prev, course_suffix: event.target.value }))}
-                  placeholder="Suffix"
-                />
-                <Input
-                  value={draftCourseIdentity.course_quarter}
-                  onChange={(event) => setDraftCourseIdentity((prev) => ({ ...prev, course_quarter: event.target.value }))}
-                  placeholder="Quarter"
-                />
-                <Input
-                  value={draftCourseIdentity.course_year2}
-                  onChange={(event) => setDraftCourseIdentity((prev) => ({ ...prev, course_year2: event.target.value }))}
-                  placeholder="Year2"
-                />
-              </div>
-              <div>
-                <Button onClick={() => void saveFamily()} disabled={busyFamily === family.id || !draftLabel.trim()}>
-                  {busyFamily === family.id ? "Saving..." : "Save family"}
-                </Button>
-              </div>
-            </div>
-          ) : null}
+          <PaginationControls page={pagedSuggestions.page} totalPages={pagedSuggestions.totalPages} onPageChange={setSuggestionPage} />
         </Card>
       ) : null}
     </div>

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.contracts.events import new_event
-from app.db.models.ingestion import ConnectorResultStatus, IngestResult, IngestUnresolvedRecord
+from app.db.models.runtime import ConnectorResultStatus, IngestResult, IngestUnresolvedRecord
 from app.core.security import decrypt_secret
 from app.db.models.input import IngestTriggerType, InputSource, InputSourceCursor, SyncRequest, SyncRequestStatus
 from app.db.models.review import (
@@ -17,10 +17,10 @@ from app.db.models.review import (
     SourceEventObservation,
 )
 from app.db.models.shared import IntegrationOutbox, OutboxStatus, User
-from app.modules.core_ingest.apply import apply_ingest_result_idempotent
-from app.modules.core_ingest.worker import run_core_apply_tick
-from app.modules.input_control_plane.schemas import InputSourceCreateRequest
-from app.modules.input_control_plane.sources_service import create_input_source
+from app.modules.runtime.apply.apply import apply_ingest_result_idempotent
+from app.modules.runtime.apply.worker import run_core_apply_tick
+from app.modules.sources.schemas import InputSourceCreateRequest
+from app.modules.sources.sources_service import create_input_source
 
 
 def _create_registered_user(db_session, *, notify_email: str) -> User:

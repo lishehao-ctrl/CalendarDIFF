@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from app.modules.common.text_sanitize import sanitize_markup_text
-from app.modules.ingestion.llm_parsers.semantic_orchestrator import _build_gmail_cache_prefix
-from app.modules.sync.gmail_client import _extract_plain_text_from_payload
+from app.modules.runtime.connectors.llm_parsers.semantic_orchestrator import _build_gmail_cache_prefix
+from app.modules.runtime.connectors.clients.gmail_client import _extract_plain_text_from_payload
 
 
 def test_sanitize_markup_text_removes_html_and_unescapes_entities() -> None:

@@ -5,7 +5,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from app.modules.sync.gmail_client import GmailClient, GmailOAuthClientSecrets
+from app.modules.runtime.connectors.clients.gmail_client import GmailClient, GmailOAuthClientSecrets
 
 
 def test_gmail_client_uses_default_endpoints(monkeypatch) -> None:

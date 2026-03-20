@@ -6,7 +6,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy import func, select
 
 from app.core.security import encrypt_secret
-from app.db.models.ingestion import ConnectorResultStatus, IngestResult
+from app.db.models.runtime import ConnectorResultStatus, IngestResult
 from app.db.models.input import (
     IngestTriggerType,
     InputSource,
@@ -29,10 +29,10 @@ from app.db.models.review import (
 )
 from app.db.models.shared import CourseWorkItemLabelFamily, IntegrationOutbox, User
 from app.modules.common.course_identity import normalize_label_token, normalized_course_identity_key
-from app.modules.core_ingest.apply import apply_ingest_result_idempotent
-from app.modules.input_control_plane.schemas import InputSourcePatchRequest
-from app.modules.input_control_plane.source_term_rebind import PENDING_TERM_REBIND_KEY
-from app.modules.input_control_plane.sources_service import update_input_source
+from app.modules.runtime.apply.apply import apply_ingest_result_idempotent
+from app.modules.sources.schemas import InputSourcePatchRequest
+from app.modules.sources.source_term_rebind import PENDING_TERM_REBIND_KEY
+from app.modules.sources.sources_service import update_input_source
 from tests.support.payload_builders import build_course_parse, build_event_parts, build_gmail_payload, build_link_signals
 
 
@@ -421,7 +421,7 @@ def test_idempotent_canonical_edit_sets_manual_support_true(client, db_session, 
 
     headers = auth_headers(client, user=user)
     response = client.post(
-        "/review/edits",
+        "/changes/edits",
         headers=headers,
         json={
             "mode": "canonical",
@@ -529,7 +529,7 @@ def test_automatic_ingest_apply_does_not_set_manual_support(db_session) -> None:
     outbox_count = int(
         db_session.scalar(
             select(func.count(IntegrationOutbox.id)).where(
-                IntegrationOutbox.event_type == "review.pending.created",
+                IntegrationOutbox.event_type == "changes.pending.created",
                 IntegrationOutbox.aggregate_type == "change_batch",
             )
         )

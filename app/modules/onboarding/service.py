@@ -17,18 +17,18 @@ from app.modules.common.source_term_window import (
     parse_term_window_config,
     source_timezone_name,
 )
-from app.modules.input_control_plane.oauth_service import build_gmail_oauth_start_for_source
-from app.modules.input_control_plane.provider_sources import (
+from app.modules.sources.oauth_service import build_gmail_oauth_start_for_source
+from app.modules.sources.provider_sources import (
     CANVAS_ICS_DISPLAY_NAME,
     CANVAS_ICS_SOURCE_KEY,
     get_canvas_ics_source_for_user,
     get_gmail_source_for_user,
 )
-from app.modules.input_control_plane.source_runtime_state import derive_source_runtime_state
-from app.modules.input_control_plane.source_secrets import decode_source_secrets
-from app.modules.input_control_plane.schemas import InputSourcePatchRequest
-from app.modules.input_control_plane.source_serializers import serialize_source
-from app.modules.input_control_plane.sources_service import update_input_source
+from app.modules.sources.source_runtime_state import derive_source_runtime_state
+from app.modules.sources.source_secrets import decode_source_secrets
+from app.modules.sources.schemas import InputSourcePatchRequest
+from app.modules.sources.source_serializers import serialize_source
+from app.modules.sources.sources_service import update_input_source
 
 
 class OnboardingRegisterError(RuntimeError):

@@ -12,7 +12,7 @@ from app.db.models.notify import Notification, NotificationChannel, Notification
 from app.db.models.review import Change
 from app.modules.common.event_display import event_display_from_payload
 from app.modules.common.family_labels import require_latest_family_label
-from app.modules.core_ingest.semantic_event_service import normalize_time_precision, semantic_due_datetime_from_payload
+from app.modules.runtime.apply.semantic_event_service import normalize_time_precision, semantic_due_datetime_from_payload
 from app.modules.notify.interface import ChangeDigestItem
 
 

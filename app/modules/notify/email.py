@@ -75,7 +75,7 @@ def _build_email_bodies(
         base_url = resolve_frontend_app_base_url(settings=settings)
     except Exception:
         base_url = settings.app_base_url.rstrip("/") if settings.app_base_url else ""
-    link_path = "/review/changes?review_status=pending"
+    link_path = "/changes?review_status=pending"
     link = f"{base_url}{link_path}" if base_url else link_path
 
     review_count = len(items)

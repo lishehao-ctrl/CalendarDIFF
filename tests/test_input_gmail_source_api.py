@@ -8,8 +8,8 @@ from sqlalchemy import select
 from app.core.security import decrypt_secret, encrypt_secret
 from app.db.models.input import IngestTriggerType, InputSource, SyncRequest, SyncRequestStatus
 from app.db.models.shared import User
-from app.modules.input_control_plane.schemas import InputSourceCreateRequest
-from app.modules.input_control_plane.sources_service import create_input_source
+from app.modules.sources.schemas import InputSourceCreateRequest
+from app.modules.sources.sources_service import create_input_source
 
 
 def _create_registered_user(db_session) -> User:

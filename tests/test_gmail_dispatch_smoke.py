@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 
 from sqlalchemy import func, select
 
-from app.db.models.ingestion import ConnectorResultStatus, IngestResult
+from app.db.models.runtime import ConnectorResultStatus, IngestResult
 from app.db.models.input import IngestTriggerType, InputSource, SourceKind, SyncRequest, SyncRequestStatus
 from app.db.models.review import (
     Change,
@@ -16,7 +16,7 @@ from app.db.models.review import (
 )
 from app.db.models.shared import CourseWorkItemLabelFamily, IntegrationOutbox, User
 from app.modules.common.course_identity import normalize_label_token, normalized_course_identity_key
-from app.modules.core_ingest.apply import apply_ingest_result_idempotent
+from app.modules.runtime.apply.apply import apply_ingest_result_idempotent
 from tests.support.payload_builders import build_course_parse, build_event_parts, build_gmail_payload, build_link_signals
 
 
@@ -322,7 +322,7 @@ def test_gmail_mixed_dispatch_smoke_routes_atomic_and_directive_lanes(db_session
 
     outbox_rows = list(
         db_session.scalars(
-            select(IntegrationOutbox).where(IntegrationOutbox.event_type == "review.pending.created").order_by(IntegrationOutbox.id.asc())
+            select(IntegrationOutbox).where(IntegrationOutbox.event_type == "changes.pending.created").order_by(IntegrationOutbox.id.asc())
         ).all()
     )
     assert len(outbox_rows) == 2

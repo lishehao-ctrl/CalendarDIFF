@@ -29,6 +29,15 @@ export type SyncProgress = {
   unit?: string | null;
 };
 
+export type SourceOperatorGuidance = {
+  recommended_action: "continue_review" | "continue_review_with_caution" | "wait_for_runtime" | "investigate_runtime";
+  severity: "info" | "warning" | "blocking";
+  reason_code: string;
+  message: string;
+  related_request_id?: string | null;
+  progress_age_seconds?: number | null;
+};
+
 export type OnboardingSource = {
   source_id: number;
   provider: "ics" | "gmail";
@@ -51,9 +60,41 @@ export type OnboardingStatus = {
   term_binding: OnboardingTermBinding | null;
 };
 
-export type ReviewSummary = {
+export type ChangesWorkbenchSourcesSummary = {
+  active_count: number;
+  running_count: number;
+  queued_count: number;
+  attention_count: number;
+  blocking_count: number;
+  recommended_action: "continue_review" | "continue_review_with_caution" | "wait_for_runtime" | "investigate_runtime";
+  severity: "info" | "warning" | "blocking";
+  reason_code: string;
+  message: string;
+  related_request_id?: string | null;
+  progress_age_seconds?: number | null;
+};
+
+export type ChangesWorkbenchFamiliesSummary = {
+  attention_count: number;
+  pending_raw_type_suggestions: number;
+  mappings_state: string;
+  last_rebuilt_at: string | null;
+  last_error: string | null;
+};
+
+export type ChangesWorkbenchManualSummary = {
+  active_event_count: number;
+  lane_role: "fallback";
+};
+
+export type ChangesWorkbenchSummary = {
   changes_pending: number;
-  link_candidates_pending: number;
+  recommended_lane: "sources" | "changes" | "families" | null;
+  recommended_lane_reason_code: string;
+  recommended_action_reason: string;
+  sources: ChangesWorkbenchSourcesSummary;
+  families: ChangesWorkbenchFamiliesSummary;
+  manual: ChangesWorkbenchManualSummary;
   generated_at: string;
 };
 
@@ -80,6 +121,7 @@ export type SourceRow = {
   runtime_state?: "active" | "inactive" | "archived" | "queued" | "running" | "rebind_pending";
   active_request_id?: string | null;
   sync_progress?: SyncProgress | null;
+  operator_guidance?: SourceOperatorGuidance | null;
 };
 
 export type SyncStatus = {
@@ -96,6 +138,40 @@ export type SyncStatus = {
   } | null;
   metadata?: Record<string, unknown>;
   progress?: SyncProgress | null;
+};
+
+export type SourceObservabilitySync = {
+  request_id: string;
+  phase: "bootstrap" | "replay";
+  trigger_type: "manual" | "scheduler" | "webhook";
+  status: "PENDING" | "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+  created_at: string;
+  updated_at: string;
+  stage?: string | null;
+  substage?: string | null;
+  stage_updated_at?: string | null;
+  applied: boolean;
+  applied_at?: string | null;
+  elapsed_ms?: number | null;
+  error_code?: string | null;
+  error_message?: string | null;
+  connector_result?: Record<string, unknown> | null;
+  llm_usage?: Record<string, unknown> | null;
+  progress?: SyncProgress | null;
+};
+
+export type SourceObservabilityResponse = {
+  source_id: number;
+  active_request_id?: string | null;
+  bootstrap: SourceObservabilitySync | null;
+  latest_replay: SourceObservabilitySync | null;
+  active: SourceObservabilitySync | null;
+  operator_guidance?: SourceOperatorGuidance | null;
+};
+
+export type SourceSyncHistoryResponse = {
+  source_id: number;
+  items: SourceObservabilitySync[];
 };
 
 export type SyncUsageSummary = {
@@ -160,7 +236,7 @@ export type UserFacingEvent = {
   time_precision: "date_only" | "datetime" | string;
 };
 
-export type ReviewChange = {
+export type ChangeItem = {
   id: number;
   entity_uid: string;
   change_type: string;
@@ -246,7 +322,7 @@ export type EvidencePreviewResponse = {
   preview_text?: string | null;
 };
 
-export type ReviewBatchDecisionResult = {
+export type ChangeBatchDecisionResult = {
   id: number;
   ok: boolean;
   review_status: "pending" | "approved" | "rejected" | null;
@@ -257,24 +333,24 @@ export type ReviewBatchDecisionResult = {
   error_detail: string | null;
 };
 
-export type ReviewBatchDecisionResponse = {
+export type ChangeBatchDecisionResponse = {
   decision: "approve" | "reject";
   total_requested: number;
   succeeded: number;
   failed: number;
-  results: ReviewBatchDecisionResult[];
+  results: ChangeBatchDecisionResult[];
 };
 
-export type ReviewEditMode = "proposal" | "canonical";
+export type ChangeEditMode = "proposal" | "canonical";
 
-export type ReviewEditEventPayload = UserFacingEvent;
+export type ChangeEditEventPayload = UserFacingEvent;
 
-export type ReviewEditTarget = {
+export type ChangeEditTarget = {
   change_id?: number;
   entity_uid?: string | null;
 };
 
-export type ReviewEditPatch = {
+export type ChangeEditPatch = {
   event_name?: string | null;
   due_date?: string | null;
   due_time?: string | null;
@@ -286,14 +362,14 @@ export type ReviewEditPatch = {
   course_year2?: number | null;
 };
 
-export type ReviewEditRequest = {
-  mode: ReviewEditMode;
-  target: ReviewEditTarget;
-  patch: ReviewEditPatch;
+export type ChangeEditRequest = {
+  mode: ChangeEditMode;
+  target: ChangeEditTarget;
+  patch: ChangeEditPatch;
   reason?: string | null;
 };
 
-export type ReviewEditContext = {
+export type ChangeEditContext = {
   change_id: number;
   entity_uid: string;
   editable_event: {
@@ -314,74 +390,27 @@ export type ReviewEditContext = {
   };
 };
 
-export type ReviewEditPreviewResponse = {
-  mode: ReviewEditMode;
+export type ChangeEditPreviewResponse = {
+  mode: ChangeEditMode;
   entity_uid: string;
   change_id: number | null;
   proposal_change_type: "created" | "due_changed" | null;
-  base: ReviewEditEventPayload;
-  candidate_after: ReviewEditEventPayload;
+  base: ChangeEditEventPayload;
+  candidate_after: ChangeEditEventPayload;
   delta_seconds: number | null;
   will_reject_pending_change_ids: number[];
   idempotent: boolean;
 };
 
-export type ReviewEditApplyResponse = {
-  mode: ReviewEditMode;
+export type ChangeEditApplyResponse = {
+  mode: ChangeEditMode;
   applied: boolean;
   idempotent: boolean;
   entity_uid: string;
   edited_change_id: number | null;
   canonical_edit_change_id: number | null;
   rejected_pending_change_ids: number[];
-  event: ReviewEditEventPayload;
-};
-
-export type LinkCandidate = {
-  id: number;
-  source_id: number;
-  external_event_id: string;
-  proposed_entity_uid: string | null;
-  score: number | null;
-  score_breakdown: Record<string, unknown>;
-  reason_code: string;
-  status: string;
-  reviewed_by_user_id?: number | null;
-  reviewed_at?: string | null;
-  review_note?: string | null;
-  created_at?: string;
-  updated_at?: string;
-  evidence_snapshot?: Record<string, unknown> | null;
-  proposed_entity?: {
-    entity_uid: string;
-    event_display?: EventDisplay | null;
-  } | null;
-};
-
-export type LinkBlock = {
-  id: number;
-  source_id: number;
-  external_event_id: string;
-  blocked_entity_uid: string;
-  note: string | null;
-  created_at: string;
-};
-
-export type LinkRow = {
-  id: number;
-  source_id: number;
-  source_kind: string;
-  external_event_id: string;
-  entity_uid: string;
-  link_origin: string;
-  link_score?: number | null;
-  created_at?: string;
-  updated_at?: string;
-  signals?: Record<string, unknown> | null;
-  linked_entity?: {
-    entity_uid: string;
-    event_display?: EventDisplay | null;
-  } | null;
+  event: ChangeEditEventPayload;
 };
 
 export type CourseIdentity = {

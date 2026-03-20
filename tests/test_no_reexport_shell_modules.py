@@ -6,10 +6,10 @@ from pathlib import Path
 
 def test_legacy_service_facades_removed() -> None:
     removed = [
-        "app/modules/core_ingest/service.py",
-        "app/modules/review_changes/service.py",
-        "app/modules/input_control_plane/service.py",
-        "app/modules/llm_runtime/worker.py",
+        "app/modules/runtime/apply/service.py",
+        "app/modules/changes/service.py",
+        "app/modules/sources/service.py",
+        "app/modules/runtime/llm/worker.py",
     ]
     for path in removed:
         assert not Path(path).exists(), f"{path} should be removed in hard-cut import mode"
@@ -26,17 +26,17 @@ def _is_shell_reexport_module(path: str) -> bool:
 
 def test_critical_modules_are_not_shell_reexports() -> None:
     must_have_logic = [
-        "app/modules/llm_runtime/tick_runner.py",
-        "app/modules/llm_runtime/message_preflight.py",
-        "app/modules/llm_runtime/message_processor.py",
-        "app/modules/llm_runtime/parse_pipeline.py",
-        "app/modules/llm_runtime/transitions.py",
-        "app/modules/ingestion/connector_runtime.py",
-        "app/modules/core_ingest/pending_proposal_rebuild.py",
-        "app/modules/core_ingest/pending_change_store.py",
-        "app/modules/review_changes/edit_service.py",
-        "app/modules/review_changes/canonical_edit_preview_flow.py",
-        "app/modules/review_changes/canonical_edit_apply_txn.py",
+        "app/modules/runtime/llm/tick_runner.py",
+        "app/modules/runtime/llm/message_preflight.py",
+        "app/modules/runtime/llm/message_processor.py",
+        "app/modules/runtime/llm/parse_pipeline.py",
+        "app/modules/runtime/llm/transitions.py",
+        "app/modules/runtime/connectors/connector_runtime.py",
+        "app/modules/runtime/apply/pending_proposal_rebuild.py",
+        "app/modules/runtime/apply/pending_change_store.py",
+        "app/modules/changes/edit_service.py",
+        "app/modules/changes/canonical_edit_preview_flow.py",
+        "app/modules/changes/canonical_edit_apply_txn.py",
     ]
     for path in must_have_logic:
         assert not _is_shell_reexport_module(path), f"{path} should contain real logic, not re-export shell"

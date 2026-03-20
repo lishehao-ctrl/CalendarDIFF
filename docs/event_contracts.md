@@ -15,8 +15,8 @@ CalendarDIFF now treats event flow as module boundaries inside one backend proce
 4. Notification and audit code consume approved state / outbox rows.
 
 ## Manual edits and taxonomy
-- Manual event CRUD uses `/events/manual*` and records canonical edit audit changes.
-- Course family and raw-type management use `/review/course-work-item-families*` and `/review/course-work-item-raw-types*`.
+- Manual event CRUD uses `/manual/events*` and records canonical edit audit changes.
+- Course family and raw-type management use `/families*` and `/families/raw-types*`.
 
 ## Public API note
 There is no `/users/...` review or taxonomy surface anymore.

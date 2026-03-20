@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
-import { SourceObservabilitySections } from "@/components/source-observability-sections";
 import { SourceSyncProgress } from "@/components/source-sync-progress";
 import { startOnboardingGmailOAuth } from "@/lib/api/onboarding";
 import { createOAuthSession, createSyncRequest, deleteSource as deleteSourceRequest, getSyncRequest, listSources, updateSource } from "@/lib/api/sources";
@@ -40,6 +39,27 @@ function sourceHealthTone(source: SourceRow) {
   if (sourceNeedsAttention(source)) return "pending";
   if (!source.is_active) return "info";
   return "approved";
+}
+
+function buildSourceInsight(source: SourceRow) {
+  if (sourceNeedsAttention(source)) {
+    return {
+      title: source.provider === "gmail" ? "Reconnect Gmail" : "Repair this source",
+      detail: "New changes from this source are not trustworthy yet.",
+    };
+  }
+
+  if (source.sync_progress) {
+    return {
+      title: source.sync_progress.label || "Sync is in progress",
+      detail: null,
+    };
+  }
+
+  return {
+    title: "No action needed",
+    detail: null,
+  };
 }
 
 function formatSourceTitle(source: SourceRow) {
@@ -93,7 +113,7 @@ function ConnectSourceCard({
           {attention ? "Attention" : connected ? "Connected" : "Not connected"}
         </Badge>
       </div>
-      <p className="mt-3 text-sm leading-6 text-[#596270]">{detail}</p>
+      <p className="mt-3 text-sm text-[#596270]">{detail}</p>
       <div className="mt-4">
         <Button asChild>
           <Link href={href}>
@@ -124,41 +144,58 @@ function ConnectedSourceCard({
   basePath: string;
 }) {
   const needsAttention = sourceNeedsAttention(source);
+  const detailHref = withBasePath(basePath, `/sources/${source.source_id}`);
+  const insight = buildSourceInsight(source);
 
   return (
     <Card className={needsAttention ? "animate-surface-enter interactive-lift border-[rgba(215,90,45,0.28)] bg-white p-5" : "animate-surface-enter interactive-lift bg-white p-5"}>
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-base font-semibold text-ink">{formatSourceTitle(source)}</h3>
-            <Badge tone={sourceHealthTone(source)}>{needsAttention ? "Needs attention" : "Healthy"}</Badge>
-            <Badge tone={syncTone(syncLabel)}>{formatStatusLabel(syncLabel, "Idle")}</Badge>
-          </div>
-          <p className="mt-2 text-sm text-[#596270]">{formatSourceSubtitle(source)}</p>
-          <div className="mt-3 flex flex-wrap gap-2 text-sm text-[#314051]">
-            <span className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5">Last {formatDateTime(source.last_polled_at, "Never")}</span>
-            <span className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5">Next {formatDateTime(source.next_poll_at, "Not scheduled")}</span>
-          </div>
-          <SourceObservabilitySections observability={observability} className="mt-4" />
-          {source.sync_progress ? <SourceSyncProgress className="mt-4" progress={source.sync_progress} /> : null}
-          {source.last_error_message ? (
-            <div className="mt-4 max-w-xl rounded-[1rem] border border-[#efc4b5] bg-[#fff3ef] p-4 text-sm text-[#7f3d2a]">
-              {source.last_error_message}
+      <div className="min-w-0">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-base font-semibold text-ink">{formatSourceTitle(source)}</h3>
+                <Badge tone={sourceHealthTone(source)}>{needsAttention ? "Needs attention" : "Healthy"}</Badge>
+                <Badge tone={syncTone(syncLabel)}>{formatStatusLabel(syncLabel, "Idle")}</Badge>
+              </div>
+              <p className="mt-2 text-sm text-[#596270]">{formatSourceSubtitle(source)}</p>
             </div>
-          ) : null}
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2 xl:w-[300px] xl:justify-end">
-          <Button onClick={() => onSync(source.source_id)}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Sync now
-          </Button>
-          <Button asChild variant={needsAttention ? "secondary" : "ghost"}>
-            <Link href={sourceSetupHref(basePath, source.provider)}>Manage</Link>
-          </Button>
-          <Button variant="ghost" onClick={() => onDelete(source.source_id, source.provider)} disabled={busyDelete === source.source_id}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            {busyDelete === source.source_id ? "Archiving..." : "Archive"}
-          </Button>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <Button onClick={() => onSync(source.source_id)}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Sync now
+              </Button>
+              <Button asChild variant="ghost">
+                <Link href={detailHref}>Open details</Link>
+              </Button>
+              {source.provider === "gmail" && needsAttention ? (
+                <Button asChild variant="secondary">
+                  <Link href={sourceSetupHref(basePath, source.provider)}>Reconnect Gmail</Link>
+                </Button>
+              ) : source.provider === "ics" && needsAttention ? (
+                <Button asChild variant="secondary">
+                  <Link href={sourceSetupHref(basePath, source.provider)}>Update Canvas ICS</Link>
+                </Button>
+              ) : null}
+              <Button variant="ghost" onClick={() => onDelete(source.source_id, source.provider)} disabled={busyDelete === source.source_id}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                {busyDelete === source.source_id ? "Archiving..." : "Archive"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5 text-sm text-[#314051]">
+              Updated {formatDateTime(source.last_polled_at, "Never")}
+            </span>
+          </div>
+
+          <div className="rounded-[1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
+            <p className="font-medium text-ink">{insight.title}</p>
+            {insight.detail ? <p className="mt-2 text-[#596270]">{insight.detail}</p> : null}
+          </div>
+
+          {source.sync_progress ? <SourceSyncProgress className="mt-1" progress={source.sync_progress} /> : null}
         </div>
       </div>
     </Card>
@@ -189,7 +226,7 @@ function ArchivedSourceCard({
             {busyReactivate === source.source_id ? "Reactivating..." : "Reactivate"}
           </Button>
           <Button asChild variant="ghost">
-            <Link href={sourceSetupHref(basePath, source.provider)}>Manage</Link>
+            <Link href={withBasePath(basePath, `/sources/${source.source_id}`)}>Open details</Link>
           </Button>
         </div>
       </div>
@@ -409,7 +446,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
             <div className="max-w-3xl">
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Sources</p>
               <h2 className="mt-3 text-3xl font-semibold text-ink">Keep intake trustworthy.</h2>
-              <p className="mt-3 text-sm leading-7 text-[#596270]">Fix attention first, then connect or maintain the sources feeding the timeline.</p>
+              <p className="mt-3 text-sm text-[#596270]">Fix attention first.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge tone={attentionSources.length > 0 ? "pending" : "approved"}>{attentionSources.length} attention</Badge>
@@ -510,7 +547,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
               <ConnectSourceCard
                 provider="Canvas ICS"
                 title="Student calendar feed"
-                detail="Connect or update the Canvas subscription URL for this workspace."
+                detail="Connect or update the calendar feed."
                 connected={activeProviders.has("ics")}
                 attention={activeSources.some((source) => source.provider === "ics" && sourceNeedsAttention(source))}
                 href={withBasePath(basePath, "/sources/connect/canvas-ics")}
@@ -520,7 +557,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
               <ConnectSourceCard
                 provider="Gmail"
                 title="OAuth mailbox"
-                detail="Connect or reconnect the mailbox used for announcement-driven change detection."
+                detail="Connect Gmail if email changes should count."
                 connected={activeProviders.has("gmail")}
                 attention={activeSources.some((source) => source.provider === "gmail" && sourceNeedsAttention(source))}
                 href={withBasePath(basePath, "/sources/connect/gmail")}

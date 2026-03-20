@@ -7,7 +7,7 @@ from sqlalchemy import select
 from app.db.models.input import InputSource, SourceKind
 from app.db.models.review import Change, ChangeOrigin, ChangeSourceRef, ChangeType, ReviewStatus, SourceEventObservation
 from app.db.models.shared import User
-from app.modules.users.course_work_item_families_service import create_course_work_item_family
+from app.modules.families.family_service import create_course_work_item_family
 
 
 def _create_user_with_calendar_source(db_session) -> tuple[User, InputSource]:
@@ -108,7 +108,7 @@ def test_label_learning_preview_and_create_family(client, db_session, auth_heade
     change = _seed_pending_change(db_session, user=user, source=source, raw_label="Lab Paper", title="Lab Paper 1")
     headers = auth_headers(client, user=user)
 
-    preview = client.post(f"/review/changes/{change.id}/label-learning/preview", headers=headers)
+    preview = client.post(f"/changes/{change.id}/label-learning/preview", headers=headers)
     assert preview.status_code == 200
     payload = preview.json()
     assert payload["course_display"] == "CSE 100 WI26"
@@ -116,7 +116,7 @@ def test_label_learning_preview_and_create_family(client, db_session, auth_heade
     assert payload["status"] == "unresolved"
 
     apply = client.post(
-        f"/review/changes/{change.id}/label-learning",
+        f"/changes/{change.id}/label-learning",
         headers=headers,
         json={"mode": "create_family", "canonical_label": "Lab Paper"},
     )
@@ -142,7 +142,7 @@ def test_label_learning_add_alias_to_existing_family(client, db_session, auth_he
     headers = auth_headers(client, user=user)
 
     apply = client.post(
-        f"/review/changes/{change.id}/label-learning",
+        f"/changes/{change.id}/label-learning",
         headers=headers,
         json={"mode": "add_alias", "family_id": family.id},
     )

@@ -5,11 +5,11 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models.ingestion import ConnectorResultStatus, IngestResult, IngestUnresolvedRecord
+from app.db.models.runtime import ConnectorResultStatus, IngestResult, IngestUnresolvedRecord
 from app.db.models.input import IngestTriggerType, InputSource, InputSourceConfig, SourceKind, SyncRequest, SyncRequestStatus
 from app.db.models.review import Change, SourceEventObservation
 from app.db.models.shared import IntegrationOutbox, User
-from app.modules.core_ingest.apply import apply_ingest_result_idempotent
+from app.modules.runtime.apply.apply import apply_ingest_result_idempotent
 from tests.support.payload_builders import (
     build_calendar_payload,
     build_course_parse,
@@ -172,7 +172,7 @@ def test_missing_course_identity_isolated_to_unresolved_bucket_without_review_si
     change_count = db_session.scalar(select(func.count(Change.id)).where(Change.user_id == user.id))
     outbox_count = db_session.scalar(
         select(func.count(IntegrationOutbox.id)).where(
-            IntegrationOutbox.event_type == "review.pending.created",
+            IntegrationOutbox.event_type == "changes.pending.created",
             IntegrationOutbox.aggregate_type == "change_batch",
         )
     )
@@ -266,7 +266,7 @@ def test_missing_course_identity_for_gmail_creates_no_link_side_effects(db_sessi
     change_count = db_session.scalar(select(func.count(Change.id)).where(Change.user_id == user.id))
     outbox_count = db_session.scalar(
         select(func.count(IntegrationOutbox.id)).where(
-            IntegrationOutbox.event_type == "review.pending.created",
+            IntegrationOutbox.event_type == "changes.pending.created",
             IntegrationOutbox.aggregate_type == "change_batch",
         )
     )
@@ -486,7 +486,7 @@ def test_later_valid_ingest_resolves_active_unresolved_record(db_session: Sessio
     change_count = db_session.scalar(select(func.count(Change.id)).where(Change.user_id == user.id))
     outbox_count = db_session.scalar(
         select(func.count(IntegrationOutbox.id)).where(
-            IntegrationOutbox.event_type == "review.pending.created",
+            IntegrationOutbox.event_type == "changes.pending.created",
             IntegrationOutbox.aggregate_type == "change_batch",
         )
     )
@@ -523,7 +523,7 @@ def test_calendar_valid_to_unresolved_retires_active_observation_without_semanti
     baseline_outbox_count = int(
         db_session.scalar(
             select(func.count(IntegrationOutbox.id)).where(
-                IntegrationOutbox.event_type == "review.pending.created",
+                IntegrationOutbox.event_type == "changes.pending.created",
                 IntegrationOutbox.aggregate_type == "change_batch",
             )
         )
@@ -574,7 +574,7 @@ def test_calendar_valid_to_unresolved_retires_active_observation_without_semanti
     current_outbox_count = int(
         db_session.scalar(
             select(func.count(IntegrationOutbox.id)).where(
-                IntegrationOutbox.event_type == "review.pending.created",
+                IntegrationOutbox.event_type == "changes.pending.created",
                 IntegrationOutbox.aggregate_type == "change_batch",
             )
         )
@@ -612,7 +612,7 @@ def test_gmail_valid_to_unresolved_retires_active_observation_without_semantic_s
     baseline_outbox_count = int(
         db_session.scalar(
             select(func.count(IntegrationOutbox.id)).where(
-                IntegrationOutbox.event_type == "review.pending.created",
+                IntegrationOutbox.event_type == "changes.pending.created",
                 IntegrationOutbox.aggregate_type == "change_batch",
             )
         )
@@ -661,7 +661,7 @@ def test_gmail_valid_to_unresolved_retires_active_observation_without_semantic_s
     current_outbox_count = int(
         db_session.scalar(
             select(func.count(IntegrationOutbox.id)).where(
-                IntegrationOutbox.event_type == "review.pending.created",
+                IntegrationOutbox.event_type == "changes.pending.created",
                 IntegrationOutbox.aggregate_type == "change_batch",
             )
         )
@@ -728,7 +728,7 @@ def test_calendar_removed_record_clears_active_unresolved_entry(db_session: Sess
     change_count = db_session.scalar(select(func.count(Change.id)).where(Change.user_id == user.id))
     outbox_count = db_session.scalar(
         select(func.count(IntegrationOutbox.id)).where(
-            IntegrationOutbox.event_type == "review.pending.created",
+            IntegrationOutbox.event_type == "changes.pending.created",
             IntegrationOutbox.aggregate_type == "change_batch",
         )
     )

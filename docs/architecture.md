@@ -13,15 +13,29 @@ User-facing product lanes are converging to:
 
 That process contains these module boundaries:
 - `auth`: session auth, register/login/logout, bootstrap admin
-- `profile`: user profile and timezone settings
-- `input_control_plane`: sources, OAuth session creation, sync requests, webhooks
-- `ingestion`: source polling, connector runtime, parsing orchestration
-- `core_ingest`: apply parsed results into review state and approved entity state
-- `review_changes`: review queues, decisions, edits, label learning
-- `review_taxonomy`: course family and raw-type management under `/review/course-work-item-*`
-- `events`: manual event CRUD under `/events/manual*`
+- `settings`: user profile and timezone settings behind `/settings/profile`
+- `sources`: source CRUD, OAuth session creation, sync requests, observability, webhooks
+- `runtime.connectors`: source polling, connector runtime, provider discovery, replay/bootstrap continuation
+  - includes provider-specific clients under `runtime.connectors.clients`
+- `runtime.llm`: parser queueing, preflight, message processing, provider reduce
+- `runtime.apply`: apply parsed results into observations, proposal rebuild, and approved entity state
+- `runtime.kernel`: shared job lifecycle, queues, retries, outbox/result handoff, sync stage writer
+- `changes`: review queues, decisions, edits, label learning under `/changes*`
+- `families`: course family and raw-type management under `/families*`
+- `manual`: manual event CRUD under `/manual/events*`
 - `notify`: notification enqueue and delivery
-- `llm_runtime` / `llm_gateway`: parser execution, queueing, provider transport
+- `llm_gateway`: model transport, cache policy, and invocation profiles
+
+`sync_requests` is the single user-visible runtime state machine.
+
+Fine-grained runtime truth now lives on:
+
+- `stage`
+- `substage`
+- `stage_updated_at`
+- `progress_json`
+
+The coarse `status` field remains, but operator-facing observability should read explicit stage data rather than reconstructing state from incidental job payload fields.
 
 ## Operational observability
 
@@ -36,25 +50,43 @@ This distinction matters for:
 - token/cache/latency accounting
 - user-facing source health and cost interpretation
 
+Each sync advances through explicit runtime stages:
+
+- `connector_fetch`
+- `llm_queue`
+- `llm_parse`
+- `provider_reduce`
+- `result_ready`
+- `applying`
+- `completed`
+- `failed`
+
+The backend workbench overview should not be reconstructed in the UI from multiple lane calls.
+`GET /changes/summary` is the current aggregated intake/workbench contract:
+
+- pending `Changes` count
+- `Families` governance attention
+- active `Manual` override count
+- aggregated `Sources` posture
+- one backend-chosen recommended lane/reason
+
 ## Entry points
 - Default backend entrypoint: `services/app_api/main.py`
-- Compatibility export: `services/public_api/main.py`
 
-There is no default split runtime entrypoint set anymore.
+There is no compatibility public-app wrapper or default split runtime entrypoint anymore.
 
 ## Public route groups
 - `/auth/*`
-- `/profile/me`
+- `/settings/profile`
 - `/sources/*`
 - `/onboarding/*`
-- `/review/changes*`
-- `/review/course-work-item-families*`
-- `/review/course-work-item-raw-types*`
-- `/events/manual*`
+- `/changes*`
+- `/families*`
+- `/manual/events*`
 - `/health`
 
 ## Internal execution
-Worker loops for ingestion, review apply, notification dispatch, and llm parsing run inside the monolith as background tasks. They still use their existing enable/tick env vars, but they are no longer separate deployable services.
+Worker loops for `runtime.connectors`, `runtime.apply`, notification dispatch, and `runtime.llm` run inside the monolith as background tasks. They still use their existing enable/tick env vars, but they are no longer separate deployable services.
 
 ## Observability stance
 - Source intake is interpreted in two phases:

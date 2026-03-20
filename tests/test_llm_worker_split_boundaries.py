@@ -4,9 +4,9 @@ from pathlib import Path
 
 
 def test_tick_runner_only_contains_orchestration_logic() -> None:
-    content = Path("app/modules/llm_runtime/tick_runner.py").read_text(encoding="utf-8")
+    content = Path("app/modules/runtime/llm/tick_runner.py").read_text(encoding="utf-8")
 
-    assert "app.modules.llm_runtime.message_processor" in content
+    assert "app.modules.runtime.llm.message_processor" in content
     assert "parse_with_llm(" not in content
     assert "apply_llm_failure_transition(" not in content
     assert "mark_llm_success(" not in content

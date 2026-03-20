@@ -4,10 +4,10 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from app.core.security import encrypt_secret
-from app.db.models.ingestion import ConnectorResultStatus, IngestResult
+from app.db.models.runtime import ConnectorResultStatus, IngestResult
 from app.db.models.input import IngestTriggerType, InputSource, InputSourceConfig, InputSourceCursor, InputSourceSecret, SourceKind, SyncRequest, SyncRequestStatus
 from app.db.models.shared import User
-from app.modules.core_ingest.apply import apply_ingest_result_idempotent
+from app.modules.runtime.apply.apply import apply_ingest_result_idempotent
 from tests.support.payload_builders import (
     build_calendar_payload,
     build_course_parse,
@@ -156,7 +156,7 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
     assert second_apply["changes_created"] == 0
 
     headers = auth_headers(client, user=user)
-    review_response = client.get("/review/changes?review_status=pending", headers=headers)
+    review_response = client.get("/changes?review_status=pending", headers=headers)
     assert review_response.status_code == 200
     review_rows = review_response.json()
     assert len(review_rows) == 1
@@ -167,7 +167,7 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
 
     change_id = review_rows[0]["id"]
     approve_response = client.post(
-        f"/review/changes/{change_id}/decisions",
+        f"/changes/{change_id}/decisions",
         headers=headers,
         json={"decision": "approve", "note": "merge approve"},
     )
@@ -176,7 +176,7 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
     assert approve_response.json()["idempotent"] is False
 
     approve_again = client.post(
-        f"/review/changes/{change_id}/decisions",
+        f"/changes/{change_id}/decisions",
         headers=headers,
         json={"decision": "approve", "note": "noop"},
     )
@@ -184,20 +184,20 @@ def test_cross_source_merge_produces_single_pending_review_item(client, db_sessi
     assert approve_again.json()["idempotent"] is True
 
     feed_response = client.get(
-        f"/review/changes?review_status=approved&source_id={calendar_source.id}",
+        f"/changes?review_status=approved&source_id={calendar_source.id}",
         headers=headers,
     )
     assert feed_response.status_code == 200
     assert len(feed_response.json()) == 1
 
     feed_response_gmail = client.get(
-        f"/review/changes?review_status=approved&source_id={gmail_source.id}",
+        f"/changes?review_status=approved&source_id={gmail_source.id}",
         headers=headers,
     )
     assert feed_response_gmail.status_code == 200
     assert len(feed_response_gmail.json()) == 1
 
-    rejected_view = client.get("/review/changes?review_status=pending", headers=headers)
+    rejected_view = client.get("/changes?review_status=pending", headers=headers)
     assert rejected_view.status_code == 200
     assert rejected_view.json() == []
 
@@ -273,7 +273,7 @@ def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session
     apply_ingest_result_idempotent(db_session, request_id="merge-round1-gmail")
 
     headers = auth_headers(client, user=user)
-    pending_round1 = client.get("/review/changes?review_status=pending", headers=headers)
+    pending_round1 = client.get("/changes?review_status=pending", headers=headers)
     assert pending_round1.status_code == 200
     round1_rows = pending_round1.json()
     assert len(round1_rows) == 1
@@ -284,7 +284,7 @@ def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session
     assert source_ids == {calendar_source.id, gmail_source.id}
 
     approve_round1 = client.post(
-        f"/review/changes/{round1_change['id']}/decisions",
+        f"/changes/{round1_change['id']}/decisions",
         headers=headers,
         json={"decision": "approve", "note": "approve round1"},
     )
@@ -337,7 +337,7 @@ def test_cross_source_merge_across_dates_keeps_same_topic_uid(client, db_session
     _seed_result(db_session, source=gmail_source, request_id="merge-round2-gmail", records=round2_gmail_records)
     apply_ingest_result_idempotent(db_session, request_id="merge-round2-gmail")
 
-    pending_round2 = client.get("/review/changes?review_status=pending", headers=headers)
+    pending_round2 = client.get("/changes?review_status=pending", headers=headers)
     assert pending_round2.status_code == 200
     round2_rows = pending_round2.json()
     assert len(round2_rows) == 1

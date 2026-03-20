@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  ChangesWorkbenchSummary,
   CourseIdentity,
   CourseWorkItemFamily,
   CourseWorkItemFamilyStatus,
@@ -13,14 +14,16 @@ import type {
   OnboardingStatus,
   RawTypeSuggestionDecisionResponse,
   RawTypeSuggestionItem,
-  ReviewBatchDecisionResponse,
-  ReviewChange,
-  ReviewEditApplyResponse,
-  ReviewEditContext,
-  ReviewEditPreviewResponse,
-  ReviewEditRequest,
-  ReviewSummary,
+  ChangeBatchDecisionResponse,
+  ChangeItem,
+  ChangeEditApplyResponse,
+  ChangeEditContext,
+  ChangeEditPreviewResponse,
+  ChangeEditRequest,
   SourceRow,
+  SourceObservabilityResponse,
+  SourceObservabilitySync,
+  SourceSyncHistoryResponse,
   SyncStatus,
   UserProfile,
 } from "@/lib/types";
@@ -29,7 +32,7 @@ type DemoState = {
   user: UserProfile;
   onboarding: OnboardingStatus;
   sources: SourceRow[];
-  changes: ReviewChange[];
+  changes: ChangeItem[];
   evidence: Record<string, EvidencePreviewResponse>;
   families: CourseWorkItemFamily[];
   rawTypes: CourseWorkItemRawType[];
@@ -51,7 +54,7 @@ function createInitialDemoState(): DemoState {
     familyRow(15, "CHEM", 6, "A", "WI", 26, "Lab Report", ["lab report", "write-up"]),
   ];
 
-  const changes: ReviewChange[] = [
+  const changes: ChangeItem[] = [
     changeRow({
       id: 401,
       courseDisplay: "CSE 120 WI26",
@@ -216,6 +219,14 @@ function createInitialDemoState(): DemoState {
         sync_state: "idle",
         config_state: "stable",
         runtime_state: "active",
+        operator_guidance: {
+          recommended_action: "investigate_runtime",
+          severity: "warning",
+          reason_code: "oauth_expired",
+          message: "Reconnect Gmail before trusting replay.",
+          related_request_id: null,
+          progress_age_seconds: null,
+        },
       },
     ],
     changes,
@@ -364,13 +375,13 @@ function changeRow(input: {
   beforeTime: string | null;
   afterDate: string | null;
   afterTime: string | null;
-  primarySource: ReviewChange["primary_source"];
-  proposalSources: ReviewChange["proposal_sources"];
+  primarySource: ChangeItem["primary_source"];
+  proposalSources: ChangeItem["proposal_sources"];
   priorityLabel: string;
   reviewStatus: string;
   sourceLabelOld: string | null;
   sourceLabelNew: string | null;
-}) : ReviewChange {
+}) : ChangeItem {
   const ordinal = Number((input.label.match(/(\d+)/)?.[1] || "0")) || null;
   return {
     id: input.id,
@@ -442,7 +453,7 @@ function manualRow(
   };
 }
 
-function buildEvidence(changes: ReviewChange[]): Record<string, EvidencePreviewResponse> {
+function buildEvidence(changes: ChangeItem[]): Record<string, EvidencePreviewResponse> {
   const out: Record<string, EvidencePreviewResponse> = {};
   for (const change of changes) {
     const after = change.after_event || change.before_event;
@@ -511,6 +522,85 @@ function replaceFamilyRawTypes(familyId: number, nextRawTypes: string[]) {
 
 export function getDemoPreviewState() {
   return clone(demoState);
+}
+
+function buildDemoObservabilitySync(sourceId: number, phase: "bootstrap" | "replay", status: "RUNNING" | "SUCCEEDED" | "FAILED"): SourceObservabilitySync {
+  const source = demoState.sources.find((row) => row.source_id === sourceId);
+  return {
+    request_id: `demo-${phase}-${sourceId}`,
+    phase,
+    trigger_type: phase === "bootstrap" ? "manual" : "scheduler",
+    status,
+    created_at: nowIso,
+    updated_at: nowIso,
+    stage: status === "RUNNING" ? "llm_parse" : "completed",
+    substage: status === "RUNNING" ? "provider_reduce" : "completed",
+    stage_updated_at: nowIso,
+    applied: status === "SUCCEEDED",
+    applied_at: status === "SUCCEEDED" ? nowIso : null,
+    elapsed_ms: sourceId === 1 ? (phase === "bootstrap" ? 4620 : 480) : phase === "bootstrap" ? 18600 : 3290,
+    error_code: status === "FAILED" ? source?.last_error_code || "attention" : null,
+    error_message: status === "FAILED" ? source?.last_error_message || "Preview mode replay is blocked." : null,
+    connector_result: { status: status === "FAILED" ? "error" : "changed", error_code: null, error_message: null },
+    llm_usage: phase === "bootstrap"
+      ? {
+          total_tokens: sourceId === 1 ? 3990 : 30010,
+          cached_input_tokens: sourceId === 1 ? 0 : 20110,
+          latency_ms_total: sourceId === 1 ? 4620 : 18600,
+        }
+      : {
+          total_tokens: sourceId === 1 ? 361 : 5260,
+          cached_input_tokens: sourceId === 1 ? 0 : 3360,
+          latency_ms_total: sourceId === 1 ? 480 : 3290,
+        },
+    progress: source?.sync_progress || null,
+  };
+}
+
+function buildDemoSourceObservability(sourceId: number): SourceObservabilityResponse {
+  if (sourceId === 1) {
+    return {
+      source_id: 1,
+      active_request_id: null,
+      bootstrap: buildDemoObservabilitySync(1, "bootstrap", "SUCCEEDED"),
+      latest_replay: buildDemoObservabilitySync(1, "replay", "SUCCEEDED"),
+      active: null,
+      operator_guidance: null,
+    };
+  }
+
+  return {
+    source_id: 2,
+    active_request_id: "demo-replay-2",
+    bootstrap: buildDemoObservabilitySync(2, "bootstrap", "SUCCEEDED"),
+    latest_replay: buildDemoObservabilitySync(2, "replay", "FAILED"),
+    active: buildDemoObservabilitySync(2, "replay", "RUNNING"),
+    operator_guidance: {
+      recommended_action: "investigate_runtime",
+      severity: "warning",
+      reason_code: "oauth_expired",
+      message: "Reconnect Gmail before trusting replay.",
+      related_request_id: "demo-replay-2",
+      progress_age_seconds: 180,
+    },
+  };
+}
+
+function buildDemoSourceSyncHistory(sourceId: number): SourceSyncHistoryResponse {
+  return {
+    source_id: sourceId,
+    items:
+      sourceId === 1
+        ? [
+            buildDemoObservabilitySync(1, "replay", "SUCCEEDED"),
+            { ...buildDemoObservabilitySync(1, "replay", "SUCCEEDED"), request_id: "demo-replay-1-prev", updated_at: "2026-03-17T04:50:00.000Z" },
+          ]
+        : [
+            buildDemoObservabilitySync(2, "replay", "FAILED"),
+            { ...buildDemoObservabilitySync(2, "replay", "SUCCEEDED"), request_id: "demo-replay-2-prev", status: "SUCCEEDED", error_code: null, error_message: null, updated_at: "2026-03-17T04:40:00.000Z" },
+            { ...buildDemoObservabilitySync(2, "replay", "FAILED"), request_id: "demo-replay-2-prev-2", updated_at: "2026-03-16T04:30:00.000Z" },
+          ],
+  };
 }
 
 function delay(ms: number) {
@@ -589,15 +679,64 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   if (pathname === "/onboarding/term-binding") {
     return clone(demoState.onboarding) as T;
   }
-  if (pathname === "/review/summary") {
+  if (pathname === "/changes/summary") {
     const pending = demoState.changes.filter((row) => row.review_status === "pending").length;
-    return {
+    const activeSources = demoState.sources.filter((row) => row.is_active);
+    const attentionSources = activeSources.filter(
+      (row) =>
+        Boolean(row.last_error_message) ||
+        row.operator_guidance?.severity === "warning" ||
+        row.operator_guidance?.severity === "blocking" ||
+        row.runtime_state === "rebind_pending",
+    );
+    const blockingSources = attentionSources.filter((row) => row.operator_guidance?.severity === "blocking");
+    const pendingSuggestions = demoState.rawTypeSuggestions.filter((row) => row.status === "pending").length;
+    const manualActiveCount = demoState.manualEvents.filter((row) => row.lifecycle !== "removed").length;
+    const summary: ChangesWorkbenchSummary = {
       changes_pending: pending,
-      link_candidates_pending: demoState.rawTypeSuggestions.filter((item) => item.status === "pending").length,
+      recommended_lane: pending > 0 ? "changes" : pendingSuggestions > 0 ? "families" : null,
+      recommended_lane_reason_code:
+        pending > 0 ? "changes_pending" : pendingSuggestions > 0 ? "family_governance_pending" : "all_clear",
+      recommended_action_reason:
+        pending > 0
+          ? `${pending} pending change proposals are waiting for review decisions.`
+          : pendingSuggestions > 0
+            ? "Family or raw-type governance items need attention."
+            : "No immediate lane action is required.",
+      sources: {
+        active_count: activeSources.length,
+        running_count: activeSources.filter((row) => row.sync_state === "running").length,
+        queued_count: activeSources.filter((row) => row.sync_state === "queued").length,
+        attention_count: attentionSources.length,
+        blocking_count: blockingSources.length,
+        recommended_action: blockingSources.length > 0 ? "investigate_runtime" : attentionSources.length > 0 ? "continue_review_with_caution" : "continue_review",
+        severity: blockingSources.length > 0 ? "blocking" : attentionSources.length > 0 ? "warning" : "info",
+        reason_code: blockingSources.length > 0 ? "latest_sync_failed" : attentionSources.length > 0 ? "sync_running" : "source_idle",
+        message:
+          blockingSources.length > 0
+            ? "A source needs runtime attention before lane state is fully trustworthy."
+            : attentionSources.length > 0
+              ? "Some sources still need attention while you continue review."
+              : "No active sync is running. Continue reviewing changes.",
+        related_request_id: attentionSources[0]?.active_request_id || null,
+        progress_age_seconds: null,
+      },
+      families: {
+        attention_count: pendingSuggestions,
+        pending_raw_type_suggestions: pendingSuggestions,
+        mappings_state: demoState.familyStatus.state,
+        last_rebuilt_at: demoState.familyStatus.last_rebuilt_at,
+        last_error: demoState.familyStatus.last_error,
+      },
+      manual: {
+        active_event_count: manualActiveCount,
+        lane_role: "fallback",
+      },
       generated_at: nowIso,
-    } as T;
+    };
+    return summary as T;
   }
-  if (pathname === "/review/changes" && method === "GET") {
+  if (pathname === "/changes" && method === "GET") {
     const reviewStatus = (url.searchParams.get("review_status") || "pending").toLowerCase();
     const sourceId = url.searchParams.get("source_id");
     let rows = demoState.changes.slice();
@@ -609,20 +748,20 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     }
     return clone(rows) as T;
   }
-  if (/^\/review\/changes\/\d+$/.test(pathname) && method === "GET") {
+  if (/^\/changes\/\d+$/.test(pathname) && method === "GET") {
     const changeId = Number(pathname.split("/").pop());
     return clone(demoState.changes.find((row) => row.id === changeId) || null) as T;
   }
-  if (/^\/review\/changes\/\d+\/views$/.test(pathname) && method === "PATCH") {
-    const changeId = Number(pathname.split("/")[3]);
+  if (/^\/changes\/\d+\/views$/.test(pathname) && method === "PATCH") {
+    const changeId = Number(pathname.split("/")[2]);
     const row = demoState.changes.find((item) => item.id === changeId);
     if (!row) throw new Error("Review change not found");
     row.viewed_at = nowIso;
     row.viewed_note = body?.note || null;
     return clone(row) as T;
   }
-  if (/^\/review\/changes\/\d+\/decisions$/.test(pathname) && method === "POST") {
-    const changeId = Number(pathname.split("/")[3]);
+  if (/^\/changes\/\d+\/decisions$/.test(pathname) && method === "POST") {
+    const changeId = Number(pathname.split("/")[2]);
     const row = demoState.changes.find((item) => item.id === changeId);
     if (!row) throw new Error("Review change not found");
     row.review_status = body?.decision === "reject" ? "rejected" : "approved";
@@ -636,7 +775,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
       idempotent: false,
     }) as T;
   }
-  if (pathname === "/review/changes/batch/decisions" && method === "POST") {
+  if (pathname === "/changes/batch/decisions" && method === "POST") {
     const ids = Array.isArray(body?.ids) ? body.ids.map(Number) : [];
     let succeeded = 0;
     for (const id of ids) {
@@ -647,7 +786,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
       row.review_note = body?.note || null;
       succeeded += 1;
     }
-    const response: ReviewBatchDecisionResponse = {
+    const response: ChangeBatchDecisionResponse = {
       decision: body?.decision === "reject" ? "reject" : "approve",
       total_requested: ids.length,
       succeeded,
@@ -665,11 +804,11 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     };
     return clone(response) as T;
   }
-  if (/^\/review\/changes\/\d+\/edit-context$/.test(pathname) && method === "GET") {
-    const changeId = Number(pathname.split("/")[3]);
+  if (/^\/changes\/\d+\/edit-context$/.test(pathname) && method === "GET") {
+    const changeId = Number(pathname.split("/")[2]);
     const row = demoState.changes.find((item) => item.id === changeId);
     if (!row || !row.after_event) throw new Error("Review change not found");
-    const editable: ReviewEditContext = {
+    const editable: ChangeEditContext = {
       change_id: row.id,
       entity_uid: row.entity_uid,
       editable_event: {
@@ -690,13 +829,13 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     };
     return clone(editable) as T;
   }
-  if (/^\/review\/changes\/\d+\/evidence\/(before|after)\/preview$/.test(pathname) && method === "GET") {
-    const match = pathname.match(/^\/review\/changes\/(\d+)\/evidence\/(before|after)\/preview$/);
+  if (/^\/changes\/\d+\/evidence\/(before|after)\/preview$/.test(pathname) && method === "GET") {
+    const match = pathname.match(/^\/changes\/(\d+)\/evidence\/(before|after)\/preview$/);
     const key = `${match?.[1]}:${match?.[2]}`;
     return clone(demoState.evidence[key]) as T;
   }
-  if (pathname === "/review/edits/preview" && method === "POST") {
-    const request = body as ReviewEditRequest;
+  if (pathname === "/changes/edits/preview" && method === "POST") {
+    const request = body as ChangeEditRequest;
     const changeId = request?.target?.change_id;
     const row = demoState.changes.find((item) => item.id === changeId);
     if (!row || !row.after_event) throw new Error("Review change not found");
@@ -713,7 +852,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     if (request.patch.time_precision) {
       next.time_precision = request.patch.time_precision;
     }
-    const response: ReviewEditPreviewResponse = {
+    const response: ChangeEditPreviewResponse = {
       mode: request.mode,
       entity_uid: row.entity_uid,
       change_id: row.id,
@@ -726,8 +865,8 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     };
     return response as T;
   }
-  if (pathname === "/review/edits" && method === "POST") {
-    const request = body as ReviewEditRequest;
+  if (pathname === "/changes/edits" && method === "POST") {
+    const request = body as ChangeEditRequest;
     const changeId = request?.target?.change_id;
     const row = demoState.changes.find((item) => item.id === changeId);
     if (!row || !row.after_event) throw new Error("Review change not found");
@@ -735,7 +874,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     if (request.patch.due_date !== undefined) row.after_event.due_date = request.patch.due_date;
     if (request.patch.due_time !== undefined) row.after_event.due_time = request.patch.due_time;
     if (request.patch.time_precision) row.after_event.time_precision = request.patch.time_precision;
-    const response: ReviewEditApplyResponse = {
+    const response: ChangeEditApplyResponse = {
       mode: request.mode,
       applied: true,
       idempotent: false,
@@ -747,8 +886,8 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     };
     return response as T;
   }
-  if (/^\/review\/changes\/\d+\/label-learning\/preview$/.test(pathname) && method === "POST") {
-    const changeId = Number(pathname.split("/")[3]);
+  if (/^\/changes\/\d+\/label-learning\/preview$/.test(pathname) && method === "POST") {
+    const changeId = Number(pathname.split("/")[2]);
     const row = demoState.changes.find((item) => item.id === changeId);
     const preview: LabelLearningPreview = {
       change_id: changeId,
@@ -765,8 +904,8 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     };
     return preview as T;
   }
-  if (/^\/review\/changes\/\d+\/label-learning$/.test(pathname) && method === "POST") {
-    const changeId = Number(pathname.split("/")[3]);
+  if (/^\/changes\/\d+\/label-learning$/.test(pathname) && method === "POST") {
+    const changeId = Number(pathname.split("/")[2]);
     const row = demoState.changes.find((item) => item.id === changeId);
     const response: LabelLearningApplyResponse = {
       applied: true,
@@ -783,10 +922,10 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     };
     return response as T;
   }
-  if (pathname === "/review/course-work-item-families" && method === "GET") {
+  if (pathname === "/families" && method === "GET") {
     return clone(demoState.families) as T;
   }
-  if (pathname === "/review/course-work-item-families" && method === "POST") {
+  if (pathname === "/families" && method === "POST") {
     const nextId = Math.max(...demoState.families.map((item) => item.id)) + 1;
     const rawTypes = Array.isArray(body?.raw_types) ? body.raw_types.filter((item: unknown) => typeof item === "string" && item.trim()) : [];
     const next: CourseWorkItemFamily = {
@@ -806,7 +945,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     replaceFamilyRawTypes(next.id, rawTypes);
     return clone(next) as T;
   }
-  if (/^\/review\/course-work-item-families\/\d+$/.test(pathname) && method === "PATCH") {
+  if (/^\/families\/\d+$/.test(pathname) && method === "PATCH") {
     const familyId = Number(pathname.split("/").pop());
     const family = demoState.families.find((item) => item.id === familyId);
     if (!family) throw new Error("Family not found");
@@ -822,10 +961,10 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     }
     return clone(demoState.families.find((item) => item.id === familyId) || family) as T;
   }
-  if (pathname === "/review/course-work-item-families/status") {
+  if (pathname === "/families/status") {
     return clone(demoState.familyStatus) as T;
   }
-  if (pathname === "/review/course-work-item-families/courses") {
+  if (pathname === "/families/courses") {
     const courses: CourseIdentity[] = demoState.families.map((family) => ({
       course_display: family.course_display,
       course_dept: family.course_dept,
@@ -836,7 +975,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     }));
     return { courses } as T;
   }
-  if (pathname === "/review/course-work-item-raw-types" && method === "GET") {
+  if (pathname === "/families/raw-types" && method === "GET") {
     const familyId = url.searchParams.get("family_id");
     const courseDept = url.searchParams.get("course_dept");
     const courseNumber = url.searchParams.get("course_number");
@@ -848,7 +987,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     });
     return clone(rows) as T;
   }
-  if (pathname === "/review/course-work-item-raw-types/relink" && method === "POST") {
+  if (pathname === "/families/raw-types/relink" && method === "POST") {
     const rawTypeId = Number(body?.raw_type_id);
     const familyId = Number(body?.family_id);
     const rawType = demoState.rawTypes.find((item) => item.id === rawTypeId);
@@ -878,7 +1017,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
       course_year2: targetFamily.course_year2,
     }) as T;
   }
-  if (pathname === "/review/raw-type-suggestions" && method === "GET") {
+  if (pathname === "/families/raw-type-suggestions" && method === "GET") {
     const status = (url.searchParams.get("status") || "pending").toLowerCase();
     const limit = Number(url.searchParams.get("limit") || "50");
     const rows = demoState.rawTypeSuggestions
@@ -886,7 +1025,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
       .slice(0, Number.isFinite(limit) ? limit : 50);
     return clone(rows) as T;
   }
-  if (/^\/review\/raw-type-suggestions\/\d+\/decisions$/.test(pathname) && method === "POST") {
+  if (/^\/families\/raw-type-suggestions\/\d+\/decisions$/.test(pathname) && method === "POST") {
     const suggestionId = Number(pathname.split("/")[3]);
     const suggestion = demoState.rawTypeSuggestions.find((item) => item.id === suggestionId);
     if (!suggestion) throw new Error("Raw type suggestion not found");
@@ -918,18 +1057,18 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     };
     return clone(response) as T;
   }
-  if (pathname === "/profile/me" && method === "GET") {
+  if (pathname === "/settings/profile" && method === "GET") {
     return clone(demoState.user) as T;
   }
-  if (pathname === "/profile/me" && method === "PATCH") {
+  if (pathname === "/settings/profile" && method === "PATCH") {
     demoState.user = { ...demoState.user, ...(body || {}) };
     return clone(demoState.user) as T;
   }
-  if (pathname === "/events/manual" && method === "GET") {
+  if (pathname === "/manual/events" && method === "GET") {
     const includeRemoved = url.searchParams.get("include_removed") === "true";
     return clone(includeRemoved ? demoState.manualEvents : demoState.manualEvents.filter((row) => row.lifecycle !== "removed")) as T;
   }
-  if (pathname === "/events/manual" && method === "POST") {
+  if (pathname === "/manual/events" && method === "POST") {
     const family = demoState.families.find((item) => item.id === body?.family_id) || demoState.families[0];
     const next = manualRow(
       `man-${Date.now()}`,
@@ -950,7 +1089,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     };
     return response as T;
   }
-  if (/^\/events\/manual\/[^/]+$/.test(pathname) && method === "PATCH") {
+  if (/^\/manual\/events\/[^/]+$/.test(pathname) && method === "PATCH") {
     const entityUid = decodeURIComponent(pathname.split("/").pop() || "");
     const event = demoState.manualEvents.find((item) => item.entity_uid === entityUid);
     if (!event) throw new Error("Manual event not found");
@@ -970,7 +1109,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
       event: clone(event),
     } as T;
   }
-  if (/^\/events\/manual\/[^/]+$/.test(pathname) && method === "DELETE") {
+  if (/^\/manual\/events\/[^/]+$/.test(pathname) && method === "DELETE") {
     const entityUid = decodeURIComponent(pathname.split("/").pop() || "");
     const event = demoState.manualEvents.find((item) => item.entity_uid === entityUid);
     if (!event) throw new Error("Manual event not found");
@@ -984,6 +1123,14 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
       lifecycle: event.lifecycle,
       event: clone(event),
     } as T;
+  }
+  if (/^\/sources\/\d+\/observability$/.test(pathname) && method === "GET") {
+    const sourceId = Number(pathname.split("/")[2]);
+    return clone(buildDemoSourceObservability(sourceId)) as T;
+  }
+  if (/^\/sources\/\d+\/sync-history$/.test(pathname) && method === "GET") {
+    const sourceId = Number(pathname.split("/")[2]);
+    return clone(buildDemoSourceSyncHistory(sourceId)) as T;
   }
   if (pathname === "/sources" && method === "GET") {
     const status = url.searchParams.get("status") || "active";

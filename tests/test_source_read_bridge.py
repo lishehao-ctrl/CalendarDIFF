@@ -4,10 +4,10 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from app.core.security import encrypt_secret
-from app.db.models.ingestion import ConnectorResultStatus, IngestResult
+from app.db.models.runtime import ConnectorResultStatus, IngestResult
 from app.db.models.input import IngestTriggerType, InputSource, InputSourceConfig, InputSourceCursor, InputSourceSecret, SourceKind, SyncRequest, SyncRequestStatus
 from app.db.models.shared import User
-from app.modules.core_ingest.apply import apply_ingest_result_idempotent
+from app.modules.runtime.apply.apply import apply_ingest_result_idempotent
 from tests.support.payload_builders import (
     build_calendar_payload,
     build_course_parse,
@@ -55,23 +55,21 @@ def _create_calendar_source(db_session) -> tuple[User, InputSource]:
 
 
 def _seed_calendar_ingest_result(db_session, *, source: InputSource, request_id: str) -> None:
-    start = datetime(2026, 3, 2, 10, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 4, 7, 59, tzinfo=timezone.utc)
     record = {
         "record_type": "calendar.event.extracted",
         "payload": build_calendar_payload(
             external_event_id="bridge-evt-1",
-            title="Bridge Homework",
+            title="HW1 Due",
             start_at=start,
             end_at=start + timedelta(hours=1),
             course_parse=build_course_parse(
                 dept="CSE",
-                number=120,
-                quarter="WI",
-                year2=26,
-                confidence=0.88,
-                evidence="CSE 120",
+                number=100,
+                confidence=0.92,
+                evidence="CSE 100",
             ),
-            event_parts=build_event_parts(type="deadline", index=1, confidence=0.8, evidence="Bridge Homework"),
+            event_parts=build_event_parts(type="deadline", index=1, confidence=0.9, evidence="HW1"),
             link_signals=build_link_signals(),
         ),
     }
@@ -104,11 +102,12 @@ def _seed_calendar_ingest_result(db_session, *, source: InputSource, request_id:
 def test_feed_read_source_id_via_review_pool(client, db_session, auth_headers) -> None:
     user, source = _create_calendar_source(db_session)
     _seed_calendar_ingest_result(db_session, source=source, request_id="bridge-read-req-1")
-    apply_ingest_result_idempotent(db_session, request_id="bridge-read-req-1")
+    apply_result = apply_ingest_result_idempotent(db_session, request_id="bridge-read-req-1")
+    assert apply_result["changes_created"] == 1
 
     headers = auth_headers(client, user=user)
 
-    pending_response = client.get("/review/changes?review_status=pending", headers=headers)
+    pending_response = client.get("/changes?review_status=pending", headers=headers)
     assert pending_response.status_code == 200
     pending_rows = pending_response.json()
     assert len(pending_rows) == 1
@@ -116,7 +115,7 @@ def test_feed_read_source_id_via_review_pool(client, db_session, auth_headers) -
     change_id = pending_rows[0]["id"]
 
     decision_response = client.post(
-        f"/review/changes/{change_id}/decisions",
+        f"/changes/{change_id}/decisions",
         headers=headers,
         json={"decision": "approve", "note": "bridge-approve"},
     )
@@ -124,7 +123,7 @@ def test_feed_read_source_id_via_review_pool(client, db_session, auth_headers) -
     assert decision_response.json()["review_status"] == "approved"
 
     feed_response = client.get(
-        f"/review/changes?review_status=approved&source_id={source.id}",
+        f"/changes?review_status=approved&source_id={source.id}",
         headers=headers,
     )
     assert feed_response.status_code == 200

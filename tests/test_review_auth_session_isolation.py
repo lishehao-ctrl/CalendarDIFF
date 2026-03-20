@@ -57,12 +57,12 @@ def test_review_summary_is_scoped_to_authenticated_user(client, db_session, auth
     db_session.commit()
 
     authenticate_client(client, user=user_a)
-    response_a = client.get("/review/summary", headers={"X-API-Key": "test-api-key"})
+    response_a = client.get("/changes/summary", headers={"X-API-Key": "test-api-key"})
     assert response_a.status_code == 200
     assert response_a.json()["changes_pending"] == 1
 
     client.cookies.clear()
     authenticate_client(client, user=user_b)
-    response_b = client.get("/review/summary", headers={"X-API-Key": "test-api-key"})
+    response_b = client.get("/changes/summary", headers={"X-API-Key": "test-api-key"})
     assert response_b.status_code == 200
     assert response_b.json()["changes_pending"] == 0

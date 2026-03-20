@@ -9,10 +9,10 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
-import { applyReviewEdit, getReviewChangeEditContext, previewReviewEdit } from "@/lib/api/review";
+import { applyChangeEdit, getChangeEditContext, previewChangeEdit } from "@/lib/api/changes";
 import { withBasePath } from "@/lib/demo-mode";
 import { formatCourseDisplay, formatSemanticDue, formatStatusLabel } from "@/lib/presenters";
-import type { ReviewEditContext, ReviewEditMode, ReviewEditPreviewResponse, ReviewEditRequest } from "@/lib/types";
+import type { ChangeEditContext, ChangeEditMode, ChangeEditPreviewResponse, ChangeEditRequest } from "@/lib/types";
 import { useApiResource } from "@/lib/use-api-resource";
 import { useRouter } from "next/navigation";
 
@@ -21,7 +21,7 @@ function ReviewEditEventCard({
   event,
 }: {
   title: string;
-  event: ReviewEditPreviewResponse["base"];
+  event: ChangeEditPreviewResponse["base"];
 }) {
   return (
     <div className="rounded-[1.2rem] border border-line/80 bg-white/70 p-4 text-sm text-[#314051]">
@@ -37,9 +37,9 @@ function ReviewEditEventCard({
   );
 }
 
-export function ReviewChangeEditPageClient({ mode, changeId, basePath = "" }: { mode: ReviewEditMode; changeId: number; basePath?: string }) {
+export function ChangeItemEditPageClient({ mode, changeId, basePath = "" }: { mode: ChangeEditMode; changeId: number; basePath?: string }) {
   const router = useRouter();
-  const { data, loading, error } = useApiResource<ReviewEditContext>(() => getReviewChangeEditContext(changeId), [changeId]);
+  const { data, loading, error } = useApiResource<ChangeEditContext>(() => getChangeEditContext(changeId), [changeId]);
   const [form, setForm] = useState({
     due_date: "",
     due_time: "",
@@ -52,7 +52,7 @@ export function ReviewChangeEditPageClient({ mode, changeId, basePath = "" }: { 
     course_year2: "",
     reason: ""
   });
-  const [preview, setPreview] = useState<ReviewEditPreviewResponse | null>(null);
+  const [preview, setPreview] = useState<ChangeEditPreviewResponse | null>(null);
   const [busy, setBusy] = useState<"preview" | "apply" | null>(null);
   const [banner, setBanner] = useState<{ tone: "info" | "error"; text: string } | null>(null);
 
@@ -76,10 +76,10 @@ export function ReviewChangeEditPageClient({ mode, changeId, basePath = "" }: { 
   }, [data]);
 
   const pageTitle = useMemo(() => {
-    return data?.editable_event.family_name || data?.entity_uid || "Review change";
+    return data?.editable_event.family_name || data?.entity_uid || "Change";
   }, [data]);
 
-  function buildEditRequest(): ReviewEditRequest | null {
+  function buildEditRequest(): ChangeEditRequest | null {
     if (!data) {
       return null;
     }
@@ -110,7 +110,7 @@ export function ReviewChangeEditPageClient({ mode, changeId, basePath = "" }: { 
     setBusy("preview");
     setBanner(null);
     try {
-      const payload = await previewReviewEdit(request);
+      const payload = await previewChangeEdit(request);
       setPreview(payload);
     } catch (err) {
       setBanner({ tone: "error", text: err instanceof Error ? err.message : "Preview failed" });
@@ -127,13 +127,13 @@ export function ReviewChangeEditPageClient({ mode, changeId, basePath = "" }: { 
     setBusy("apply");
     setBanner(null);
     try {
-      const payload = await applyReviewEdit(request);
+      const payload = await applyChangeEdit(request);
       setBanner({
         tone: "info",
-        text: payload.mode === "proposal" ? "Proposal updated. Returning to review inbox..." : "Current event updated. Returning to review inbox..."
+        text: payload.mode === "proposal" ? "Proposal updated. Returning to Changes..." : "Current event updated. Returning to Changes..."
       });
       setTimeout(() => {
-        router.push(withBasePath(basePath, "/review/changes"));
+        router.push(withBasePath(basePath, "/changes"));
         router.refresh();
       }, 300);
     } catch (err) {
@@ -169,7 +169,7 @@ export function ReviewChangeEditPageClient({ mode, changeId, basePath = "" }: { 
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="info">{formatStatusLabel(mode)}</Badge>
             <Button asChild size="sm" variant="ghost">
-              <Link href={withBasePath(basePath, "/review/changes")}>
+              <Link href={withBasePath(basePath, "/changes")}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to inbox
               </Link>

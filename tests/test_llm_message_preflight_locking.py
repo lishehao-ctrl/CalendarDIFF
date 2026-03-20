@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.db.models.ingestion import IngestJob, IngestJobStatus
+from app.db.models.runtime import IngestJob, IngestJobStatus
 from app.db.models.input import IngestTriggerType, InputSource, SourceKind, SyncRequest, SyncRequestStatus
 from app.db.models.shared import User
-from app.modules.ingestion.calendar_fanout_contract import build_calendar_component_reason
-from app.modules.llm_runtime.message_preflight import prepare_message_for_processing
-from app.modules.runtime_kernel.parse_task_queue import ParseTaskMessage
+from app.modules.runtime.connectors.calendar_fanout_contract import build_calendar_component_reason
+from app.modules.runtime.llm.message_preflight import prepare_message_for_processing
+from app.modules.runtime.kernel.parse_task_queue import ParseTaskMessage
 
 
 def test_prepare_message_for_processing_marks_llm_running(db_session) -> None:

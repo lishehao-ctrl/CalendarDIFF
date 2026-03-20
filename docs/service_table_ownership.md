@@ -3,32 +3,37 @@
 This document describes module ownership inside the monolith.
 
 ## Input and source state
-- `input_control_plane`
+- `sources`
   - `input_sources`
   - `input_source_configs`
   - `input_source_cursors`
   - `input_source_secrets`
   - source sync request state
 
-## Ingestion and apply state
-- `ingestion`
-  - raw fetch / parse scheduling state
-  - queue and parser coordination state
-- `core_ingest`
+## Runtime state
+- `runtime.connectors`
+  - raw fetch / replay/bootstrap continuation state
+  - provider discovery payloads
+- `runtime.llm`
+  - parser coordination state
+  - parse / reduce task execution state
+- `runtime.apply`
   - `source_event_observations`
   - `changes`
   - approved apply transitions
+- `runtime.kernel`
+  - shared queue, retry, result handoff, and sync stage state
 
 ## Review state
-- `review_changes`
+- `changes`
   - review decisions, viewed markers, canonical edits, label learning
-- `review_taxonomy`
+- `families`
   - course family / raw-type mapping tables
 
 ## Product state
-- `events`
+- `manual`
   - manual event mutations routed through approved entity state
-- `profile`
+- `settings`
   - user profile settings stored on `users`
 - `notify`
   - notification outbox / digest delivery state

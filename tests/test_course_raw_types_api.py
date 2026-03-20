@@ -35,20 +35,20 @@ def test_course_raw_type_list_and_relink(input_client, db_session, authenticate_
     authenticate_client(input_client, user=user)
 
     first = input_client.post(
-        "/review/course-work-item-families",
+        "/families",
         headers={"X-API-Key": "test-api-key"},
         json={**_course_identity_payload("CSE 100 WI26"), "canonical_label": "Homework", "raw_types": ["hw"]},
     )
     assert first.status_code == 201
     second = input_client.post(
-        "/review/course-work-item-families",
+        "/families",
         headers={"X-API-Key": "test-api-key"},
         json={**_course_identity_payload("CSE 100 WI26"), "canonical_label": "Programming Assignment", "raw_types": ["pa"]},
     )
     assert second.status_code == 201
 
     raw_types = input_client.get(
-        "/review/course-work-item-raw-types?course_dept=CSE&course_number=100&course_quarter=WI&course_year2=26",
+        "/families/raw-types?course_dept=CSE&course_number=100&course_quarter=WI&course_year2=26",
         headers={"X-API-Key": "test-api-key"},
     )
     assert raw_types.status_code == 200
@@ -57,7 +57,7 @@ def test_course_raw_type_list_and_relink(input_client, db_session, authenticate_
     hw_row = next(row for row in payload if row["raw_type"] == "hw")
 
     relink = input_client.post(
-        "/review/course-work-item-raw-types/relink",
+        "/families/raw-types/relink",
         headers={"X-API-Key": "test-api-key"},
         json={"raw_type_id": hw_row["id"], "family_id": second.json()["id"]},
     )

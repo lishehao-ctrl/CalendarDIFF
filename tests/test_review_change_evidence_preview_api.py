@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from app.db.models.input import InputSource, SourceKind
 from app.db.models.review import Change, ChangeOrigin, ChangeType, ReviewStatus
 from app.db.models.shared import User
-from app.modules.core_ingest.review_evidence import freeze_observation_evidence
+from app.modules.runtime.apply.change_evidence import freeze_observation_evidence
 
 
 def _create_user_with_source(db_session, *, provider: str, source_kind: SourceKind) -> tuple[User, InputSource]:
@@ -73,7 +73,7 @@ def test_review_change_after_preview_returns_frozen_calendar_evidence(client, db
     )
     db_session.commit()
 
-    response = client.get("/review/changes/1/evidence/after/preview", headers=auth_headers(client, user=user))
+    response = client.get("/changes/1/evidence/after/preview", headers=auth_headers(client, user=user))
     assert response.status_code == 200
     payload = response.json()
     assert payload["provider"] == "ics"
@@ -125,7 +125,7 @@ def test_review_change_after_preview_returns_frozen_gmail_evidence(client, db_se
     )
     db_session.commit()
 
-    response = client.get("/review/changes/1/evidence/after/preview", headers=auth_headers(client, user=user))
+    response = client.get("/changes/1/evidence/after/preview", headers=auth_headers(client, user=user))
     assert response.status_code == 200
     payload = response.json()
     assert payload["provider"] == "gmail"

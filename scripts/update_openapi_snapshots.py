@@ -11,7 +11,7 @@ SNAPSHOT_PATH = SNAPSHOT_DIR / "public-service.json"
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from services.public_api.main import app as public_app
+from services.app_api.main import app as public_app
 
 
 def main() -> int:

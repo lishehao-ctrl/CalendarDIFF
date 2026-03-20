@@ -243,7 +243,7 @@ class FrozenEvidenceStructuredItem(StrictSchemaModel):
     thread_id: str | None = None
 
 
-class FrozenReviewEvidence(StrictSchemaModel):
+class FrozenChangeEvidence(StrictSchemaModel):
     provider: str | None = Field(default=None, max_length=64)
     content_type: str
     structured_kind: FrozenStructuredKind = "generic"
@@ -253,16 +253,16 @@ class FrozenReviewEvidence(StrictSchemaModel):
     preview_text: str | None = None
 
 
-class ReviewChangeSummarySide(StrictSchemaModel):
+class ChangeSummaryPayloadSide(StrictSchemaModel):
     value_time: datetime | None = None
     source_label: str | None = None
     source_kind: SourceKindValue | None = None
     source_observed_at: datetime | None = None
 
 
-class ReviewChangeSummary(StrictSchemaModel):
-    old: ReviewChangeSummarySide
-    new: ReviewChangeSummarySide
+class ChangeSummaryPayload(StrictSchemaModel):
+    old: ChangeSummaryPayloadSide
+    new: ChangeSummaryPayloadSide
 
 
 def model_json_dict(model: BaseModel) -> dict:
@@ -275,11 +275,11 @@ __all__ = [
     "CourseQuarter",
     "FrozenEvidenceEvent",
     "FrozenEvidenceStructuredItem",
-    "FrozenReviewEvidence",
+    "FrozenChangeEvidence",
     "FrozenStructuredKind",
     "LinkSignals",
-    "ReviewChangeSummary",
-    "ReviewChangeSummarySide",
+    "ChangeSummaryPayload",
+    "ChangeSummaryPayloadSide",
     "SemanticEventDraft",
     "SourceFacts",
     "SourceKindValue",

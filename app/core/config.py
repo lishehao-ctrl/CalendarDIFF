@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     gmail_api_base_url: str = "https://gmail.googleapis.com/gmail/v1/users/me"
     gmail_oauth_token_url: str = "https://oauth2.googleapis.com/token"
     gmail_oauth_authorize_url: str = "https://accounts.google.com/o/oauth2/v2/auth"
+    gmail_secondary_filter_mode: str = "off"
+    gmail_secondary_filter_provider: str = "noop"
+    gmail_secondary_filter_min_confidence: float = 0.98
+    gmail_message_parse_cache_enabled: bool = True
+    calendar_component_parse_cache_enabled: bool = True
     app_llm_openai_model: str | None = None
     ingestion_llm_base_url: str | None = None
     ingestion_llm_chat_base_url: str | None = None

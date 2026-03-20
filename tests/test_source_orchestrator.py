@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.modules.ingestion.source_orchestrator import (
+from app.modules.runtime.connectors.source_orchestrator import (
     classify_gmail_sender_family,
     route_calendar_component,
     route_gmail_message,
@@ -47,3 +47,15 @@ def test_route_calendar_component_routes_work_like_titles() -> None:
 
     assert parse_decision.route == "parse"
     assert skip_decision.route == "skip_unknown"
+
+
+def test_route_gmail_message_keeps_shipping_subscription_bait_for_secondary_filter() -> None:
+    decision = route_gmail_message(
+        from_header="CloudStorage Plus <shipping@cloudstorage-plus.example>",
+        subject="Project shipment exception notice",
+        snippet="Shipping exception notification for your storage subscription",
+        body_text="This is a subscription update and package tracking notice. No academic deadline changed.",
+        known_course_tokens=set(),
+    )
+
+    assert decision.route == "parse"

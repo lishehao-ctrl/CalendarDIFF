@@ -11,7 +11,7 @@ Use this skill for CalendarDIFF work that changes product semantics or repo trut
 
 - Gmail / ICS detection logic
 - proposal generation and review flows
-- `event_entities`, `changes`, `source_event_observations`, and link tables
+- `event_entities`, `changes`, and `source_event_observations`
 - manual event, family, raw-type, or notification behavior
 - API / OpenAPI / docs cleanup that must match the current product model
 
@@ -69,16 +69,17 @@ Do not reintroduce split-service defaults, service-specific OpenAPI snapshots, o
 Current public route families are:
 
 - `/auth/*`
-- `/profile/me`
+- `/settings/profile`
 - `/sources/*`
 - `/onboarding/*`
-- `/review/*`
-- `/events/manual*`
+- `/changes*`
+- `/families*`
+- `/manual/events*`
 - `/health`
 
 Additional route rules:
 
-- family/raw-type management lives under `/review/course-work-item-*`
+- family/raw-type management lives under `/families*`
 - `/users/*` is not an active public route family
 
 ## Workflow
@@ -94,7 +95,7 @@ Then classify the change:
 1. Facts extraction: Gmail/ICS parsing, observation shape, source facts.
 2. Proposal logic: proposal rebuild, diffing, change creation, source linking.
 3. Approved state: review approve/reject, canonical edit, manual event mutation.
-4. Projection/API: review DTOs, profile/events/review routes, OpenAPI, frontend callers.
+4. Projection/API: review DTOs, settings/manual/changes routes, OpenAPI, frontend callers.
 5. Docs/contracts cleanup: remove stale language that contradicts current semantics or monolith defaults.
 
 ## Guardrails

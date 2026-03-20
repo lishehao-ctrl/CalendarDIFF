@@ -17,8 +17,8 @@ from app.core.config import get_settings
 from app.db.models.shared import User
 from app.db.session import reset_engine
 from app.modules.auth.service import AUTH_SESSION_COOKIE_NAME, create_user_session
-from app.modules.input_control_plane.schemas import InputSourceCreateRequest
-from app.modules.input_control_plane.sources_service import create_input_source
+from app.modules.sources.schemas import InputSourceCreateRequest
+from app.modules.sources.sources_service import create_input_source
 
 DEFAULT_TEST_DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/deadline_diff_test"
 
@@ -138,7 +138,7 @@ def db_session(db_session_factory: sessionmaker[Session]) -> Generator[Session, 
 def client(configure_test_environment: None) -> Generator[TestClient, None, None]:
     get_settings.cache_clear()
     reset_engine()
-    from services.public_api.main import app as public_api_app
+    from services.app_api.main import app as public_api_app
 
     with TestClient(public_api_app) as test_client:
         yield test_client
@@ -150,7 +150,7 @@ def client(configure_test_environment: None) -> Generator[TestClient, None, None
 def input_client(configure_test_environment: None) -> Generator[TestClient, None, None]:
     get_settings.cache_clear()
     reset_engine()
-    from services.public_api.main import app as public_api_app
+    from services.app_api.main import app as public_api_app
 
     with TestClient(public_api_app) as test_client:
         yield test_client

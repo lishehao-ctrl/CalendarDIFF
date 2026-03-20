@@ -11,7 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.modules.ingestion.gmail_fetcher import matches_gmail_source_filters
+from app.modules.runtime.connectors.gmail_fetcher import matches_gmail_source_filters
 
 FIXTURE_ROOT = REPO_ROOT / "tests" / "fixtures" / "private" / "email_pool"
 DERIVED_SET_ROOT = FIXTURE_ROOT / "derived_sets"

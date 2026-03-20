@@ -161,6 +161,935 @@
         "title": "AuthSessionUserResponse",
         "type": "object"
       },
+      "ChangeBatchDecisionItemResult": {
+        "properties": {
+          "error_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_found",
+                  "invalid_state"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Detail"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "idempotent": {
+            "title": "Idempotent",
+            "type": "boolean"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "review_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "approved",
+                  "rejected"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Status"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          }
+        },
+        "required": [
+          "id",
+          "ok",
+          "review_status",
+          "idempotent",
+          "reviewed_at",
+          "review_note",
+          "error_code",
+          "error_detail"
+        ],
+        "title": "ChangeBatchDecisionItemResult",
+        "type": "object"
+      },
+      "ChangeBatchDecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "approve",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "ids",
+          "decision"
+        ],
+        "title": "ChangeBatchDecisionRequest",
+        "type": "object"
+      },
+      "ChangeBatchDecisionResponse": {
+        "properties": {
+          "decision": {
+            "enum": [
+              "approve",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeBatchDecisionItemResult"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "succeeded": {
+            "title": "Succeeded",
+            "type": "integer"
+          },
+          "total_requested": {
+            "title": "Total Requested",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "decision",
+          "total_requested",
+          "succeeded",
+          "failed",
+          "results"
+        ],
+        "title": "ChangeBatchDecisionResponse",
+        "type": "object"
+      },
+      "ChangeDecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "approve",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "ChangeDecisionRequest",
+        "type": "object"
+      },
+      "ChangeDecisionResponse": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "idempotent": {
+            "title": "Idempotent",
+            "type": "boolean"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "review_status": {
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ],
+            "title": "Review Status",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          }
+        },
+        "required": [
+          "id",
+          "review_status",
+          "reviewed_at",
+          "review_note",
+          "idempotent"
+        ],
+        "title": "ChangeDecisionResponse",
+        "type": "object"
+      },
+      "ChangeEditApplyResponse": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "canonical_edit_change_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Edit Change Id"
+          },
+          "edited_change_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited Change Id"
+          },
+          "entity_uid": {
+            "title": "Entity Uid",
+            "type": "string"
+          },
+          "event": {
+            "$ref": "#/components/schemas/UserFacingEventResponse"
+          },
+          "idempotent": {
+            "title": "Idempotent",
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "proposal",
+              "canonical"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "rejected_pending_change_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Rejected Pending Change Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "applied",
+          "idempotent",
+          "entity_uid",
+          "rejected_pending_change_ids",
+          "event"
+        ],
+        "title": "ChangeEditApplyResponse",
+        "type": "object"
+      },
+      "ChangeEditContextResponse": {
+        "properties": {
+          "change_id": {
+            "title": "Change Id",
+            "type": "integer"
+          },
+          "editable_event": {
+            "$ref": "#/components/schemas/SemanticEventDraft"
+          },
+          "entity_uid": {
+            "title": "Entity Uid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "change_id",
+          "entity_uid",
+          "editable_event"
+        ],
+        "title": "ChangeEditContextResponse",
+        "type": "object"
+      },
+      "ChangeEditPatchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "course_dept": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Dept"
+          },
+          "course_number": {
+            "anyOf": [
+              {
+                "maximum": 9999.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Number"
+          },
+          "course_quarter": {
+            "anyOf": [
+              {
+                "enum": [
+                  "WI",
+                  "SP",
+                  "SU",
+                  "FA"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Quarter"
+          },
+          "course_suffix": {
+            "anyOf": [
+              {
+                "maxLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Suffix"
+          },
+          "course_year2": {
+            "anyOf": [
+              {
+                "maximum": 99.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Year2"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "due_time": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Time"
+          },
+          "event_name": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Name"
+          },
+          "time_precision": {
+            "anyOf": [
+              {
+                "enum": [
+                  "date_only",
+                  "datetime"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Precision"
+          }
+        },
+        "title": "ChangeEditPatchRequest",
+        "type": "object"
+      },
+      "ChangeEditPreviewResponse": {
+        "properties": {
+          "base": {
+            "$ref": "#/components/schemas/UserFacingEventResponse"
+          },
+          "candidate_after": {
+            "$ref": "#/components/schemas/UserFacingEventResponse"
+          },
+          "change_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Id"
+          },
+          "delta_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Seconds"
+          },
+          "entity_uid": {
+            "title": "Entity Uid",
+            "type": "string"
+          },
+          "idempotent": {
+            "title": "Idempotent",
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "proposal",
+              "canonical"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "proposal_change_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "created",
+                  "due_changed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Change Type"
+          },
+          "will_reject_pending_change_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Will Reject Pending Change Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "entity_uid",
+          "base",
+          "candidate_after",
+          "delta_seconds",
+          "will_reject_pending_change_ids",
+          "idempotent"
+        ],
+        "title": "ChangeEditPreviewResponse",
+        "type": "object"
+      },
+      "ChangeEditRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "proposal",
+              "canonical"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "patch": {
+            "$ref": "#/components/schemas/ChangeEditPatchRequest"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "target": {
+            "$ref": "#/components/schemas/ChangeEditTargetRequest"
+          }
+        },
+        "required": [
+          "mode",
+          "target",
+          "patch"
+        ],
+        "title": "ChangeEditRequest",
+        "type": "object"
+      },
+      "ChangeEditTargetRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "change_id": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Id"
+          },
+          "entity_uid": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Uid"
+          }
+        },
+        "title": "ChangeEditTargetRequest",
+        "type": "object"
+      },
+      "ChangeItemResponse": {
+        "properties": {
+          "after_display": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EventDisplayResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "after_event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserFacingEventResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "before_display": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EventDisplayResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "before_event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserFacingEventResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "change_origin": {
+            "title": "Change Origin",
+            "type": "string"
+          },
+          "change_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChangeSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "change_type": {
+            "title": "Change Type",
+            "type": "string"
+          },
+          "deliver_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deliver After"
+          },
+          "detected_at": {
+            "format": "date-time",
+            "title": "Detected At",
+            "type": "string"
+          },
+          "entity_uid": {
+            "title": "Entity Uid",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "notification_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notification State"
+          },
+          "primary_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChangePrimarySourceRefResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "priority_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority Label"
+          },
+          "priority_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority Rank"
+          },
+          "proposal_sources": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeSourceRefResponse"
+            },
+            "title": "Proposal Sources",
+            "type": "array"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "review_status": {
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ],
+            "title": "Review Status",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "viewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewed At"
+          },
+          "viewed_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewed Note"
+          }
+        },
+        "required": [
+          "id",
+          "entity_uid",
+          "change_type",
+          "change_origin",
+          "detected_at",
+          "review_status",
+          "proposal_sources",
+          "viewed_at",
+          "viewed_note",
+          "reviewed_at",
+          "review_note"
+        ],
+        "title": "ChangeItemResponse",
+        "type": "object"
+      },
+      "ChangePrimarySourceRefResponse": {
+        "properties": {
+          "external_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Event Id"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "integer"
+          },
+          "source_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Kind"
+          }
+        },
+        "required": [
+          "source_id"
+        ],
+        "title": "ChangePrimarySourceRefResponse",
+        "type": "object"
+      },
+      "ChangeSourceRefResponse": {
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "external_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Event Id"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "integer"
+          },
+          "source_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Kind"
+          }
+        },
+        "required": [
+          "source_id"
+        ],
+        "title": "ChangeSourceRefResponse",
+        "type": "object"
+      },
       "ChangeSummary": {
         "properties": {
           "new": {
@@ -231,6 +1160,242 @@
           }
         },
         "title": "ChangeSummarySide",
+        "type": "object"
+      },
+      "ChangeViewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "viewed": {
+            "title": "Viewed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "viewed"
+        ],
+        "title": "ChangeViewRequest",
+        "type": "object"
+      },
+      "ChangesWorkbenchFamiliesResponse": {
+        "properties": {
+          "attention_count": {
+            "title": "Attention Count",
+            "type": "integer"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_rebuilt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Rebuilt At"
+          },
+          "mappings_state": {
+            "title": "Mappings State",
+            "type": "string"
+          },
+          "pending_raw_type_suggestions": {
+            "title": "Pending Raw Type Suggestions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "attention_count",
+          "pending_raw_type_suggestions",
+          "mappings_state",
+          "last_rebuilt_at",
+          "last_error"
+        ],
+        "title": "ChangesWorkbenchFamiliesResponse",
+        "type": "object"
+      },
+      "ChangesWorkbenchManualResponse": {
+        "properties": {
+          "active_event_count": {
+            "title": "Active Event Count",
+            "type": "integer"
+          },
+          "lane_role": {
+            "const": "fallback",
+            "default": "fallback",
+            "title": "Lane Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "active_event_count"
+        ],
+        "title": "ChangesWorkbenchManualResponse",
+        "type": "object"
+      },
+      "ChangesWorkbenchSourcesResponse": {
+        "properties": {
+          "active_count": {
+            "title": "Active Count",
+            "type": "integer"
+          },
+          "attention_count": {
+            "title": "Attention Count",
+            "type": "integer"
+          },
+          "blocking_count": {
+            "title": "Blocking Count",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "progress_age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Age Seconds"
+          },
+          "queued_count": {
+            "title": "Queued Count",
+            "type": "integer"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "recommended_action": {
+            "enum": [
+              "continue_review",
+              "continue_review_with_caution",
+              "wait_for_runtime",
+              "investigate_runtime"
+            ],
+            "title": "Recommended Action",
+            "type": "string"
+          },
+          "related_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Related Request Id"
+          },
+          "running_count": {
+            "title": "Running Count",
+            "type": "integer"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "blocking"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "active_count",
+          "running_count",
+          "queued_count",
+          "attention_count",
+          "blocking_count",
+          "recommended_action",
+          "severity",
+          "reason_code",
+          "message"
+        ],
+        "title": "ChangesWorkbenchSourcesResponse",
+        "type": "object"
+      },
+      "ChangesWorkbenchSummaryResponse": {
+        "properties": {
+          "changes_pending": {
+            "title": "Changes Pending",
+            "type": "integer"
+          },
+          "families": {
+            "$ref": "#/components/schemas/ChangesWorkbenchFamiliesResponse"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "manual": {
+            "$ref": "#/components/schemas/ChangesWorkbenchManualResponse"
+          },
+          "recommended_action_reason": {
+            "title": "Recommended Action Reason",
+            "type": "string"
+          },
+          "recommended_lane": {
+            "anyOf": [
+              {
+                "enum": [
+                  "sources",
+                  "changes",
+                  "families"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Lane"
+          },
+          "recommended_lane_reason_code": {
+            "title": "Recommended Lane Reason Code",
+            "type": "string"
+          },
+          "sources": {
+            "$ref": "#/components/schemas/ChangesWorkbenchSourcesResponse"
+          }
+        },
+        "required": [
+          "changes_pending",
+          "recommended_lane_reason_code",
+          "recommended_action_reason",
+          "sources",
+          "families",
+          "manual",
+          "generated_at"
+        ],
+        "title": "ChangesWorkbenchSummaryResponse",
         "type": "object"
       },
       "CourseIdentityResponse": {
@@ -699,55 +1864,6 @@
             "title": "Canonical Label",
             "type": "string"
           },
-          "course_dept": {
-            "maxLength": 16,
-            "minLength": 1,
-            "title": "Course Dept",
-            "type": "string"
-          },
-          "course_number": {
-            "maximum": 9999.0,
-            "minimum": 0.0,
-            "title": "Course Number",
-            "type": "integer"
-          },
-          "course_quarter": {
-            "anyOf": [
-              {
-                "maxLength": 4,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Course Quarter"
-          },
-          "course_suffix": {
-            "anyOf": [
-              {
-                "maxLength": 8,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Course Suffix"
-          },
-          "course_year2": {
-            "anyOf": [
-              {
-                "maximum": 99.0,
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Course Year2"
-          },
           "raw_types": {
             "items": {
               "type": "string"
@@ -758,8 +1874,6 @@
           }
         },
         "required": [
-          "course_dept",
-          "course_number",
           "canonical_label"
         ],
         "title": "CourseWorkItemFamilyUpdateRequest",
@@ -1387,6 +2501,16 @@
               }
             ],
             "title": "Oauth Connection Status"
+          },
+          "operator_guidance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceOperatorGuidanceResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "poll_interval_seconds": {
             "title": "Poll Interval Seconds",
@@ -2894,980 +4018,6 @@
         "title": "RawTypeSuggestionItemResponse",
         "type": "object"
       },
-      "ReviewBatchDecisionItemResult": {
-        "properties": {
-          "error_code": {
-            "anyOf": [
-              {
-                "enum": [
-                  "not_found",
-                  "invalid_state"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Code"
-          },
-          "error_detail": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Detail"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "idempotent": {
-            "title": "Idempotent",
-            "type": "boolean"
-          },
-          "ok": {
-            "title": "Ok",
-            "type": "boolean"
-          },
-          "review_note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Review Note"
-          },
-          "review_status": {
-            "anyOf": [
-              {
-                "enum": [
-                  "pending",
-                  "approved",
-                  "rejected"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Review Status"
-          },
-          "reviewed_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reviewed At"
-          }
-        },
-        "required": [
-          "id",
-          "ok",
-          "review_status",
-          "idempotent",
-          "reviewed_at",
-          "review_note",
-          "error_code",
-          "error_detail"
-        ],
-        "title": "ReviewBatchDecisionItemResult",
-        "type": "object"
-      },
-      "ReviewBatchDecisionRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "decision": {
-            "enum": [
-              "approve",
-              "reject"
-            ],
-            "title": "Decision",
-            "type": "string"
-          },
-          "ids": {
-            "items": {
-              "type": "integer"
-            },
-            "maxItems": 200,
-            "minItems": 1,
-            "title": "Ids",
-            "type": "array"
-          },
-          "note": {
-            "anyOf": [
-              {
-                "maxLength": 512,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
-          }
-        },
-        "required": [
-          "ids",
-          "decision"
-        ],
-        "title": "ReviewBatchDecisionRequest",
-        "type": "object"
-      },
-      "ReviewBatchDecisionResponse": {
-        "properties": {
-          "decision": {
-            "enum": [
-              "approve",
-              "reject"
-            ],
-            "title": "Decision",
-            "type": "string"
-          },
-          "failed": {
-            "title": "Failed",
-            "type": "integer"
-          },
-          "results": {
-            "items": {
-              "$ref": "#/components/schemas/ReviewBatchDecisionItemResult"
-            },
-            "title": "Results",
-            "type": "array"
-          },
-          "succeeded": {
-            "title": "Succeeded",
-            "type": "integer"
-          },
-          "total_requested": {
-            "title": "Total Requested",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "decision",
-          "total_requested",
-          "succeeded",
-          "failed",
-          "results"
-        ],
-        "title": "ReviewBatchDecisionResponse",
-        "type": "object"
-      },
-      "ReviewChangeItemResponse": {
-        "properties": {
-          "after_display": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/EventDisplayResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "after_event": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/UserFacingEventResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "before_display": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/EventDisplayResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "before_event": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/UserFacingEventResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "change_origin": {
-            "title": "Change Origin",
-            "type": "string"
-          },
-          "change_summary": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ChangeSummary"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "change_type": {
-            "title": "Change Type",
-            "type": "string"
-          },
-          "deliver_after": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Deliver After"
-          },
-          "detected_at": {
-            "format": "date-time",
-            "title": "Detected At",
-            "type": "string"
-          },
-          "entity_uid": {
-            "title": "Entity Uid",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "notification_state": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notification State"
-          },
-          "primary_source": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ReviewPrimarySourceRef"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "priority_label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Priority Label"
-          },
-          "priority_rank": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Priority Rank"
-          },
-          "proposal_sources": {
-            "items": {
-              "$ref": "#/components/schemas/ReviewSourceRef"
-            },
-            "title": "Proposal Sources",
-            "type": "array"
-          },
-          "review_note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Review Note"
-          },
-          "review_status": {
-            "enum": [
-              "pending",
-              "approved",
-              "rejected"
-            ],
-            "title": "Review Status",
-            "type": "string"
-          },
-          "reviewed_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reviewed At"
-          },
-          "viewed_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Viewed At"
-          },
-          "viewed_note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Viewed Note"
-          }
-        },
-        "required": [
-          "id",
-          "entity_uid",
-          "change_type",
-          "change_origin",
-          "detected_at",
-          "review_status",
-          "proposal_sources",
-          "viewed_at",
-          "viewed_note",
-          "reviewed_at",
-          "review_note"
-        ],
-        "title": "ReviewChangeItemResponse",
-        "type": "object"
-      },
-      "ReviewChangeViewRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "note": {
-            "anyOf": [
-              {
-                "maxLength": 512,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
-          },
-          "viewed": {
-            "title": "Viewed",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "viewed"
-        ],
-        "title": "ReviewChangeViewRequest",
-        "type": "object"
-      },
-      "ReviewDecisionRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "decision": {
-            "enum": [
-              "approve",
-              "reject"
-            ],
-            "title": "Decision",
-            "type": "string"
-          },
-          "note": {
-            "anyOf": [
-              {
-                "maxLength": 512,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
-          }
-        },
-        "required": [
-          "decision"
-        ],
-        "title": "ReviewDecisionRequest",
-        "type": "object"
-      },
-      "ReviewDecisionResponse": {
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "idempotent": {
-            "title": "Idempotent",
-            "type": "boolean"
-          },
-          "review_note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Review Note"
-          },
-          "review_status": {
-            "enum": [
-              "pending",
-              "approved",
-              "rejected"
-            ],
-            "title": "Review Status",
-            "type": "string"
-          },
-          "reviewed_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reviewed At"
-          }
-        },
-        "required": [
-          "id",
-          "review_status",
-          "reviewed_at",
-          "review_note",
-          "idempotent"
-        ],
-        "title": "ReviewDecisionResponse",
-        "type": "object"
-      },
-      "ReviewEditApplyResponse": {
-        "properties": {
-          "applied": {
-            "title": "Applied",
-            "type": "boolean"
-          },
-          "canonical_edit_change_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Canonical Edit Change Id"
-          },
-          "edited_change_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Edited Change Id"
-          },
-          "entity_uid": {
-            "title": "Entity Uid",
-            "type": "string"
-          },
-          "event": {
-            "$ref": "#/components/schemas/UserFacingEventResponse"
-          },
-          "idempotent": {
-            "title": "Idempotent",
-            "type": "boolean"
-          },
-          "mode": {
-            "enum": [
-              "proposal",
-              "canonical"
-            ],
-            "title": "Mode",
-            "type": "string"
-          },
-          "rejected_pending_change_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "title": "Rejected Pending Change Ids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "mode",
-          "applied",
-          "idempotent",
-          "entity_uid",
-          "rejected_pending_change_ids",
-          "event"
-        ],
-        "title": "ReviewEditApplyResponse",
-        "type": "object"
-      },
-      "ReviewEditContextResponse": {
-        "properties": {
-          "change_id": {
-            "title": "Change Id",
-            "type": "integer"
-          },
-          "editable_event": {
-            "$ref": "#/components/schemas/SemanticEventDraft"
-          },
-          "entity_uid": {
-            "title": "Entity Uid",
-            "type": "string"
-          }
-        },
-        "required": [
-          "change_id",
-          "entity_uid",
-          "editable_event"
-        ],
-        "title": "ReviewEditContextResponse",
-        "type": "object"
-      },
-      "ReviewEditPatchRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "course_dept": {
-            "anyOf": [
-              {
-                "maxLength": 16,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Course Dept"
-          },
-          "course_number": {
-            "anyOf": [
-              {
-                "maximum": 9999.0,
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Course Number"
-          },
-          "course_quarter": {
-            "anyOf": [
-              {
-                "enum": [
-                  "WI",
-                  "SP",
-                  "SU",
-                  "FA"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Course Quarter"
-          },
-          "course_suffix": {
-            "anyOf": [
-              {
-                "maxLength": 8,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Course Suffix"
-          },
-          "course_year2": {
-            "anyOf": [
-              {
-                "maximum": 99.0,
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Course Year2"
-          },
-          "due_date": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Due Date"
-          },
-          "due_time": {
-            "anyOf": [
-              {
-                "maxLength": 32,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Due Time"
-          },
-          "event_name": {
-            "anyOf": [
-              {
-                "maxLength": 512,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Event Name"
-          },
-          "time_precision": {
-            "anyOf": [
-              {
-                "enum": [
-                  "date_only",
-                  "datetime"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Time Precision"
-          }
-        },
-        "title": "ReviewEditPatchRequest",
-        "type": "object"
-      },
-      "ReviewEditPreviewResponse": {
-        "properties": {
-          "base": {
-            "$ref": "#/components/schemas/UserFacingEventResponse"
-          },
-          "candidate_after": {
-            "$ref": "#/components/schemas/UserFacingEventResponse"
-          },
-          "change_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Change Id"
-          },
-          "delta_seconds": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Delta Seconds"
-          },
-          "entity_uid": {
-            "title": "Entity Uid",
-            "type": "string"
-          },
-          "idempotent": {
-            "title": "Idempotent",
-            "type": "boolean"
-          },
-          "mode": {
-            "enum": [
-              "proposal",
-              "canonical"
-            ],
-            "title": "Mode",
-            "type": "string"
-          },
-          "proposal_change_type": {
-            "anyOf": [
-              {
-                "enum": [
-                  "created",
-                  "due_changed"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Proposal Change Type"
-          },
-          "will_reject_pending_change_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "title": "Will Reject Pending Change Ids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "mode",
-          "entity_uid",
-          "base",
-          "candidate_after",
-          "delta_seconds",
-          "will_reject_pending_change_ids",
-          "idempotent"
-        ],
-        "title": "ReviewEditPreviewResponse",
-        "type": "object"
-      },
-      "ReviewEditRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "mode": {
-            "enum": [
-              "proposal",
-              "canonical"
-            ],
-            "title": "Mode",
-            "type": "string"
-          },
-          "patch": {
-            "$ref": "#/components/schemas/ReviewEditPatchRequest"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "maxLength": 512,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "target": {
-            "$ref": "#/components/schemas/ReviewEditTargetRequest"
-          }
-        },
-        "required": [
-          "mode",
-          "target",
-          "patch"
-        ],
-        "title": "ReviewEditRequest",
-        "type": "object"
-      },
-      "ReviewEditTargetRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "change_id": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Change Id"
-          },
-          "entity_uid": {
-            "anyOf": [
-              {
-                "maxLength": 255,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Entity Uid"
-          }
-        },
-        "title": "ReviewEditTargetRequest",
-        "type": "object"
-      },
-      "ReviewPrimarySourceRef": {
-        "properties": {
-          "external_event_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "External Event Id"
-          },
-          "provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider"
-          },
-          "source_id": {
-            "title": "Source Id",
-            "type": "integer"
-          },
-          "source_kind": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Kind"
-          }
-        },
-        "required": [
-          "source_id"
-        ],
-        "title": "ReviewPrimarySourceRef",
-        "type": "object"
-      },
-      "ReviewSourceRef": {
-        "properties": {
-          "confidence": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confidence"
-          },
-          "external_event_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "External Event Id"
-          },
-          "provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider"
-          },
-          "source_id": {
-            "title": "Source Id",
-            "type": "integer"
-          },
-          "source_kind": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Kind"
-          }
-        },
-        "required": [
-          "source_id"
-        ],
-        "title": "ReviewSourceRef",
-        "type": "object"
-      },
-      "ReviewSummaryResponse": {
-        "properties": {
-          "changes_pending": {
-            "title": "Changes Pending",
-            "type": "integer"
-          },
-          "generated_at": {
-            "format": "date-time",
-            "title": "Generated At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "changes_pending",
-          "generated_at"
-        ],
-        "title": "ReviewSummaryResponse",
-        "type": "object"
-      },
       "SemanticEventDraft": {
         "additionalProperties": false,
         "properties": {
@@ -4149,6 +4299,16 @@
               }
             ]
           },
+          "operator_guidance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceOperatorGuidanceResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "source_id": {
             "title": "Source Id",
             "type": "integer"
@@ -4265,6 +4425,39 @@
             "title": "Request Id",
             "type": "string"
           },
+          "stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "connector_fetch",
+                  "llm_queue",
+                  "llm_parse",
+                  "provider_reduce",
+                  "result_ready",
+                  "applying",
+                  "completed",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "stage_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage Updated At"
+          },
           "status": {
             "enum": [
               "PENDING",
@@ -4275,6 +4468,17 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "substage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Substage"
           },
           "trigger_type": {
             "enum": [
@@ -4300,6 +4504,67 @@
           "updated_at"
         ],
         "title": "SourceObservabilitySyncResponse",
+        "type": "object"
+      },
+      "SourceOperatorGuidanceResponse": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "progress_age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Age Seconds"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "recommended_action": {
+            "enum": [
+              "continue_review",
+              "continue_review_with_caution",
+              "wait_for_runtime",
+              "investigate_runtime"
+            ],
+            "title": "Recommended Action",
+            "type": "string"
+          },
+          "related_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Related Request Id"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "blocking"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recommended_action",
+          "severity",
+          "reason_code",
+          "message"
+        ],
+        "title": "SourceOperatorGuidanceResponse",
         "type": "object"
       },
       "SourceSyncHistoryResponse": {
@@ -4508,6 +4773,39 @@
             "title": "Source Id",
             "type": "integer"
           },
+          "stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "connector_fetch",
+                  "llm_queue",
+                  "llm_parse",
+                  "provider_reduce",
+                  "result_ready",
+                  "applying",
+                  "completed",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "stage_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage Updated At"
+          },
           "status": {
             "enum": [
               "PENDING",
@@ -4518,6 +4816,17 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "substage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Substage"
           },
           "trace_id": {
             "anyOf": [
@@ -5026,9 +5335,1620 @@
         ]
       }
     },
-    "/events/manual": {
+    "/changes": {
       "get": {
-        "operationId": "get_manual_events_events_manual_get",
+        "operationId": "get_changes_changes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "review_status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "title": "Review Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChangeItemResponse"
+                  },
+                  "title": "Response Get Changes Changes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Changes",
+        "tags": [
+          "changes",
+          "changes"
+        ]
+      }
+    },
+    "/changes/batch/decisions": {
+      "post": {
+        "operationId": "post_change_batch_decisions_changes_batch_decisions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeBatchDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeBatchDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Change Batch Decisions",
+        "tags": [
+          "changes",
+          "changes"
+        ]
+      }
+    },
+    "/changes/edits": {
+      "post": {
+        "operationId": "post_change_edit_apply_changes_edits_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeEditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeEditApplyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Change Edit Apply",
+        "tags": [
+          "changes",
+          "changes"
+        ]
+      }
+    },
+    "/changes/edits/preview": {
+      "post": {
+        "operationId": "post_change_edit_preview_changes_edits_preview_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeEditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeEditPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Change Edit Preview",
+        "tags": [
+          "changes",
+          "changes"
+        ]
+      }
+    },
+    "/changes/summary": {
+      "get": {
+        "operationId": "get_changes_summary_route_changes_summary_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangesWorkbenchSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Changes Summary Route",
+        "tags": [
+          "changes",
+          "changes"
+        ]
+      }
+    },
+    "/changes/{change_id}": {
+      "get": {
+        "operationId": "get_change_item_changes__change_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "title": "Change Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeItemResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Change Item",
+        "tags": [
+          "changes",
+          "changes"
+        ]
+      }
+    },
+    "/changes/{change_id}/decisions": {
+      "post": {
+        "operationId": "post_change_decision_changes__change_id__decisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "title": "Change Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Change Decision",
+        "tags": [
+          "changes",
+          "changes"
+        ]
+      }
+    },
+    "/changes/{change_id}/edit-context": {
+      "get": {
+        "operationId": "get_change_edit_context_changes__change_id__edit_context_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "title": "Change Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeEditContextResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Change Edit Context",
+        "tags": [
+          "changes",
+          "changes"
+        ]
+      }
+    },
+    "/changes/{change_id}/evidence/{side}/preview": {
+      "get": {
+        "operationId": "get_change_evidence_preview_changes__change_id__evidence__side__preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "title": "Change Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "side",
+            "required": true,
+            "schema": {
+              "enum": [
+                "before",
+                "after"
+              ],
+              "title": "Side",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidencePreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Change Evidence Preview",
+        "tags": [
+          "changes",
+          "changes"
+        ]
+      }
+    },
+    "/changes/{change_id}/label-learning": {
+      "post": {
+        "operationId": "post_label_learning_apply_changes__change_id__label_learning_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "title": "Change Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelLearningApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabelLearningApplyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Label Learning Apply",
+        "tags": [
+          "changes",
+          "changes"
+        ]
+      }
+    },
+    "/changes/{change_id}/label-learning/preview": {
+      "post": {
+        "operationId": "post_label_learning_preview_changes__change_id__label_learning_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "title": "Change Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabelLearningPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Label Learning Preview",
+        "tags": [
+          "changes",
+          "changes"
+        ]
+      }
+    },
+    "/changes/{change_id}/views": {
+      "patch": {
+        "operationId": "patch_change_view_changes__change_id__views_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "title": "Change Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeViewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeItemResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Change View",
+        "tags": [
+          "changes",
+          "changes"
+        ]
+      }
+    },
+    "/families": {
+      "get": {
+        "operationId": "get_course_families_families_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "course_dept",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Dept"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_number",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_suffix",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Suffix"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_quarter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Quarter"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_year2",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Year2"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CourseWorkItemFamilyResponse"
+                  },
+                  "title": "Response Get Course Families Families Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Course Families",
+        "tags": [
+          "families"
+        ]
+      },
+      "post": {
+        "operationId": "post_course_family_families_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CourseWorkItemFamilyCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseWorkItemFamilyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Course Family",
+        "tags": [
+          "families"
+        ]
+      }
+    },
+    "/families/courses": {
+      "get": {
+        "operationId": "get_course_family_courses_families_courses_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseWorkItemFamilyCoursesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Course Family Courses",
+        "tags": [
+          "families"
+        ]
+      }
+    },
+    "/families/raw-type-suggestions": {
+      "get": {
+        "operationId": "get_raw_type_suggestions_families_raw_type_suggestions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_dept",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Dept"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_number",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_suffix",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Suffix"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_quarter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Quarter"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_year2",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Year2"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RawTypeSuggestionItemResponse"
+                  },
+                  "title": "Response Get Raw Type Suggestions Families Raw Type Suggestions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Raw Type Suggestions",
+        "tags": [
+          "families"
+        ]
+      }
+    },
+    "/families/raw-type-suggestions/{suggestion_id}/decisions": {
+      "post": {
+        "operationId": "post_raw_type_suggestion_decision_families_raw_type_suggestions__suggestion_id__decisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "suggestion_id",
+            "required": true,
+            "schema": {
+              "title": "Suggestion Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RawTypeSuggestionDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RawTypeSuggestionDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Raw Type Suggestion Decision",
+        "tags": [
+          "families"
+        ]
+      }
+    },
+    "/families/raw-types": {
+      "get": {
+        "operationId": "get_course_raw_types_families_raw_types_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "course_dept",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Dept"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_number",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_suffix",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Suffix"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_quarter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Quarter"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_year2",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Year2"
+            }
+          },
+          {
+            "in": "query",
+            "name": "family_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Family Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CourseRawTypeResponse"
+                  },
+                  "title": "Response Get Course Raw Types Families Raw Types Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Course Raw Types",
+        "tags": [
+          "families"
+        ]
+      }
+    },
+    "/families/raw-types/relink": {
+      "post": {
+        "operationId": "post_course_raw_type_relink_families_raw_types_relink_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CourseRawTypeMoveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseRawTypeMoveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Course Raw Type Relink",
+        "tags": [
+          "families"
+        ]
+      }
+    },
+    "/families/status": {
+      "get": {
+        "operationId": "get_course_family_status_families_status_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseWorkItemFamilyStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Course Family Status",
+        "tags": [
+          "families"
+        ]
+      }
+    },
+    "/families/{family_id}": {
+      "patch": {
+        "operationId": "patch_course_family_families__family_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "family_id",
+            "required": true,
+            "schema": {
+              "title": "Family Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CourseWorkItemFamilyUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseWorkItemFamilyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Course Family",
+        "tags": [
+          "families"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/manual/events": {
+      "get": {
+        "operationId": "get_manual_events_manual_events_get",
         "parameters": [
           {
             "in": "query",
@@ -5065,7 +6985,7 @@
                   "items": {
                     "$ref": "#/components/schemas/ManualEventResponse"
                   },
-                  "title": "Response Get Manual Events Events Manual Get",
+                  "title": "Response Get Manual Events Manual Events Get",
                   "type": "array"
                 }
               }
@@ -5085,11 +7005,11 @@
         },
         "summary": "Get Manual Events",
         "tags": [
-          "events"
+          "manual"
         ]
       },
       "post": {
-        "operationId": "post_manual_event_events_manual_post",
+        "operationId": "post_manual_event_manual_events_post",
         "parameters": [
           {
             "in": "header",
@@ -5142,13 +7062,13 @@
         },
         "summary": "Post Manual Event",
         "tags": [
-          "events"
+          "manual"
         ]
       }
     },
-    "/events/manual/{entity_uid}": {
+    "/manual/events/{entity_uid}": {
       "delete": {
-        "operationId": "remove_manual_event_events_manual__entity_uid__delete",
+        "operationId": "remove_manual_event_manual_events__entity_uid__delete",
         "parameters": [
           {
             "in": "path",
@@ -5216,11 +7136,11 @@
         },
         "summary": "Remove Manual Event",
         "tags": [
-          "events"
+          "manual"
         ]
       },
       "patch": {
-        "operationId": "patch_manual_event_events_manual__entity_uid__patch",
+        "operationId": "patch_manual_event_manual_events__entity_uid__patch",
         "parameters": [
           {
             "in": "path",
@@ -5282,30 +7202,7 @@
         },
         "summary": "Patch Manual Event",
         "tags": [
-          "events"
-        ]
-      }
-    },
-    "/health": {
-      "get": {
-        "operationId": "health_health_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Health Health Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Health",
-        "tags": [
-          "health"
+          "manual"
         ]
       }
     },
@@ -5653,9 +7550,9 @@
         ]
       }
     },
-    "/profile/me": {
+    "/settings/profile": {
       "get": {
-        "operationId": "get_profile_profile_me_get",
+        "operationId": "get_profile_settings_profile_get",
         "parameters": [
           {
             "in": "header",
@@ -5698,11 +7595,11 @@
         },
         "summary": "Get Profile",
         "tags": [
-          "profile"
+          "settings"
         ]
       },
       "patch": {
-        "operationId": "patch_profile_profile_me_patch",
+        "operationId": "patch_profile_settings_profile_patch",
         "parameters": [
           {
             "in": "header",
@@ -5755,1583 +7652,7 @@
         },
         "summary": "Patch Profile",
         "tags": [
-          "profile"
-        ]
-      }
-    },
-    "/review/changes": {
-      "get": {
-        "operationId": "get_review_changes_review_changes_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "review_status",
-            "required": false,
-            "schema": {
-              "default": "pending",
-              "title": "Review Status",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "source_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "minimum": 1,
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Source Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "maximum": 200,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "offset",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "minimum": 0,
-              "title": "Offset",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ReviewChangeItemResponse"
-                  },
-                  "title": "Response Get Review Changes Review Changes Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Review Changes",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/changes/batch/decisions": {
-      "post": {
-        "operationId": "post_review_batch_decisions_review_changes_batch_decisions_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReviewBatchDecisionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReviewBatchDecisionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Post Review Batch Decisions",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/changes/{change_id}": {
-      "get": {
-        "operationId": "get_review_change_item_review_changes__change_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "change_id",
-            "required": true,
-            "schema": {
-              "title": "Change Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReviewChangeItemResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Review Change Item",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/changes/{change_id}/decisions": {
-      "post": {
-        "operationId": "post_review_decision_review_changes__change_id__decisions_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "change_id",
-            "required": true,
-            "schema": {
-              "title": "Change Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReviewDecisionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReviewDecisionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Post Review Decision",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/changes/{change_id}/edit-context": {
-      "get": {
-        "operationId": "get_review_change_edit_context_review_changes__change_id__edit_context_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "change_id",
-            "required": true,
-            "schema": {
-              "title": "Change Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReviewEditContextResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Review Change Edit Context",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/changes/{change_id}/evidence/{side}/preview": {
-      "get": {
-        "operationId": "get_review_change_evidence_preview_review_changes__change_id__evidence__side__preview_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "change_id",
-            "required": true,
-            "schema": {
-              "title": "Change Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "path",
-            "name": "side",
-            "required": true,
-            "schema": {
-              "enum": [
-                "before",
-                "after"
-              ],
-              "title": "Side",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EvidencePreviewResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Review Change Evidence Preview",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/changes/{change_id}/label-learning": {
-      "post": {
-        "operationId": "post_label_learning_apply_review_changes__change_id__label_learning_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "change_id",
-            "required": true,
-            "schema": {
-              "title": "Change Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LabelLearningApplyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LabelLearningApplyResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Post Label Learning Apply",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/changes/{change_id}/label-learning/preview": {
-      "post": {
-        "operationId": "post_label_learning_preview_review_changes__change_id__label_learning_preview_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "change_id",
-            "required": true,
-            "schema": {
-              "title": "Change Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LabelLearningPreviewResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Post Label Learning Preview",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/changes/{change_id}/views": {
-      "patch": {
-        "operationId": "patch_review_change_view_review_changes__change_id__views_patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "change_id",
-            "required": true,
-            "schema": {
-              "title": "Change Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReviewChangeViewRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReviewChangeItemResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Patch Review Change View",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/course-work-item-families": {
-      "get": {
-        "operationId": "get_course_families_review_course_work_item_families_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "course_dept",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Course Dept"
-            }
-          },
-          {
-            "in": "query",
-            "name": "course_number",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Course Number"
-            }
-          },
-          {
-            "in": "query",
-            "name": "course_suffix",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Course Suffix"
-            }
-          },
-          {
-            "in": "query",
-            "name": "course_quarter",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Course Quarter"
-            }
-          },
-          {
-            "in": "query",
-            "name": "course_year2",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Course Year2"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/CourseWorkItemFamilyResponse"
-                  },
-                  "title": "Response Get Course Families Review Course Work Item Families Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Course Families",
-        "tags": [
-          "review-items"
-        ]
-      },
-      "post": {
-        "operationId": "post_course_family_review_course_work_item_families_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CourseWorkItemFamilyCreateRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CourseWorkItemFamilyResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Post Course Family",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/course-work-item-families/courses": {
-      "get": {
-        "operationId": "get_course_family_courses_review_course_work_item_families_courses_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CourseWorkItemFamilyCoursesResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Course Family Courses",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/course-work-item-families/status": {
-      "get": {
-        "operationId": "get_course_family_status_review_course_work_item_families_status_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CourseWorkItemFamilyStatusResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Course Family Status",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/course-work-item-families/{family_id}": {
-      "patch": {
-        "operationId": "patch_course_family_review_course_work_item_families__family_id__patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "family_id",
-            "required": true,
-            "schema": {
-              "title": "Family Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CourseWorkItemFamilyUpdateRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CourseWorkItemFamilyResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Patch Course Family",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/course-work-item-raw-types": {
-      "get": {
-        "operationId": "get_course_raw_types_review_course_work_item_raw_types_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "course_dept",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Course Dept"
-            }
-          },
-          {
-            "in": "query",
-            "name": "course_number",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Course Number"
-            }
-          },
-          {
-            "in": "query",
-            "name": "course_suffix",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Course Suffix"
-            }
-          },
-          {
-            "in": "query",
-            "name": "course_quarter",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Course Quarter"
-            }
-          },
-          {
-            "in": "query",
-            "name": "course_year2",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Course Year2"
-            }
-          },
-          {
-            "in": "query",
-            "name": "family_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Family Id"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/CourseRawTypeResponse"
-                  },
-                  "title": "Response Get Course Raw Types Review Course Work Item Raw Types Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Course Raw Types",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/course-work-item-raw-types/relink": {
-      "post": {
-        "operationId": "post_course_raw_type_relink_review_course_work_item_raw_types_relink_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CourseRawTypeMoveRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CourseRawTypeMoveResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Post Course Raw Type Relink",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/edits": {
-      "post": {
-        "operationId": "post_review_edit_apply_review_edits_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReviewEditRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReviewEditApplyResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Post Review Edit Apply",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/edits/preview": {
-      "post": {
-        "operationId": "post_review_edit_preview_review_edits_preview_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReviewEditRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReviewEditPreviewResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Post Review Edit Preview",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/raw-type-suggestions": {
-      "get": {
-        "operationId": "get_raw_type_suggestions_review_raw_type_suggestions_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "default": "pending",
-              "title": "Status",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "course_dept",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Course Dept"
-            }
-          },
-          {
-            "in": "query",
-            "name": "course_number",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Course Number"
-            }
-          },
-          {
-            "in": "query",
-            "name": "course_suffix",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Course Suffix"
-            }
-          },
-          {
-            "in": "query",
-            "name": "course_quarter",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Course Quarter"
-            }
-          },
-          {
-            "in": "query",
-            "name": "course_year2",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Course Year2"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "maximum": 200,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "offset",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "minimum": 0,
-              "title": "Offset",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/RawTypeSuggestionItemResponse"
-                  },
-                  "title": "Response Get Raw Type Suggestions Review Raw Type Suggestions Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Raw Type Suggestions",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/raw-type-suggestions/{suggestion_id}/decisions": {
-      "post": {
-        "operationId": "post_raw_type_suggestion_decision_review_raw_type_suggestions__suggestion_id__decisions_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "suggestion_id",
-            "required": true,
-            "schema": {
-              "title": "Suggestion Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RawTypeSuggestionDecisionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RawTypeSuggestionDecisionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Post Raw Type Suggestion Decision",
-        "tags": [
-          "review-items"
-        ]
-      }
-    },
-    "/review/summary": {
-      "get": {
-        "operationId": "get_review_summary_route_review_summary_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReviewSummaryResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Review Summary Route",
-        "tags": [
-          "review-items"
+          "settings"
         ]
       }
     },

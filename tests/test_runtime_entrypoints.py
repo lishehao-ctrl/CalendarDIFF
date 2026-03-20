@@ -6,7 +6,6 @@ from pathlib import Path
 
 def test_monolith_runtime_entrypoints_importable() -> None:
     importlib.import_module("services.app_api.main")
-    importlib.import_module("services.public_api.main")
 
 
 

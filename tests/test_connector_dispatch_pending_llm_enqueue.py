@@ -4,10 +4,10 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.db.models.ingestion import IngestJob, IngestJobStatus
+from app.db.models.runtime import IngestJob, IngestJobStatus
 from app.db.models.input import IngestTriggerType, InputSource, SourceKind, SyncRequest, SyncRequestStatus
 from app.db.models.shared import User
-from app.modules.ingestion.connector_dispatch import dispatch_pending_llm_enqueues
+from app.modules.runtime.connectors.connector_dispatch import dispatch_pending_llm_enqueues
 
 
 def _seed_pending_enqueue_job(db: Session, *, request_id: str, dispatch_attempt: int = 0) -> tuple[IngestJob, SyncRequest]:
@@ -60,14 +60,14 @@ def test_dispatch_pending_enqueue_success_marks_queued(db_session: Session, monk
     job, sync_request = _seed_pending_enqueue_job(db_session, request_id="dispatch-ok")
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr("app.modules.ingestion.connector_dispatch.get_parse_queue_redis_client", lambda: object())
-    monkeypatch.setattr("app.modules.ingestion.connector_dispatch.ensure_parse_queue_group", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.modules.runtime.connectors.connector_dispatch.get_parse_queue_redis_client", lambda: object())
+    monkeypatch.setattr("app.modules.runtime.connectors.connector_dispatch.ensure_parse_queue_group", lambda *_args, **_kwargs: None)
 
     def _enqueue(**kwargs):  # noqa: ANN003
         captured.update(kwargs)
         return "msg-id-1"
 
-    monkeypatch.setattr("app.modules.ingestion.connector_dispatch.enqueue_parse_task", _enqueue)
+    monkeypatch.setattr("app.modules.runtime.connectors.connector_dispatch.enqueue_parse_task", _enqueue)
     dispatched = dispatch_pending_llm_enqueues(db_session)
     assert dispatched == 1
 
@@ -83,10 +83,10 @@ def test_dispatch_pending_enqueue_success_marks_queued(db_session: Session, monk
 def test_dispatch_pending_enqueue_failure_keeps_pending_before_threshold(db_session: Session, monkeypatch) -> None:
     job, sync_request = _seed_pending_enqueue_job(db_session, request_id="dispatch-fail-pending")
 
-    monkeypatch.setattr("app.modules.ingestion.connector_dispatch.get_parse_queue_redis_client", lambda: object())
-    monkeypatch.setattr("app.modules.ingestion.connector_dispatch.ensure_parse_queue_group", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.modules.runtime.connectors.connector_dispatch.get_parse_queue_redis_client", lambda: object())
+    monkeypatch.setattr("app.modules.runtime.connectors.connector_dispatch.ensure_parse_queue_group", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
-        "app.modules.ingestion.connector_dispatch.enqueue_parse_task",
+        "app.modules.runtime.connectors.connector_dispatch.enqueue_parse_task",
         lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("redis unavailable")),
     )
 
@@ -104,10 +104,10 @@ def test_dispatch_pending_enqueue_failure_keeps_pending_before_threshold(db_sess
 def test_dispatch_pending_enqueue_failure_reaches_threshold_and_retries_connector(db_session: Session, monkeypatch) -> None:
     job, sync_request = _seed_pending_enqueue_job(db_session, request_id="dispatch-fail-threshold", dispatch_attempt=2)
 
-    monkeypatch.setattr("app.modules.ingestion.connector_dispatch.get_parse_queue_redis_client", lambda: object())
-    monkeypatch.setattr("app.modules.ingestion.connector_dispatch.ensure_parse_queue_group", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.modules.runtime.connectors.connector_dispatch.get_parse_queue_redis_client", lambda: object())
+    monkeypatch.setattr("app.modules.runtime.connectors.connector_dispatch.ensure_parse_queue_group", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
-        "app.modules.ingestion.connector_dispatch.enqueue_parse_task",
+        "app.modules.runtime.connectors.connector_dispatch.enqueue_parse_task",
         lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("redis unavailable")),
     )
 
@@ -126,14 +126,14 @@ def test_dispatch_pending_enqueue_ignores_future_next_retry_for_llm_pending(db_s
     db_session.commit()
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr("app.modules.ingestion.connector_dispatch.get_parse_queue_redis_client", lambda: object())
-    monkeypatch.setattr("app.modules.ingestion.connector_dispatch.ensure_parse_queue_group", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.modules.runtime.connectors.connector_dispatch.get_parse_queue_redis_client", lambda: object())
+    monkeypatch.setattr("app.modules.runtime.connectors.connector_dispatch.ensure_parse_queue_group", lambda *_args, **_kwargs: None)
 
     def _enqueue(**kwargs):  # noqa: ANN003
         captured.update(kwargs)
         return "msg-id-future"
 
-    monkeypatch.setattr("app.modules.ingestion.connector_dispatch.enqueue_parse_task", _enqueue)
+    monkeypatch.setattr("app.modules.runtime.connectors.connector_dispatch.enqueue_parse_task", _enqueue)
     dispatched = dispatch_pending_llm_enqueues(db_session)
     assert dispatched == 1
 

@@ -9,7 +9,7 @@ from app.db.models.input import InputSource, SourceKind
 from app.db.models.review import EventEntity, EventEntityLifecycle, SourceEventObservation
 from app.db.models.shared import CourseWorkItemLabelFamily, User
 from app.modules.common.course_identity import normalize_label_token, normalized_course_identity_key
-from app.modules.core_ingest.entity_resolution import resolve_entity_uid
+from app.modules.runtime.apply.entity_resolution import resolve_entity_uid
 
 
 def _create_user_source_family(db_session: Session) -> tuple[User, InputSource, CourseWorkItemLabelFamily]:

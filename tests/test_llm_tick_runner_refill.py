@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from types import SimpleNamespace
 
-from app.modules.llm_runtime.tick_runner import run_llm_worker_tick
+from app.modules.runtime.llm.tick_runner import run_llm_worker_tick
 
 
 def _msg(message_id: str, request_id: str) -> SimpleNamespace:
@@ -26,7 +26,7 @@ def test_run_llm_worker_tick_refills_slots_before_batch_finishes(monkeypatch) ->
     acked: list[list[str]] = []
     processed: list[str] = []
 
-    monkeypatch.setattr("app.modules.llm_runtime.tick_runner.get_settings", lambda: SimpleNamespace(llm_worker_concurrency=2, llm_queue_consumer_poll_ms=1))
+    monkeypatch.setattr("app.modules.runtime.llm.tick_runner.get_settings", lambda: SimpleNamespace(llm_worker_concurrency=2, llm_queue_consumer_poll_ms=1))
 
     def _consume_parse_tasks(*, redis_client, worker_id: str, batch_size: int, poll_ms: int):
         del redis_client, worker_id
@@ -47,9 +47,9 @@ def test_run_llm_worker_tick_refills_slots_before_batch_finishes(monkeypatch) ->
         processed.append(message.message_id)
         return True
 
-    monkeypatch.setattr("app.modules.llm_runtime.tick_runner.consume_parse_tasks", _consume_parse_tasks)
-    monkeypatch.setattr("app.modules.llm_runtime.tick_runner.ack_parse_tasks", _ack_parse_tasks)
-    monkeypatch.setattr("app.modules.llm_runtime.tick_runner.process_parse_task_message", _process_parse_task_message)
+    monkeypatch.setattr("app.modules.runtime.llm.tick_runner.consume_parse_tasks", _consume_parse_tasks)
+    monkeypatch.setattr("app.modules.runtime.llm.tick_runner.ack_parse_tasks", _ack_parse_tasks)
+    monkeypatch.setattr("app.modules.runtime.llm.tick_runner.process_parse_task_message", _process_parse_task_message)
 
     processed_count = run_llm_worker_tick(
         redis_client=object(),  # type: ignore[arg-type]

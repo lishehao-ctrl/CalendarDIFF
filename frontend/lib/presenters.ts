@@ -1,4 +1,4 @@
-import type { ReviewChange } from "@/lib/types";
+import type { ChangeItem } from "@/lib/types";
 
 const shortFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -103,7 +103,7 @@ export function extractEventSubtitle(payload: Record<string, unknown> | null | u
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-export function summarizeChange(change: ReviewChange) {
+export function summarizeChange(change: ChangeItem) {
   const beforeTitle = change.before_display?.display_label || change.entity_uid;
   const afterTitle = change.after_display?.display_label || beforeTitle;
   const subtitle = formatSemanticDue(change.after_event as unknown as Record<string, unknown>, "") || formatSemanticDue(change.before_event as unknown as Record<string, unknown>, "");

@@ -7,10 +7,10 @@ from types import SimpleNamespace
 from app.core.security import decrypt_secret, encrypt_secret
 from app.db.models.input import InputSource, InputSourceConfig, InputSourceCursor, InputSourceSecret, SourceKind
 from app.db.models.shared import User
-from app.modules.input_control_plane.oauth_service import handle_gmail_oauth_callback
-from app.modules.input_control_plane.schemas import InputSourceCreateRequest
-from app.modules.input_control_plane.sources_service import create_input_source
-from app.modules.sync.gmail_client import GmailOAuthTokens
+from app.modules.sources.oauth_service import handle_gmail_oauth_callback
+from app.modules.sources.schemas import InputSourceCreateRequest
+from app.modules.sources.sources_service import create_input_source
+from app.modules.runtime.connectors.clients.gmail_client import GmailOAuthTokens
 
 
 class _FakeGmailClient:

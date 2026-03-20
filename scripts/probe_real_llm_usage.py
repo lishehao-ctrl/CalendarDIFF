@@ -16,18 +16,18 @@ from sqlalchemy.orm import Session
 from app.db.models.input import InputSource
 from app.db.session import get_session_factory
 from app.modules.common.source_term_window import parse_iso_datetime, parse_source_term_window, source_timezone_name
-from app.modules.ingestion.gmail_fetcher import _known_course_tokens_for_source, matches_gmail_source_filters
-from app.modules.ingestion.llm_parsers.calendar_parser import _extract_source_facts
-from app.modules.ingestion.llm_parsers.schemas import (
+from app.modules.runtime.connectors.gmail_fetcher import _known_course_tokens_for_source, matches_gmail_source_filters
+from app.modules.runtime.connectors.llm_parsers.calendar_parser import _extract_source_facts
+from app.modules.runtime.connectors.llm_parsers.schemas import (
     CalendarRelevanceResponse,
     CalendarSemanticEventClassification,
     GmailAtomicSegmentExtractionResponse,
     GmailDirectiveExtractionResponse,
     GmailPlannerResponse,
 )
-from app.modules.input_control_plane.source_secrets import decode_source_secrets
+from app.modules.sources.source_secrets import decode_source_secrets
 from app.modules.llm_gateway import LlmInvokeRequest, invoke_llm_json
-from app.modules.sync.gmail_client import GmailClient
+from app.modules.runtime.connectors.clients.gmail_client import GmailClient
 
 OUTPUT_ROOT = Path("/Users/lishehao/Desktop/Project/CalendarDIFF/output")
 DEFAULT_SEED = 20260315

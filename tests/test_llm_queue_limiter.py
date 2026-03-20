@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.core.config import get_settings
-from app.modules.llm_runtime import limiter as limiter_module
+from app.modules.runtime.llm import limiter as limiter_module
 
 
 @dataclass

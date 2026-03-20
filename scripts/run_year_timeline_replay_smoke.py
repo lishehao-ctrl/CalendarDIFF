@@ -368,13 +368,13 @@ def process_batch(*, client: httpx.Client, state: dict[str, Any], batch: BatchSp
 
 def capture_backend_snapshot(*, client: httpx.Client, user_id: int) -> dict[str, Any]:
     changes = list_all_changes(client)
-    families = request_json_list(client, "GET", "/review/course-work-item-families")
-    raw_types = request_json_list(client, "GET", "/review/course-work-item-raw-types")
+    families = request_json_list(client, "GET", "/families")
+    raw_types = request_json_list(client, "GET", "/families/raw-types")
     manual_events = normalize_manual_events(
-        request_json_list(client, "GET", "/events/manual?include_removed=true")
+        request_json_list(client, "GET", "/manual/events?include_removed=true")
     )
     sources = request_json_list(client, "GET", "/sources?status=all")
-    family_status = request_json(client, "GET", "/review/course-work-item-families/status")
+    family_status = request_json(client, "GET", "/families/status")
     event_entity_count = count_event_entities_for_user(user_id=user_id)
     return {
         "recorded_at": datetime.now(UTC).isoformat(),
@@ -479,7 +479,10 @@ def diff_snapshots(before: dict[str, Any], after: dict[str, Any]) -> dict[str, A
 def build_report(run_dir: Path) -> dict[str, Any]:
     state = load_state(run_dir)
     batch_results = list(state.get("batch_results") or [])
-    bootstrap_results = list(state.get("bootstrap_results") or [])
+    bootstrap_results = enrich_bootstrap_results_from_api(
+        state=state,
+        bootstrap_results=list(state.get("bootstrap_results") or []),
+    )
     checkpoint_summaries = list(state.get("checkpoint_summaries") or [])
     bootstrap_llm_usage = aggregate_llm_usage_summaries(row.get("llm_usage") for row in bootstrap_results)
     ics_llm_usage = aggregate_llm_usage_summaries(row.get("ics_llm_usage") for row in batch_results)
@@ -543,6 +546,59 @@ def build_report(run_dir: Path) -> dict[str, Any]:
     write_json(run_dir / REPORT_FILE, report)
     (run_dir / SUMMARY_FILE).write_text(render_summary(report), encoding="utf-8")
     return report
+
+
+def enrich_bootstrap_results_from_api(*, state: dict[str, Any], bootstrap_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not bootstrap_results:
+        return bootstrap_results
+    if not any(_bootstrap_result_is_placeholder(row) for row in bootstrap_results):
+        return bootstrap_results
+    try:
+        client = build_api_client(public_api_base=str(state["public_api_base"]), api_key=str(state["api_key"]))
+        login = client.post(
+            "/auth/login",
+            json={
+                "notify_email": str(state["notify_email"]),
+                "password": str(state["auth_password"]),
+                "timezone_name": "America/Los_Angeles",
+            },
+        )
+        if login.status_code != 200:
+            return bootstrap_results
+    except Exception:
+        return bootstrap_results
+
+    enriched: list[dict[str, Any]] = []
+    for row in bootstrap_results:
+        source_id = int(row.get("source_id") or 0)
+        if source_id <= 0:
+            enriched.append(row)
+            continue
+        try:
+            payload = request_json(client, "GET", f"/sources/{source_id}/observability")
+        except Exception:
+            enriched.append(row)
+            continue
+        bootstrap_payload = payload.get("bootstrap") if isinstance(payload.get("bootstrap"), dict) else None
+        if bootstrap_payload is None:
+            enriched.append(row)
+            continue
+        enriched.append(build_bootstrap_result(source=row, status_payload=bootstrap_payload))
+    return enriched
+
+
+def _bootstrap_result_is_placeholder(row: dict[str, Any]) -> bool:
+    if not isinstance(row, dict):
+        return False
+    if row.get("request_id") in (None, ""):
+        return True
+    if row.get("status") in (None, "", "unknown"):
+        return True
+    if row.get("elapsed_ms") is None:
+        return True
+    if row.get("llm_usage") is None and row.get("connector_result") is None:
+        return True
+    return False
 
 
 def render_summary(report: dict[str, Any]) -> str:
@@ -644,6 +700,9 @@ def normalize_manual_events(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def extract_sync_llm_usage(status_payload: dict[str, Any]) -> dict[str, Any] | None:
+    direct_usage = status_payload.get("llm_usage")
+    if isinstance(direct_usage, dict):
+        return direct_usage
     metadata = status_payload.get("metadata") if isinstance(status_payload.get("metadata"), dict) else {}
     usage = metadata.get(LLM_USAGE_SUMMARY_KEY)
     if not isinstance(usage, dict):
@@ -846,20 +905,26 @@ def build_api_client(*, public_api_base: str, api_key: str) -> httpx.Client:
 
 
 def ensure_authenticated_session(client: httpx.Client, *, notify_email: str, password: str) -> dict[str, Any]:
-    register = client.post(
-        "/auth/register",
-        json={"notify_email": notify_email, "password": password, "timezone_name": "America/Los_Angeles"},
-    )
-    if register.status_code not in {201, 409}:
-        raise ReplayFailure(f"auth register failed status={register.status_code} body={register.text[:800]}")
-    if register.status_code == 409:
-        login = client.post(
-            "/auth/login",
-            json={"notify_email": notify_email, "password": password, "timezone_name": "America/Los_Angeles"},
-        )
-        if login.status_code != 200:
-            raise ReplayFailure(f"auth login failed status={login.status_code} body={login.text[:800]}")
-    session_payload = request_json(client, "GET", "/auth/session")
+    session = client.get("/auth/session")
+    if session.status_code == 200:
+        session_payload = request_json(client, "GET", "/auth/session")
+    else:
+        login_payload = {"notify_email": notify_email, "password": password, "timezone_name": "America/Los_Angeles"}
+        login = client.post("/auth/login", json=login_payload)
+        if login.status_code == 200:
+            session_payload = request_json(client, "GET", "/auth/session")
+        else:
+            register = client.post(
+                "/auth/register",
+                json={"notify_email": notify_email, "password": password, "timezone_name": "America/Los_Angeles"},
+            )
+            if register.status_code not in {201, 409}:
+                raise ReplayFailure(f"auth register failed status={register.status_code} body={register.text[:800]}")
+            if register.status_code == 409:
+                login = client.post("/auth/login", json=login_payload)
+                if login.status_code != 200:
+                    raise ReplayFailure(f"auth login failed status={login.status_code} body={login.text[:800]}")
+            session_payload = request_json(client, "GET", "/auth/session")
     user = session_payload.get("user")
     if not isinstance(user, dict):
         raise ReplayFailure("auth session missing user payload")
@@ -937,6 +1002,19 @@ def wait_for_source_bootstrap_sync(
             if now - stagnant_since >= SYNC_STALL_TIMEOUT_SECONDS:
                 raise ReplayFailure(_build_sync_timeout_message(payload=payload, source_row=source_row, phase="bootstrap"))
         source_row = get_source_row(client, source_id=source_id)
+        observability = request_json(client, "GET", f"/sources/{source_id}/observability")
+        bootstrap_payload = observability.get("bootstrap") if isinstance(observability.get("bootstrap"), dict) else None
+        if bootstrap_payload is not None:
+            bootstrap_status = str(bootstrap_payload.get("status") or "")
+            if observed_request_id is None and isinstance(bootstrap_payload.get("request_id"), str) and bootstrap_payload.get("request_id"):
+                observed_request_id = str(bootstrap_payload["request_id"])
+            if bootstrap_status == "FAILED":
+                raise ReplayFailure(
+                    f"bootstrap sync failed request_id={bootstrap_payload.get('request_id')} source_id={source_id} "
+                    f"code={bootstrap_payload.get('error_code')} message={bootstrap_payload.get('error_message')}"
+                )
+            if bootstrap_status == "SUCCEEDED" and bool(bootstrap_payload.get("applied")):
+                return build_bootstrap_result(source=source, status_payload=bootstrap_payload)
         if (
             observed_request_id is None
             and isinstance(source_row.get("last_polled_at"), str)
@@ -946,7 +1024,7 @@ def wait_for_source_bootstrap_sync(
                 source_id=source_id,
                 not_before=created_at,
             )
-            if observed_request_id is not None:
+            if observed_request_id is not None or bootstrap_payload is not None:
                 continue
             return build_bootstrap_result(source=source_row, status_payload=None)
         time.sleep(0.5)
@@ -968,12 +1046,21 @@ def build_bootstrap_result(*, source: dict[str, Any], status_payload: dict[str, 
         "provider": str(source.get("provider") or ""),
         "request_id": str(status_payload.get("request_id") or "") if isinstance(status_payload, dict) else None,
         "status": str(status_payload.get("status") or "") if isinstance(status_payload, dict) else "unknown",
+        "stage": str(status_payload.get("stage") or "") if isinstance(status_payload, dict) else None,
+        "substage": str(status_payload.get("substage") or "") if isinstance(status_payload, dict) else None,
+        "stage_updated_at": status_payload.get("stage_updated_at") if isinstance(status_payload, dict) else None,
         "applied": bool(status_payload.get("applied")) if isinstance(status_payload, dict) else False,
-        "elapsed_ms": extract_sync_elapsed_ms(status_payload) if isinstance(status_payload, dict) else None,
+        "elapsed_ms": (
+            int(status_payload.get("elapsed_ms"))
+            if isinstance(status_payload, dict) and isinstance(status_payload.get("elapsed_ms"), (int, float))
+            else extract_sync_elapsed_ms(status_payload) if isinstance(status_payload, dict) else None
+        ),
         "llm_usage": extract_sync_llm_usage(status_payload) if isinstance(status_payload, dict) else None,
         "connector_result": status_payload.get("connector_result") if isinstance(status_payload, dict) else None,
         "created_at": status_payload.get("created_at") if isinstance(status_payload, dict) else source.get("created_at"),
         "updated_at": status_payload.get("updated_at") if isinstance(status_payload, dict) else source.get("updated_at"),
+        "applied_at": status_payload.get("applied_at") if isinstance(status_payload, dict) else None,
+        "progress": status_payload.get("progress") if isinstance(status_payload, dict) else None,
     }
 
 
@@ -1041,7 +1128,7 @@ def list_all_changes(client: httpx.Client) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     offset = 0
     while True:
-        page = request_json_list(client, "GET", f"/review/changes?review_status=all&limit={PAGE_SIZE}&offset={offset}")
+        page = request_json_list(client, "GET", f"/changes?review_status=all&limit={PAGE_SIZE}&offset={offset}")
         rows.extend(page)
         if len(page) < PAGE_SIZE:
             break
@@ -1084,7 +1171,7 @@ def _combined_progress_marker(
     active_payload: dict[str, Any] | None,
 ) -> tuple[Any, ...]:
     active_request_id = source_row.get("active_request_id") if isinstance(source_row, dict) else None
-    active_marker = _sync_payload_marker(active_payload) if isinstance(active_payload, dict) else (None, None, None, None, None, None, None, None, None, None)
+    active_marker = _sync_payload_marker(active_payload) if isinstance(active_payload, dict) else (None, None, None, None, None, None, None, None, None, None, None)
     return (
         *_sync_payload_marker(payload),
         source_row.get("sync_state") if isinstance(source_row, dict) else None,
@@ -1096,7 +1183,7 @@ def _combined_progress_marker(
 
 def _sync_payload_marker(payload: dict[str, Any] | None) -> tuple[Any, ...]:
     if not isinstance(payload, dict):
-        return (None, None, None, None, None, None, None, None, None, None)
+        return (None, None, None, None, None, None, None, None, None, None, None)
     progress = payload.get("progress") if isinstance(payload.get("progress"), dict) else {}
     connector_result = payload.get("connector_result") if isinstance(payload.get("connector_result"), dict) else {}
     llm_usage = payload.get("llm_usage") if isinstance(payload.get("llm_usage"), dict) else {}
@@ -1111,6 +1198,7 @@ def _sync_payload_marker(payload: dict[str, Any] | None) -> tuple[Any, ...]:
         connector_result.get("status"),
         connector_result.get("records_count"),
         llm_usage.get("last_observed_at") or llm_usage.get("successful_call_count"),
+        progress.get("updated_at"),
     )
 
 
@@ -1126,7 +1214,7 @@ def _build_sync_timeout_message(
     progress = payload.get("progress") if isinstance(payload.get("progress"), dict) else {}
     progress_phase = str(progress.get("phase") or "-")
     progress_label = str(progress.get("label") or "-")
-    updated_at_raw = payload.get("updated_at")
+    updated_at_raw = progress.get("updated_at") if isinstance(progress.get("updated_at"), str) and progress.get("updated_at") else payload.get("updated_at")
     age_seconds: int | None = None
     if isinstance(updated_at_raw, str) and updated_at_raw:
         try:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.modules.ingestion.ics_delta.diff import build_ics_delta
-from app.modules.ingestion.ics_delta.parser import IcsDeltaParseError, parse_ics_snapshot
+from app.modules.runtime.connectors.ics_delta.diff import build_ics_delta
+from app.modules.runtime.connectors.ics_delta.parser import IcsDeltaParseError, parse_ics_snapshot
 
 
 def _ics_text(events: list[str]) -> bytes:

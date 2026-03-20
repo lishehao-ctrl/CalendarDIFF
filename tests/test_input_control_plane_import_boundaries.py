@@ -6,13 +6,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_input_control_plane_service_monolith_removed() -> None:
-    service_path = REPO_ROOT / "app" / "modules" / "input_control_plane" / "service.py"
+def test_sources_service_monolith_removed() -> None:
+    service_path = REPO_ROOT / "app" / "modules" / "sources" / "service.py"
     assert not service_path.exists()
 
 
-def test_no_call_site_imports_input_control_plane_service() -> None:
-    forbidden = "app.modules.input_control_plane" + ".service"
+def test_no_call_site_imports_sources_service_shell() -> None:
+    forbidden = "app.modules.sources" + ".service"
     scan_roots = [
         REPO_ROOT / "app",
         REPO_ROOT / "services",
@@ -26,4 +26,4 @@ def test_no_call_site_imports_input_control_plane_service() -> None:
             if forbidden in content:
                 violations.append(str(path.relative_to(REPO_ROOT)))
 
-    assert not violations, "legacy input service import found:\n" + "\n".join(sorted(violations))
+    assert not violations, "legacy sources service shell import found:\n" + "\n".join(sorted(violations))

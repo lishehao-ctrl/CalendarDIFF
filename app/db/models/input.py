@@ -23,7 +23,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
-    from app.db.models.ingestion import IngestJob, IngestResult
+    from app.db.models.runtime import IngestJob, IngestResult
     from app.db.models.review import SourceEventObservation
     from app.db.models.review import IngestApplyLog
     from app.db.models.shared import User
@@ -49,6 +49,17 @@ class SyncRequestStatus(str, Enum):
     RUNNING = "RUNNING"
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
+
+
+class SyncRequestStage(str, Enum):
+    CONNECTOR_FETCH = "connector_fetch"
+    LLM_QUEUE = "llm_queue"
+    LLM_PARSE = "llm_parse"
+    PROVIDER_REDUCE = "provider_reduce"
+    RESULT_READY = "result_ready"
+    APPLYING = "applying"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class InputSource(Base):
@@ -165,6 +176,15 @@ class SyncRequest(Base):
         default=SyncRequestStatus.PENDING,
         server_default=SyncRequestStatus.PENDING.value,
     )
+    stage: Mapped[SyncRequestStage] = mapped_column(
+        SAEnum(SyncRequestStage, name="sync_request_stage", native_enum=False),
+        nullable=False,
+        default=SyncRequestStage.CONNECTOR_FETCH,
+        server_default=SyncRequestStage.CONNECTOR_FETCH.value,
+    )
+    substage: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    stage_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    progress_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
     trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -204,5 +224,6 @@ __all__ = [
     "InputSourceSecret",
     "SourceKind",
     "SyncRequest",
+    "SyncRequestStage",
     "SyncRequestStatus",
 ]

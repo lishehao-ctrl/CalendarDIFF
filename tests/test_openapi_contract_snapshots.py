@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from services.public_api.main import app as public_app
+from services.app_api.main import app as public_app
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT_PATH = PROJECT_ROOT / "contracts" / "openapi" / "public-service.json"

@@ -1,0 +1,218 @@
+from __future__ import annotations
+
+import logging
+from collections.abc import Callable
+from datetime import timedelta
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.config import get_settings
+from app.db.models.runtime import ConnectorResultStatus, IngestJob, IngestJobStatus
+from app.db.models.input import SyncRequestStage, SyncRequestStatus
+from app.modules.runtime.connectors.calendar_fetcher import fetch_calendar_delta
+from app.modules.runtime.connectors.connector_apply import apply_failure, apply_success_without_llm, mark_llm_enqueue_pending
+from app.modules.runtime.connectors.connector_dispatch import dispatch_pending_llm_enqueues
+from app.modules.runtime.connectors.connector_types import ConnectorFetchOutcome
+from app.modules.runtime.connectors.failure_policy import decide_failure
+from app.modules.runtime.connectors.gmail_fetcher import fetch_gmail_changes
+from app.modules.runtime.connectors.job_claiming import claim_jobs, requeue_stale_claimed_jobs
+from app.modules.runtime.connectors.source_orchestrator import route_source_provider
+from app.modules.runtime.kernel import (
+    JobContext,
+    apply_dead_letter_transition,
+    build_sync_progress_payload,
+    copy_job_payload,
+    set_sync_runtime_state,
+    utcnow,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def run_connector_tick(db: Session, *, worker_id: str) -> int:
+    requeue_stale_claimed_jobs(db)
+    dispatch_pending_llm_enqueues(db)
+    jobs = claim_jobs(db, worker_id=worker_id)
+    processed = 0
+    for job in jobs:
+        if process_claimed_job(db, job_id=job.id):
+            processed += 1
+    return processed
+
+
+def process_claimed_job(db: Session, *, job_id: int) -> bool:
+    settings = get_settings()
+    now = utcnow()
+    job = db.scalar(select(IngestJob).where(IngestJob.id == job_id).with_for_update())
+    if job is None or job.status != IngestJobStatus.CLAIMED:
+        return False
+
+    sync_request = job.sync_request
+    source = job.source
+    context = JobContext(job=job, sync_request=sync_request, source=source)
+    if sync_request is None or source is None:
+        apply_dead_letter_transition(
+            context=context,
+            error_code="connector_context_missing",
+            error_message="missing sync request/source context",
+            attempt=job.attempt + 1,
+            dead_lettered_at=now,
+            workflow_stage="CONNECTOR_DEAD_LETTER",
+            clear_claim=True,
+            attempt_mode="set",
+        )
+        db.commit()
+        return True
+
+    progress_callback = _build_progress_callback(db=db, context=context)
+    outcome = dispatch_provider_fetch(
+        source_provider=source.provider,
+        source=source,
+        request_id=sync_request.request_id,
+        job_payload=copy_job_payload(job),
+        emit_progress=progress_callback,
+    )
+    if outcome.status in {
+        ConnectorResultStatus.FETCH_FAILED,
+        ConnectorResultStatus.PARSE_FAILED,
+        ConnectorResultStatus.AUTH_FAILED,
+        ConnectorResultStatus.RATE_LIMITED,
+    }:
+        failure = decide_failure(
+            result_status=outcome.status,
+            error_code=outcome.error_code,
+            error_message=outcome.error_message,
+        )
+        apply_failure(
+            db,
+            context=context,
+            decision=failure,
+            max_retry_attempts=int(settings.llm_max_retry_attempts),
+            retry_base_seconds=int(settings.llm_retry_base_seconds),
+            retry_max_seconds=int(settings.llm_retry_max_seconds),
+            retry_jitter_seconds=int(settings.llm_retry_jitter_seconds),
+        )
+        db.commit()
+        return True
+
+    if outcome.continuation_payload is not None:
+        _continue_connector_fetch(
+            context=context,
+            continuation_payload=outcome.continuation_payload,
+            delay_seconds=outcome.continuation_delay_seconds,
+        )
+        db.commit()
+        return True
+
+    if outcome.parse_payload is not None:
+        mark_llm_enqueue_pending(
+            context=context,
+            result_status=outcome.status,
+            cursor_patch=outcome.cursor_patch,
+            parse_payload=outcome.parse_payload,
+            claim_timeout_seconds=int(settings.llm_claim_timeout_seconds),
+        )
+        db.commit()
+        return True
+
+    apply_success_without_llm(
+        db,
+        context=context,
+        result_status=outcome.status,
+        cursor_patch=outcome.cursor_patch,
+    )
+    db.commit()
+    return True
+
+
+def dispatch_provider_fetch(
+    *,
+    source_provider: str,
+    source,
+    request_id: str,
+    job_payload: dict | None = None,
+    emit_progress: Callable[[dict], None] | None = None,
+) -> ConnectorFetchOutcome:
+    try:
+        processor = route_source_provider(source_provider=source_provider)
+        if processor == "gmail":
+            return fetch_gmail_changes(
+                source=source,
+                request_id=request_id,
+                job_payload=job_payload,
+                emit_progress=emit_progress,
+            )
+        if processor == "calendar":
+            return fetch_calendar_delta(source=source, emit_progress=emit_progress)
+        return ConnectorFetchOutcome(
+            status=ConnectorResultStatus.FETCH_FAILED,
+            cursor_patch={},
+            parse_payload=None,
+            error_code="provider_not_implemented",
+            error_message=f"provider not implemented: {source_provider}",
+        )
+    except Exception as exc:  # pragma: no cover - defensive worker guard
+        logger.exception("connector fetch crashed provider=%s request_id=%s", source_provider, request_id)
+        return ConnectorFetchOutcome(
+            status=ConnectorResultStatus.FETCH_FAILED,
+            cursor_patch={},
+            parse_payload=None,
+            error_code="connector_exception",
+            error_message=str(exc),
+        )
+
+
+def _build_progress_callback(*, db: Session, context: JobContext) -> Callable[[dict], None]:
+    def emit(progress: dict) -> None:
+        if context.sync_request is None or context.source is None:
+            return
+        payload = copy_job_payload(context.job)
+        payload["provider"] = context.source.provider
+        payload["sync_progress"] = progress
+        payload["sync_progress_updated_at"] = utcnow().isoformat()
+        context.job.payload_json = payload
+        set_sync_runtime_state(
+            context.sync_request,
+            status=SyncRequestStatus.RUNNING,
+            stage=SyncRequestStage.CONNECTOR_FETCH,
+            substage=str(progress.get("phase") or "connector_fetch"),
+            progress=progress,
+            error_code=None,
+            error_message=None,
+        )
+        db.commit()
+
+    return emit
+
+
+def _continue_connector_fetch(
+    *,
+    context: JobContext,
+    continuation_payload: dict,
+    delay_seconds: int | None,
+) -> None:
+    now = utcnow()
+    payload = copy_job_payload(context.job)
+    payload["connector_continuation"] = continuation_payload
+    context.job.payload_json = payload
+    context.job.status = IngestJobStatus.PENDING
+    context.job.claimed_by = None
+    context.job.claim_token = None
+    context.job.next_retry_at = now + timedelta(seconds=max(int(delay_seconds or 0), 0))
+    if context.sync_request is not None:
+        progress = continuation_payload.get("progress") if isinstance(continuation_payload.get("progress"), dict) else None
+        substage = continuation_payload.get("substage")
+        set_sync_runtime_state(
+            context.sync_request,
+            status=SyncRequestStatus.RUNNING,
+            stage=SyncRequestStage.CONNECTOR_FETCH,
+            substage=str(substage) if isinstance(substage, str) and substage else "connector_fetch",
+            progress=progress,
+            error_code=None,
+            error_message=None,
+            when=now,
+        )
+
+
+__all__ = ["dispatch_provider_fetch", "process_claimed_job", "run_connector_tick"]

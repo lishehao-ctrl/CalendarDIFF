@@ -5,10 +5,10 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models.ingestion import IngestJob, IngestJobStatus
+from app.db.models.runtime import IngestJob, IngestJobStatus
 from app.db.models.input import IngestTriggerType, InputSource, SourceKind, SyncRequest, SyncRequestStatus
 from app.db.models.shared import User
-from app.modules.ingestion.job_claiming import requeue_stale_claimed_jobs
+from app.modules.runtime.connectors.job_claiming import requeue_stale_claimed_jobs
 
 
 def _seed_claimed_job(

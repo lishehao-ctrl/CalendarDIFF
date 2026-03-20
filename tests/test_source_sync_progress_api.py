@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from app.db.models.ingestion import CalendarComponentParseStatus, CalendarComponentParseTask, IngestJob, IngestJobStatus
+from app.db.models.runtime import CalendarComponentParseStatus, CalendarComponentParseTask, IngestJob, IngestJobStatus
 from app.db.models.input import IngestTriggerType, InputSource, SyncRequest, SyncRequestStatus
 from app.db.models.shared import User
-from app.modules.input_control_plane.schemas import InputSourceCreateRequest
-from app.modules.input_control_plane.sources_service import create_input_source
+from app.modules.sources.schemas import InputSourceCreateRequest
+from app.modules.sources.sources_service import create_input_source
 
 
 def _create_user(db_session, *, email: str) -> User:
@@ -103,6 +103,7 @@ def test_sources_api_exposes_gmail_sync_progress(input_client, db_session, authe
     assert payload["sync_progress"]["current"] == 25
     assert payload["sync_progress"]["total"] == 100
     assert payload["sync_progress"]["unit"] == "emails"
+    assert payload["operator_guidance"]["recommended_action"] == "continue_review_with_caution"
 
 
 def test_sync_request_status_exposes_calendar_component_progress(input_client, db_session, authenticate_client) -> None:
@@ -177,6 +178,54 @@ def test_sync_request_status_exposes_calendar_component_progress(input_client, d
     assert payload["progress"]["current"] == 2
     assert payload["progress"]["total"] == 4
     assert payload["progress"]["unit"] == "events"
+    assert isinstance(payload["progress"]["updated_at"], str)
+
+
+def test_source_observability_exposes_idle_operator_guidance(input_client, db_session, authenticate_client) -> None:
+    user = _create_user(db_session, email="guidance-idle@example.com")
+    source = _create_source(db_session, user=user, provider="gmail")
+
+    authenticate_client(input_client, user=user)
+    response = input_client.get(f"/sources/{source.id}/observability", headers={"X-API-Key": "test-api-key"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["operator_guidance"]["recommended_action"] == "continue_review"
+    assert payload["operator_guidance"]["reason_code"] == "source_idle"
+
+
+def test_source_observability_exposes_stale_running_operator_guidance(input_client, db_session, authenticate_client) -> None:
+    user = _create_user(db_session, email="guidance-stale@example.com")
+    source = _create_source(db_session, user=user, provider="ics")
+    sync_request = _seed_sync_request(db_session, source=source, request_id="guidance-stale-req", status=SyncRequestStatus.RUNNING)
+    sync_request.updated_at = datetime.now(timezone.utc)
+    _seed_job(
+        db_session,
+        source=source,
+        request_id="guidance-stale-req",
+        payload_json={
+            "provider": "ics",
+            "workflow_stage": "LLM_CALENDAR_REDUCE_WAITING",
+            "sync_progress": {
+                "phase": "calendar_parsing",
+                "label": "Parsing calendar events",
+                "detail": "0 of 12 calendar events have finished parsing.",
+                "current": 0,
+                "total": 12,
+                "percent": 0,
+                "unit": "events",
+            },
+            "sync_progress_updated_at": (datetime.now(timezone.utc) - timedelta(seconds=240)).isoformat(),
+        },
+    )
+
+    authenticate_client(input_client, user=user)
+    response = input_client.get(f"/sources/{source.id}/observability", headers={"X-API-Key": "test-api-key"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["operator_guidance"]["recommended_action"] == "wait_for_runtime"
+    assert payload["operator_guidance"]["severity"] == "blocking"
 
 
 def test_sync_request_status_exposes_llm_usage_summary_and_elapsed_ms(input_client, db_session, authenticate_client) -> None:

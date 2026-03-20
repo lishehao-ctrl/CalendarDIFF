@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.models.shared import User, UserSession
-from app.modules.users.service import sync_auto_timezone
+from app.modules.settings.service import sync_auto_timezone
 
 AUTH_SESSION_COOKIE_NAME = "calendardiff_session"
 AUTH_SESSION_TTL = timedelta(days=7)

@@ -10,7 +10,7 @@ from app.db.models.review import Change
 from app.db.models.shared import IntegrationInbox, IntegrationOutbox, OutboxStatus
 from app.modules.notify.service import enqueue_notifications_for_changes
 
-NOTIFICATION_PENDING_CONSUMER = "notification.review_pending_created"
+NOTIFICATION_PENDING_CONSUMER = "notification.changes_pending_created"
 NOTIFICATION_CONSUMER_BATCH_SIZE = 200
 
 
@@ -20,7 +20,7 @@ def run_notification_enqueue_tick(db: Session) -> int:
         select(IntegrationOutbox)
         .where(
             IntegrationOutbox.status == OutboxStatus.PENDING,
-            IntegrationOutbox.event_type == "review.pending.created",
+            IntegrationOutbox.event_type == "changes.pending.created",
             IntegrationOutbox.available_at <= now,
         )
         .order_by(IntegrationOutbox.id.asc())
@@ -57,7 +57,7 @@ def run_notification_enqueue_tick(db: Session) -> int:
         if not isinstance(user_id_raw, int) or not isinstance(change_ids_raw, list):
             row.status = OutboxStatus.FAILED
             row.attempt += 1
-            row.last_error = "invalid review.pending.created payload"
+            row.last_error = "invalid changes.pending.created payload"
             db.commit()
             processed += 1
             continue

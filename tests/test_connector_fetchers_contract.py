@@ -3,24 +3,26 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
-from app.db.models.ingestion import ConnectorResultStatus
+from app.db.models.runtime import ConnectorResultStatus
 from app.db.models.review import EventEntity, EventEntityLifecycle
 from app.db.models.shared import User
-from app.modules.ingestion.calendar_fetcher import fetch_calendar_delta
-from app.modules.ingestion.gmail_fetcher import (
+from app.core.config import get_settings
+from app.modules.runtime.connectors.calendar_fetcher import fetch_calendar_delta
+from app.modules.runtime.connectors.gmail_second_filter import GmailSecondFilterDecision
+from app.modules.runtime.connectors.gmail_fetcher import (
     _known_course_tokens_for_source,
     fetch_gmail_changes,
     matches_gmail_source_filters,
 )
-from app.modules.input_control_plane.schemas import InputSourceCreateRequest
-from app.modules.input_control_plane.sources_service import create_input_source
-from app.modules.users.course_work_item_families_service import create_course_work_item_family
+from app.modules.sources.schemas import InputSourceCreateRequest
+from app.modules.sources.sources_service import create_input_source
+from app.modules.families.family_service import create_course_work_item_family
 
 
 def test_gmail_fetcher_missing_access_token_fails_auth(monkeypatch) -> None:
     source = SimpleNamespace(config=None, cursor=None)
     monkeypatch.setattr(
-        "app.modules.ingestion.gmail_fetcher.decode_source_secrets",
+        "app.modules.runtime.connectors.gmail_fetcher.decode_source_secrets",
         lambda _source: {},
     )
     outcome = fetch_gmail_changes(source=source, request_id="req-1")
@@ -32,7 +34,7 @@ def test_gmail_fetcher_missing_access_token_fails_auth(monkeypatch) -> None:
 def test_calendar_fetcher_missing_url_fails_auth(monkeypatch) -> None:
     source = SimpleNamespace(id=100, cursor=None)
     monkeypatch.setattr(
-        "app.modules.ingestion.calendar_fetcher.decode_source_secrets",
+        "app.modules.runtime.connectors.calendar_fetcher.decode_source_secrets",
         lambda _source: {},
     )
     outcome = fetch_calendar_delta(source=source)
@@ -203,7 +205,7 @@ def test_gmail_filter_allows_known_course_token_even_without_edu_sender() -> Non
     )
 
 
-def test_gmail_filter_blocks_lms_wrapper_with_explicit_non_target_phrase() -> None:
+def test_gmail_filter_keeps_lms_wrapper_with_explicit_non_target_phrase_for_secondary_filter() -> None:
     metadata = SimpleNamespace(
         label_ids=["INBOX"],
         from_header="notifications@canvas.example.edu",
@@ -219,11 +221,11 @@ def test_gmail_filter_blocks_lms_wrapper_with_explicit_non_target_phrase() -> No
             config={},
             known_course_tokens={"cse 120", "cse120"},
         )
-        is False
+        is True
     )
 
 
-def test_gmail_filter_blocks_student_services_bait_without_course_signal() -> None:
+def test_gmail_filter_keeps_student_services_bait_for_secondary_filter() -> None:
     metadata = SimpleNamespace(
         label_ids=["INBOX"],
         from_header="EASy Requests <services@students.example.edu>",
@@ -233,7 +235,59 @@ def test_gmail_filter_blocks_student_services_bait_without_course_signal() -> No
         internal_date="2026-02-01T15:00:00+00:00",
     )
 
+    assert matches_gmail_source_filters(metadata=metadata, config={}) is True
+
+
+def test_gmail_filter_secondary_classifier_can_suppress_after_recall_first_prefilter(monkeypatch) -> None:
+    metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="CloudStorage Plus <shipping@cloudstorage-plus.example>",
+        subject="Project shipment exception notice",
+        snippet="Shipping exception notification for your storage subscription",
+        body_text="This is a subscription update and package tracking notice. No academic deadline changed.",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    monkeypatch.setenv("GMAIL_SECONDARY_FILTER_MODE", "enforce")
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        "app.modules.runtime.connectors.gmail_fetcher.run_gmail_second_filter",
+        lambda **kwargs: GmailSecondFilterDecision(
+            action="suppress",
+            stage="distilbert_shadow",
+            reason_code="shipping_subscription_bait",
+            confidence=0.999,
+        ),
+    )
+
     assert matches_gmail_source_filters(metadata=metadata, config={}) is False
+    get_settings.cache_clear()
+
+
+def test_gmail_filter_secondary_classifier_shadow_does_not_suppress(monkeypatch) -> None:
+    metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="CloudStorage Plus <shipping@cloudstorage-plus.example>",
+        subject="Project shipment exception notice",
+        snippet="Shipping exception notification for your storage subscription",
+        body_text="This is a subscription update and package tracking notice. No academic deadline changed.",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    monkeypatch.setenv("GMAIL_SECONDARY_FILTER_MODE", "shadow")
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        "app.modules.runtime.connectors.gmail_fetcher.run_gmail_second_filter",
+        lambda **kwargs: GmailSecondFilterDecision(
+            action="suppress",
+            stage="distilbert_shadow",
+            reason_code="shipping_subscription_bait",
+            confidence=0.999,
+        ),
+    )
+
+    assert matches_gmail_source_filters(metadata=metadata, config={}) is True
+    get_settings.cache_clear()
 
 
 def test_gmail_filter_keeps_target_signal_even_with_unchanged_footer_text() -> None:
@@ -272,7 +326,7 @@ def test_gmail_filter_blocks_recruiting_bait_with_explicit_non_target_text() -> 
     assert matches_gmail_source_filters(metadata=metadata, config={}) is False
 
 
-def test_gmail_filter_blocks_newsletter_digest_bait_without_course_signal() -> None:
+def test_gmail_filter_keeps_newsletter_digest_bait_for_secondary_filter() -> None:
     metadata = SimpleNamespace(
         label_ids=["INBOX"],
         from_header="Campus Weekly <digest@lists.example.com>",
@@ -282,10 +336,10 @@ def test_gmail_filter_blocks_newsletter_digest_bait_without_course_signal() -> N
         internal_date="2026-02-01T15:00:00+00:00",
     )
 
-    assert matches_gmail_source_filters(metadata=metadata, config={}) is False
+    assert matches_gmail_source_filters(metadata=metadata, config={}) is True
 
 
-def test_gmail_filter_blocks_academic_non_target_even_with_course_token_when_explicitly_unchanged() -> None:
+def test_gmail_filter_keeps_academic_non_target_with_course_token_for_secondary_filter() -> None:
     metadata = SimpleNamespace(
         label_ids=["INBOX"],
         from_header="Registrar Updates <noreply@campus.example.edu>",
@@ -304,7 +358,7 @@ def test_gmail_filter_blocks_academic_non_target_even_with_course_token_when_exp
             config={},
             known_course_tokens={"math 18", "math18"},
         )
-        is False
+        is True
     )
 
 
@@ -350,8 +404,8 @@ def test_gmail_fetcher_bootstraps_term_window_messages(monkeypatch) -> None:
                 label_ids=["COURSE"],
             )
 
-    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher.decode_source_secrets", lambda _source: {"access_token": "token"})
-    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher.GmailClient", _FakeGmailClient)
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher.decode_source_secrets", lambda _source: {"access_token": "token"})
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher.GmailClient", _FakeGmailClient)
 
     outcome = fetch_gmail_changes(source=source, request_id="req-bootstrap")
 
@@ -400,9 +454,9 @@ def test_gmail_fetcher_bootstrap_defaults_to_inbox_when_label_missing(monkeypatc
                 label_ids=["INBOX"],
             )
 
-    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher.decode_source_secrets", lambda _source: {"access_token": "token"})
-    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher.GmailClient", _FakeGmailClient)
-    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher._known_course_tokens_for_source", lambda _source: set())
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher.decode_source_secrets", lambda _source: {"access_token": "token"})
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher.GmailClient", _FakeGmailClient)
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher._known_course_tokens_for_source", lambda _source: set())
 
     outcome = fetch_gmail_changes(source=source, request_id="req-bootstrap-default-inbox")
 
@@ -449,8 +503,8 @@ def test_gmail_fetcher_emits_bootstrap_progress(monkeypatch) -> None:
                 label_ids=["COURSE"],
             )
 
-    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher.decode_source_secrets", lambda _source: {"access_token": "token"})
-    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher.GmailClient", _FakeGmailClient)
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher.decode_source_secrets", lambda _source: {"access_token": "token"})
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher.GmailClient", _FakeGmailClient)
 
     outcome = fetch_gmail_changes(
         source=source,
@@ -465,6 +519,59 @@ def test_gmail_fetcher_emits_bootstrap_progress(monkeypatch) -> None:
     assert progress_events[0]["total"] == 2
     assert progress_events[-1]["current"] == 2
     assert progress_events[-1]["total"] == 2
+
+
+def test_gmail_fetcher_emits_tail_progress_for_small_remaining_window(monkeypatch) -> None:
+    source = SimpleNamespace(
+        config=SimpleNamespace(
+            config_json={
+                "label_id": "COURSE",
+                "term_key": "WI26",
+                "term_from": "2026-01-05",
+                "term_to": "2026-03-20",
+            }
+        ),
+        cursor=SimpleNamespace(cursor_json={"history_id": "150"}),
+        user=SimpleNamespace(timezone_name="America/Los_Angeles"),
+    )
+    progress_events: list[dict] = []
+
+    class _FakeGmailClient:
+        def get_profile(self, *, access_token: str):
+            return SimpleNamespace(email_address="student@example.edu", history_id="200")
+
+        def list_history(self, *, access_token: str, start_history_id: str):
+            assert access_token == "token"
+            assert start_history_id == "150"
+            return SimpleNamespace(message_ids=[f"m{i}" for i in range(1, 13)], history_id="200")
+
+        def get_message_metadata(self, *, access_token: str, message_id: str):
+            return SimpleNamespace(
+                message_id=message_id,
+                thread_id=f"thread-{message_id}",
+                snippet=f"snippet-{message_id}",
+                body_text=f"body-{message_id}",
+                from_header="professor@school.edu",
+                subject="Homework reminder",
+                internal_date="2026-02-01T15:00:00+00:00",
+                label_ids=["COURSE"],
+            )
+
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher.decode_source_secrets", lambda _source: {"access_token": "token"})
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher.GmailClient", _FakeGmailClient)
+
+    outcome = fetch_gmail_changes(
+        source=source,
+        request_id="req-history-progress",
+        emit_progress=lambda payload: progress_events.append(payload),
+    )
+
+    assert outcome.status == ConnectorResultStatus.CHANGED
+    current_values = [row["current"] for row in progress_events if row["phase"] == "gmail_history_fetch"]
+    assert current_values[0] == 0
+    assert 10 in current_values
+    assert 11 in current_values
+    assert 12 in current_values
 
 
 def test_known_course_tokens_for_source_include_current_term_family_mappings(db_session) -> None:
@@ -681,8 +788,8 @@ def test_gmail_fetcher_bootstrap_uses_current_term_course_mapping_tokens(monkeyp
                 label_ids=["INBOX"],
             )
 
-    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher.decode_source_secrets", lambda _source: {"access_token": "token"})
-    monkeypatch.setattr("app.modules.ingestion.gmail_fetcher.GmailClient", _FakeGmailClient)
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher.decode_source_secrets", lambda _source: {"access_token": "token"})
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher.GmailClient", _FakeGmailClient)
 
     outcome = fetch_gmail_changes(source=source, request_id="req-bootstrap-course-token")
 
@@ -704,7 +811,7 @@ def test_calendar_fetcher_filters_changed_components_outside_term_window(monkeyp
         cursor=SimpleNamespace(cursor_json={}),
         user=SimpleNamespace(timezone_name="America/Los_Angeles"),
     )
-    monkeypatch.setattr("app.modules.ingestion.calendar_fetcher.decode_source_secrets", lambda _source: {"url": "https://example.com/calendar.ics"})
+    monkeypatch.setattr("app.modules.runtime.connectors.calendar_fetcher.decode_source_secrets", lambda _source: {"url": "https://example.com/calendar.ics"})
 
     class _FakeFetched:
         not_modified = False
@@ -737,7 +844,7 @@ END:VCALENDAR
 """
             return _FakeFetched(content)
 
-    monkeypatch.setattr("app.modules.ingestion.calendar_fetcher.ICSClient", _FakeIcsClient)
+    monkeypatch.setattr("app.modules.runtime.connectors.calendar_fetcher.ICSClient", _FakeIcsClient)
 
     outcome = fetch_calendar_delta(source=source)
 

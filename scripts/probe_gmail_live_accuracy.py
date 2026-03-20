@@ -10,12 +10,12 @@ from typing import Any
 from app.db.models.input import InputSource
 from app.db.session import get_session_factory
 from app.modules.common.source_term_window import parse_source_term_window, source_timezone_name
-from app.modules.ingestion.gmail_fetcher import _known_course_tokens_for_source, matches_gmail_source_filters
-from app.modules.ingestion.llm_parsers.contracts import ParserContext
-from app.modules.ingestion.llm_parsers.gmail_parser import parse_gmail_payload
-import app.modules.ingestion.llm_parsers.semantic_orchestrator as semantic_orchestrator
-from app.modules.input_control_plane.source_secrets import decode_source_secrets
-from app.modules.sync.gmail_client import GmailClient
+from app.modules.runtime.connectors.gmail_fetcher import _known_course_tokens_for_source, matches_gmail_source_filters
+from app.modules.runtime.connectors.llm_parsers.contracts import ParserContext
+from app.modules.runtime.connectors.llm_parsers.gmail_parser import parse_gmail_payload
+import app.modules.runtime.connectors.llm_parsers.semantic_orchestrator as semantic_orchestrator
+from app.modules.sources.source_secrets import decode_source_secrets
+from app.modules.runtime.connectors.clients.gmail_client import GmailClient
 
 OUTPUT_ROOT = Path("/Users/lishehao/Desktop/Project/CalendarDIFF/output")
 

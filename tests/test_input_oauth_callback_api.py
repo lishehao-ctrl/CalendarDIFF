@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
 from app.core.config import get_settings
-import app.modules.input_control_plane.oauth_router as oauth_router
+import app.modules.sources.oauth_router as oauth_router
 
 
 def test_oauth_callback_success_redirects_to_frontend(input_client, monkeypatch) -> None:

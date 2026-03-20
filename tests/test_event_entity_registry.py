@@ -7,8 +7,8 @@ from sqlalchemy import func, select
 from app.db.models.input import InputSource, SourceKind
 from app.db.models.review import ChangeType, EventEntity, EventEntityLifecycle
 from app.db.models.shared import User
-from app.modules.core_ingest.calendar_apply import apply_calendar_observations
-from app.modules.review_changes.approved_entity_state import apply_approved_entity_state
+from app.modules.runtime.apply.calendar_apply import apply_calendar_observations
+from app.modules.changes.approved_entity_state import apply_approved_entity_state
 from tests.support.payload_builders import build_calendar_payload, build_course_parse
 
 

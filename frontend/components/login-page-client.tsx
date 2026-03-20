@@ -28,7 +28,7 @@ export function LoginPageClient({ mode }: { mode: "login" | "register" }) {
       } else {
         await register({ notify_email: notifyEmail, password });
       }
-      router.replace("/setup");
+      router.replace("/onboarding");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : `Unable to ${mode}`);
@@ -56,7 +56,7 @@ export function LoginPageClient({ mode }: { mode: "login" | "register" }) {
             <h2 className="mt-3 text-3xl font-semibold text-ink">{mode === "login" ? "Sign in" : "Register"}</h2>
             <p className="mt-3 text-sm leading-6 text-[#596270]">
               {mode === "login"
-                ? "Use your notify email and password to enter the dashboard."
+                ? "Use your notify email and password to enter the workspace."
                 : "Create your workspace account with the notify email you want to use for login and notifications."}
             </p>
             {error ? (

@@ -98,6 +98,18 @@ Operational stance:
 - campus admin, wrapper noise, advisement, newsletters, and non-target bureaucracy should be blocked as early as possible
 - parser should receive higher-value candidates, not clean up every noisy message
 
+Secondary classifier stance:
+
+- any BERT / secondary suppressor between prefilter and LLM is an optional upgrade path
+- it must not be a required runtime dependency for deployment
+- supported runtime modes should be:
+  - `off`
+  - `shadow`
+  - `enforce`
+- default deployment mode is `off`
+- `shadow` may observe and log candidate suppressions, but must not change the main result path
+- only `enforce` may suppress after the deterministic recall-first prefilter
+
 ## 7. Observability belongs in product language, not developer language
 
 Decision:

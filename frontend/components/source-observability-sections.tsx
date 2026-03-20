@@ -49,7 +49,7 @@ export function SourceObservabilitySections({
   const latestSyncDetail = observability.latest_sync_detail || "Run a sync to sample intake posture.";
 
   return (
-    <div className={cn("grid gap-3 md:grid-cols-2 xl:grid-cols-5", className)}>
+    <div className={cn("grid gap-3 sm:grid-cols-2", className)}>
       <MetricBlock
         label="Connection"
         tone={observability.connection_status === "healthy" ? "approved" : observability.connection_status === "attention" ? "pending" : "info"}

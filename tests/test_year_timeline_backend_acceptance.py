@@ -126,6 +126,36 @@ def test_try_resume_idle_replay_advances_saved_run(tmp_path: Path, monkeypatch) 
     assert advanced == [run_dir]
 
 
+def test_build_client_from_run_rejects_user_id_drift(tmp_path: Path, monkeypatch) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / acceptance.replay.RUN_CREDS_FILE).write_text(
+        json.dumps(
+            {
+                "public_api_base": "http://127.0.0.1:8200",
+                "api_key": "test-api-key",
+                "notify_email": "timeline@example.com",
+                "password": "password123",
+                "user_id": 7,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(acceptance.replay, "build_api_client", lambda **kwargs: SimpleNamespace())
+    monkeypatch.setattr(
+        acceptance.replay,
+        "ensure_authenticated_session",
+        lambda *args, **kwargs: {"id": 9, "notify_email": "timeline@example.com"},
+    )
+
+    try:
+        acceptance.build_client_from_run(run_dir)
+    except RuntimeError as exc:
+        assert "expected user_id=7 got user_id=9" in str(exc)
+    else:
+        raise AssertionError("expected runtime drift detection failure")
+
+
 def test_try_resume_idle_replay_records_runtime_failure(tmp_path: Path, monkeypatch) -> None:
     run_dir = tmp_path / "run"
     run_dir.mkdir()
@@ -194,6 +224,66 @@ def test_advance_with_runtime_recording_records_multiple_runtime_failures(tmp_pa
     assert [row["request_id"] for row in report["runtime_failures"]] == ["deadbeef", "cafebabe"]
 
 
+def test_resume_to_next_checkpoint_ignores_no_manual_checkpoint_race(tmp_path: Path, monkeypatch) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    monkeypatch.setattr(
+        acceptance.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=1, stdout="", stderr="run is not waiting at a manual checkpoint"),
+    )
+
+    report = {"runtime_failures": []}
+    acceptance.resume_to_next_checkpoint(run_dir, report)
+
+    assert report["runtime_failures"] == []
+
+
+def test_handle_checkpoint_upserts_existing_checkpoint_entry(tmp_path: Path, monkeypatch) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    monkeypatch.setattr(acceptance, "api_json_list", lambda _client, _path: [])
+    monkeypatch.setattr(acceptance, "gather_source_context", lambda **kwargs: [])
+    monkeypatch.setattr(acceptance, "api_json", lambda *args, **kwargs: {"ok": True})
+    monkeypatch.setattr(acceptance, "save_acceptance_report", lambda *args, **kwargs: None)
+    monkeypatch.setattr(acceptance, "append_note", lambda *args, **kwargs: None)
+
+    report = {
+        "checkpoints": [
+            {
+                "checkpoint_index": 0,
+                "label": "old",
+                "rating": "清晰",
+            }
+        ]
+    }
+    operator_state = {
+        "rejections_done": 0,
+        "edits_done": 0,
+        "family_renamed": True,
+        "family_relinked": True,
+        "family_created_id": None,
+        "manual_created": True,
+        "manual_updated": True,
+        "manual_deleted": True,
+        "manual_entity_uid": None,
+    }
+    state = {"current_checkpoint_index": 0, "checkpoints": [{"label": "new"}]}
+
+    acceptance.handle_checkpoint(
+        run_dir=run_dir,
+        client=SimpleNamespace(),
+        report=report,
+        operator_state=operator_state,
+        state=state,
+    )
+
+    assert len(report["checkpoints"]) == 1
+    assert report["checkpoints"][0]["label"] == "new"
+
+
 def test_handle_checkpoint_does_not_reject_same_change_it_approved(tmp_path: Path, monkeypatch) -> None:
     run_dir = tmp_path / "run"
     run_dir.mkdir()
@@ -210,7 +300,7 @@ def test_handle_checkpoint_does_not_reject_same_change_it_approved(tmp_path: Pat
                     "after_display": {"display_label": "Quiz 6"},
                 }
             ]
-            if path.startswith("/review/changes")
+            if path.startswith("/changes")
             else []
         ),
     )

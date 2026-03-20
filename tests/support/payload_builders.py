@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta, timezone
 
-from app.modules.core_ingest.semantic_event_service import draft_from_course_and_semantic
+from app.modules.runtime.apply.semantic_event_service import draft_from_course_and_semantic
 
 HW_PATTERN = re.compile(r"\b(?:hw|homework)[\s_\-]*([0-9]+)\b", re.I)
 PA_PATTERN = re.compile(r"\b(?:pa|programming assignment)[\s_\-]*([0-9]+)\b", re.I)
@@ -210,7 +210,10 @@ def _infer_semantic_parse(*, title: str, due_at: datetime | None, work_item_pars
         explicit_confidence = max(explicit_confidence, float(event_parts.get("confidence") or 0.0))
         explicit_evidence = str(event_parts.get("evidence") or explicit_evidence)
     if explicit_raw_type is None:
-        explicit_raw_type, explicit_ordinal = _infer_type_and_ordinal(title)
+        inferred_raw_type, inferred_ordinal = _infer_type_and_ordinal(title)
+        explicit_raw_type = inferred_raw_type
+        if explicit_ordinal is None:
+            explicit_ordinal = inferred_ordinal
     return build_semantic_parse(
         raw_type=explicit_raw_type,
         event_name=title,

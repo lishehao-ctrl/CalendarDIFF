@@ -3,15 +3,15 @@ from __future__ import annotations
 from app.modules.auth.bootstrap import bootstrap_env_admin_user
 from app.core.oauth_config import log_input_oauth_startup
 from app.modules.auth.router import router as auth_router
-from app.modules.events.router import router as events_router
+from app.modules.families.router import router as families_router
 from app.modules.health.router import router as health_router
-from app.modules.input_control_plane.router import public_router as input_public_router
-from app.modules.input_control_plane.router import router as input_control_plane_router
+from app.modules.sources.router import public_router as sources_public_router
+from app.modules.sources.router import router as sources_router
+from app.modules.manual.router import router as manual_router
 from app.modules.onboarding.router import router as onboarding_router
-from app.modules.profile.router import router as profile_router
-from app.modules.review_changes.router import router as review_changes_router
-from app.modules.review_taxonomy.router import router as review_taxonomy_router
-from app.runtime.monolith_workers import (
+from app.modules.settings.router import router as settings_router
+from app.modules.changes.router import router as changes_router
+from app.modules.runtime.monolith_workers import (
     run_ingest_worker,
     run_llm_worker,
     run_notification_worker,
@@ -26,13 +26,13 @@ app = create_service_app(
     routers=[
         health_router,
         auth_router,
-        profile_router,
-        events_router,
+        settings_router,
+        manual_router,
         onboarding_router,
-        input_public_router,
-        input_control_plane_router,
-        review_taxonomy_router,
-        review_changes_router,
+        sources_public_router,
+        sources_router,
+        families_router,
+        changes_router,
     ],
     worker_tasks=[
         run_ingest_worker,

@@ -202,8 +202,8 @@ def handle_checkpoint(
     checkpoint_index = int(state["current_checkpoint_index"])
     checkpoint = dict(state["checkpoints"][checkpoint_index])
     started = time.monotonic()
-    pending_changes = api_json_list(client, "/review/changes?review_status=pending&limit=100")
-    families = api_json_list(client, "/review/course-work-item-families")
+    pending_changes = api_json_list(client, "/changes?review_status=pending&limit=100")
+    families = api_json_list(client, "/families")
     sources = gather_source_context(run_dir=run_dir, client=client)
     actions = []
 
@@ -234,7 +234,7 @@ def handle_checkpoint(
         api_json(
             client,
             "POST",
-            f"/review/changes/{approve_candidate['id']}/decisions",
+            f"/changes/{approve_candidate['id']}/decisions",
             {"decision": "approve", "note": "backend acceptance approve"},
         )
         actions.append(
@@ -249,7 +249,7 @@ def handle_checkpoint(
         api_json(
             client,
             "POST",
-            f"/review/changes/{reject_candidate['id']}/decisions",
+            f"/changes/{reject_candidate['id']}/decisions",
             {"decision": "reject", "note": "backend acceptance reject suspicious or removed proposal"},
         )
         operator_state["rejections_done"] = int(operator_state.get("rejections_done") or 0) + 1
@@ -268,7 +268,7 @@ def handle_checkpoint(
             api_json(
                 client,
                 "POST",
-                "/review/edits/preview",
+                "/changes/edits/preview",
                 {
                     "mode": "proposal",
                     "target": {"change_id": int(edit_candidate["id"])},
@@ -279,7 +279,7 @@ def handle_checkpoint(
             api_json(
                 client,
                 "POST",
-                "/review/edits",
+                "/changes/edits",
                 {
                     "mode": "proposal",
                     "target": {"change_id": int(edit_candidate["id"])},
@@ -290,7 +290,7 @@ def handle_checkpoint(
             api_json(
                 client,
                 "POST",
-                f"/review/changes/{edit_candidate['id']}/decisions",
+                f"/changes/{edit_candidate['id']}/decisions",
                 {"decision": "approve", "note": "backend acceptance edit then approve"},
             )
             operator_state["edits_done"] = int(operator_state.get("edits_done") or 0) + 1
@@ -319,7 +319,7 @@ def handle_checkpoint(
         sources=sources,
         elapsed_seconds=elapsed_seconds,
     )
-    report.setdefault("checkpoints", []).append(checkpoint_entry)
+    _upsert_checkpoint_entry(report, checkpoint_entry)
     save_acceptance_report(run_dir, report)
     append_note(run_dir, render_checkpoint_note(checkpoint_entry))
 
@@ -337,15 +337,10 @@ def run_family_actions(*, client: httpx.Client, families: list[dict[str, Any]], 
         )
         if target is not None:
             payload = {
-                "course_dept": target["course_dept"],
-                "course_number": target["course_number"],
-                "course_suffix": target["course_suffix"],
-                "course_quarter": target["course_quarter"],
-                "course_year2": target["course_year2"],
                 "canonical_label": title_case_label(target["canonical_label"]),
                 "raw_types": target["raw_types"],
             }
-            api_json(client, "PATCH", f"/review/course-work-item-families/{target['id']}", payload)
+            api_json(client, "PATCH", f"/families/{target['id']}", payload)
             operator_state["family_renamed"] = True
             actions.append({"kind": "family_rename", "family_id": int(target["id"]), "canonical_label": payload["canonical_label"]})
 
@@ -364,7 +359,7 @@ def run_family_actions(*, client: httpx.Client, families: list[dict[str, Any]], 
                 continue
             raw_types = api_json_list(
                 client,
-                f"/review/course-work-item-raw-types?course_dept={project_family['course_dept']}&course_number={project_family['course_number']}&course_quarter={project_family['course_quarter'] or ''}&course_year2={project_family['course_year2'] or ''}",
+                f"/families/raw-types?course_dept={project_family['course_dept']}&course_number={project_family['course_number']}&course_quarter={project_family['course_quarter'] or ''}&course_year2={project_family['course_year2'] or ''}",
             )
             project_raw = next((row for row in raw_types if str(row.get("raw_type") or "").lower() == "project"), None)
             if project_raw is None:
@@ -372,7 +367,7 @@ def run_family_actions(*, client: httpx.Client, families: list[dict[str, Any]], 
             created = api_json(
                 client,
                 "POST",
-                "/review/course-work-item-families",
+                "/families",
                 {
                     "course_dept": project_family["course_dept"],
                     "course_number": project_family["course_number"],
@@ -386,7 +381,7 @@ def run_family_actions(*, client: httpx.Client, families: list[dict[str, Any]], 
             api_json(
                 client,
                 "POST",
-                "/review/course-work-item-raw-types/relink",
+                "/families/raw-types/relink",
                 {"raw_type_id": int(project_raw["id"]), "family_id": int(created["id"]), "note": "backend acceptance relink"},
             )
             operator_state["family_relinked"] = True
@@ -415,7 +410,7 @@ def run_manual_actions(*, client: httpx.Client, families: list[dict[str, Any]], 
         created = api_json(
             client,
             "POST",
-            "/events/manual",
+            "/manual/events",
             {
                 "family_id": family_id,
                 "event_name": "Operator Checkpoint Item 1",
@@ -439,7 +434,7 @@ def run_manual_actions(*, client: httpx.Client, families: list[dict[str, Any]], 
         api_json(
             client,
             "PATCH",
-            f"/events/manual/{entity_uid}",
+            f"/manual/events/{entity_uid}",
             {
                 "family_id": family_id,
                 "event_name": "Operator Checkpoint Item 1 Revised",
@@ -455,7 +450,7 @@ def run_manual_actions(*, client: httpx.Client, families: list[dict[str, Any]], 
         return actions
 
     if not bool(operator_state.get("manual_deleted")):
-        api_json(client, "DELETE", f"/events/manual/{entity_uid}?reason=backend_acceptance_cleanup")
+        api_json(client, "DELETE", f"/manual/events/{entity_uid}?reason=backend_acceptance_cleanup")
         operator_state["manual_deleted"] = True
         actions.append({"kind": "manual_delete", "entity_uid": entity_uid})
     return actions
@@ -537,19 +532,21 @@ def gather_source_context(*, run_dir: Path, client: httpx.Client) -> list[dict[s
             continue
         obs = api_json(client, "GET", f"/sources/{row['source_id']}/observability")
         hist = api_json(client, "GET", f"/sources/{row['source_id']}/sync-history?limit=3")
+        guidance = obs.get("operator_guidance") if isinstance(obs.get("operator_guidance"), dict) else {}
         line = (
             f"- Source {row['source_id']} {row['provider']}: runtime={row.get('runtime_state')} sync={row.get('sync_state')} "
             f"bootstrap={(obs.get('bootstrap') or {}).get('status')} "
             f"replay={(obs.get('latest_replay') or {}).get('status') if obs.get('latest_replay') else 'n/a'} "
-            f"recent_history={[item['status'] for item in hist.get('items', [])]}"
+            f"recent_history={[item['status'] for item in hist.get('items', [])]} "
+            f"guidance={guidance.get('recommended_action') or '-'}:{guidance.get('reason_code') or '-'}"
         )
         out.append(
             {
                 "source_id": int(row["source_id"]),
                 "provider": row["provider"],
                 "line": line,
-                "runtime_issue": bool(row.get("last_error_message"))
-                or str(row.get("runtime_state") or "").lower() in {"queued", "running", "rebind_pending"},
+                "runtime_issue": (guidance.get("recommended_action") in {"wait_for_runtime", "investigate_runtime"})
+                or bool(row.get("last_error_message")),
             }
         )
     return out
@@ -600,7 +597,10 @@ def resume_to_next_checkpoint(run_dir: Path, report: dict[str, Any]) -> None:
     )
     if completed.returncode == 0:
         return
-    details = classify_runtime_failure((completed.stderr or completed.stdout).strip())
+    failure_message = (completed.stderr or completed.stdout).strip()
+    if _is_no_manual_checkpoint_race(failure_message):
+        return
+    details = classify_runtime_failure(failure_message)
     record_runtime_failure(run_dir=run_dir, report=report, details=details)
     if details.request_id is None or not wait_for_request_terminal(run_dir, details.request_id, seconds=180):
         raise RuntimeError(details.message)
@@ -670,6 +670,26 @@ def record_runtime_failure(*, run_dir: Path, report: dict[str, Any], details: Ru
         f"- Source: `{details.source_id if details.source_id is not None else '-'}'\n"
         f"- Message: {details.message}\n",
     )
+
+
+def _upsert_checkpoint_entry(report: dict[str, Any], checkpoint_entry: dict[str, Any]) -> None:
+    checkpoints = report.setdefault("checkpoints", [])
+    checkpoint_index = checkpoint_entry.get("checkpoint_index")
+    if not isinstance(checkpoints, list):
+        report["checkpoints"] = [checkpoint_entry]
+        return
+    if checkpoint_index is None:
+        checkpoints.append(checkpoint_entry)
+        return
+    for idx, existing in enumerate(checkpoints):
+        if isinstance(existing, dict) and existing.get("checkpoint_index") == checkpoint_index:
+            checkpoints[idx] = checkpoint_entry
+            return
+    checkpoints.append(checkpoint_entry)
+
+
+def _is_no_manual_checkpoint_race(message: str) -> bool:
+    return "run is not waiting at a manual checkpoint" in message.strip().lower()
 
 
 def has_odd_due_time(change: dict[str, Any]) -> bool:
@@ -747,11 +767,17 @@ def format_actions(actions: list[dict[str, Any]]) -> str:
 def build_client_from_run(run_dir: Path) -> httpx.Client:
     creds = json.loads((run_dir / replay.RUN_CREDS_FILE).read_text(encoding="utf-8"))
     client = replay.build_api_client(public_api_base=str(creds["public_api_base"]), api_key=str(creds["api_key"]))
-    replay.ensure_authenticated_session(
+    user = replay.ensure_authenticated_session(
         client,
         notify_email=str(creds["notify_email"]),
         password=str(creds["password"]),
     )
+    expected_user_id = creds.get("user_id")
+    if expected_user_id is not None and int(user.get("id") or 0) != int(expected_user_id):
+        raise RuntimeError(
+            "run credentials drifted from live DB: "
+            f"expected user_id={expected_user_id} got user_id={user.get('id')}"
+        )
     return client
 
 

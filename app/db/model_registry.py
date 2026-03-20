@@ -5,7 +5,7 @@ import importlib
 MODEL_MODULES = (
     "app.db.models.shared",
     "app.db.models.input",
-    "app.db.models.ingestion",
+    "app.db.models.runtime",
     "app.db.models.review",
     "app.db.models.notify",
 )

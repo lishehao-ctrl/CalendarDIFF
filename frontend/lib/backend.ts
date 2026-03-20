@@ -69,11 +69,20 @@ function humanizeErrorPayload(path: string, status: number, payload: unknown) {
       if (message) {
         return message;
       }
-      if (path.startsWith("/review/changes")) {
-        return "Finish onboarding before opening the review inbox.";
+      if (path.startsWith("/changes")) {
+        return "Finish onboarding before opening Changes.";
       }
-      if (path.startsWith("/families") || path.startsWith("/review/links") || path.startsWith("/review/link")) {
+      if (path.startsWith("/sources")) {
+        return "Finish onboarding before opening source posture.";
+      }
+      if (path.startsWith("/families")) {
         return "Finish onboarding before opening the family workspace.";
+      }
+      if (path.startsWith("/manual")) {
+        return "Finish onboarding before opening the manual repair workspace.";
+      }
+      if (path.startsWith("/settings")) {
+        return "Finish onboarding before opening Settings.";
       }
       return "Finish onboarding before continuing.";
     }

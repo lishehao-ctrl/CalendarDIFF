@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.modules.core_ingest.observation_priority import choose_primary_observation
+from app.modules.runtime.apply.observation_priority import choose_primary_observation
 
 
 def test_choose_primary_observation_prefers_newer_observation() -> None:

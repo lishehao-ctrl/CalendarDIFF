@@ -4,7 +4,6 @@ CalendarDIFF now runs as a single backend process by default.
 
 ## Default runtime
 - Backend: `services.app_api.main:app`
-- Public alias: `services.public_api.main:app`
 - Frontend: Next.js app in `frontend/`
 - Infra: PostgreSQL + Redis
 - Default ports:
@@ -51,13 +50,11 @@ SERVICE_NAME=backend RUN_MIGRATIONS=true PORT=8200 ./scripts/start_service.sh
 
 ## Public HTTP surface
 - `/auth/*`
-- `/profile/me`
+- `/settings/profile`
 - `/sources/*`
-- `/review/changes*`
-- `/review/links*`
-- `/review/course-work-item-families*`
-- `/review/course-work-item-raw-types*`
-- `/events/manual*`
+- `/changes*`
+- `/families*`
+- `/manual/events*`
 - `/onboarding/*`
 - `/health`
 

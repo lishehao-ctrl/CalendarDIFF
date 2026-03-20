@@ -69,7 +69,7 @@ def test_review_changes_batch_approve_updates_event_entities(client, db_session,
     db_session.commit()
 
     response = client.post(
-        "/review/changes/batch/decisions",
+        "/changes/batch/decisions",
         headers=auth_headers(client, user=user),
         json={"ids": [change_one.id, change_two.id], "decision": "approve", "note": "batch approve"},
     )
@@ -137,7 +137,7 @@ def test_review_changes_batch_reject_keeps_approved_state_untouched(client, db_s
     db_session.commit()
 
     response = client.post(
-        "/review/changes/batch/decisions",
+        "/changes/batch/decisions",
         headers=auth_headers(client, user=user),
         json={"ids": [pending.id], "decision": "reject", "note": "batch reject"},
     )

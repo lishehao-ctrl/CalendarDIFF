@@ -70,10 +70,7 @@
 - `ingest_results`
 - `source_event_observations`
 - `event_entities`
-- `event_entity_links`
-- `event_link_candidates`
-- `event_link_blocks`
-- `event_link_alerts`
+- `ingest_unresolved_records`
 - `changes`
 - `course_work_item_label_families`
 - `course_work_item_raw_types`
@@ -182,10 +179,21 @@
 
 ### 6.1 ingest
 
-- ingest 仍然负责写 observation 和 link 相关表
+- ingest 负责写 observation、unresolved bucket 和 deterministic entity resolution 结果
 - ingest/rebuild 比较的是：
   - observation-derived semantic candidate
   - approved `event_entities` state
+
+### 6.1.1 entity resolution
+
+- canonical 归属不再经过 link candidate / block / manual relink 层
+- Gmail atomic 与 calendar observation 都走同一 deterministic `entity_resolution`
+- 匹配顺序固定为：
+  - 已有同 `source_id + external_event_id` active observation
+  - 唯一 active `event_entities`
+  - 唯一 active `source_event_observations`
+  - 否则写 unresolved 或创建新的 canonical `entity_uid`
+- tuple 不完整或多命中时进入 unresolved bucket，而不是创建 reviewable link candidate
 
 ### 6.2 proposal rebuild 规则
 
@@ -210,17 +218,18 @@
 当前默认 public route family 固定为：
 
 - `/auth/*`
-- `/profile/me`
+- `/settings/profile`
 - `/sources`
 - `/onboarding/*`
-- `/review/*`
-- `/events/manual*`
+- `/changes*`
+- `/families*`
+- `/manual/events*`
 - `/health`
 
 补充约束：
 
-- family/raw-type 管理归到 `/review/course-work-item-*`
-- manual event 管理归到 `/events/manual*`
+- family/raw-type 管理归到 `/families*` 与 `/families/raw-types*`
+- manual event 管理归到 `/manual/events*`
 - `/users/*` 不再是活跃 public route family
 
 ### 7.2 review DTO 原则

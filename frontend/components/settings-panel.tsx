@@ -1,21 +1,19 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
-import { getCurrentUser, updateCurrentUser } from "@/lib/api/users";
-import { withBasePath } from "@/lib/demo-mode";
+import { getSettingsProfile, updateSettingsProfile } from "@/lib/api/settings";
 import { getBrowserTimeZone } from "@/lib/browser-timezone";
 import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime } from "@/lib/presenters";
 import type { UserProfile } from "@/lib/types";
 
-export function SettingsPanel({ basePath = "" }: { basePath?: string }) {
-  const user = useApiResource<UserProfile>(() => getCurrentUser(), []);
+export function SettingsPanel() {
+  const user = useApiResource<UserProfile>(() => getSettingsProfile(), []);
 
   const [form, setForm] = useState({ timezone_name: "" });
   const [banner, setBanner] = useState<{ tone: "info" | "error"; text: string } | null>(null);
@@ -34,7 +32,7 @@ export function SettingsPanel({ basePath = "" }: { basePath?: string }) {
     setSavingUser(true);
     setBanner(null);
     try {
-      await updateCurrentUser({ timezone_name: form.timezone_name, timezone_source: "manual" });
+      await updateSettingsProfile({ timezone_name: form.timezone_name, timezone_source: "manual" });
       setBanner({ tone: "info", text: "Settings saved." });
       await user.refresh();
     } catch (err) {
@@ -65,10 +63,14 @@ export function SettingsPanel({ basePath = "" }: { basePath?: string }) {
             </div>
             <Badge tone="info">{user.data.timezone_source === "manual" ? "Manual" : "Auto"}</Badge>
           </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+          <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
             <div>
               <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="notify-email-settings">Login / notify email</label>
               <Input id="notify-email-settings" value={user.data.notify_email || ""} disabled />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="account-email-settings">Account email</label>
+              <Input id="account-email-settings" value={user.data.email || ""} disabled />
             </div>
             <div>
               <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="timezone-name">Timezone name</label>
@@ -108,16 +110,6 @@ export function SettingsPanel({ basePath = "" }: { basePath?: string }) {
         </Card>
       ) : null}
 
-      <Card className="p-4">
-        <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Moved</p>
-        <h3 className="mt-2 text-lg font-semibold text-ink">Families live in Families</h3>
-        <p className="mt-2 text-sm text-[#596270]">Canonical labels and raw-type rules now live in the Family module.</p>
-        <div className="mt-4">
-          <Button asChild size="sm">
-            <Link href={withBasePath(basePath, "/families")}>Open Families</Link>
-          </Button>
-        </div>
-      </Card>
     </div>
   );
 }

@@ -101,7 +101,7 @@ def test_review_edit_proposal_preview_and_apply_updates_pending_change(client, d
 
     headers = auth_headers(client, user=user)
     preview_response = client.post(
-        "/review/edits/preview",
+        "/changes/edits/preview",
         headers=headers,
         json={
             "mode": "proposal",
@@ -117,7 +117,7 @@ def test_review_edit_proposal_preview_and_apply_updates_pending_change(client, d
     assert preview_payload["candidate_after"]["due_date"] == "2026-03-09"
 
     apply_response = client.post(
-        "/review/edits",
+        "/changes/edits",
         headers=headers,
         json={
             "mode": "proposal",
@@ -158,7 +158,7 @@ def test_review_edit_canonical_applies_directly_to_entity_state(client, db_sessi
 
     headers = auth_headers(client, user=user)
     response = client.post(
-        "/review/edits",
+        "/changes/edits",
         headers=headers,
         json={
             "mode": "canonical",

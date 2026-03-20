@@ -13,18 +13,15 @@ User-facing product lanes should be interpreted as:
 - `Manual`
 - `Settings`
 
-Important:
-
-- some legacy public endpoints still exist on this branch
-- they should not define new product language or new UI concepts
+This document is the current public contract. Retired legacy public paths should return `404`.
 
 ## Public endpoints
 - `POST /auth/register`
 - `POST /auth/login`
 - `POST /auth/logout`
 - `GET /auth/session`
-- `GET /profile/me`
-- `PATCH /profile/me`
+- `GET /settings/profile`
+- `PATCH /settings/profile`
 - `GET /sources`
 - `GET /sources/{source_id}/observability`
 - `GET /sources/{source_id}/sync-history`
@@ -39,29 +36,30 @@ Important:
 - `POST /onboarding/gmail/oauth-sessions`
 - `POST /onboarding/gmail-skip`
 - `POST /onboarding/term-binding`
-- `GET /review/summary`
-- `GET /review/changes`
-- `GET /review/changes/{change_id}`
-- `PATCH /review/changes/{change_id}/views`
-- `POST /review/changes/{change_id}/decisions`
-- `POST /review/changes/batch/decisions`
-- `GET /review/changes/{change_id}/edit-context`
-- `GET /review/changes/{change_id}/evidence/{side}/preview`
-- `POST /review/edits/preview`
-- `POST /review/edits`
-- `POST /review/changes/{change_id}/label-learning/preview`
-- `POST /review/changes/{change_id}/label-learning`
-- `GET /review/raw-type-suggestions`
-- `POST /review/raw-type-suggestions/{suggestion_id}/decisions`
-- `GET /review/course-work-item-families`
-- `POST /review/course-work-item-families`
-- `PATCH /review/course-work-item-families/{family_id}`
-- `GET /review/course-work-item-families/status`
-- `GET /review/course-work-item-families/courses`
-- `GET /review/course-work-item-raw-types`
-- `POST /review/course-work-item-raw-types/relink`
-- `GET /events/manual`
-- `POST /events/manual`
-- `PATCH /events/manual/{entity_uid}`
-- `DELETE /events/manual/{entity_uid}`
+- `GET /changes/summary`
+  - returns workbench/intake summary across `Changes`, `Families`, `Manual`, and `Sources`
+- `GET /changes`
+- `GET /changes/{change_id}`
+- `PATCH /changes/{change_id}/views`
+- `POST /changes/{change_id}/decisions`
+- `POST /changes/batch/decisions`
+- `GET /changes/{change_id}/edit-context`
+- `GET /changes/{change_id}/evidence/{side}/preview`
+- `POST /changes/edits/preview`
+- `POST /changes/edits`
+- `POST /changes/{change_id}/label-learning/preview`
+- `POST /changes/{change_id}/label-learning`
+- `GET /families/raw-type-suggestions`
+- `POST /families/raw-type-suggestions/{suggestion_id}/decisions`
+- `GET /families`
+- `POST /families`
+- `PATCH /families/{family_id}`
+- `GET /families/status`
+- `GET /families/courses`
+- `GET /families/raw-types`
+- `POST /families/raw-types/relink`
+- `GET /manual/events`
+- `POST /manual/events`
+- `PATCH /manual/events/{entity_uid}`
+- `DELETE /manual/events/{entity_uid}`
 - `GET /health`

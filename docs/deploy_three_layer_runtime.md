@@ -38,6 +38,28 @@ LLM endpoint settings:
 
 Optional OAuth/SMTP settings still apply when those integrations are enabled.
 
+Optional Gmail secondary suppressor settings:
+- `GMAIL_SECONDARY_FILTER_MODE`
+- `GMAIL_SECONDARY_FILTER_PROVIDER`
+- `GMAIL_SECONDARY_FILTER_MIN_CONFIDENCE`
+
+Deployment default:
+- `GMAIL_SECONDARY_FILTER_MODE=off`
+
+Recommended rollout order:
+- `off`
+- `shadow`
+- `enforce`
+
+Behavior:
+- `off`: secondary filter is not part of runtime execution
+- `shadow`: secondary filter may run for observation, but must not suppress the main result path
+- `enforce`: secondary filter may suppress after the deterministic recall-first prefilter
+
+Operational rule:
+- do not make deployment depend on a BERT / secondary model being online
+- the main deployable path remains deterministic prefilter -> LLM -> Changes/Families/Manual/Sources
+
 ## Release posture
 The default deployment assumption is one backend process per environment. Ingest/review/notification/llm work still happen, but as background tasks in that process.
 

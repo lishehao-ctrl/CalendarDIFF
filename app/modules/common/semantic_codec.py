@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from app.db.models.review import EventEntity
 from app.modules.common.family_labels import semantic_family_equivalent
 from app.modules.common.payload_schemas import ApprovedSemanticPayload
-from app.modules.core_ingest.semantic_event_service import semantic_due_datetime_from_payload
+from app.modules.runtime.apply.semantic_event_service import semantic_due_datetime_from_payload
 
 APPROVED_SEMANTIC_FIELDS = {
     "uid",

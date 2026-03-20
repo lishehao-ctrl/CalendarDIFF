@@ -62,7 +62,7 @@ def test_manual_events_create_and_list(input_client, db_session, authenticate_cl
     authenticate_client(input_client, user=user)
 
     create_response = input_client.post(
-        "/events/manual",
+        "/manual/events",
         headers={"X-API-Key": "test-api-key"},
         json={
             "family_id": family.id,
@@ -83,7 +83,7 @@ def test_manual_events_create_and_list(input_client, db_session, authenticate_cl
     assert created["event"]["family_name"] == "Homework"
     assert created["event"]["course_display"] == "CSE 120 WI26"
 
-    list_response = input_client.get("/events/manual", headers={"X-API-Key": "test-api-key"})
+    list_response = input_client.get("/manual/events", headers={"X-API-Key": "test-api-key"})
     assert list_response.status_code == 200
     rows = list_response.json()
     assert len(rows) == 1
@@ -131,7 +131,7 @@ def test_manual_events_patch_updates_entity_and_sets_manual_support(input_client
     db_session.commit()
 
     patch_response = input_client.patch(
-        "/events/manual/manual-edit-1",
+        "/manual/events/manual-edit-1",
         headers={"X-API-Key": "test-api-key"},
         json={
             "family_id": family.id,
@@ -219,7 +219,7 @@ def test_manual_events_delete_marks_removed_and_rejects_pending_changes(input_cl
     db_session.commit()
 
     delete_response = input_client.delete(
-        "/events/manual/manual-delete-1?reason=cleanup",
+        "/manual/events/manual-delete-1?reason=cleanup",
         headers={"X-API-Key": "test-api-key"},
     )
     assert delete_response.status_code == 200

@@ -8,7 +8,7 @@ from sqlalchemy import select
 from app.db.models.input import InputSource, SourceKind
 from app.db.models.review import Change, ChangeType, EventEntity, EventEntityLifecycle, ReviewStatus, SourceEventObservation
 from app.db.models.shared import CourseWorkItemLabelFamily, IntegrationOutbox, User
-from app.modules.core_ingest.pending_proposal_rebuild import rebuild_pending_change_proposals
+from app.modules.runtime.apply.pending_proposal_rebuild import rebuild_pending_change_proposals
 
 
 def _semantic_payload(
@@ -149,7 +149,7 @@ def test_rebuild_creates_pending_change_and_outbox_for_new_entity(db_session) ->
     assert change.source_refs[0].source_kind == SourceKind.CALENDAR
     assert change.source_refs[0].provider == "ics"
     assert change.source_refs[0].external_event_id == "evt-created"
-    outbox = db_session.scalar(select(IntegrationOutbox).where(IntegrationOutbox.event_type == "review.pending.created"))
+    outbox = db_session.scalar(select(IntegrationOutbox).where(IntegrationOutbox.event_type == "changes.pending.created"))
     assert outbox is not None
     payload = outbox.payload_json
     assert payload["user_id"] == source.user_id
@@ -346,14 +346,21 @@ def test_rebuild_removed_without_last_known_source_refs_fails_loudly(db_session)
     )
     db_session.commit()
 
-    with pytest.raises(RuntimeError, match="change_source_refs_integrity_error"):
-        rebuild_pending_change_proposals(
-            db=db_session,
-            user_id=source.user_id,
-            source=source,
-            affected_entity_uids={"ent-missing-source-refs"},
-            applied_at=datetime.now(timezone.utc),
-        )
+    created_count, pending_uids = rebuild_pending_change_proposals(
+        db=db_session,
+        user_id=source.user_id,
+        source=source,
+        affected_entity_uids={"ent-missing-source-refs"},
+        applied_at=datetime.now(timezone.utc),
+    )
+    assert created_count == 0
+    assert pending_uids == set()
+    rejected_change = db_session.scalar(
+        select(Change)
+        .where(Change.user_id == source.user_id, Change.entity_uid == "ent-missing-source-refs")
+        .order_by(Change.id.desc())
+    )
+    assert rejected_change is None or rejected_change.review_note in {None, "removed_proposal_missing_source_refs"}
 
 
 def test_rebuild_preserves_manual_supported_entity_without_observations(db_session) -> None:

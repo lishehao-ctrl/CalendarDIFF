@@ -11,15 +11,16 @@ import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
-  applyLabelLearning,
-  batchDecideReviewChanges,
-  decideReviewChange,
-  getReviewChangeEditContext,
-  listReviewChanges,
-  markReviewChangeViewed,
-  previewLabelLearning,
-  previewReviewChangeEvidence,
-} from "@/lib/api/review";
+  applyChangeLabelLearning,
+  batchDecideChanges,
+  decideChange,
+  getChangeEditContext,
+  listChanges,
+  markChangeViewed,
+  previewChangeEvidence,
+  previewChangeLabelLearning,
+} from "@/lib/api/changes";
+import { listSources } from "@/lib/api/sources";
 import { withBasePath } from "@/lib/demo-mode";
 import {
   formatDateTime,
@@ -29,17 +30,17 @@ import {
   sourceKindDescriptor,
   summarizeChange,
 } from "@/lib/presenters";
-import type { EvidencePreviewResponse, LabelLearningPreview, ReviewChange, ReviewEditContext } from "@/lib/types";
+import type { EvidencePreviewResponse, LabelLearningPreview, ChangeItem, ChangeEditContext, SourceRow } from "@/lib/types";
 import { useApiResource } from "@/lib/use-api-resource";
 
-const statusOptions = ["pending", "approved", "rejected"] as const;
+const statusOptions = ["pending", "approved", "rejected", "all"] as const;
 
 type Banner = {
   tone: "info" | "error";
   text: string;
 } | null;
 
-type ChangeSummarySide = NonNullable<ReviewChange["change_summary"]>["old"];
+type ChangeSummarySide = NonNullable<ChangeItem["change_summary"]>["old"];
 type EvidenceViewMode = "summary" | "raw";
 type CompactWorkspaceSection = "evidence" | "match" | "extras";
 
@@ -50,8 +51,8 @@ type LoadedEvidence = {
 
 type StructuredEvidenceItem = EvidencePreviewResponse["structured_items"][number];
 
-function groupChangesByCourse(rows: ReviewChange[]) {
-  const groups = new Map<string, ReviewChange[]>();
+function groupChangesByCourse(rows: ChangeItem[]) {
+  const groups = new Map<string, ChangeItem[]>();
   for (const row of rows) {
     const course = row.after_event?.event_display.course_display || row.before_event?.event_display.course_display || "Unknown course";
     if (!groups.has(course)) {
@@ -258,7 +259,7 @@ function priorityTone(priorityLabel: string | null | undefined) {
   return "info";
 }
 
-function confidenceLabel(row: ReviewChange) {
+function confidenceLabel(row: ChangeItem) {
   const value = row.proposal_sources.reduce<number | null>((highest, source) => {
     if (typeof source.confidence !== "number") {
       return highest;
@@ -273,14 +274,14 @@ function confidenceLabel(row: ReviewChange) {
   return `Confidence ${Math.round(value * 100)}%`;
 }
 
-function canonicalDisplayLabel(context: ReviewEditContext | null, row: ReviewChange) {
+function canonicalDisplayLabel(context: ChangeEditContext | null, row: ChangeItem) {
   if (context?.editable_event?.family_name) {
     return context.editable_event.family_name;
   }
   return row.after_event?.event_display.family_name || row.before_event?.event_display.family_name || "No canonical family yet";
 }
 
-function canonicalTimelineLabel(context: ReviewEditContext | null) {
+function canonicalTimelineLabel(context: ChangeEditContext | null) {
   if (!context) {
     return null;
   }
@@ -325,7 +326,7 @@ function ChangeInboxRow({
   compact,
   basePath = "",
 }: {
-  row: ReviewChange;
+  row: ChangeItem;
   selected: boolean;
   checked: boolean;
   onToggleSelection: (checked: boolean) => void;
@@ -359,6 +360,7 @@ function ChangeInboxRow({
           <button type="button" onClick={onOpen} className="w-full text-left">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone={row.review_status}>{formatStatusLabel(row.review_status)}</Badge>
+              {!row.viewed_at ? <Badge tone="pending">New</Badge> : null}
               {!compact ? <Badge tone={changeTypeTone(row.change_type)}>{formatStatusLabel(row.change_type)}</Badge> : null}
               {!compact && row.priority_label ? <Badge tone={priorityTone(row.priority_label)}>{formatStatusLabel(row.priority_label)}</Badge> : null}
             </div>
@@ -390,7 +392,7 @@ function ChangeInboxRow({
             </Button>
             {!compact ? (
             <Button asChild size="sm" variant="ghost">
-              <Link href={withBasePath(basePath, `/review/changes/${row.id}/canonical`)}>
+              <Link href={withBasePath(basePath, `/changes/${row.id}/canonical`)}>
                 <SquarePen className="mr-2 h-4 w-4" />
                 Edit then approve
               </Link>
@@ -418,6 +420,7 @@ function DecisionWorkspace({
   editContextBusy,
   editContextError,
   decisionBusy,
+  onMarkViewed,
   onEvidenceSideChange,
   onEvidenceViewChange,
   onDecide,
@@ -429,7 +432,7 @@ function DecisionWorkspace({
   basePath = "",
   compact = false,
 }: {
-  selected: ReviewChange;
+  selected: ChangeItem;
   currentEvidenceSide: "before" | "after";
   evidenceView: EvidenceViewMode;
   evidence: LoadedEvidence | null;
@@ -439,10 +442,11 @@ function DecisionWorkspace({
   labelLearningError: string | null;
   learningOpen: boolean;
   newFamilyLabel: string;
-  editContext: ReviewEditContext | null;
+  editContext: ChangeEditContext | null;
   editContextBusy: boolean;
   editContextError: string | null;
   decisionBusy: "approve" | "reject" | null;
+  onMarkViewed: () => void;
   onEvidenceSideChange: (side: "before" | "after") => void;
   onEvidenceViewChange: (view: EvidenceViewMode) => void;
   onDecide: (decision: "approve" | "reject") => void;
@@ -699,13 +703,17 @@ function DecisionWorkspace({
             <XCircle className="mr-2 h-4 w-4" />
             {decisionBusy === "reject" ? "Rejecting..." : "Reject"}
           </Button>
+          <Button variant="ghost" onClick={onMarkViewed} disabled={Boolean(selected.viewed_at)}>
+            <Eye className="mr-2 h-4 w-4" />
+            {selected.viewed_at ? "Viewed" : "Mark viewed"}
+          </Button>
           <Button variant="ghost" onClick={onLearningToggle} disabled={!learningAvailable || labelLearningBusy === "preview"}>
             <Sparkles className="mr-2 h-4 w-4" />
             Approve and learn
           </Button>
           {!compact ? (
             <Button asChild variant="ghost">
-              <Link href={withBasePath(basePath, `/review/changes/${selected.id}/canonical`)}>
+              <Link href={withBasePath(basePath, `/changes/${selected.id}/canonical`)}>
                 <SquarePen className="mr-2 h-4 w-4" />
                 Edit then approve
               </Link>
@@ -784,7 +792,7 @@ function DecisionWorkspace({
             <p className="font-medium text-ink">Advanced path</p>
             <div className="mt-3">
               <Button asChild size="sm" variant="ghost">
-                <Link href={withBasePath(basePath, `/review/changes/${selected.id}/proposal`)}>
+                <Link href={withBasePath(basePath, `/changes/${selected.id}/proposal`)}>
                   <PencilLine className="mr-2 h-4 w-4" />
                   Edit proposal
                 </Link>
@@ -802,14 +810,14 @@ function DecisionWorkspace({
             >
               <div className="flex flex-wrap gap-2">
                 <Button asChild size="sm" variant="ghost">
-                  <Link href={withBasePath(basePath, `/review/changes/${selected.id}/canonical`)}>
+                  <Link href={withBasePath(basePath, `/changes/${selected.id}/canonical`)}>
                     <SquarePen className="mr-2 h-4 w-4" />
                     Edit then approve
                   </Link>
                 </Button>
                 {selected.change_type !== "removed" ? (
                   <Button asChild size="sm" variant="ghost">
-                    <Link href={withBasePath(basePath, `/review/changes/${selected.id}/proposal`)}>
+                    <Link href={withBasePath(basePath, `/changes/${selected.id}/proposal`)}>
                       <PencilLine className="mr-2 h-4 w-4" />
                       Edit proposal
                     </Link>
@@ -824,8 +832,9 @@ function DecisionWorkspace({
   );
 }
 
-export function ReviewChangesPanel({ basePath = "" }: { basePath?: string }) {
+export function ChangeItemsPanel({ basePath = "" }: { basePath?: string }) {
   const [statusFilter, setStatusFilter] = useState<(typeof statusOptions)[number]>("pending");
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [selectedChangeId, setSelectedChangeId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [evidenceView, setEvidenceView] = useState<EvidenceViewMode>("summary");
@@ -841,15 +850,21 @@ export function ReviewChangesPanel({ basePath = "" }: { basePath?: string }) {
   const [learningOpen, setLearningOpen] = useState(false);
   const [newFamilyLabel, setNewFamilyLabel] = useState("");
   const [banner, setBanner] = useState<Banner>(null);
-  const [editContext, setEditContext] = useState<ReviewEditContext | null>(null);
+  const [editContext, setEditContext] = useState<ChangeEditContext | null>(null);
   const [editContextBusy, setEditContextBusy] = useState(false);
   const [editContextError, setEditContextError] = useState<string | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const { side: drawerSide, isDesktop } = useWorkspaceLayout();
+  const sources = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), []);
 
-  const { data, loading, error, refresh, setData } = useApiResource<ReviewChange[]>(
-    () => listReviewChanges({ review_status: statusFilter, limit: 50 }),
-    [statusFilter],
+  const { data, loading, error, refresh, setData } = useApiResource<ChangeItem[]>(
+    () =>
+      listChanges({
+        review_status: statusFilter,
+        limit: 50,
+        source_id: sourceFilter === "all" ? null : Number(sourceFilter),
+      }),
+    [sourceFilter, statusFilter],
   );
   const rows = useMemo(() => data || [], [data]);
   const groups = useMemo(() => groupChangesByCourse(rows), [rows]);
@@ -878,12 +893,12 @@ export function ReviewChangesPanel({ basePath = "" }: { basePath?: string }) {
   }, [rows, selectedChangeId, statusFilter]);
 
   const markViewed = useCallback(
-    async (change: ReviewChange) => {
+    async (change: ChangeItem) => {
       if (change.viewed_at) {
         return;
       }
       try {
-        const updated = await markReviewChangeViewed(change.id, { viewed: true, note: "ui_opened" });
+        const updated = await markChangeViewed(change.id, { viewed: true, note: "ui_opened" });
         setData((prev) => prev?.map((row) => (row.id === updated.id ? updated : row)) || prev);
       } catch {
         // Non-fatal.
@@ -893,12 +908,12 @@ export function ReviewChangesPanel({ basePath = "" }: { basePath?: string }) {
   );
 
   const openEvidence = useCallback(
-    async (change: ReviewChange, side: "before" | "after") => {
+    async (change: ChangeItem, side: "before" | "after") => {
       setPreviewBusy(side);
       setCurrentEvidenceSide(side);
       await markViewed(change);
       try {
-        const payload = await previewReviewChangeEvidence(change.id, side);
+        const payload = await previewChangeEvidence(change.id, side);
         const fallback =
           payload.events
             ?.map((event) => [event.summary || "(untitled)", event.dtstart, event.location].filter(Boolean).join(" · "))
@@ -953,7 +968,7 @@ export function ReviewChangesPanel({ basePath = "" }: { basePath?: string }) {
     setEditContext(null);
     setEditContextError(null);
 
-    void getReviewChangeEditContext(selected.id)
+    void getChangeEditContext(selected.id)
       .then((payload) => {
         if (!cancelled) {
           setEditContext(payload);
@@ -990,7 +1005,7 @@ export function ReviewChangesPanel({ basePath = "" }: { basePath?: string }) {
     setLabelLearning(null);
     setLabelLearningError(null);
 
-    void previewLabelLearning(selected.id)
+    void previewChangeLabelLearning(selected.id)
       .then((payload) => {
         if (cancelled) return;
         setLabelLearning(payload);
@@ -1018,7 +1033,7 @@ export function ReviewChangesPanel({ basePath = "" }: { basePath?: string }) {
     setDecisionBusy(decision);
     setBanner(null);
     try {
-      await decideReviewChange(selected.id, { decision, note: `ui_${decision}` });
+      await decideChange(selected.id, { decision, note: `ui_${decision}` });
       setSelectedIds((prev) => prev.filter((id) => id !== selected.id));
       setBanner({ tone: "info", text: decision === "approve" ? "Change approved." : "Change rejected." });
       setLearningOpen(false);
@@ -1036,7 +1051,7 @@ export function ReviewChangesPanel({ basePath = "" }: { basePath?: string }) {
     setBatchBusy(decision);
     setBanner(null);
     try {
-      const payload = await batchDecideReviewChanges({ ids: selectedIds, decision, note: `ui_batch_${decision}` });
+      const payload = await batchDecideChanges({ ids: selectedIds, decision, note: `ui_batch_${decision}` });
       setSelectedIds([]);
       setBanner({
         tone: payload.failed > 0 ? "error" : "info",
@@ -1060,7 +1075,7 @@ export function ReviewChangesPanel({ basePath = "" }: { basePath?: string }) {
     setLabelLearningBusy("apply");
     setBanner(null);
     try {
-      await applyLabelLearning(selected.id, {
+      await applyChangeLabelLearning(selected.id, {
         mode: payload.mode,
         family_id: payload.family_id ?? null,
         canonical_label: payload.canonical_label ?? null,
@@ -1137,6 +1152,22 @@ export function ReviewChangesPanel({ basePath = "" }: { basePath?: string }) {
 
           <div className="flex flex-wrap items-center gap-3 text-sm text-[#596270]">
             <Badge tone="info">{formatStatusLabel(statusFilter)} lane</Badge>
+            <label className="flex items-center gap-2 rounded-full border border-line/80 bg-white/75 px-3 py-1.5 text-sm text-[#314051]">
+              <span className="text-[#6d7885]">Source</span>
+              <select
+                aria-label="Filter changes by source"
+                className="bg-transparent outline-none"
+                value={sourceFilter}
+                onChange={(event) => setSourceFilter(event.target.value)}
+              >
+                <option value="all">All</option>
+                {(sources.data || []).map((source) => (
+                  <option key={source.source_id} value={String(source.source_id)}>
+                    {source.display_name || source.provider || `Source ${source.source_id}`}
+                  </option>
+                ))}
+              </select>
+            </label>
             <span>{rows.length} visible changes</span>
             <span>•</span>
             <span>{groups.length} course group{groups.length === 1 ? "" : "s"}</span>
@@ -1149,7 +1180,7 @@ export function ReviewChangesPanel({ basePath = "" }: { basePath?: string }) {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Inbox</p>
-              <h2 className="mt-1 text-lg font-semibold text-ink">Course-grouped review lane</h2>
+              <h2 className="mt-1 text-lg font-semibold text-ink">Course-grouped inbox</h2>
             </div>
             {statusFilter === "pending" ? <Badge tone="pending">{selectedIds.length} selected</Badge> : <Badge tone="info">{rows.length} rows</Badge>}
           </div>
@@ -1224,6 +1255,7 @@ export function ReviewChangesPanel({ basePath = "" }: { basePath?: string }) {
               editContextBusy={editContextBusy}
               editContextError={editContextError}
               decisionBusy={decisionBusy}
+              onMarkViewed={() => void markViewed(selected)}
               onEvidenceSideChange={(side) => void openEvidence(selected, side)}
               onEvidenceViewChange={setEvidenceView}
               onDecide={(decision) => void decide(decision)}
@@ -1289,6 +1321,7 @@ export function ReviewChangesPanel({ basePath = "" }: { basePath?: string }) {
                   editContextBusy={editContextBusy}
                   editContextError={editContextError}
                   decisionBusy={decisionBusy}
+                  onMarkViewed={() => void markViewed(selected)}
                   onEvidenceSideChange={(side) => void openEvidence(selected, side)}
                   onEvidenceViewChange={setEvidenceView}
                   onDecide={(decision) => void decide(decision)}

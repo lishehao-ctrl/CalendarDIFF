@@ -5,10 +5,10 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models.ingestion import IngestJob, IngestJobStatus
+from app.db.models.runtime import IngestJob, IngestJobStatus
 from app.db.models.input import IngestTriggerType, InputSource, SourceKind, SyncRequest, SyncRequestStatus
 from app.db.models.shared import User
-from app.modules.ingestion.job_claiming import claim_jobs
+from app.modules.runtime.connectors.job_claiming import claim_jobs
 
 
 def _seed_source(db: Session, *, user_id: int, source_key: str) -> InputSource:

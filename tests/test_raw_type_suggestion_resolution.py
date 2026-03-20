@@ -4,12 +4,12 @@ from datetime import datetime, timezone
 
 from app.db.models.shared import CourseRawTypeSuggestion, User
 from app.modules.common.course_identity import parse_course_display
-from app.modules.core_ingest.course_work_item_family_resolution import resolve_kind_resolution
-from app.modules.users.course_work_item_families_service import create_course_work_item_family
+from app.modules.runtime.apply.course_work_item_family_resolution import resolve_kind_resolution
+from app.modules.families.family_service import create_course_work_item_family
 from tests.support.payload_builders import build_course_parse, build_semantic_parse
 
 
-def test_resolve_kind_resolution_creates_suggestion_for_similar_raw_type(db_session, monkeypatch) -> None:
+def test_resolve_kind_resolution_prefers_new_family_over_inline_suggestion_generation(db_session, monkeypatch) -> None:
     user = User(email=None, notify_email="suggest-user@example.com", password_hash="hash", onboarding_completed_at=datetime.now(timezone.utc))
     db_session.add(user)
     db_session.commit()
@@ -29,8 +29,8 @@ def test_resolve_kind_resolution_creates_suggestion_for_similar_raw_type(db_sess
     )
 
     monkeypatch.setattr(
-        "app.modules.core_ingest.course_work_item_family_resolution.compare_raw_type_against_known_types",
-        lambda *args, **kwargs: {"matched_raw_type": "Homework", "confidence": 0.93, "evidence": "hw looks like homework"},
+        "app.modules.runtime.apply.course_work_item_family_resolution.list_course_raw_types",
+        lambda *args, **kwargs: [],
     )
 
     result = resolve_kind_resolution(
@@ -41,9 +41,6 @@ def test_resolve_kind_resolution_creates_suggestion_for_similar_raw_type(db_sess
         source_kind="email",
         external_event_id="evt-1",
     )
-    assert result["status"] == "suggested"
+    assert result["status"] == "new_family"
     assert result["canonical_label"] == "HW"
-    suggestion = db_session.query(CourseRawTypeSuggestion).one()
-    assert suggestion.source_raw_type.raw_type == "HW"
-    assert suggestion.suggested_raw_type is not None
-    assert suggestion.suggested_raw_type.raw_type == "Homework"
+    assert db_session.query(CourseRawTypeSuggestion).count() == 0

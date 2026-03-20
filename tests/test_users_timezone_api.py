@@ -18,7 +18,7 @@ def test_get_user_returns_timezone_name(input_client, db_session, auth_headers) 
     db_session.commit()
 
     headers = auth_headers(input_client, user=user)
-    response = input_client.get("/profile/me", headers=headers)
+    response = input_client.get("/settings/profile", headers=headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["timezone_name"] == "UTC"
@@ -38,7 +38,7 @@ def test_patch_user_timezone_name_validates_iana_name(input_client, db_session, 
     headers = auth_headers(input_client, user=user)
 
     patch_response = input_client.patch(
-        "/profile/me",
+        "/settings/profile",
         headers=headers,
         json={"timezone_name": "America/Los_Angeles", "timezone_source": "manual"},
     )
@@ -53,7 +53,7 @@ def test_patch_user_timezone_name_validates_iana_name(input_client, db_session, 
     assert refreshed.timezone_source == "manual"
 
     invalid_response = input_client.patch(
-        "/profile/me",
+        "/settings/profile",
         headers=headers,
         json={"timezone_name": "Mars/Olympus"},
     )
@@ -73,7 +73,7 @@ def test_patch_user_auto_timezone_preserves_auto_mode(input_client, db_session, 
 
     headers = auth_headers(input_client, user=user)
     patch_response = input_client.patch(
-        "/profile/me",
+        "/settings/profile",
         headers=headers,
         json={"timezone_name": "America/New_York", "timezone_source": "auto"},
     )

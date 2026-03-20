@@ -172,8 +172,8 @@ def test_start_replay_writes_initial_state_and_credentials(tmp_path: Path, monke
         replay,
         "wait_for_bootstrap_syncs",
         lambda client, sources, timeout_seconds=replay.BOOTSTRAP_WARMUP_TIMEOUT_SECONDS: [
-            {"source_id": 101, "status": "SUCCEEDED"},
-            {"source_id": 202, "status": "SUCCEEDED"},
+            {"source_id": 101, "request_id": "bootstrap-ics", "status": "SUCCEEDED", "elapsed_ms": 1234},
+            {"source_id": 202, "request_id": "bootstrap-gmail", "status": "SUCCEEDED", "elapsed_ms": 2345},
         ],
     )
     monkeypatch.setattr(replay, "advance_until_checkpoint", lambda run_dir: run_dir)
@@ -199,7 +199,10 @@ def test_start_replay_writes_initial_state_and_credentials(tmp_path: Path, monke
     assert state["ics_source_id"] == 101
     assert state["gmail_source_id"] == 202
     assert state["fake_provider"]["pid"] == 4321
-    assert state["bootstrap_results"] == [{"source_id": 101, "status": "SUCCEEDED"}, {"source_id": 202, "status": "SUCCEEDED"}]
+    assert state["bootstrap_results"] == [
+        {"source_id": 101, "request_id": "bootstrap-ics", "status": "SUCCEEDED", "elapsed_ms": 1234},
+        {"source_id": 202, "request_id": "bootstrap-gmail", "status": "SUCCEEDED", "elapsed_ms": 2345},
+    ]
     assert creds["notify_email"] == "timeline@example.com"
     assert primed_batches and primed_batches[0]["semester"] == 1 and primed_batches[0]["batch"] == 1
     assert (run_dir / replay.CHECKPOINTS_FILE).is_file()
@@ -414,16 +417,140 @@ def test_wait_for_source_bootstrap_sync_prefers_scheduler_request(monkeypatch) -
     monkeypatch.setattr(replay, "find_latest_scheduler_sync_request_id_for_source", lambda **kwargs: "scheduler-1")
     monkeypatch.setattr(
         replay,
+        "get_source_row",
+        lambda client_obj, source_id: {
+            "source_id": source_id,
+            "sync_state": "idle",
+            "runtime_state": "active",
+            "last_polled_at": "2026-03-18T00:00:04+00:00",
+            "active_request_id": None,
+        },
+    )
+    monkeypatch.setattr(
+        replay,
+        "request_json",
+        lambda client_obj, method, path, json_payload=None: (
+            {
+                "request_id": "scheduler-1",
+                "status": "SUCCEEDED",
+                "applied": True,
+                "created_at": "2026-03-18T00:00:00+00:00",
+                "updated_at": "2026-03-18T00:00:03+00:00",
+                "applied_at": "2026-03-18T00:00:04+00:00",
+                "elapsed_ms": 4000,
+                "stage": "completed",
+                "substage": "apply_completed",
+                "stage_updated_at": "2026-03-18T00:00:04+00:00",
+                "metadata": {
+                    "llm_usage_summary": {
+                        "successful_call_count": 2,
+                        "input_tokens": 100,
+                        "cached_input_tokens": 40,
+                        "cache_creation_input_tokens": 20,
+                        "output_tokens": 10,
+                        "reasoning_tokens": 0,
+                        "total_tokens": 110,
+                        "latency_ms_total": 200,
+                        "latency_ms_max": 120,
+                        "usage_record_count": 2,
+                        "api_modes": {"chat_completions": 2},
+                        "models": {"qwen3.5-flash": 2},
+                        "task_counts": {"gmail_purpose_mode_classify": 2},
+                    }
+                },
+                "connector_result": {"provider": "gmail", "status": "NO_CHANGE", "records_count": 0},
+                "progress": {"phase": "completed", "updated_at": "2026-03-18T00:00:04+00:00"},
+            }
+            if path == "/sync-requests/scheduler-1"
+            else {
+                "source_id": 12,
+                "active_request_id": None,
+                "bootstrap": {
+                    "request_id": "scheduler-1",
+                    "phase": "bootstrap",
+                    "status": "SUCCEEDED",
+                    "applied": True,
+                    "created_at": "2026-03-18T00:00:00+00:00",
+                    "updated_at": "2026-03-18T00:00:03+00:00",
+                    "applied_at": "2026-03-18T00:00:04+00:00",
+                    "elapsed_ms": 4000,
+                    "stage": "completed",
+                    "substage": "apply_completed",
+                    "stage_updated_at": "2026-03-18T00:00:04+00:00",
+                    "llm_usage": {
+                        "successful_call_count": 2,
+                        "input_tokens": 100,
+                        "cached_input_tokens": 40,
+                        "cache_creation_input_tokens": 20,
+                        "output_tokens": 10,
+                        "reasoning_tokens": 0,
+                        "total_tokens": 110,
+                        "latency_ms_total": 200,
+                        "latency_ms_max": 120,
+                        "usage_record_count": 2,
+                        "api_modes": {"chat_completions": 2},
+                        "models": {"qwen3.5-flash": 2},
+                        "task_counts": {"gmail_purpose_mode_classify": 2},
+                    },
+                    "connector_result": {"provider": "gmail", "status": "NO_CHANGE", "records_count": 0},
+                    "progress": {"phase": "completed", "updated_at": "2026-03-18T00:00:04+00:00"},
+                },
+            }
+        ),
+    )
+
+    result = replay.wait_for_source_bootstrap_sync(client, source=source, timeout_seconds=1.0)
+
+    assert result["request_id"] == "scheduler-1"
+    assert result["status"] == "SUCCEEDED"
+    assert result["elapsed_ms"] == 4000
+    assert result["llm_usage"]["successful_call_count"] == 2
+    assert result["stage"] == "completed"
+    assert result["applied"] is True
+
+
+def test_enrich_bootstrap_results_from_api_replaces_placeholder_rows(monkeypatch) -> None:
+    state = {
+        "public_api_base": "http://127.0.0.1:8200",
+        "api_key": "test-api-key",
+        "notify_email": "timeline@example.com",
+        "auth_password": "password123",
+    }
+    bootstrap_results = [
+        {
+            "source_id": 12,
+            "source_kind": "email",
+            "provider": "gmail",
+            "request_id": None,
+            "status": "unknown",
+            "applied": False,
+            "elapsed_ms": None,
+            "llm_usage": None,
+            "connector_result": None,
+            "created_at": "2026-03-18T00:00:00+00:00",
+            "updated_at": "2026-03-18T00:00:00+00:00",
+        }
+    ]
+    class _Client:
+        def post(self, path, json):  # noqa: ANN001
+            assert path == "/auth/login"
+            return SimpleNamespace(status_code=200)
+
+    monkeypatch.setattr(replay, "build_api_client", lambda **kwargs: _Client())
+    monkeypatch.setattr(
+        replay,
         "request_json",
         lambda client_obj, method, path, json_payload=None: {
-            "request_id": "scheduler-1",
-            "status": "SUCCEEDED",
-            "applied": True,
-            "created_at": "2026-03-18T00:00:00+00:00",
-            "updated_at": "2026-03-18T00:00:03+00:00",
-            "applied_at": "2026-03-18T00:00:04+00:00",
-            "metadata": {
-                "llm_usage_summary": {
+            "source_id": 12,
+            "bootstrap": {
+                "request_id": "scheduler-1",
+                "status": "SUCCEEDED",
+                "stage": "completed",
+                "substage": "apply_completed",
+                "stage_updated_at": "2026-03-18T00:00:04+00:00",
+                "applied": True,
+                "elapsed_ms": 4000,
+                "llm_usage": {
                     "successful_call_count": 2,
                     "input_tokens": 100,
                     "cached_input_tokens": 40,
@@ -437,18 +564,81 @@ def test_wait_for_source_bootstrap_sync_prefers_scheduler_request(monkeypatch) -
                     "api_modes": {"chat_completions": 2},
                     "models": {"qwen3.5-flash": 2},
                     "task_counts": {"gmail_purpose_mode_classify": 2},
-                }
+                },
+                "connector_result": {"provider": "gmail", "status": "NO_CHANGE", "records_count": 0},
+                "created_at": "2026-03-18T00:00:00+00:00",
+                "updated_at": "2026-03-18T00:00:03+00:00",
+                "applied_at": "2026-03-18T00:00:04+00:00",
+                "progress": {"phase": "completed", "updated_at": "2026-03-18T00:00:04+00:00"},
             },
-            "connector_result": {"provider": "gmail", "status": "NO_CHANGE", "records_count": 0},
         },
     )
 
-    result = replay.wait_for_source_bootstrap_sync(client, source=source, timeout_seconds=1.0)
+    enriched = replay.enrich_bootstrap_results_from_api(state=state, bootstrap_results=bootstrap_results)
 
-    assert result["request_id"] == "scheduler-1"
-    assert result["status"] == "SUCCEEDED"
-    assert result["elapsed_ms"] == 4000
-    assert result["llm_usage"]["successful_call_count"] == 2
+    assert enriched[0]["request_id"] == "scheduler-1"
+    assert enriched[0]["status"] == "SUCCEEDED"
+    assert enriched[0]["stage"] == "completed"
+    assert enriched[0]["applied"] is True
+    assert enriched[0]["elapsed_ms"] == 4000
+    assert enriched[0]["llm_usage"]["successful_call_count"] == 2
+
+
+def test_ensure_authenticated_session_logs_in_existing_user_before_register(monkeypatch) -> None:
+    calls: list[tuple[str, str, object | None]] = []
+
+    class _Client:
+        def get(self, path):  # noqa: ANN001
+            calls.append(("GET", path, None))
+            assert path == "/auth/session"
+            return SimpleNamespace(status_code=401, text='{"authenticated":false}')
+
+        def post(self, path, json):  # noqa: ANN001
+            calls.append(("POST", path, json))
+            if path == "/auth/login":
+                return SimpleNamespace(status_code=200, text='{"authenticated":true}')
+            raise AssertionError(f"unexpected path {path}")
+
+    monkeypatch.setattr(
+        replay,
+        "request_json",
+        lambda client_obj, method, path, json_payload=None: {"user": {"id": 123, "notify_email": "timeline@example.com"}},
+    )
+
+    user = replay.ensure_authenticated_session(_Client(), notify_email="timeline@example.com", password="password123")
+
+    assert user["id"] == 123
+    assert [path for _, path, _ in calls] == ["/auth/session", "/auth/login"]
+    assert all(path != "/auth/register" for _, path, _ in calls)
+
+
+def test_ensure_authenticated_session_registers_when_login_fails(monkeypatch) -> None:
+    calls: list[tuple[str, str, object | None]] = []
+
+    class _Client:
+        def get(self, path):  # noqa: ANN001
+            calls.append(("GET", path, None))
+            assert path == "/auth/session"
+            return SimpleNamespace(status_code=401, text='{"authenticated":false}')
+
+        def post(self, path, json):  # noqa: ANN001
+            calls.append(("POST", path, json))
+            if path == "/auth/login":
+                return SimpleNamespace(status_code=401, text='{"detail":"invalid credentials"}')
+            if path == "/auth/register":
+                return SimpleNamespace(status_code=201, text='{"authenticated":true}')
+            raise AssertionError(f"unexpected path {path}")
+
+    monkeypatch.setattr(
+        replay,
+        "request_json",
+        lambda client_obj, method, path, json_payload=None: {"user": {"id": 456, "notify_email": "timeline@example.com"}},
+    )
+
+    user = replay.ensure_authenticated_session(_Client(), notify_email="timeline@example.com", password="password123")
+
+    assert user["id"] == 456
+    assert [path for _, path, _ in calls] == ["/auth/session", "/auth/login", "/auth/register"]
 
 
 def test_wait_sync_success_allows_queued_request_while_active_source_request_progresses(monkeypatch) -> None:
@@ -563,7 +753,7 @@ def test_sync_payload_marker_includes_progress_and_usage_heartbeat() -> None:
         "request_id": "req-1",
         "status": "RUNNING",
         "updated_at": "2026-03-18T00:00:05+00:00",
-        "progress": {"phase": "calendar_parsing", "current": 2, "total": 4, "detail": "advancing"},
+        "progress": {"phase": "calendar_parsing", "current": 2, "total": 4, "detail": "advancing", "updated_at": "2026-03-18T00:00:06+00:00"},
         "connector_result": {"status": "CHANGED", "records_count": 5},
         "llm_usage": {"successful_call_count": 3, "last_observed_at": "2026-03-18T00:00:04+00:00"},
     }
@@ -575,6 +765,7 @@ def test_sync_payload_marker_includes_progress_and_usage_heartbeat() -> None:
     assert marker[4] == 2
     assert marker[7] == "CHANGED"
     assert marker[9] == "2026-03-18T00:00:04+00:00"
+    assert marker[10] == "2026-03-18T00:00:06+00:00"
 
 
 def test_build_sync_timeout_message_includes_diagnosis() -> None:

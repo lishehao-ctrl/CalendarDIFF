@@ -4,9 +4,9 @@ import base64
 
 from sqlalchemy.orm import sessionmaker
 
-from app.db.models.ingestion import ConnectorResultStatus
-from app.modules.ingestion.llm_parsers.contracts import ParserOutput
-from app.modules.llm_runtime import parse_pipeline
+from app.db.models.runtime import ConnectorResultStatus
+from app.modules.runtime.connectors.llm_parsers.contracts import ParserOutput
+from app.modules.runtime.llm import parse_pipeline
 
 
 def test_calendar_delta_removed_only_skips_llm(db_session_factory: sessionmaker) -> None:
