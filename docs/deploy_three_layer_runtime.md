@@ -9,6 +9,19 @@ Default `docker-compose.yml` contains four services only:
 - `postgres`
 - `redis`
 
+## Current AWS host layout
+The current production host uses:
+
+- SSH user: `ec2-user`
+- app dir: `/home/ec2-user/apps/CalendarDIFF`
+- secrets dir: `/home/ec2-user/secrets`
+
+Reserve a sibling app dir for future non-CalendarDIFF projects:
+
+- `/home/ec2-user/apps/rpg-demo`
+
+CalendarDIFF should keep owning only `cal.shehao.app`. Future RPG deployment should get its own nginx server block and app ports rather than reusing CalendarDIFF's routing.
+
 ## Backend container
 `public-service` runs:
 

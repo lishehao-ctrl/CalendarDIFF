@@ -2,12 +2,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-AWS_USER="${AWS_USER:-ubuntu}"
-AWS_HOST="${AWS_HOST:-3.236.46.145}"
+AWS_USER="${AWS_USER:-ec2-user}"
+AWS_HOST="${AWS_HOST:-54.197.37.63}"
 AWS_SSH_KEY="${AWS_SSH_KEY:-$HOME/.ssh/aws-main.pem}"
-AWS_APP_DIR="${AWS_APP_DIR:-/home/ubuntu/apps/CalendarDIFF}"
+AWS_APP_DIR="${AWS_APP_DIR:-/home/ec2-user/apps/CalendarDIFF}"
 REMOTE_GIT_URL="${REMOTE_GIT_URL:-git@github.com:lishehao/CalendarDIFF.git}"
 DOMAIN="${DOMAIN:-cal.shehao.app}"
+BUNDLE_PATH="${BUNDLE_PATH:-/tmp/calendardiff-release.bundle}"
 
 cd "$ROOT_DIR"
 
@@ -20,17 +21,29 @@ LOCAL_HEAD="$(git rev-parse --short HEAD)"
 echo "Pushing $LOCAL_HEAD to origin main..."
 git push origin main
 
+echo "Creating release bundle..."
+rm -f "$BUNDLE_PATH"
+git bundle create "$BUNDLE_PATH" HEAD
+
+echo "Uploading release bundle to $AWS_USER@$AWS_HOST..."
+scp -i "$AWS_SSH_KEY" -o StrictHostKeyChecking=accept-new "$BUNDLE_PATH" "$AWS_USER@$AWS_HOST:/tmp/calendardiff-release.bundle"
+
 echo "Syncing AWS checkout on $AWS_USER@$AWS_HOST..."
-ssh -i "$AWS_SSH_KEY" -o StrictHostKeyChecking=accept-new "$AWS_USER@$AWS_HOST" bash -s -- "$AWS_APP_DIR" "$REMOTE_GIT_URL" <<'REMOTE_SYNC'
+ssh -i "$AWS_SSH_KEY" -o StrictHostKeyChecking=accept-new "$AWS_USER@$AWS_HOST" bash -s -- "$AWS_APP_DIR" "$REMOTE_GIT_URL" /tmp/calendardiff-release.bundle <<'REMOTE_SYNC'
 set -euo pipefail
 APP_DIR="$1"
 REMOTE_GIT_URL="$2"
+REMOTE_BUNDLE="$3"
 cd "$APP_DIR"
-git remote set-url origin "$REMOTE_GIT_URL"
-git fetch origin --prune
-git reset --hard origin/main
+git remote remove origin >/dev/null 2>&1 || true
+git remote add origin "$REMOTE_GIT_URL"
+git fetch "$REMOTE_BUNDLE" HEAD
+git reset --hard FETCH_HEAD
 printf 'REMOTE_HEAD=%s\n' "$(git rev-parse --short HEAD)"
+rm -f "$REMOTE_BUNDLE"
 REMOTE_SYNC
+
+rm -f "$BUNDLE_PATH"
 
 echo "Verifying remote runtime..."
 ssh -i "$AWS_SSH_KEY" -o StrictHostKeyChecking=accept-new "$AWS_USER@$AWS_HOST" bash -s -- "$AWS_APP_DIR" "$DOMAIN" <<'REMOTE_VERIFY'
@@ -40,7 +53,7 @@ DOMAIN="$2"
 cd "$APP_DIR"
 sudo nginx -t >/tmp/nginx-check.out 2>&1
 cat /tmp/nginx-check.out
-docker compose ps
+sudo docker compose ps
 echo HEALTH
 curl -sS "https://$DOMAIN/health"
 echo

@@ -20,11 +20,10 @@ It does **not** own:
 
 Live host file ownership is expected to look like this:
 
-- `/etc/nginx/sites-available/cal-shehao-app`
-- `/etc/nginx/sites-enabled/cal-shehao-app`
+- `/etc/nginx/conf.d/cal-shehao-app.conf`
 - `/etc/nginx/conf.d/websocket-upgrade-map.conf`
 
-`/etc/nginx/sites-available/default` may still exist for other projects, but CalendarDIFF should not depend on it.
+On Amazon Linux hosts, `conf.d/*.conf` is the default include location. Keep CalendarDIFF in its own `cal-shehao-app.conf` so future projects such as `rpg.shehao.app` can add their own sibling file without sharing one catch-all config.
 
 ## Why CalendarDIFF Uses Split Routing
 
