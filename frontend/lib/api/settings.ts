@@ -1,6 +1,10 @@
 import { apiGet, apiPatch } from "@/lib/api/client";
 import type { UserProfile } from "@/lib/types";
 
+export function settingsProfileCacheKey() {
+  return "settings:profile";
+}
+
 export async function getSettingsProfile() {
   return apiGet<UserProfile>("/settings/profile");
 }

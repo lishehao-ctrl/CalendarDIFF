@@ -84,16 +84,70 @@ export type ChangesWorkbenchManualSummary = {
   lane_role: "fallback";
 };
 
+export type WorkspacePosturePhase =
+  | "baseline_import"
+  | "initial_review"
+  | "monitoring_live"
+  | "attention_required";
+
+export type WorkspacePostureInitialReview = {
+  pending_count: number;
+  reviewed_count: number;
+  total_count: number;
+  completion_percent: number;
+  completed_at?: string | null;
+};
+
+export type WorkspacePostureMonitoring = {
+  live_since?: string | null;
+  replay_active: boolean;
+  active_source_count: number;
+};
+
+export type WorkspacePostureNextAction = {
+  lane: "sources" | "initial_review" | "changes" | "families" | "manual";
+  label: string;
+  reason: string;
+};
+
+export type WorkspacePosture = {
+  phase: WorkspacePosturePhase;
+  initial_review: WorkspacePostureInitialReview;
+  monitoring: WorkspacePostureMonitoring;
+  next_action: WorkspacePostureNextAction;
+};
+
 export type ChangesWorkbenchSummary = {
   changes_pending: number;
   baseline_review_pending: number;
   recommended_lane: "sources" | "initial_review" | "changes" | "families" | null;
   recommended_lane_reason_code: string;
   recommended_action_reason: string;
+  workspace_posture: WorkspacePosture;
   sources: ChangesWorkbenchSourcesSummary;
   families: ChangesWorkbenchFamiliesSummary;
   manual: ChangesWorkbenchManualSummary;
   generated_at: string;
+};
+
+export type SourceProductPhase =
+  | "importing_baseline"
+  | "needs_initial_review"
+  | "monitoring_live"
+  | "needs_attention";
+
+export type SourceRecoveryTrustState = "trusted" | "stale" | "partial" | "blocked";
+
+export type SourceRecoveryAction = "reconnect_gmail" | "update_ics" | "retry_sync" | "wait";
+
+export type SourceRecovery = {
+  trust_state: SourceRecoveryTrustState;
+  impact_summary: string;
+  next_action: SourceRecoveryAction;
+  next_action_label: string;
+  last_good_sync_at?: string | null;
+  degraded_since?: string | null;
+  recovery_steps: string[];
 };
 
 export type SourceRow = {
@@ -120,6 +174,8 @@ export type SourceRow = {
   active_request_id?: string | null;
   sync_progress?: SyncProgress | null;
   operator_guidance?: SourceOperatorGuidance | null;
+  source_product_phase?: SourceProductPhase | null;
+  source_recovery?: SourceRecovery | null;
 };
 
 export type SyncStatus = {
@@ -174,6 +230,8 @@ export type SourceObservabilityResponse = {
   latest_replay: SourceObservabilitySync | null;
   active: SourceObservabilitySync | null;
   operator_guidance?: SourceOperatorGuidance | null;
+  source_product_phase?: SourceProductPhase | null;
+  source_recovery?: SourceRecovery | null;
 };
 
 export type SourceSyncHistoryResponse = {
@@ -243,6 +301,30 @@ export type UserFacingEvent = {
   time_precision: "date_only" | "datetime" | string;
 };
 
+export type ChangeDecisionSupportAction =
+  | "approve"
+  | "reject"
+  | "edit"
+  | "review_carefully";
+
+export type ChangeDecisionSupportRiskLevel = "low" | "medium" | "high";
+
+export type ChangeDecisionOutcomePreview = {
+  approve: string;
+  reject: string;
+  edit: string;
+};
+
+export type ChangeDecisionSupport = {
+  why_now: string;
+  suggested_action: ChangeDecisionSupportAction;
+  suggested_action_reason: string;
+  risk_level: ChangeDecisionSupportRiskLevel;
+  risk_summary: string;
+  key_facts: string[];
+  outcome_preview: ChangeDecisionOutcomePreview;
+};
+
 export type ChangeItem = {
   id: number;
   entity_uid: string;
@@ -291,6 +373,7 @@ export type ChangeItem = {
       source_observed_at?: string | null;
     };
   } | null;
+  decision_support?: ChangeDecisionSupport | null;
 };
 
 export type EvidencePreviewEvent = {

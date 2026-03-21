@@ -43,7 +43,25 @@ class Settings(BaseSettings):
     gmail_oauth_authorize_url: str = "https://accounts.google.com/o/oauth2/v2/auth"
     gmail_secondary_filter_mode: str = "off"
     gmail_secondary_filter_provider: str = "noop"
-    gmail_secondary_filter_min_confidence: float = 0.98
+    gmail_secondary_filter_min_confidence: float = 0.995
+    gmail_secondary_filter_endpoint_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("GMAIL_SECONDARY_FILTER_ENDPOINT_URL"),
+    )
+    gmail_secondary_filter_api_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "GMAIL_SECONDARY_FILTER_API_TOKEN",
+            "HF_TOKEN",
+            "HFTOKEN",
+            "HUGGINGFACE_TOKEN",
+            "HUGGINGFACE_API_TOKEN",
+            "HUGGINGFACEHUB_API_TOKEN",
+        ),
+    )
+    gmail_secondary_filter_timeout_seconds: float = 8.0
+    gmail_secondary_filter_max_input_chars: int = 1200
+    gmail_secondary_filter_min_batch_size: int = 11
     gmail_message_parse_cache_enabled: bool = True
     calendar_component_parse_cache_enabled: bool = True
     app_llm_openai_model: str | None = None

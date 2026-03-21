@@ -11,14 +11,14 @@ from app.db.models.input import InputSource
 from app.db.models.review import SourceEventObservation
 from app.db.models.shared import User
 from app.modules.common.course_identity import normalized_course_identity_key
-from app.modules.runtime.apply.course_work_item_family_resolution import resolve_kind_resolution
-from app.modules.runtime.apply.observation_store import compute_payload_hash, normalize_observation_payload
-from app.modules.runtime.apply.pending_proposal_rebuild import rebuild_pending_change_proposals
 from app.modules.families.family_service import (
     mark_course_work_item_family_rebuild_complete,
     mark_course_work_item_family_rebuild_failed,
     mark_course_work_item_family_rebuild_running,
 )
+from app.modules.families.resolution_service import resolve_kind_resolution
+from app.modules.runtime.apply.observation_store import compute_payload_hash, normalize_observation_payload
+from app.modules.runtime.apply.pending_proposal_rebuild import rebuild_pending_change_proposals
 
 
 def rebuild_user_work_item_state(

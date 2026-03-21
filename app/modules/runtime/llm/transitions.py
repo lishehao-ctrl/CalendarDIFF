@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Literal
 
 import redis
 from sqlalchemy.orm import Session
@@ -24,6 +25,89 @@ from app.modules.runtime.kernel import (
 from app.modules.runtime.kernel.parse_task_queue import increment_parse_metric_counter, schedule_parse_retry
 
 
+LlmTaskKind = Literal["generic", "gmail", "calendar_component", "calendar_reduce"]
+
+
+def llm_task_running_state(*, task_kind: LlmTaskKind) -> tuple[SyncRequestStage, str, dict]:
+    if task_kind == "calendar_component":
+        return (
+            SyncRequestStage.LLM_PARSE,
+            "calendar_child_parse",
+            build_sync_progress_payload(
+                phase="calendar_child_parse",
+                label="Parsing calendar child event",
+                detail="A calendar component child parse task is running.",
+            ),
+        )
+    if task_kind == "calendar_reduce":
+        return (
+            SyncRequestStage.LLM_PARSE,
+            "calendar_reduce_running",
+            build_sync_progress_payload(
+                phase="calendar_reduce",
+                label="Reducing calendar parse results",
+                detail="Calendar child parse results are being reduced into one provider result.",
+            ),
+        )
+    if task_kind == "gmail":
+        return (
+            SyncRequestStage.LLM_PARSE,
+            "gmail_parse_running",
+            build_sync_progress_payload(
+                phase="gmail_llm_parse",
+                label="Extracting Gmail events",
+                detail="The parser is extracting grade-relevant signals from queued emails.",
+            ),
+        )
+    return (
+        SyncRequestStage.LLM_PARSE,
+        "llm_parse",
+        build_sync_progress_payload(
+            phase="llm_parse",
+            label="LLM extraction running",
+            detail="The parser is extracting semantic records from provider payload.",
+        ),
+    )
+
+
+def llm_task_retry_state(*, task_kind: LlmTaskKind) -> tuple[SyncRequestStage, str]:
+    if task_kind == "calendar_reduce":
+        return SyncRequestStage.PROVIDER_REDUCE, "calendar_reduce_retry"
+    return SyncRequestStage.LLM_PARSE, "llm_retry_waiting"
+
+
+def mark_llm_task_started(
+    db: Session,
+    *,
+    request_id: str,
+    worker_id: str,
+    task_kind: LlmTaskKind,
+) -> None:
+    now = utcnow()
+    settings = get_settings()
+    context = load_job_context(db, request_id=request_id, lock_job=True)
+    if context is None or context.sync_request is None:
+        return
+    payload = copy_job_payload(context.job)
+    payload["workflow_stage"] = "LLM_RUNNING"
+    payload["llm_worker_id"] = worker_id
+    payload["llm_started_at"] = now.isoformat()
+    context.job.payload_json = payload
+    context.job.next_retry_at = now + timedelta(seconds=max(30, int(settings.llm_claim_timeout_seconds)))
+    sync_stage, sync_substage, sync_progress = llm_task_running_state(task_kind=task_kind)
+    set_sync_runtime_state(
+        context.sync_request,
+        status=SyncRequestStatus.RUNNING,
+        stage=sync_stage,
+        substage=sync_substage,
+        progress=sync_progress,
+        error_code=None,
+        error_message=None,
+        when=now,
+    )
+    db.commit()
+
+
 def apply_llm_failure_transition(
     db: Session,
     *,
@@ -34,6 +118,7 @@ def apply_llm_failure_transition(
     error_code: str,
     error_message: str,
     reason: str,
+    task_kind: LlmTaskKind = "generic",
     retryable: bool = True,
 ) -> None:
     now = utcnow()
@@ -41,8 +126,7 @@ def apply_llm_failure_transition(
     context = load_job_context(db, request_id=request_id, lock_job=True)
     if context is None:
         return
-    sync_stage = SyncRequestStage.PROVIDER_REDUCE if "calendar_reduce" in reason else SyncRequestStage.LLM_PARSE
-    sync_substage = "calendar_reduce_retry" if sync_stage == SyncRequestStage.PROVIDER_REDUCE else "llm_retry_waiting"
+    sync_stage, sync_substage = llm_task_retry_state(task_kind=task_kind)
     if context.sync_request is None or context.source is None:
         apply_dead_letter_transition(
             context=context,
@@ -175,6 +259,7 @@ def apply_llm_backpressure_transition(
     source_id: int,
     attempt: int,
     reason: str,
+    task_kind: LlmTaskKind = "generic",
 ) -> None:
     now = utcnow()
     due_at = now + timedelta(seconds=1)
@@ -195,10 +280,11 @@ def apply_llm_backpressure_transition(
     context.job.payload_json = payload
     context.job.next_retry_at = due_at
     if context.sync_request is not None:
+        sync_stage, _sync_substage, _sync_progress = llm_task_running_state(task_kind=task_kind)
         set_sync_runtime_state(
             context.sync_request,
             status=SyncRequestStatus.RUNNING,
-            stage=context.sync_request.stage,
+            stage=sync_stage,
             substage="llm_backpressure",
             progress=build_sync_progress_payload(
                 phase="llm_backpressure",
@@ -275,5 +361,8 @@ def mark_llm_success(
 __all__ = [
     "apply_llm_backpressure_transition",
     "apply_llm_failure_transition",
+    "llm_task_retry_state",
+    "llm_task_running_state",
+    "mark_llm_task_started",
     "mark_llm_success",
 ]

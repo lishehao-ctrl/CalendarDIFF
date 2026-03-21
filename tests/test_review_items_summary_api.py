@@ -122,6 +122,10 @@ def test_review_items_summary_counts_pending_only_for_current_user(client, db_se
     assert "link_candidates_pending" not in payload
     assert payload["recommended_lane"] == "changes"
     assert payload["recommended_lane_reason_code"] == "changes_pending"
+    assert payload["workspace_posture"]["phase"] == "monitoring_live"
+    assert payload["workspace_posture"]["next_action"]["lane"] == "changes"
+    assert payload["workspace_posture"]["initial_review"]["pending_count"] == 0
+    assert payload["workspace_posture"]["monitoring"]["active_source_count"] == 1
     assert payload["families"]["attention_count"] == 0
     assert payload["manual"]["active_event_count"] == 0
     assert payload["sources"]["active_count"] == 1
@@ -230,6 +234,8 @@ def test_changes_summary_prefers_sources_when_runtime_is_blocking(client, db_ses
     payload = response.json()
     assert payload["recommended_lane"] == "sources"
     assert payload["recommended_lane_reason_code"] == "runtime_attention_required"
+    assert payload["workspace_posture"]["phase"] == "attention_required"
+    assert payload["workspace_posture"]["next_action"]["lane"] == "sources"
     assert payload["sources"]["blocking_count"] == 1
     assert payload["sources"]["recommended_action"] == "wait_for_runtime"
 
@@ -292,3 +298,6 @@ def test_changes_summary_prefers_initial_review_before_changes(client, db_sessio
     assert payload["changes_pending"] == 1
     assert payload["recommended_lane"] == "initial_review"
     assert payload["recommended_lane_reason_code"] == "baseline_review_pending"
+    assert payload["workspace_posture"]["phase"] == "initial_review"
+    assert payload["workspace_posture"]["initial_review"]["pending_count"] == 1
+    assert payload["workspace_posture"]["next_action"]["lane"] == "initial_review"

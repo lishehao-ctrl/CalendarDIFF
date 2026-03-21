@@ -101,7 +101,7 @@ def apply_ingest_result_idempotent(db: Session, *, request_id: str) -> dict:
     sync_request = db.scalar(select(SyncRequest).where(SyncRequest.request_id == request_id))
     source = db.get(InputSource, result.source_id)
     if source is None:
-        raise RuntimeError("Input source not found for ingest result")
+        raise RuntimeError("Source not found for ingest result")
 
     try:
         db.add(

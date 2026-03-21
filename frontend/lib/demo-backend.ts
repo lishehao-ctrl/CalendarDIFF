@@ -2,6 +2,7 @@
 
 import type {
   ChangesWorkbenchSummary,
+  ChangeDecisionSupport,
   CourseIdentity,
   CourseWorkItemFamily,
   CourseWorkItemFamilyStatus,
@@ -134,6 +135,25 @@ function createInitialDemoState(): DemoState {
       intakePhase: "replay",
       reviewBucket: "changes",
     }),
+    changeRow({
+      id: 405,
+      courseDisplay: "CSE 120 WI26",
+      familyName: "Quiz",
+      label: "Quiz 1",
+      changeType: "created",
+      beforeDate: null,
+      beforeTime: null,
+      afterDate: "2026-03-12",
+      afterTime: "18:00:00",
+      primarySource: { source_id: 1, source_kind: "calendar", provider: "ics", external_event_id: "evt-quiz-1" },
+      proposalSources: [{ source_id: 1, source_kind: "calendar", provider: "ics", external_event_id: "evt-quiz-1", confidence: 0.84 }],
+      priorityLabel: "baseline ready",
+      reviewStatus: "approved",
+      sourceLabelOld: null,
+      sourceLabelNew: "Canvas quiz post",
+      intakePhase: "baseline",
+      reviewBucket: "initial_review",
+    }),
   ];
 
   return {
@@ -201,6 +221,19 @@ function createInitialDemoState(): DemoState {
         sync_state: "idle",
         config_state: "stable",
         runtime_state: "active",
+        source_product_phase: "needs_initial_review",
+        source_recovery: {
+          trust_state: "partial",
+          impact_summary: "Imported baseline items are visible, but one item still needs Initial Review before this source is fully trusted for monitoring.",
+          next_action: "wait",
+          next_action_label: "Finish Initial Review",
+          last_good_sync_at: "2026-03-18T05:05:00.000Z",
+          degraded_since: "2026-03-18T05:05:00.000Z",
+          recovery_steps: [
+            "Review the remaining baseline item.",
+            "Approve or reject it before relying on day-to-day replay.",
+          ],
+        },
       },
       {
         source_id: 2,
@@ -228,6 +261,19 @@ function createInitialDemoState(): DemoState {
           message: "Reconnect Gmail before trusting replay.",
           related_request_id: null,
           progress_age_seconds: null,
+        },
+        source_product_phase: "needs_attention",
+        source_recovery: {
+          trust_state: "blocked",
+          impact_summary: "New Gmail-based changes may be missing until the mailbox is reconnected.",
+          next_action: "reconnect_gmail",
+          next_action_label: "Reconnect Gmail",
+          last_good_sync_at: "2026-03-17T04:40:00.000Z",
+          degraded_since: "2026-03-18T04:58:00.000Z",
+          recovery_steps: [
+            "Reconnect the Gmail mailbox.",
+            "Run a sync to verify replay resumes.",
+          ],
         },
       },
     ],
@@ -367,6 +413,59 @@ function userFacingEvent(courseDisplay: string, familyName: string, label: strin
   };
 }
 
+function buildDecisionSupport(input: {
+  changeType: string;
+  intakePhase: ChangeItem["intake_phase"];
+  primarySource: ChangeItem["primary_source"];
+  label: string;
+  beforeDate: string | null;
+  afterDate: string | null;
+}): ChangeDecisionSupport {
+  if (input.intakePhase === "baseline") {
+    return {
+      why_now: "This item came from the first baseline import and still needs an initial decision before monitoring can fully settle.",
+      suggested_action: "approve",
+      suggested_action_reason: "The source provided a concrete initial deadline, so approving will establish the starting live state.",
+      risk_level: "medium",
+      risk_summary: "If this baseline item is wrong, the first live version of the event will start from the wrong date.",
+      key_facts: [
+        `${input.label} is part of the initial import`,
+        input.primarySource?.provider === "ics" ? "Observed on the calendar feed" : "Observed from mailbox evidence",
+        input.afterDate ? `New date ${input.afterDate}` : "No existing live date yet",
+      ],
+      outcome_preview: {
+        approve: "Create the initial live version",
+        reject: "Keep this baseline item out of the live state",
+        edit: "Correct the imported details before creating the live version",
+      },
+    };
+  }
+
+  return {
+    why_now: "A connected source observed a live change after the baseline was established, so replay review is required before the live state updates.",
+    suggested_action: input.changeType === "updated" ? "approve" : input.changeType === "created" ? "review_carefully" : "review_carefully",
+    suggested_action_reason:
+      input.changeType === "updated"
+        ? "The new source evidence points to a concrete time change."
+        : "The system found a new item, but you should confirm it belongs in the live schedule.",
+    risk_level: input.changeType === "updated" ? "medium" : "high",
+    risk_summary:
+      input.changeType === "updated"
+        ? "Approving updates the live deadline immediately. Rejecting keeps the current live version."
+        : "Approving may add a new live deadline. Rejecting leaves the current schedule unchanged.",
+    key_facts: [
+      input.beforeDate ? `Previous date ${input.beforeDate}` : "No previous live date",
+      input.afterDate ? `Observed date ${input.afterDate}` : "No observed replacement date",
+      input.primarySource?.provider === "gmail" ? "Mailbox evidence is attached" : "Calendar evidence is attached",
+    ],
+    outcome_preview: {
+      approve: "Update live deadline",
+      reject: "Keep current version",
+      edit: "Correct details before updating live state",
+    },
+  };
+}
+
 function changeRow(input: {
   id: number;
   courseDisplay: string;
@@ -424,6 +523,14 @@ function changeRow(input: {
         source_observed_at: "2026-03-18T04:40:00.000Z",
       },
     },
+    decision_support: buildDecisionSupport({
+      changeType: input.changeType,
+      intakePhase: input.intakePhase || "replay",
+      primarySource: input.primarySource,
+      label: input.label,
+      beforeDate: input.beforeDate,
+      afterDate: input.afterDate,
+    }),
   };
 }
 
@@ -582,6 +689,19 @@ function buildDemoSourceObservability(sourceId: number): SourceObservabilityResp
       latest_replay: null,
       active: null,
       operator_guidance: null,
+      source_product_phase: "needs_initial_review",
+      source_recovery: {
+        trust_state: "partial",
+        impact_summary: "Imported baseline items are visible, but one item still needs Initial Review before this source is fully trusted for monitoring.",
+        next_action: "wait",
+        next_action_label: "Finish Initial Review",
+        last_good_sync_at: "2026-03-18T05:05:00.000Z",
+        degraded_since: "2026-03-18T05:05:00.000Z",
+        recovery_steps: [
+          "Review the remaining baseline item.",
+          "Approve or reject it before relying on replay review.",
+        ],
+      },
     };
   }
 
@@ -605,6 +725,19 @@ function buildDemoSourceObservability(sourceId: number): SourceObservabilityResp
       message: "Reconnect Gmail before trusting replay.",
       related_request_id: "demo-replay-2",
       progress_age_seconds: 180,
+    },
+    source_product_phase: "needs_attention",
+    source_recovery: {
+      trust_state: "blocked",
+      impact_summary: "New Gmail-based changes may be missing until the mailbox is reconnected.",
+      next_action: "reconnect_gmail",
+      next_action_label: "Reconnect Gmail",
+      last_good_sync_at: "2026-03-17T04:40:00.000Z",
+      degraded_since: "2026-03-18T04:58:00.000Z",
+      recovery_steps: [
+        "Reconnect the Gmail mailbox.",
+        "Run a sync to confirm replay recovers.",
+      ],
     },
   };
 }
@@ -707,6 +840,8 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   if (pathname === "/changes/summary") {
     const pending = demoState.changes.filter((row) => row.review_status === "pending" && row.review_bucket === "changes").length;
     const baselinePending = demoState.changes.filter((row) => row.review_status === "pending" && row.review_bucket === "initial_review").length;
+    const baselineReviewed = demoState.changes.filter((row) => row.review_status !== "pending" && row.review_bucket === "initial_review").length;
+    const baselineTotal = demoState.changes.filter((row) => row.review_bucket === "initial_review").length;
     const activeSources = demoState.sources.filter((row) => row.is_active);
     const attentionSources = activeSources.filter(
       (row) =>
@@ -718,6 +853,15 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     const blockingSources = attentionSources.filter((row) => row.operator_guidance?.severity === "blocking");
     const pendingSuggestions = demoState.rawTypeSuggestions.filter((row) => row.status === "pending").length;
     const manualActiveCount = demoState.manualEvents.filter((row) => row.lifecycle !== "removed").length;
+    const baselineImporting = activeSources.some((row) => row.source_product_phase === "importing_baseline");
+    const workspacePhase =
+      baselineImporting
+        ? "baseline_import"
+        : baselinePending > 0
+          ? "initial_review"
+          : attentionSources.length > 0
+            ? "attention_required"
+            : "monitoring_live";
     const summary: ChangesWorkbenchSummary = {
       changes_pending: pending,
       baseline_review_pending: baselinePending,
@@ -732,6 +876,57 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
           : pendingSuggestions > 0
             ? "Family or raw-type governance items need attention."
             : "No immediate lane action is required.",
+      workspace_posture: {
+        phase: workspacePhase,
+        initial_review: {
+          pending_count: baselinePending,
+          reviewed_count: baselineReviewed,
+          total_count: baselineTotal,
+          completion_percent: baselineTotal > 0 ? Math.round((baselineReviewed / baselineTotal) * 100) : 100,
+          completed_at: baselinePending === 0 && baselineTotal > 0 ? nowIso : null,
+        },
+        monitoring: {
+          live_since: baselinePending === 0 ? "2026-03-18T05:05:00.000Z" : null,
+          replay_active: pending > 0,
+          active_source_count: activeSources.length,
+        },
+        next_action:
+          workspacePhase === "baseline_import"
+            ? {
+                lane: "sources",
+                label: "Open Sources",
+                reason: "Baseline import is still running on at least one source.",
+              }
+            : workspacePhase === "initial_review"
+              ? {
+                  lane: "initial_review",
+                  label: "Open Initial Review",
+                  reason: baselinePending === 1 ? "1 baseline item still needs review." : `${baselinePending} baseline items still need review.`,
+                }
+              : workspacePhase === "attention_required"
+                ? {
+                    lane: "sources",
+                    label: "Open Sources",
+                    reason: "A source needs attention before the workspace is fully trustworthy.",
+                  }
+                : pending > 0
+                  ? {
+                      lane: "changes",
+                      label: "Open Changes",
+                      reason: pending === 1 ? "1 replay change is waiting." : `${pending} replay changes are waiting.`,
+                    }
+                  : pendingSuggestions > 0
+                    ? {
+                        lane: "families",
+                        label: "Open Families",
+                        reason: "Naming drift is waiting in Families.",
+                      }
+                    : {
+                        lane: "manual",
+                        label: "Open Manual",
+                        reason: manualActiveCount > 0 ? "Manual fallback work is still open." : "No immediate action is required.",
+                      },
+      },
       sources: {
         active_count: activeSources.length,
         running_count: activeSources.filter((row) => row.sync_state === "running").length,

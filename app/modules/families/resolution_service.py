@@ -2,17 +2,15 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.modules.common.course_identity import course_display_name, normalize_label_token
+from app.modules.common.course_identity import course_display_name
 from app.modules.runtime.apply.semantic_event_service import normalize_semantic_parse
+from app.modules.families.family_service import (
+    create_course_work_item_family,
+    resolve_course_work_item_family,
+)
 from app.modules.families.raw_type_service import (
     create_course_raw_type,
     find_course_raw_type,
-    list_course_raw_types,
-)
-from app.modules.families.family_service import (
-    create_course_work_item_family,
-    list_course_work_item_families,
-    resolve_course_work_item_family,
 )
 
 
@@ -32,6 +30,10 @@ def resolve_kind_resolution(
 ) -> dict[str, object]:
     del source_kind
     del external_event_id
+    del source_id
+    del request_id
+    del provider
+    del source_observation_id
     normalized_semantic = normalize_semantic_parse(semantic_parse)
     course_dept = course_parse.get("dept") if isinstance(course_parse.get("dept"), str) else None
     course_number = course_parse.get("number") if isinstance(course_parse.get("number"), int) else None
@@ -154,6 +156,7 @@ def _first_non_empty_text(*values: object) -> str | None:
             if cleaned:
                 return cleaned[:128]
     return None
+
 
 __all__ = [
     "normalize_semantic_parse",

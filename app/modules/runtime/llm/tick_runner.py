@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from dataclasses import dataclass
 
 import redis
 from sqlalchemy.orm import Session, sessionmaker
@@ -12,12 +11,6 @@ from app.modules.runtime.llm.message_processor import process_parse_task_message
 from app.modules.runtime.kernel.parse_task_queue import ack_parse_tasks, consume_parse_tasks
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class _TaskOutcome:
-    message_id: str
-    ack: bool
 
 
 def run_llm_worker_tick(

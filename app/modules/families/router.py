@@ -7,20 +7,22 @@ from app.core.security import require_public_api_key
 from app.db.models.shared import User
 from app.db.session import get_db
 from app.modules.auth.deps import get_authenticated_user_or_401
-from app.modules.runtime.apply.course_work_item_family_rebuild import rebuild_user_work_item_state
+from app.modules.families.application_service import (
+    FamilyApplicationNotFoundError,
+    FamilyApplicationValidationError,
+    create_family_and_rebuild,
+    decide_raw_type_suggestion_and_rebuild,
+    relink_raw_type_and_rebuild,
+    update_family_and_rebuild,
+)
 from app.modules.families.family_service import (
-    CourseWorkItemFamilyValidationError,
-    create_course_work_item_family,
     get_course_work_item_family,
     list_course_work_item_families,
     list_known_course_identities,
-    update_course_work_item_family,
 )
 from app.modules.families.raw_type_service import (
-    CourseRawTypeValidationError,
     get_course_raw_type,
     list_course_raw_types,
-    move_course_raw_type_to_family,
 )
 from app.modules.families.schemas import (
     CourseIdentityResponse,
@@ -36,12 +38,7 @@ from app.modules.families.schemas import (
     RawTypeSuggestionDecisionResponse,
     RawTypeSuggestionItemResponse,
 )
-from app.modules.families.raw_type_suggestion_service import (
-    RawTypeSuggestionNotFoundError,
-    RawTypeSuggestionValidationError,
-    decide_raw_type_suggestion_item,
-    list_raw_type_suggestion_items,
-)
+from app.modules.families.raw_type_suggestion_service import list_raw_type_suggestion_items
 from app.modules.families.serializers import (
     course_identity_response_payload,
     to_course_family_response,
@@ -109,24 +106,18 @@ def post_course_raw_type_relink(
     family = get_course_work_item_family(db, user_id=user.id, family_id=payload.family_id)
     if family is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course work item family not found")
-    previous_family_id = raw_type.family_id
     try:
-        move_course_raw_type_to_family(db, raw_type=raw_type, family=family, commit=True)
-        db.refresh(user)
-        rebuild_user_work_item_state(
+        moved_raw_type, previous_family_id = relink_raw_type_and_rebuild(
             db,
             user=user,
-            course_dept=family.course_dept,
-            course_number=family.course_number,
-            course_suffix=family.course_suffix,
-            course_quarter=family.course_quarter,
-            course_year2=family.course_year2,
+            raw_type=raw_type,
+            family=family,
         )
-    except CourseRawTypeValidationError as exc:
+    except FamilyApplicationValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return CourseRawTypeMoveResponse(
-        raw_type_id=raw_type.id,
-        family_id=raw_type.family_id,
+        raw_type_id=moved_raw_type.id,
+        family_id=moved_raw_type.family_id,
         previous_family_id=previous_family_id,
         **course_identity_response_payload(
             course_dept=family.course_dept,
@@ -166,9 +157,9 @@ def post_course_family(
     user: User = Depends(get_authenticated_user_or_401),
 ) -> CourseWorkItemFamilyResponse:
     try:
-        row = create_course_work_item_family(
+        row = create_family_and_rebuild(
             db,
-            user_id=user.id,
+            user=user,
             course_dept=payload.course_dept,
             course_number=payload.course_number,
             course_suffix=payload.course_suffix,
@@ -177,17 +168,7 @@ def post_course_family(
             canonical_label=payload.canonical_label,
             raw_types=payload.raw_types,
         )
-        db.refresh(user)
-        rebuild_user_work_item_state(
-            db,
-            user=user,
-            course_dept=payload.course_dept,
-            course_number=payload.course_number,
-            course_suffix=payload.course_suffix,
-            course_quarter=payload.course_quarter,
-            course_year2=payload.course_year2,
-        )
-    except CourseWorkItemFamilyValidationError as exc:
+    except FamilyApplicationValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return to_course_family_response(row)
 
@@ -203,23 +184,14 @@ def patch_course_family(
     if family is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course work item family not found")
     try:
-        row = update_course_work_item_family(
+        row = update_family_and_rebuild(
             db,
+            user=user,
             family=family,
             canonical_label=payload.canonical_label,
             raw_types=payload.raw_types,
         )
-        db.refresh(user)
-        rebuild_user_work_item_state(
-            db,
-            user=user,
-            course_dept=family.course_dept,
-            course_number=family.course_number,
-            course_suffix=family.course_suffix,
-            course_quarter=family.course_quarter,
-            course_year2=family.course_year2,
-        )
-    except CourseWorkItemFamilyValidationError as exc:
+    except FamilyApplicationValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return to_course_family_response(row)
 
@@ -273,16 +245,16 @@ def post_raw_type_suggestion_decision(
     user: User = Depends(get_authenticated_user_or_401),
 ) -> RawTypeSuggestionDecisionResponse:
     try:
-        result = decide_raw_type_suggestion_item(
+        result = decide_raw_type_suggestion_and_rebuild(
             db,
-            user_id=user.id,
+            user=user,
             suggestion_id=suggestion_id,
             decision=payload.decision,
             note=payload.note,
         )
-    except RawTypeSuggestionNotFoundError as exc:
+    except FamilyApplicationNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except RawTypeSuggestionValidationError as exc:
+    except FamilyApplicationValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return RawTypeSuggestionDecisionResponse(**result)
 

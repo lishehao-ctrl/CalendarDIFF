@@ -9,6 +9,9 @@ from app.modules.common.event_display import EventDisplayResponse, UserFacingEve
 from app.modules.common.payload_schemas import SemanticEventDraft
 from app.modules.sources.schemas import SourceOperatorActionLiteral, SourceOperatorSeverityLiteral
 
+DecisionSupportActionLiteral = Literal["approve", "reject", "edit", "review_carefully"]
+DecisionSupportRiskLiteral = Literal["low", "medium", "high"]
+
 
 class ChangeSourceRefResponse(BaseModel):
     source_id: int
@@ -61,6 +64,7 @@ class ChangeItemResponse(BaseModel):
     notification_state: str | None = None
     deliver_after: datetime | None = None
     change_summary: ChangeSummary | None = None
+    decision_support: "ChangeDecisionSupportResponse | None" = None
 
 
 class ChangeViewRequest(BaseModel):
@@ -120,6 +124,8 @@ class ChangeBatchDecisionResponse(BaseModel):
 
 
 WorkbenchLaneLiteral = Literal["sources", "initial_review", "changes", "families"]
+WorkspaceLaneLiteral = Literal["sources", "initial_review", "changes", "families", "manual"]
+WorkspacePosturePhaseLiteral = Literal["baseline_import", "initial_review", "monitoring_live", "attention_required"]
 
 
 class ChangesWorkbenchSourcesResponse(BaseModel):
@@ -149,16 +155,60 @@ class ChangesWorkbenchManualResponse(BaseModel):
     lane_role: Literal["fallback"] = "fallback"
 
 
+class WorkspacePostureInitialReviewResponse(BaseModel):
+    pending_count: int
+    reviewed_count: int
+    total_count: int
+    completion_percent: int
+    completed_at: datetime | None = None
+
+
+class WorkspacePostureMonitoringResponse(BaseModel):
+    live_since: datetime | None = None
+    replay_active: bool = False
+    active_source_count: int = 0
+
+
+class WorkspacePostureNextActionResponse(BaseModel):
+    lane: WorkspaceLaneLiteral
+    label: str
+    reason: str
+
+
+class WorkspacePostureResponse(BaseModel):
+    phase: WorkspacePosturePhaseLiteral
+    initial_review: WorkspacePostureInitialReviewResponse
+    monitoring: WorkspacePostureMonitoringResponse
+    next_action: WorkspacePostureNextActionResponse
+
+
 class ChangesWorkbenchSummaryResponse(BaseModel):
     changes_pending: int
     baseline_review_pending: int = 0
     recommended_lane: WorkbenchLaneLiteral | None = None
     recommended_lane_reason_code: str
     recommended_action_reason: str
+    workspace_posture: WorkspacePostureResponse
     sources: ChangesWorkbenchSourcesResponse
     families: ChangesWorkbenchFamiliesResponse
     manual: ChangesWorkbenchManualResponse
     generated_at: datetime
+
+
+class ChangeDecisionOutcomePreviewResponse(BaseModel):
+    approve: str
+    reject: str
+    edit: str
+
+
+class ChangeDecisionSupportResponse(BaseModel):
+    why_now: str
+    suggested_action: DecisionSupportActionLiteral
+    suggested_action_reason: str
+    risk_level: DecisionSupportRiskLiteral
+    risk_summary: str
+    key_facts: list[str] = Field(default_factory=list, min_length=0, max_length=4)
+    outcome_preview: ChangeDecisionOutcomePreviewResponse
 
 
 class EvidencePreviewEvent(BaseModel):

@@ -3,22 +3,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.modules.common.course_identity import course_display_name
-from app.modules.runtime.apply.course_work_item_family_rebuild import rebuild_user_work_item_state
-from app.modules.families.raw_type_service import (
-    CourseRawTypeNotFoundError,
-    CourseRawTypeValidationError,
-    decide_raw_type_suggestion,
-    get_raw_type_suggestion,
-    list_raw_type_suggestions,
-)
-
-
-class RawTypeSuggestionNotFoundError(RuntimeError):
-    pass
-
-
-class RawTypeSuggestionValidationError(RuntimeError):
-    pass
+from app.modules.families.raw_type_service import list_raw_type_suggestions
 
 
 def list_raw_type_suggestion_items(
@@ -85,41 +70,3 @@ def list_raw_type_suggestion_items(
             }
         )
     return out
-
-
-def decide_raw_type_suggestion_item(
-    db: Session,
-    *,
-    user_id: int,
-    suggestion_id: int,
-    decision: str,
-    note: str | None,
-) -> dict:
-    row = get_raw_type_suggestion(db, user_id=user_id, suggestion_id=suggestion_id)
-    if row is None:
-        raise RawTypeSuggestionNotFoundError("raw type suggestion not found")
-    try:
-        updated = decide_raw_type_suggestion(db, user_id=user_id, suggestion=row, decision=decision, note=note)
-    except (CourseRawTypeValidationError, CourseRawTypeNotFoundError) as exc:
-        raise RawTypeSuggestionValidationError(str(exc)) from exc
-    if decision.strip().lower() == "approve":
-        family = updated.source_raw_type.family
-        user = family.user if family is not None else None
-        if user is not None:
-            rebuild_user_work_item_state(
-                db,
-                user=user,
-                course_dept=family.course_dept,
-                course_number=family.course_number,
-                course_suffix=family.course_suffix,
-                course_quarter=family.course_quarter,
-                course_year2=family.course_year2,
-            )
-    db.commit()
-    db.refresh(updated)
-    return {
-        "id": updated.id,
-        "status": updated.status.value if hasattr(updated.status, 'value') else str(updated.status),
-        "review_note": updated.review_note,
-        "reviewed_at": updated.reviewed_at,
-    }

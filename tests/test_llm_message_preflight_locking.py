@@ -10,7 +10,7 @@ from app.modules.runtime.llm.message_preflight import prepare_message_for_proces
 from app.modules.runtime.kernel.parse_task_queue import ParseTaskMessage
 
 
-def test_prepare_message_for_processing_marks_llm_running(db_session) -> None:
+def test_prepare_message_for_processing_does_not_mutate_running_state_for_generic_task(db_session) -> None:
     user = User(email="preflight@example.com", notify_email="preflight@example.com")
     db_session.add(user)
     db_session.flush()
@@ -62,15 +62,15 @@ def test_prepare_message_for_processing_marks_llm_running(db_session) -> None:
             attempt=0,
             reason="initial",
         ),
-        worker_id="llm-worker-test",
     )
 
     db_session.refresh(job)
     assert result.should_parse is True
     assert result.provider_hint == "gmail"
+    assert result.task_kind == "gmail"
     payload = job.payload_json if isinstance(job.payload_json, dict) else {}
-    assert payload.get("workflow_stage") == "LLM_RUNNING"
-    assert payload.get("llm_worker_id") == "llm-worker-test"
+    assert payload.get("workflow_stage") == "LLM_QUEUED"
+    assert payload.get("llm_worker_id") is None
 
 
 def test_prepare_message_for_processing_leaves_shared_job_untouched_for_calendar_component(db_session) -> None:
@@ -130,10 +130,10 @@ def test_prepare_message_for_processing_leaves_shared_job_untouched_for_calendar
             attempt=0,
             reason=build_calendar_component_reason("evt-1#"),
         ),
-        worker_id="llm-worker-test",
     )
 
     db_session.refresh(job)
     assert result.should_parse is True
     assert result.provider_hint == "ics"
+    assert result.task_kind == "calendar_component"
     assert job.payload_json == original_payload

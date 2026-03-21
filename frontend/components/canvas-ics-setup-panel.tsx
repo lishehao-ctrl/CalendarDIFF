@@ -12,13 +12,15 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { SourceSyncProgress } from "@/components/source-sync-progress";
 import { withBasePath } from "@/lib/demo-mode";
 import { buildSourceObservabilityViews } from "@/lib/source-observability";
-import { deleteSource, getSyncRequest, listSources, updateSource } from "@/lib/api/sources";
+import { deleteSource, getSyncRequest, listSources, sourceListCacheKey, updateSource } from "@/lib/api/sources";
 import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime } from "@/lib/presenters";
 import type { SourceRow, SyncStatus } from "@/lib/types";
 
 export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
-  const { data, loading, error, refresh } = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), []);
+  const { data, loading, error, refresh } = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), [], null, {
+    cacheKey: sourceListCacheKey("all"),
+  });
   const [syncDetail, setSyncDetail] = useState<SyncStatus | null>(null);
   const [canvasIcsUrl, setCanvasIcsUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);

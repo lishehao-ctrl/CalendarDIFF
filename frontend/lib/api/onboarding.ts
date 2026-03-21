@@ -1,6 +1,10 @@
 import { apiGet, apiPost } from "@/lib/api/client";
 import type { OnboardingStatus } from "@/lib/types";
 
+export function onboardingStatusCacheKey() {
+  return "onboarding:status";
+}
+
 export async function getOnboardingStatus() {
   return apiGet<OnboardingStatus>("/onboarding/status");
 }

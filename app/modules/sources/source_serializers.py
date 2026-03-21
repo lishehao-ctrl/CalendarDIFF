@@ -15,6 +15,8 @@ def serialize_source(
     active_request_id: str | None = None,
     sync_progress: dict | None = None,
     operator_guidance: dict | None = None,
+    source_product_phase: str | None = None,
+    source_recovery: dict | None = None,
 ) -> dict:
     oauth_connection_status = None
     oauth_account_email = None
@@ -55,6 +57,8 @@ def serialize_source(
         "active_request_id": active_request_id,
         "sync_progress": sync_progress,
         "operator_guidance": operator_guidance,
+        "source_product_phase": source_product_phase,
+        "source_recovery": source_recovery,
     }
 
 

@@ -25,7 +25,7 @@ from app.modules.changes.schemas import (
     LabelLearningApplyResponse,
     LabelLearningPreviewResponse,
 )
-from app.modules.changes.summary_service import get_changes_workbench_summary
+from app.modules.workbench.summary_service import get_changes_workbench_summary
 from app.modules.changes.change_decision_service import (
     ChangeNotFoundError,
     batch_decide_changes,

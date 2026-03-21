@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.models.review import Change, ReviewStatus, SourceEventObservation
 from app.db.models.shared import User
 from app.modules.common.course_identity import course_display_name, course_identity_matches
-from app.modules.runtime.apply.course_work_item_family_rebuild import rebuild_user_work_item_state
+from app.modules.families.rebuild_service import rebuild_user_work_item_state
 from app.modules.changes.change_decision_service import ChangeNotFoundError, decide_change
 from app.modules.families.family_service import (
     CourseWorkItemFamilyValidationError,

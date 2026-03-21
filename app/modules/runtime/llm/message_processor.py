@@ -10,6 +10,7 @@ from app.modules.runtime.llm.parse_pipeline import RateLimitRejected, is_rate_li
 from app.modules.runtime.llm.transitions import (
     apply_llm_backpressure_transition,
     apply_llm_failure_transition,
+    mark_llm_task_started,
     mark_llm_success,
 )
 from app.modules.runtime.kernel.parse_task_queue import ParseTaskMessage, increment_parse_metric_counter
@@ -27,7 +28,6 @@ def process_parse_task_message(
         preflight = prepare_message_for_processing(
             db,
             message=message,
-            worker_id=worker_id,
         )
     if not preflight.should_parse:
         return bool(preflight.ack_on_skip)
@@ -39,6 +39,14 @@ def process_parse_task_message(
             redis_client=redis_client,
             stream_key=stream_key,
             session_factory=session_factory,
+        )
+
+    with session_factory() as db:
+        mark_llm_task_started(
+            db,
+            request_id=message.request_id,
+            worker_id=worker_id,
+            task_kind=preflight.task_kind,
         )
 
     try:
@@ -59,6 +67,7 @@ def process_parse_task_message(
                 source_id=message.source_id,
                 attempt=max(message.attempt, 0),
                 reason="rate_limit",
+                task_kind=preflight.task_kind,
             )
         return True
     except LlmParseError as exc:
@@ -76,6 +85,7 @@ def process_parse_task_message(
                 error_code=error_code,
                 error_message=error_message,
                 reason=error_code,
+                task_kind=preflight.task_kind,
                 retryable=bool(exc.retryable),
             )
         return True
@@ -90,6 +100,7 @@ def process_parse_task_message(
                 error_code="parse_llm_worker_exception",
                 error_message=str(exc),
                 reason="exception",
+                task_kind=preflight.task_kind,
             )
         return True
 

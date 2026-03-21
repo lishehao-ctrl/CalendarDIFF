@@ -13,6 +13,8 @@ import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader,
 import {
   applyChangeLabelLearning,
   batchDecideChanges,
+  changesListCacheKey,
+  changesSummaryCacheKey,
   decideChange,
   getChangesSummary,
   getChangeEditContext,
@@ -21,7 +23,7 @@ import {
   previewChangeEvidence,
   previewChangeLabelLearning,
 } from "@/lib/api/changes";
-import { listSources } from "@/lib/api/sources";
+import { listSources, sourceListCacheKey } from "@/lib/api/sources";
 import { withBasePath } from "@/lib/demo-mode";
 import {
   formatDateTime,
@@ -295,6 +297,62 @@ function canonicalTimelineLabel(context: ChangeEditContext | null) {
   return parts || null;
 }
 
+function suggestedActionLabel(value: ChangeItem["decision_support"] extends { suggested_action: infer T } ? T : string | null | undefined) {
+  switch (value) {
+    case "approve":
+      return "Approve";
+    case "reject":
+      return "Reject";
+    case "edit":
+      return "Edit then approve";
+    case "review_carefully":
+      return "Review carefully";
+    default:
+      return "Not provided";
+  }
+}
+
+function suggestedActionTone(value: ChangeItem["decision_support"] extends { suggested_action: infer T } ? T : string | null | undefined) {
+  switch (value) {
+    case "approve":
+      return "approved";
+    case "reject":
+      return "error";
+    case "edit":
+      return "pending";
+    case "review_carefully":
+      return "info";
+    default:
+      return "info";
+  }
+}
+
+function riskTone(value: ChangeItem["decision_support"] extends { risk_level: infer T } ? T : string | null | undefined) {
+  switch (value) {
+    case "high":
+      return "error";
+    case "medium":
+      return "pending";
+    case "low":
+      return "approved";
+    default:
+      return "info";
+  }
+}
+
+function actionPreviewText(selected: ChangeItem, key: "approve" | "reject" | "edit") {
+  if (selected.decision_support?.outcome_preview?.[key]) {
+    return selected.decision_support.outcome_preview[key];
+  }
+  if (key === "approve") {
+    return "Update live state";
+  }
+  if (key === "reject") {
+    return "Keep current version";
+  }
+  return "Correct details before updating live state";
+}
+
 function CompactSection({
   title,
   summary,
@@ -470,6 +528,7 @@ function DecisionWorkspace({
   const pending = selected.review_status === "pending";
   const learningAvailable = pending && labelLearning?.status === "unresolved";
   const canonicalTimeline = canonicalTimelineLabel(editContext);
+  const decisionSupport = selected.decision_support;
   const [expandedSections, setExpandedSections] = useState<Record<CompactWorkspaceSection, boolean>>({
     evidence: false,
     match: false,
@@ -533,8 +592,48 @@ function DecisionWorkspace({
       </Card>
       ) : null}
 
+      {decisionSupport ? (
+        <Card className="p-5">
+          <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Decision support</p>
+          <div className="mt-4 grid gap-3 xl:grid-cols-3">
+            <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Why you&apos;re seeing this</p>
+              <p className="mt-2 text-sm leading-6 text-[#314051]">{decisionSupport.why_now}</p>
+            </div>
+            <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Suggested action</p>
+                <Badge tone={suggestedActionTone(decisionSupport.suggested_action)}>
+                  {suggestedActionLabel(decisionSupport.suggested_action)}
+                </Badge>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-[#314051]">{decisionSupport.suggested_action_reason}</p>
+            </div>
+            <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Risk</p>
+                <Badge tone={riskTone(decisionSupport.risk_level)}>{formatStatusLabel(decisionSupport.risk_level)}</Badge>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-[#314051]">{decisionSupport.risk_summary}</p>
+            </div>
+          </div>
+          {decisionSupport.key_facts.length > 0 ? (
+            <div className="mt-4 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Key facts</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {decisionSupport.key_facts.map((fact) => (
+                  <span key={fact} className="rounded-full border border-line/80 bg-white/80 px-3 py-1.5 text-sm text-[#314051]">
+                    {fact}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </Card>
+      ) : null}
+
       <CompactSection
-        title="Why the system thinks this"
+        title={decisionSupport ? "Evidence" : "Why the system thinks this"}
         summary={`${selected.proposal_sources.length} source${selected.proposal_sources.length === 1 ? "" : "s"} · ${confidenceLabel(selected)}`}
         open={expandedSections.evidence}
         onToggle={() => setExpandedSections((current) => ({ ...current, evidence: !current.evidence }))}
@@ -586,22 +685,43 @@ function DecisionWorkspace({
           </div>
           <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
             <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Canonical event</p>
-            <p className="mt-2 text-sm font-medium text-ink">{canonicalTimeline || "Loading canonical context..."}</p>
+            <p className="mt-2 text-sm font-medium text-ink">
+              {editContextError ? "Canonical context unavailable" : canonicalTimeline || (editContextBusy ? "Loading canonical context..." : "No canonical event loaded")}
+            </p>
+            {editContextError ? <p className="mt-2 text-xs leading-5 text-[#7f3d2a]">{editContextError}</p> : null}
           </div>
         </div>
       </CompactSection>
 
       <Card className="p-5">
         <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Decision</p>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className={`rounded-[1.15rem] border p-3 ${decisionSupport?.suggested_action === "approve" ? "border-[rgba(31,94,255,0.24)] bg-[rgba(31,94,255,0.06)]" : "border-line/80 bg-white/72"}`}>
+            <Button className="w-full" onClick={() => onDecide("approve")} disabled={!pending || decisionBusy !== null}>
+              <CheckCheck className="mr-2 h-4 w-4" />
+              {decisionBusy === "approve" ? "Approving..." : "Approve"}
+            </Button>
+            <p className="mt-2 text-xs leading-5 text-[#596270]">{actionPreviewText(selected, "approve")}</p>
+          </div>
+          <div className={`rounded-[1.15rem] border p-3 ${decisionSupport?.suggested_action === "reject" ? "border-[rgba(215,90,45,0.24)] bg-[#fff4ee]" : "border-line/80 bg-white/72"}`}>
+            <Button className="w-full" variant="danger" onClick={() => onDecide("reject")} disabled={!pending || decisionBusy !== null}>
+              <XCircle className="mr-2 h-4 w-4" />
+              {decisionBusy === "reject" ? "Rejecting..." : "Reject"}
+            </Button>
+            <p className="mt-2 text-xs leading-5 text-[#596270]">{actionPreviewText(selected, "reject")}</p>
+          </div>
+          <div className={`rounded-[1.15rem] border p-3 ${decisionSupport?.suggested_action === "edit" ? "border-[rgba(215,162,45,0.26)] bg-[#fff8e8]" : "border-line/80 bg-white/72"}`}>
+            <Button asChild className="w-full" variant="ghost">
+              <Link href={withBasePath(basePath, `/changes/${selected.id}/canonical`)}>
+                <SquarePen className="mr-2 h-4 w-4" />
+                Edit then approve
+              </Link>
+            </Button>
+            <p className="mt-2 text-xs leading-5 text-[#596270]">{actionPreviewText(selected, "edit")}</p>
+          </div>
+        </div>
+
         <div className="mt-4 flex flex-wrap gap-3">
-          <Button onClick={() => onDecide("approve")} disabled={!pending || decisionBusy !== null}>
-            <CheckCheck className="mr-2 h-4 w-4" />
-            {decisionBusy === "approve" ? "Approving..." : "Approve"}
-          </Button>
-          <Button variant="danger" onClick={() => onDecide("reject")} disabled={!pending || decisionBusy !== null}>
-            <XCircle className="mr-2 h-4 w-4" />
-            {decisionBusy === "reject" ? "Rejecting..." : "Reject"}
-          </Button>
           <Button variant="ghost" onClick={onMarkViewed} disabled={Boolean(selected.viewed_at)}>
             <Eye className="mr-2 h-4 w-4" />
             {selected.viewed_at ? "Viewed" : "Mark viewed"}
@@ -610,14 +730,6 @@ function DecisionWorkspace({
             <Sparkles className="mr-2 h-4 w-4" />
             Approve and learn
           </Button>
-          {!compact ? (
-            <Button asChild variant="ghost">
-              <Link href={withBasePath(basePath, `/changes/${selected.id}/canonical`)}>
-                <SquarePen className="mr-2 h-4 w-4" />
-                Edit then approve
-              </Link>
-            </Button>
-          ) : null}
         </div>
 
         {!pending ? (
@@ -689,17 +801,31 @@ function DecisionWorkspace({
         {!compact && pending && selected.change_type !== "removed" ? (
           <div className="mt-4">
             <CompactSection
-              title="Advanced path"
-              summary="Edit the proposal before approving."
+              title="Technical details"
+              summary="Evidence metadata and edit paths"
               open={expandedSections.extras}
               onToggle={() => setExpandedSections((current) => ({ ...current, extras: !current.extras }))}
             >
-              <Button asChild size="sm" variant="ghost">
-                <Link href={withBasePath(basePath, `/changes/${selected.id}/proposal`)}>
-                  <PencilLine className="mr-2 h-4 w-4" />
-                  Edit proposal
-                </Link>
-              </Button>
+              <div className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-[1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
+                    <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Review bucket</p>
+                    <p className="mt-2 font-medium text-ink">{formatStatusLabel(selected.review_bucket)}</p>
+                    <p className="mt-3 text-xs text-[#6d7885]">Intake phase: {formatStatusLabel(selected.intake_phase)}</p>
+                  </div>
+                  <div className="rounded-[1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
+                    <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Source references</p>
+                    <p className="mt-2 font-medium text-ink">{selected.primary_source ? sourceDescriptor(selected.primary_source) : "No primary source"}</p>
+                    <p className="mt-3 text-xs text-[#6d7885]">{selected.proposal_sources.length} proposal source{selected.proposal_sources.length === 1 ? "" : "s"} · {confidenceLabel(selected)}</p>
+                  </div>
+                </div>
+                <Button asChild size="sm" variant="ghost">
+                  <Link href={withBasePath(basePath, `/changes/${selected.id}/proposal`)}>
+                    <PencilLine className="mr-2 h-4 w-4" />
+                    Edit proposal
+                  </Link>
+                </Button>
+              </div>
             </CompactSection>
           </div>
         ) : null}
@@ -707,8 +833,8 @@ function DecisionWorkspace({
         {compact ? (
           <div className="mt-4">
             <CompactSection
-              title="More"
-              summary="Edit paths"
+              title="Technical details"
+              summary="Edit paths and metadata"
               open={expandedSections.extras}
               onToggle={() => setExpandedSections((current) => ({ ...current, extras: !current.extras }))}
             >
@@ -765,19 +891,25 @@ export function ChangeItemsPanel({
   const [editContextError, setEditContextError] = useState<string | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const { side: drawerSide, isDesktop } = useWorkspaceLayout();
-  const sources = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), []);
-  const summary = useApiResource<ChangesWorkbenchSummary>(() => getChangesSummary(), []);
+  const changeQuery: Parameters<typeof listChanges>[0] = {
+    review_status: statusFilter,
+    review_bucket: lane === "initial_review" ? "initial_review" : "changes",
+    intake_phase: lane === "initial_review" ? "baseline" : undefined,
+    limit: 50,
+    source_id: sourceFilter === "all" ? null : Number(sourceFilter),
+  };
+  const sources = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), [], null, {
+    cacheKey: sourceListCacheKey("all"),
+  });
+  const summary = useApiResource<ChangesWorkbenchSummary>(() => getChangesSummary(), [], null, {
+    cacheKey: changesSummaryCacheKey(),
+  });
 
   const { data, loading, error, refresh, setData } = useApiResource<ChangeItem[]>(
-    () =>
-      listChanges({
-        review_status: statusFilter,
-        review_bucket: lane === "initial_review" ? "initial_review" : "changes",
-        intake_phase: lane === "initial_review" ? "baseline" : undefined,
-        limit: 50,
-        source_id: sourceFilter === "all" ? null : Number(sourceFilter),
-      }),
+    () => listChanges(changeQuery),
     [lane, sourceFilter, statusFilter],
+    null,
+    { cacheKey: changesListCacheKey(changeQuery) },
   );
   const rows = useMemo(() => data || [], [data]);
   const groups = useMemo(() => groupChangesByCourse(rows), [rows]);
@@ -812,7 +944,7 @@ export function ChangeItemsPanel({
       }
       try {
         const updated = await markChangeViewed(change.id, { viewed: true, note: "ui_opened" });
-        setData((prev) => prev?.map((row) => (row.id === updated.id ? updated : row)) || prev);
+        setData((prev: ChangeItem[] | null) => prev?.map((row: ChangeItem) => (row.id === updated.id ? updated : row)) || prev);
       } catch {
         // Non-fatal.
       }
@@ -1041,6 +1173,8 @@ export function ChangeItemsPanel({
   if (!summary.data) return <ErrorState message="Changes summary is unavailable." />;
 
   const summaryData = summary.data;
+  const initialReviewProgress = summaryData.workspace_posture.initial_review;
+  const initialReviewComplete = lane === "initial_review" && initialReviewProgress.pending_count === 0;
 
   return (
     <div className="space-y-5">
@@ -1051,13 +1185,55 @@ export function ChangeItemsPanel({
             <div className="max-w-3xl">
               <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">{lane === "initial_review" ? "Initial Review" : "Replay Review"}</p>
               <h3 className="mt-3 text-3xl font-semibold text-ink">
-                {lane === "initial_review" ? "Review baseline items before daily replay." : "Use Changes for ongoing review."}
+                {lane === "initial_review"
+                  ? initialReviewComplete
+                    ? "Initial Review complete"
+                    : "Finish the baseline before monitoring goes live."
+                  : "Review live changes with decision support."}
               </h3>
               <p className="mt-3 text-sm text-[#596270]">
                 {lane === "initial_review"
-                  ? "This lane is only for baseline import items that still need explicit review."
-                  : "After the baseline is established, this is where day-to-day changes belong."}
+                  ? initialReviewComplete
+                    ? "Monitoring is now live for your connected sources. New day-to-day updates will show up in Changes."
+                    : "Initial Review is only for baseline import items. Once this queue is clear, replay review becomes the normal daily lane."
+                  : "Changes is for ongoing replay review after the baseline is established. Each detail view explains why the item is here, what to do next, and what the risk is."}
               </p>
+              {lane === "initial_review" ? (
+                <div className="mt-5 max-w-xl space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    <Badge tone={initialReviewComplete ? "approved" : "pending"}>
+                      {initialReviewProgress.pending_count} pending
+                    </Badge>
+                    <Badge tone="info">{initialReviewProgress.reviewed_count} reviewed</Badge>
+                    <Badge tone="info">{initialReviewProgress.total_count} total</Badge>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3 text-sm text-[#596270]">
+                      <span>
+                        {initialReviewComplete
+                          ? initialReviewProgress.completed_at
+                            ? `Completed ${formatDateTime(initialReviewProgress.completed_at)}`
+                            : "Completed"
+                          : `${initialReviewProgress.reviewed_count} reviewed / ${initialReviewProgress.total_count} total`}
+                      </span>
+                      <span>{initialReviewProgress.completion_percent}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-white/60">
+                      <div
+                        className="h-2 rounded-full bg-cobalt transition-all duration-500"
+                        style={{ width: `${Math.min(Math.max(initialReviewProgress.completion_percent, 0), 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  {initialReviewComplete ? (
+                    <div>
+                      <Button asChild size="sm">
+                        <Link href={withBasePath(basePath, "/changes")}>Open Replay Review</Link>
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
               {statusOptions.map((status) => (
@@ -1149,10 +1325,18 @@ export function ChangeItemsPanel({
           <div className="mt-5 space-y-5">
             {rows.length === 0 ? (
               <EmptyState
-                title={lane === "initial_review" ? "No baseline items in this lane" : "No changes in this lane"}
+                title={
+                  lane === "initial_review"
+                    ? initialReviewComplete
+                      ? "Initial Review is complete"
+                      : "No baseline items in this lane"
+                    : "No changes in this lane"
+                }
                 description={
                   lane === "initial_review"
-                    ? "Baseline review is clear for the current filters."
+                    ? initialReviewComplete
+                      ? "Baseline review is clear. Replay review is now the normal day-to-day workflow."
+                      : "Baseline review is clear for the current filters."
                     : "Switch filters or run another sync to generate new review work."
                 }
               />

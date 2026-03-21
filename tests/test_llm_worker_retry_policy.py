@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.models.runtime import IngestJob, IngestJobStatus
-from app.db.models.input import IngestTriggerType, InputSource, SourceKind, SyncRequest, SyncRequestStatus
+from app.db.models.input import IngestTriggerType, InputSource, SourceKind, SyncRequest, SyncRequestStage, SyncRequestStatus
 from app.db.models.shared import User
 from app.modules.runtime.llm import transitions as llm_transitions
 
@@ -147,3 +147,59 @@ def test_backpressure_transition_requeues_without_burning_attempt(db_session: Se
     assert sync.error_code is None
     assert captured["request_id"] == job.request_id
     assert captured["attempt"] == 0
+
+
+def test_mark_llm_task_started_sets_running_state_and_job_payload(db_session: Session, monkeypatch) -> None:
+    monkeypatch.setenv("LLM_CLAIM_TIMEOUT_SECONDS", "300")
+    get_settings.cache_clear()
+    try:
+        job, sync = _seed_claimed_context(db_session, request_id="retry-start")
+        llm_transitions.mark_llm_task_started(
+            db_session,
+            request_id=job.request_id,
+            worker_id="llm-worker-test",
+            task_kind="gmail",
+        )
+
+        db_session.refresh(job)
+        db_session.refresh(sync)
+        payload = job.payload_json if isinstance(job.payload_json, dict) else {}
+        assert payload.get("workflow_stage") == "LLM_RUNNING"
+        assert payload.get("llm_worker_id") == "llm-worker-test"
+        assert payload.get("llm_started_at") is not None
+        assert job.next_retry_at is not None
+        assert sync.stage == SyncRequestStage.LLM_PARSE
+        assert sync.substage == "gmail_parse_running"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_retry_policy_uses_explicit_task_kind_for_calendar_reduce(db_session: Session, monkeypatch) -> None:
+    monkeypatch.setenv("LLM_MAX_RETRY_ATTEMPTS", "4")
+    monkeypatch.setenv("LLM_RETRY_BASE_SECONDS", "1")
+    monkeypatch.setenv("LLM_RETRY_MAX_SECONDS", "10")
+    monkeypatch.setenv("LLM_RETRY_JITTER_SECONDS", "0")
+    get_settings.cache_clear()
+    try:
+        job, sync = _seed_claimed_context(db_session, request_id="retry-calendar-reduce")
+        monkeypatch.setattr(llm_transitions, "schedule_parse_retry", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(llm_transitions, "increment_parse_metric_counter", lambda *_args, **_kwargs: None)
+
+        llm_transitions.apply_llm_failure_transition(
+            db_session,
+            redis_client=object(),  # type: ignore[arg-type]
+            stream_key="llm:parse:stream",
+            request_id=job.request_id,
+            next_attempt=1,
+            error_code="parse_llm_timeout",
+            error_message="timeout",
+            reason="exception",
+            task_kind="calendar_reduce",
+            retryable=True,
+        )
+
+        db_session.refresh(sync)
+        assert sync.stage == SyncRequestStage.PROVIDER_REDUCE
+        assert sync.substage == "calendar_reduce_retry"
+    finally:
+        get_settings.cache_clear()

@@ -9,6 +9,7 @@ from app.db.models.review import EventEntity, EventEntityLifecycle
 from app.db.models.shared import User
 from app.core.config import get_settings
 from app.modules.runtime.connectors.calendar_fetcher import fetch_calendar_delta
+from app.modules.runtime.connectors.clients.gmail_client import GmailAPIError
 from app.modules.runtime.connectors.gmail_second_filter import GmailSecondFilterDecision
 from app.modules.runtime.connectors.gmail_fetcher import (
     _known_course_tokens_for_source,
@@ -169,6 +170,45 @@ def test_gmail_filter_allows_keyword_only_signal_in_inbox() -> None:
     assert matches_gmail_source_filters(metadata=metadata, config={}) is True
 
 
+def test_gmail_filter_allows_deliverable_keyword_for_unknown_sender() -> None:
+    metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="reminders@example.com",
+        subject="Team Deliverable 3 timing note",
+        snippet="Deliverable 3 is due Tuesday at 5 PM.",
+        body_text="The team deliverable must be submitted by Tuesday at 5 PM.",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    assert matches_gmail_source_filters(metadata=metadata, config={}) is True
+
+
+def test_gmail_filter_allows_checkpoint_keyword_for_unknown_sender() -> None:
+    metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="updates@example.com",
+        subject="Checkpoint 2 timing confirmed",
+        snippet="Project checkpoint 2 remains due Sunday evening.",
+        body_text="Checkpoint 2 remains due Sunday at 8 PM.",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    assert matches_gmail_source_filters(metadata=metadata, config={}) is True
+
+
+def test_gmail_filter_allows_lab_report_phrase_for_unknown_sender() -> None:
+    metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="course-bot@example.com",
+        subject="Lab Report 2 updated",
+        snippet="Lab Report 2 should be turned in Friday.",
+        body_text="Lab report 2 should be turned in Friday before midnight.",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    assert matches_gmail_source_filters(metadata=metadata, config={}) is True
+
+
 def test_gmail_filter_excludes_lab_and_discussion_keyword_only_messages() -> None:
     lab_metadata = SimpleNamespace(
         label_ids=["INBOX"],
@@ -293,6 +333,26 @@ def test_gmail_filter_secondary_classifier_shadow_does_not_suppress(monkeypatch)
     )
 
     assert matches_gmail_source_filters(metadata=metadata, config={}) is True
+    get_settings.cache_clear()
+
+
+def test_gmail_filter_small_diff_batch_bypasses_secondary_classifier(monkeypatch) -> None:
+    metadata = SimpleNamespace(
+        label_ids=["INBOX"],
+        from_header="CloudStorage Plus <shipping@cloudstorage-plus.example>",
+        subject="Project shipment exception notice",
+        snippet="Shipping exception notification for your storage subscription",
+        body_text="This is a subscription update and package tracking notice. No academic deadline changed.",
+        internal_date="2026-02-01T15:00:00+00:00",
+    )
+
+    monkeypatch.setenv("GMAIL_SECONDARY_FILTER_MODE", "enforce")
+    get_settings.cache_clear()
+    assert matches_gmail_source_filters(
+        metadata=metadata,
+        config={},
+        gmail_diff_message_count=10,
+    ) is True
     get_settings.cache_clear()
 
 
@@ -465,6 +525,55 @@ def test_gmail_fetcher_bootstrap_defaults_to_inbox_when_label_missing(monkeypatc
     assert outcome.status == ConnectorResultStatus.CHANGED
     assert outcome.parse_payload is not None
     assert [row["message_id"] for row in outcome.parse_payload["messages"]] == ["m1"]
+
+
+def test_gmail_fetcher_skips_missing_gmail_message_metadata_404(monkeypatch) -> None:
+    source = SimpleNamespace(
+        config=SimpleNamespace(
+            config_json={
+                "label_id": "INBOX",
+                "monitor_since": "2026-01-05",
+            }
+        ),
+        cursor=SimpleNamespace(cursor_json={}),
+        user=SimpleNamespace(timezone_name="America/Los_Angeles"),
+    )
+
+    class _FakeGmailClient:
+        def get_profile(self, *, access_token: str):
+            assert access_token == "token"
+            return SimpleNamespace(email_address="student@example.edu", history_id="200")
+
+        def list_message_ids(self, *, access_token: str, query: str | None = None, label_ids=None):
+            assert access_token == "token"
+            assert query == f"after:2026/01/05 before:{_expected_gmail_end_exclusive()}"
+            assert label_ids == ["INBOX"]
+            return ["m1", "m404", "m2"]
+
+        def get_message_metadata(self, *, access_token: str, message_id: str):
+            assert access_token == "token"
+            if message_id == "m404":
+                raise GmailAPIError(status_code=404, message="Requested entity was not found.")
+            return SimpleNamespace(
+                message_id=message_id,
+                thread_id=f"thread-{message_id}",
+                snippet="Assignment due tomorrow",
+                body_text="The homework due date changed.",
+                from_header="professor@school.edu",
+                subject="Homework reminder",
+                internal_date="2026-02-01T15:00:00+00:00",
+                label_ids=["INBOX"],
+            )
+
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher.decode_source_secrets", lambda _source: {"access_token": "token"})
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher.GmailClient", _FakeGmailClient)
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher._known_course_tokens_for_source", lambda _source: set())
+
+    outcome = fetch_gmail_changes(source=source, request_id="req-bootstrap-skip-404")
+
+    assert outcome.status == ConnectorResultStatus.CHANGED
+    assert outcome.parse_payload is not None
+    assert [row["message_id"] for row in outcome.parse_payload["messages"]] == ["m1", "m2"]
 
 
 def test_gmail_fetcher_emits_bootstrap_progress(monkeypatch) -> None:
@@ -715,6 +824,7 @@ def test_gmail_fetcher_bootstrap_uses_monitoring_window_course_mapping_tokens(mo
     user = User(
         email=None,
         notify_email="tokens-bootstrap@example.com",
+        timezone_name="America/Los_Angeles",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
