@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
@@ -124,12 +124,8 @@ function NavContentWithItems({
                   : "text-[#314051] hover:bg-white/70 hover:scale-[1.02]",
                 collapsed && active ? "ring-2 ring-[rgba(31,94,255,0.18)] ring-offset-2 ring-offset-card" : null
               )}
-              onClick={(event) => {
-                if (!onNavigate) {
-                  return;
-                }
-                event.preventDefault();
-                onNavigate(href);
+              onClick={() => {
+                onNavigate?.(href);
               }}
             >
               <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-3")}>
@@ -177,16 +173,14 @@ export function AppShell({
   basePath?: string;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [desktopNavCollapsed, setDesktopNavCollapsed] = useState(false);
   const [timezoneSynced, setTimezoneSynced] = useState(false);
   const onboardingReady = sessionUser.onboarding_stage === "ready";
   const navItems = items.map((item) => ({ ...item, href: withBasePath(basePath, item.href) }));
 
-  function handleNavigate(href: string) {
+  function handleNavigate(_: string) {
     setMobileNavOpen(false);
-    router.push(href);
   }
 
   useEffect(() => {
