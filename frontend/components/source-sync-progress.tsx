@@ -7,10 +7,12 @@ export function SourceSyncProgress({
   progress,
   className,
   stableLabel,
+  setupMode = false,
 }: {
   progress: SyncProgress | null | undefined;
   className?: string;
   stableLabel?: string;
+  setupMode?: boolean;
 }) {
   if (!progress) {
     return null;
@@ -22,7 +24,8 @@ export function SourceSyncProgress({
   const hasBar = current !== null && total !== null && total > 0 && percent !== null;
   const unit = progress.unit ? ` ${progress.unit}` : "";
   const title = stableLabel || progress.label;
-  const stepLabel = stableLabel && progress.label && progress.label !== stableLabel ? progress.label : null;
+  const stepLabel = !setupMode && stableLabel && progress.label && progress.label !== stableLabel ? progress.label : null;
+  const showFooter = hasBar && !setupMode;
 
   return (
     <div className={cn("rounded-[1.15rem] border border-[rgba(31,94,255,0.14)] bg-[rgba(31,94,255,0.05)] px-4 py-3", className)}>
@@ -48,10 +51,12 @@ export function SourceSyncProgress({
               style={{ width: `${percent}%` }}
             />
           </div>
-          <div className="mt-2 flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-[#6d7885]">
-            <span>{progress.phase.replaceAll("_", " ")}</span>
-            <span>{percent.toFixed(percent % 1 === 0 ? 0 : 1)}%</span>
-          </div>
+          {showFooter ? (
+            <div className="mt-2 flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-[#6d7885]">
+              <span>{progress.phase.replaceAll("_", " ")}</span>
+              <span>{percent.toFixed(percent % 1 === 0 ? 0 : 1)}%</span>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
