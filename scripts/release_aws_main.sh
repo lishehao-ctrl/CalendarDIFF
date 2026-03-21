@@ -2,10 +2,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-AWS_USER="${AWS_USER:-ec2-user}"
-AWS_HOST="${AWS_HOST:-54.197.37.63}"
+AWS_USER="${AWS_USER:-ubuntu}"
+AWS_HOST="${AWS_HOST:-54.152.242.119}"
 AWS_SSH_KEY="${AWS_SSH_KEY:-$HOME/.ssh/aws-main.pem}"
-AWS_APP_DIR="${AWS_APP_DIR:-/home/ec2-user/apps/CalendarDIFF}"
+AWS_APP_DIR="${AWS_APP_DIR:-/home/ubuntu/apps/CalendarDIFF}"
 REMOTE_GIT_URL="${REMOTE_GIT_URL:-git@github.com:lishehao/CalendarDIFF.git}"
 DOMAIN="${DOMAIN:-cal.shehao.app}"
 BUNDLE_PATH="${BUNDLE_PATH:-/tmp/calendardiff-release.bundle}"

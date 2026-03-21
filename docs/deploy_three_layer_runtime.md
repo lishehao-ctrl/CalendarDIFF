@@ -12,15 +12,20 @@ Default `docker-compose.yml` contains four services only:
 ## Current AWS host layout
 The current production host uses:
 
-- SSH user: `ec2-user`
-- app dir: `/home/ec2-user/apps/CalendarDIFF`
-- secrets dir: `/home/ec2-user/secrets`
+- SSH user: `ubuntu`
+- app dir: `/home/ubuntu/apps/CalendarDIFF`
+- secrets dir: `/home/ubuntu/secrets`
 
-Reserve a sibling app dir for future non-CalendarDIFF projects:
+Shared-host rule:
 
-- `/home/ec2-user/apps/rpg-demo`
+- CalendarDIFF owns `cal.shehao.app`
+- RPG owns `rpg.shehao.app`
+- CalendarDIFF runs on `127.0.0.1:3000` and `127.0.0.1:8000`
+- RPG currently remains separate on `/srv/rpg-demo` with its own backend port `127.0.0.1:8010`
 
-CalendarDIFF should keep owning only `cal.shehao.app`. Future RPG deployment should get its own nginx server block and app ports rather than reusing CalendarDIFF's routing.
+Reserve a sibling app dir for future non-CalendarDIFF projects when needed:
+
+- `/home/ubuntu/apps/rpg-demo`
 
 ## Backend container
 `public-service` runs:

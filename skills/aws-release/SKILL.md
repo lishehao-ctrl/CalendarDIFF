@@ -12,8 +12,8 @@ Use this skill for CalendarDIFF release and live-ops work.
 This repo owns the CalendarDIFF app running on:
 
 - domain: `cal.shehao.app`
-- AWS host: `ec2-user@54.197.37.63`
-- app dir: `/home/ec2-user/apps/CalendarDIFF`
+- AWS host: `ubuntu@54.152.242.119`
+- app dir: `/home/ubuntu/apps/CalendarDIFF`
 - SSH key: `~/.ssh/aws-main.pem`
 - canonical GitHub remote: `git@github.com:lishehao/CalendarDIFF.git`
 
@@ -44,8 +44,8 @@ scripts/release_aws_main.sh
 - Do not push to any repo other than `lishehao/CalendarDIFF` unless the user explicitly asks.
 - The current AWS host does not assume a GitHub deploy key. The repo is synced from the local machine via a temporary `git bundle`.
 - Treat host-level files as separate from repo-tracked files:
-  - `/home/ec2-user/apps/CalendarDIFF/.env`
-  - `/etc/nginx/conf.d/cal-shehao-app.conf`
+  - `/home/ubuntu/apps/CalendarDIFF/.env`
+  - `/etc/nginx/sites-available/cal-shehao-app`
   - `/etc/nginx/conf.d/websocket-upgrade-map.conf`
 - If you change host-level runtime config, also update repo docs so future agents know the intended state.
 - CalendarDIFF owns only `cal.shehao.app`; do not modify unrelated domains unless explicitly asked.
@@ -56,16 +56,17 @@ scripts/release_aws_main.sh
 - `cal.shehao.app/oauth/callbacks/*` -> `public-service` on `127.0.0.1:8000`
 - `cal.shehao.app/health` -> `public-service` on `127.0.0.1:8000/health`
 - Gmail OAuth client secrets live outside the repo and are mounted into compose via `HOST_SECRETS_DIR`
-- AWS repo checkout lives at `/home/ec2-user/apps/CalendarDIFF`
-- Reserve `/home/ec2-user/apps/rpg-demo` and a separate nginx server block for `rpg.shehao.app`; do not collapse CalendarDIFF and RPG into one site config.
+- AWS repo checkout lives at `/home/ubuntu/apps/CalendarDIFF`
+- Reserve `/home/ubuntu/apps/rpg-demo` as a placeholder sibling app dir, but keep the current RPG deployment intact at `/srv/rpg-demo`
+- Keep a separate nginx server block for `rpg.shehao.app`; do not collapse CalendarDIFF and RPG into one site config.
 
 ## Remote verification checklist
 
 After syncing the server, verify at minimum:
 
 ```bash
-ssh -i ~/.ssh/aws-main.pem ec2-user@54.197.37.63 '
-  cd /home/ec2-user/apps/CalendarDIFF && \
+ssh -i ~/.ssh/aws-main.pem ubuntu@54.152.242.119 '
+  cd /home/ubuntu/apps/CalendarDIFF && \
   git rev-parse --short HEAD && \
   sudo nginx -t && \
   sudo docker compose ps && \
