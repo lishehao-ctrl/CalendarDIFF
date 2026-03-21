@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
@@ -64,7 +64,7 @@ function NavContentWithItems({
 }: {
   pathname: string;
   items: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; description: string }>;
-  onNavigate?: () => void;
+  onNavigate?: (href: string) => void;
   collapsed: boolean;
   onToggleCollapse?: () => void;
   logoutRedirectTo?: string;
@@ -94,9 +94,9 @@ function NavContentWithItems({
               title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
               onClick={onToggleCollapse}
               className={cn(
-                "hidden items-center justify-center border border-line/80 bg-white/90 text-ink shadow-[0_10px_24px_rgba(20,32,44,0.08)] transition-all duration-300 hover:bg-white xl:flex",
+                "z-10 hidden items-center justify-center border border-line/80 bg-white/90 text-ink shadow-[0_10px_24px_rgba(20,32,44,0.08)] transition-all duration-300 hover:bg-white xl:flex",
                 collapsed
-                  ? "absolute -right-5 top-1 h-9 w-9 rounded-full"
+                  ? "h-9 w-9 self-center rounded-full"
                   : "h-11 w-11 shrink-0 rounded-2xl"
               )}
             >
@@ -115,18 +115,27 @@ function NavContentWithItems({
               aria-label={label}
               title={label}
               className={cn(
-                "transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                "group relative transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
                 collapsed
                   ? "flex h-12 w-12 items-center justify-center self-center rounded-2xl"
                   : "rounded-[1.25rem] px-4 py-4",
-                active ? "bg-ink text-paper shadow-[0_16px_32px_rgba(20,32,44,0.18)]" : "text-[#314051] hover:bg-white/70"
+                active
+                  ? "scale-[1.02] bg-ink text-paper shadow-[0_16px_32px_rgba(20,32,44,0.18)]"
+                  : "text-[#314051] hover:bg-white/70 hover:scale-[1.02]",
+                collapsed && active ? "ring-2 ring-[rgba(31,94,255,0.18)] ring-offset-2 ring-offset-card" : null
               )}
-              onClick={onNavigate}
+              onClick={(event) => {
+                if (!onNavigate) {
+                  return;
+                }
+                event.preventDefault();
+                onNavigate(href);
+              }}
             >
               <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-3")}>
                 <div
                   className={cn(
-                    "flex h-10 w-10 items-center justify-center rounded-2xl",
+                    "flex h-10 w-10 items-center justify-center rounded-2xl transition-all duration-300",
                     active ? "bg-white/12" : "bg-[rgba(20,32,44,0.06)]"
                   )}
                 >
@@ -137,6 +146,16 @@ function NavContentWithItems({
                   <div className={cn("mt-1 text-xs", active ? "text-white/70" : "text-[#7a8593]")}>{description}</div>
                 </div>
               </div>
+              {collapsed ? (
+                <span
+                  className={cn(
+                    "pointer-events-none absolute left-full top-1/2 ml-3 -translate-y-1/2 rounded-full border border-line/80 bg-white px-3 py-1.5 text-xs font-medium text-ink opacity-0 shadow-[0_12px_30px_rgba(20,32,44,0.12)] transition-all duration-200",
+                    "group-hover:translate-x-1 group-hover:opacity-100 group-focus-visible:translate-x-1 group-focus-visible:opacity-100"
+                  )}
+                >
+                  {label}
+                </span>
+              ) : null}
             </Link>
           );
         })}
@@ -158,11 +177,17 @@ export function AppShell({
   basePath?: string;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [desktopNavCollapsed, setDesktopNavCollapsed] = useState(false);
   const [timezoneSynced, setTimezoneSynced] = useState(false);
   const onboardingReady = sessionUser.onboarding_stage === "ready";
   const navItems = items.map((item) => ({ ...item, href: withBasePath(basePath, item.href) }));
+
+  function handleNavigate(href: string) {
+    setMobileNavOpen(false);
+    router.push(href);
+  }
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -223,6 +248,7 @@ export function AppShell({
           items={navItems}
           collapsed={desktopNavCollapsed}
           onToggleCollapse={() => setDesktopNavCollapsed((current) => !current)}
+          onNavigate={handleNavigate}
           logoutRedirectTo={basePath ? withBasePath(basePath, "/") : "/login"}
         />
       </aside>
@@ -255,7 +281,7 @@ export function AppShell({
                   <NavContentWithItems
                     pathname={pathname}
                     items={navItems}
-                    onNavigate={() => setMobileNavOpen(false)}
+                    onNavigate={handleNavigate}
                     collapsed={false}
                     logoutRedirectTo={basePath ? withBasePath(basePath, "/") : "/login"}
                   />
