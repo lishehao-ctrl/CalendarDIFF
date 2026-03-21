@@ -57,14 +57,12 @@ function animatedTextBlock(collapsed: boolean, maxWidthClass: string) {
 function NavContentWithItems({
   pathname,
   items,
-  onNavigate,
   collapsed,
   onToggleCollapse,
   logoutRedirectTo = "/login",
 }: {
   pathname: string;
   items: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; description: string }>;
-  onNavigate?: (href: string) => void;
   collapsed: boolean;
   onToggleCollapse?: () => void;
   logoutRedirectTo?: string;
@@ -112,6 +110,7 @@ function NavContentWithItems({
             <Link
               key={href}
               href={href}
+              prefetch
               aria-label={label}
               title={label}
               className={cn(
@@ -124,9 +123,6 @@ function NavContentWithItems({
                   : "text-[#314051] hover:bg-white/70 hover:scale-[1.02]",
                 collapsed && active ? "ring-2 ring-[rgba(31,94,255,0.18)] ring-offset-2 ring-offset-card" : null
               )}
-              onClick={() => {
-                onNavigate?.(href);
-              }}
             >
               <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-3")}>
                 <div
@@ -178,10 +174,6 @@ export function AppShell({
   const [timezoneSynced, setTimezoneSynced] = useState(false);
   const onboardingReady = sessionUser.onboarding_stage === "ready";
   const navItems = items.map((item) => ({ ...item, href: withBasePath(basePath, item.href) }));
-
-  function handleNavigate(_: string) {
-    setMobileNavOpen(false);
-  }
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -242,7 +234,6 @@ export function AppShell({
           items={navItems}
           collapsed={desktopNavCollapsed}
           onToggleCollapse={() => setDesktopNavCollapsed((current) => !current)}
-          onNavigate={handleNavigate}
           logoutRedirectTo={basePath ? withBasePath(basePath, "/") : "/login"}
         />
       </aside>
@@ -275,7 +266,6 @@ export function AppShell({
                   <NavContentWithItems
                     pathname={pathname}
                     items={navItems}
-                    onNavigate={handleNavigate}
                     collapsed={false}
                     logoutRedirectTo={basePath ? withBasePath(basePath, "/") : "/login"}
                   />
