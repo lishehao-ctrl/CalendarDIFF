@@ -7,12 +7,10 @@ export function SourceSyncProgress({
   progress,
   className,
   stableLabel,
-  presentation = "default",
 }: {
   progress: SyncProgress | null | undefined;
   className?: string;
   stableLabel?: string;
-  presentation?: "default" | "setup";
 }) {
   if (!progress) {
     return null;
@@ -24,8 +22,7 @@ export function SourceSyncProgress({
   const hasBar = current !== null && total !== null && total > 0 && percent !== null;
   const unit = progress.unit ? ` ${progress.unit}` : "";
   const title = stableLabel || progress.label;
-  const stepLabel =
-    presentation === "default" && stableLabel && progress.label && progress.label !== stableLabel ? progress.label : null;
+  const stepLabel = stableLabel && progress.label && progress.label !== stableLabel ? progress.label : null;
 
   return (
     <div className={cn("rounded-[1.15rem] border border-[rgba(31,94,255,0.14)] bg-[rgba(31,94,255,0.05)] px-4 py-3", className)}>
@@ -51,16 +48,10 @@ export function SourceSyncProgress({
               style={{ width: `${percent}%` }}
             />
           </div>
-          {presentation === "default" ? (
-            <div className="mt-2 flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-[#6d7885]">
-              <span>{progress.phase.replaceAll("_", " ")}</span>
-              <span>{percent.toFixed(percent % 1 === 0 ? 0 : 1)}%</span>
-            </div>
-          ) : (
-            <div className="mt-2 flex justify-end text-[11px] uppercase tracking-[0.16em] text-[#6d7885]">
-              <span>{percent.toFixed(percent % 1 === 0 ? 0 : 1)}%</span>
-            </div>
-          )}
+          <div className="mt-2 flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-[#6d7885]">
+            <span>{progress.phase.replaceAll("_", " ")}</span>
+            <span>{percent.toFixed(percent % 1 === 0 ? 0 : 1)}%</span>
+          </div>
         </div>
       ) : null}
     </div>

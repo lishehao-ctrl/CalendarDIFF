@@ -148,7 +148,7 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
               <p className="mt-2">Label: INBOX</p>
               {source?.oauth_account_email ? <p className="mt-2">Account: {source.oauth_account_email}</p> : null}
             </div>
-            <SourceSyncProgress className="mt-4" progress={source?.sync_progress} stableLabel="Syncing Gmail source" presentation="setup" />
+            <SourceSyncProgress className="mt-4" progress={source?.sync_progress} stableLabel="Syncing Gmail source" />
             {source ? (
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button variant="ghost" onClick={() => void archive()} disabled={disconnecting}>
