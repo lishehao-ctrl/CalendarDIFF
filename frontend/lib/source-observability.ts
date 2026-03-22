@@ -186,7 +186,9 @@ function inferLatestSync(source: SourceRow, syncStatus: SyncStatus | undefined) 
 
 function inferLiveObservability(source: SourceRow, syncStatus: SyncStatus | undefined): SourceObservabilityView {
   const usage = normalizeUsageSummary(syncStatus?.metadata && typeof syncStatus.metadata === "object" ? (syncStatus.metadata as Record<string, unknown>).llm_usage_summary : null);
-  const needsAttention = Boolean(source.last_error_message) || source.runtime_state === "rebind_pending" || source.config_state === "rebind_pending";
+  const gmailNeedsReconnect = source.provider === "gmail" && source.oauth_connection_status === "not_connected";
+  const needsAttention =
+    gmailNeedsReconnect || Boolean(source.last_error_message) || source.runtime_state === "rebind_pending" || source.config_state === "rebind_pending";
   const latestSync = inferLatestSync(source, syncStatus);
   const bootstrapRunning = source.runtime_state === "rebind_pending" || source.config_state === "rebind_pending" || !source.last_polled_at;
 
@@ -196,10 +198,18 @@ function inferLiveObservability(source: SourceRow, syncStatus: SyncStatus | unde
     source_kind: sourceKindLabel(source),
     runtime_state: source.runtime_state || "unknown",
     connection_status: !source.is_active ? "disconnected" : needsAttention ? "attention" : "healthy",
-    connection_label: !source.is_active ? "Disconnected" : needsAttention ? "Attention needed" : "Connected",
+    connection_label: !source.is_active ? "Disconnected" : gmailNeedsReconnect ? "Reconnect required" : needsAttention ? "Attention needed" : "Connected",
     connection_detail:
       source.last_error_message ||
-      (!source.is_active ? "Reconnect this source before trusting intake." : source.provider === "ics" ? "Calendar feed is connected." : "Mailbox is connected."),
+      (
+        !source.is_active
+          ? "Reconnect this source before trusting intake."
+          : gmailNeedsReconnect
+            ? "Mailbox access is disconnected until Gmail is reconnected."
+            : source.provider === "ics"
+              ? "Calendar feed is connected."
+              : "Mailbox is connected."
+      ),
     bootstrap_status: bootstrapRunning ? (needsAttention ? "running" : "unknown") : "succeeded",
     replay_status: needsAttention ? "failed" : source.is_active ? "succeeded" : "idle",
     latest_bootstrap_elapsed_ms: bootstrapRunning ? usage?.latency_ms_total || null : usage?.latency_ms_total || null,
