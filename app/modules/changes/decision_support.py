@@ -17,21 +17,31 @@ def build_change_decision_support(
     source_label = "Gmail" if source_label == "gmail" else "Canvas ICS" if source_label == "calendar" or source_label == "ics" else source_label.title()
 
     if change.change_type == ChangeType.REMOVED:
+        key_fact_items = _key_fact_items(
+            payload=before_payload,
+            source_label=source_label,
+            extra=_time_change_fact_item(change_summary=change_summary),
+        )
         return {
             "why_now": f"The latest {source_label} observation no longer supports this live item.",
+            "why_now_code": "changes.removed.why_now",
             "suggested_action": "review_carefully",
             "suggested_action_reason": "Removing a live item changes canonical state and should be confirmed carefully.",
+            "suggested_action_reason_code": "changes.removed.suggested_action_reason",
             "risk_level": "high",
             "risk_summary": "Approving will remove the current live deadline from the workspace.",
-            "key_facts": _key_facts(
-                payload=before_payload,
-                source_label=source_label,
-                extra=_time_change_fact(change_summary=change_summary),
-            ),
+            "risk_summary_code": "changes.removed.risk_summary",
+            "key_facts": _render_key_facts(key_fact_items),
+            "key_fact_items": key_fact_items,
             "outcome_preview": {
                 "approve": "Remove the live item from the workspace.",
                 "reject": "Keep the current live item unchanged.",
                 "edit": "Adjust the canonical item before deciding whether to remove it.",
+            },
+            "outcome_preview_codes": {
+                "approve": "changes.removed.outcome.approve",
+                "reject": "changes.removed.outcome.reject",
+                "edit": "changes.removed.outcome.edit",
             },
         }
 
@@ -39,83 +49,143 @@ def build_change_decision_support(
         before_time = _summary_value_time(change_summary, side="old")
         after_time = _summary_value_time(change_summary, side="new")
         suggested_action = "approve" if before_time and after_time else "edit"
+        suggested_action_reason_code = (
+            "changes.due_changed.suggested_action_reason.approve"
+            if suggested_action == "approve"
+            else "changes.due_changed.suggested_action_reason.edit"
+        )
         suggested_reason = (
             "The item identity looks stable and the proposal mainly changes the effective due time."
             if suggested_action == "approve"
             else "The item probably needs an update, but the proposed time should be corrected before approval."
         )
+        key_fact_items = _key_fact_items(
+            payload=after_payload or before_payload,
+            source_label=source_label,
+            extra=_time_change_fact_item(change_summary=change_summary),
+        )
         return {
             "why_now": f"A new {source_label} signal changed the effective time for an existing item.",
+            "why_now_code": "changes.due_changed.why_now",
             "suggested_action": suggested_action,
             "suggested_action_reason": suggested_reason,
+            "suggested_action_reason_code": suggested_action_reason_code,
             "risk_level": "medium",
             "risk_summary": "Approving will update the live deadline shown in the workspace.",
-            "key_facts": _key_facts(
-                payload=after_payload or before_payload,
-                source_label=source_label,
-                extra=_time_change_fact(change_summary=change_summary),
-            ),
+            "risk_summary_code": "changes.due_changed.risk_summary",
+            "key_facts": _render_key_facts(key_fact_items),
+            "key_fact_items": key_fact_items,
             "outcome_preview": {
                 "approve": "Update the live deadline to the proposed time.",
                 "reject": "Keep the current live deadline unchanged.",
                 "edit": "Correct the proposed time before updating the live deadline.",
             },
+            "outcome_preview_codes": {
+                "approve": "changes.due_changed.outcome.approve",
+                "reject": "changes.due_changed.outcome.reject",
+                "edit": "changes.due_changed.outcome.edit",
+            },
         }
 
     if change.intake_phase == ChangeIntakePhase.BASELINE:
+        key_fact_items = _key_fact_items(
+            payload=after_payload,
+            source_label=source_label,
+            extra=_time_change_fact_item(change_summary=change_summary),
+        )
         return {
             "why_now": f"This baseline item was imported from {source_label} and still needs confirmation before monitoring is fully live.",
+            "why_now_code": "changes.baseline_created.why_now",
             "suggested_action": "approve",
             "suggested_action_reason": "If the item identity and time look right, approving it helps finish Initial Review faster.",
+            "suggested_action_reason_code": "changes.baseline_created.suggested_action_reason",
             "risk_level": "low",
             "risk_summary": "Approving adds this item into the live baseline used for future replay detection.",
-            "key_facts": _key_facts(
-                payload=after_payload,
-                source_label=source_label,
-                extra=_time_change_fact(change_summary=change_summary),
-            ),
+            "risk_summary_code": "changes.baseline_created.risk_summary",
+            "key_facts": _render_key_facts(key_fact_items),
+            "key_fact_items": key_fact_items,
             "outcome_preview": {
                 "approve": "Add this item into the live baseline.",
                 "reject": "Leave this item out of the live baseline.",
                 "edit": "Correct the imported details before adding the item into the live baseline.",
             },
+            "outcome_preview_codes": {
+                "approve": "changes.baseline_created.outcome.approve",
+                "reject": "changes.baseline_created.outcome.reject",
+                "edit": "changes.baseline_created.outcome.edit",
+            },
         }
 
+    key_fact_items = _key_fact_items(
+        payload=after_payload,
+        source_label=source_label,
+        extra=_time_change_fact_item(change_summary=change_summary),
+    )
     return {
         "why_now": f"A new {source_label} signal looks like a newly announced grade-relevant item.",
+        "why_now_code": "changes.created.why_now",
         "suggested_action": "approve",
         "suggested_action_reason": "If the item and time look correct, approving it makes the new item live immediately.",
+        "suggested_action_reason_code": "changes.created.suggested_action_reason",
         "risk_level": "medium",
         "risk_summary": "Approving will add a new live item to the workspace.",
-        "key_facts": _key_facts(
-            payload=after_payload,
-            source_label=source_label,
-            extra=_time_change_fact(change_summary=change_summary),
-        ),
+        "risk_summary_code": "changes.created.risk_summary",
+        "key_facts": _render_key_facts(key_fact_items),
+        "key_fact_items": key_fact_items,
         "outcome_preview": {
             "approve": "Create a new live item in the workspace.",
             "reject": "Ignore this proposed new item.",
             "edit": "Correct the item details before creating the live item.",
         },
+        "outcome_preview_codes": {
+            "approve": "changes.created.outcome.approve",
+            "reject": "changes.created.outcome.reject",
+            "edit": "changes.created.outcome.edit",
+        },
     }
 
 
-def _key_facts(*, payload: dict | None, source_label: str, extra: str | None) -> list[str]:
-    facts: list[str] = []
+def _key_fact_items(*, payload: dict | None, source_label: str, extra: tuple[str, str] | None) -> list[dict]:
+    facts: list[dict] = []
     if payload is not None:
         course = _course_label(payload)
         if course:
-            facts.append(f"Course: {course}")
+            facts.append({"code": "course", "value": course})
         item = _item_label(payload)
         if item:
-            facts.append(f"Item: {item}")
+            facts.append({"code": "item", "value": item})
         due = _due_label(payload)
         if due:
-            facts.append(f"Proposed time: {due}")
-    facts.append(f"Primary source: {source_label}")
+            facts.append({"code": "proposed_time", "value": due})
+    facts.append({"code": "primary_source", "value": source_label})
     if extra:
-        facts.append(extra)
+        extra_code, extra_value = extra
+        facts.append({"code": extra_code, "value": extra_value})
     return facts[:4]
+
+
+def _render_key_facts(items: list[dict]) -> list[str]:
+    rendered: list[str] = []
+    for item in items:
+        code = str(item.get("code") or "")
+        value = str(item.get("value") or "")
+        if not value:
+            continue
+        if code == "course":
+            rendered.append(f"Course: {value}")
+        elif code == "item":
+            rendered.append(f"Item: {value}")
+        elif code == "proposed_time":
+            rendered.append(f"Proposed time: {value}")
+        elif code == "primary_source":
+            rendered.append(f"Primary source: {value}")
+        elif code == "time_change":
+            rendered.append(f"Time change: {value}")
+        elif code == "effective_time":
+            rendered.append(f"Effective time: {value}")
+        elif code == "current_time":
+            rendered.append(f"Current time: {value}")
+    return rendered[:4]
 
 
 def _course_label(payload: dict) -> str | None:
@@ -152,17 +222,17 @@ def _due_label(payload: dict) -> str | None:
     return f"{due_date.isoformat()} {due_time.strftime('%H:%M')}"
 
 
-def _time_change_fact(*, change_summary: dict | None) -> str | None:
+def _time_change_fact_item(*, change_summary: dict | None) -> tuple[str, str] | None:
     if not isinstance(change_summary, dict):
         return None
     old_value = _summary_value_time(change_summary, side="old")
     new_value = _summary_value_time(change_summary, side="new")
     if old_value and new_value and old_value != new_value:
-        return f"Time change: {old_value} -> {new_value}"
+        return ("time_change", f"{old_value} -> {new_value}")
     if new_value:
-        return f"Effective time: {new_value}"
+        return ("effective_time", new_value)
     if old_value:
-        return f"Current time: {old_value}"
+        return ("current_time", old_value)
     return None
 
 

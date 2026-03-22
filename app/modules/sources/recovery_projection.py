@@ -41,6 +41,7 @@ def build_source_recovery_payload(
         return {
             "trust_state": "blocked",
             "impact_summary": "New Gmail-based changes may be missing until the mailbox is reconnected.",
+            "impact_code": "sources.recovery.gmail.oauth_disconnected",
             "next_action": "reconnect_gmail",
             "next_action_label": "Reconnect Gmail",
             "last_good_sync_at": _last_good_sync_at(latest_replay_payload=latest_replay_payload, bootstrap_payload=bootstrap_payload),
@@ -49,12 +50,17 @@ def build_source_recovery_payload(
                 "Reconnect the mailbox to restore intake.",
                 "Wait for the next sync to finish before trusting new email-backed changes.",
             ],
+            "recovery_step_codes": [
+                "sources.recovery.gmail.step.reconnect_mailbox",
+                "sources.recovery.gmail.step.wait_for_sync",
+            ],
         }
 
     if runtime_state == "rebind_pending" and provider == "ics":
         return {
             "trust_state": "blocked",
             "impact_summary": "Canvas ICS needs updated monitoring settings before new calendar updates can be trusted.",
+            "impact_code": "sources.recovery.ics.rebind_pending",
             "next_action": "update_ics",
             "next_action_label": "Update Canvas ICS",
             "last_good_sync_at": _last_good_sync_at(latest_replay_payload=latest_replay_payload, bootstrap_payload=bootstrap_payload),
@@ -63,12 +69,17 @@ def build_source_recovery_payload(
                 "Open the Canvas ICS connection flow and confirm the current feed settings.",
                 "Run another sync after saving the updated link.",
             ],
+            "recovery_step_codes": [
+                "sources.recovery.ics.step.confirm_feed_settings",
+                "sources.recovery.ics.step.run_sync_after_update",
+            ],
         }
 
     if guidance_action == "investigate_runtime" or latest_replay_status == "FAILED":
         return {
             "trust_state": "stale",
             "impact_summary": _runtime_failure_summary(provider=provider),
+            "impact_code": f"sources.recovery.{provider or 'source'}.runtime_failed",
             "next_action": "retry_sync",
             "next_action_label": "Retry sync",
             "last_good_sync_at": _last_good_sync_at(latest_replay_payload=latest_replay_payload, bootstrap_payload=bootstrap_payload),
@@ -77,12 +88,17 @@ def build_source_recovery_payload(
                 "Retry the source sync.",
                 "If the next sync also fails, investigate the source connection before trusting new changes.",
             ],
+            "recovery_step_codes": [
+                "sources.recovery.runtime_failed.step.retry_sync",
+                "sources.recovery.runtime_failed.step.investigate_if_repeat",
+            ],
         }
 
     if guidance_action == "wait_for_runtime" and guidance_severity == "blocking":
         return {
             "trust_state": "blocked",
             "impact_summary": _runtime_stalled_summary(provider=provider),
+            "impact_code": f"sources.recovery.{provider or 'source'}.runtime_stalled",
             "next_action": "wait",
             "next_action_label": "Wait for runtime",
             "last_good_sync_at": _last_good_sync_at(latest_replay_payload=latest_replay_payload, bootstrap_payload=bootstrap_payload),
@@ -91,12 +107,17 @@ def build_source_recovery_payload(
                 "Let the current runtime work finish or recover.",
                 "Only trust new changes after progress starts moving again or the sync completes.",
             ],
+            "recovery_step_codes": [
+                "sources.recovery.runtime_stalled.step.wait",
+                "sources.recovery.runtime_stalled.step.resume_after_progress",
+            ],
         }
 
     if bootstrap_state == "running":
         return {
             "trust_state": "partial",
             "impact_summary": "Baseline import is still building this source before steady-state monitoring begins.",
+            "impact_code": "sources.recovery.baseline.running",
             "next_action": "wait",
             "next_action_label": "Wait for baseline import",
             "last_good_sync_at": _last_good_sync_at(latest_replay_payload=latest_replay_payload, bootstrap_payload=bootstrap_payload),
@@ -105,12 +126,17 @@ def build_source_recovery_payload(
                 "Wait for the initial import to complete.",
                 "Review any baseline items before treating this source as fully live.",
             ],
+            "recovery_step_codes": [
+                "sources.recovery.baseline.running.step.wait",
+                "sources.recovery.baseline.running.step.review_after_import",
+            ],
         }
 
     if bootstrap_state == "review_required":
         return {
             "trust_state": "partial",
             "impact_summary": "Baseline import finished, but Initial Review still has items waiting before this source is fully trusted.",
+            "impact_code": "sources.recovery.baseline.review_required",
             "next_action": "wait",
             "next_action_label": "Finish Initial Review",
             "last_good_sync_at": _last_good_sync_at(latest_replay_payload=latest_replay_payload, bootstrap_payload=bootstrap_payload),
@@ -119,12 +145,17 @@ def build_source_recovery_payload(
                 "Finish Initial Review for this source.",
                 "After that, use Replay Review for day-to-day change handling.",
             ],
+            "recovery_step_codes": [
+                "sources.recovery.baseline.review_required.step.finish_initial_review",
+                "sources.recovery.baseline.review_required.step.use_replay_after_review",
+            ],
         }
 
     if active_status in {"PENDING", "QUEUED", "RUNNING"} or guidance_action == "continue_review_with_caution":
         return {
             "trust_state": "partial",
             "impact_summary": _active_sync_summary(provider=provider),
+            "impact_code": f"sources.recovery.{provider or 'source'}.active_sync",
             "next_action": "wait",
             "next_action_label": "Wait for sync",
             "last_good_sync_at": _last_good_sync_at(latest_replay_payload=latest_replay_payload, bootstrap_payload=bootstrap_payload),
@@ -133,16 +164,22 @@ def build_source_recovery_payload(
                 "Current changes can still be reviewed.",
                 "Expect more changes to appear after the active sync completes.",
             ],
+            "recovery_step_codes": [
+                "sources.recovery.active_sync.step.review_current_changes",
+                "sources.recovery.active_sync.step.expect_more_after_completion",
+            ],
         }
 
     return {
         "trust_state": "trusted",
         "impact_summary": _trusted_summary(provider=provider),
+        "impact_code": f"sources.recovery.{provider or 'source'}.trusted",
         "next_action": "wait",
         "next_action_label": "No action needed",
         "last_good_sync_at": _last_good_sync_at(latest_replay_payload=latest_replay_payload, bootstrap_payload=bootstrap_payload),
         "degraded_since": None,
         "recovery_steps": [],
+        "recovery_step_codes": [],
     }
 
 

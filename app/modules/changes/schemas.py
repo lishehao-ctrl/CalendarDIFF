@@ -11,6 +11,7 @@ from app.modules.sources.schemas import SourceOperatorActionLiteral, SourceOpera
 
 DecisionSupportActionLiteral = Literal["approve", "reject", "edit", "review_carefully"]
 DecisionSupportRiskLiteral = Literal["low", "medium", "high"]
+DecisionSupportFactCodeLiteral = Literal["course", "item", "proposed_time", "primary_source", "time_change", "effective_time", "current_time"]
 
 
 class ChangeSourceRefResponse(BaseModel):
@@ -207,14 +208,30 @@ class ChangeDecisionOutcomePreviewResponse(BaseModel):
     edit: str
 
 
+class ChangeDecisionOutcomePreviewCodesResponse(BaseModel):
+    approve: str
+    reject: str
+    edit: str
+
+
+class ChangeDecisionFactItemResponse(BaseModel):
+    code: DecisionSupportFactCodeLiteral
+    value: str
+
+
 class ChangeDecisionSupportResponse(BaseModel):
     why_now: str
+    why_now_code: str
     suggested_action: DecisionSupportActionLiteral
     suggested_action_reason: str
+    suggested_action_reason_code: str
     risk_level: DecisionSupportRiskLiteral
     risk_summary: str
+    risk_summary_code: str
     key_facts: list[str] = Field(default_factory=list, min_length=0, max_length=4)
+    key_fact_items: list[ChangeDecisionFactItemResponse] = Field(default_factory=list, min_length=0, max_length=4)
     outcome_preview: ChangeDecisionOutcomePreviewResponse
+    outcome_preview_codes: ChangeDecisionOutcomePreviewCodesResponse
 
 
 class EvidencePreviewEvent(BaseModel):

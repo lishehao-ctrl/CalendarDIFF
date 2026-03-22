@@ -45,11 +45,13 @@ class SourceOperatorGuidanceResponse(BaseModel):
 class SourceRecoveryResponse(BaseModel):
     trust_state: SourceRecoveryTrustStateLiteral
     impact_summary: str
+    impact_code: str
     next_action: SourceRecoveryActionLiteral
     next_action_label: str
     last_good_sync_at: datetime | None = None
     degraded_since: datetime | None = None
     recovery_steps: list[str] = Field(default_factory=list)
+    recovery_step_codes: list[str] = Field(default_factory=list)
 
 
 class InputSourceCreateRequest(BaseModel):
