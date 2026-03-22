@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from app.db.models.input import InputSource, SourceKind
 from app.db.models.review import Change, ChangeOrigin, ChangeType, ReviewStatus
 from app.db.models.shared import User
-from app.modules.runtime.apply.change_evidence import freeze_observation_evidence
+from app.modules.common.change_evidence import freeze_observation_evidence
 
 
 def _create_user_with_source(db_session, *, provider: str, source_kind: SourceKind) -> tuple[User, InputSource]:

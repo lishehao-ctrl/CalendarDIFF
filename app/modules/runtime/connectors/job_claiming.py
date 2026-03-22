@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 from uuid import uuid4
 
-from sqlalchemy import exists, or_, select
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.core.config import get_settings
@@ -106,6 +106,13 @@ def requeue_stale_claimed_jobs(db: Session) -> int:
 def claim_jobs(db: Session, *, worker_id: str, batch_size: int = CONNECTOR_BATCH_SIZE) -> list[IngestJob]:
     now = utcnow()
     older = aliased(IngestJob)
+    older_is_claimable = or_(
+        older.status == IngestJobStatus.CLAIMED,
+        and_(
+            older.status == IngestJobStatus.PENDING,
+            or_(older.next_retry_at.is_(None), older.next_retry_at <= now),
+        ),
+    )
     rows = db.scalars(
         select(IngestJob)
         .where(
@@ -115,7 +122,7 @@ def claim_jobs(db: Session, *, worker_id: str, batch_size: int = CONNECTOR_BATCH
                 select(1).where(
                     older.source_id == IngestJob.source_id,
                     older.id < IngestJob.id,
-                    older.status.in_([IngestJobStatus.PENDING, IngestJobStatus.CLAIMED]),
+                    older_is_claimable,
                 )
             ),
         )

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from app.db.models.shared import CourseRawTypeSuggestion, User
 from app.modules.common.course_identity import parse_course_display
-from app.modules.runtime.apply.course_work_item_family_resolution import resolve_kind_resolution
+from app.modules.families.resolution_service import resolve_kind_resolution
 from app.modules.families.family_service import create_course_work_item_family
 from tests.support.payload_builders import build_course_parse, build_semantic_parse
 
@@ -29,8 +29,8 @@ def test_resolve_kind_resolution_prefers_new_family_over_inline_suggestion_gener
     )
 
     monkeypatch.setattr(
-        "app.modules.runtime.apply.course_work_item_family_resolution.list_course_raw_types",
-        lambda *args, **kwargs: [],
+        "app.modules.families.resolution_service.find_course_raw_type",
+        lambda *args, **kwargs: None,
     )
 
     result = resolve_kind_resolution(

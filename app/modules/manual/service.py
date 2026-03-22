@@ -11,7 +11,7 @@ from app.modules.common.course_identity import course_display_name
 from app.modules.common.event_display import user_facing_event_view
 from app.modules.common.payload_schemas import ApprovedSemanticPayload
 from app.modules.common.semantic_codec import approved_entity_to_semantic_payload, semantic_delta_seconds, semantic_payloads_equivalent
-from app.modules.runtime.apply.change_evidence import freeze_semantic_evidence
+from app.modules.common.change_evidence import freeze_semantic_evidence
 from app.modules.families.family_service import get_course_work_item_family, normalize_label_token
 from app.modules.manual.schemas import ManualEventWriteRequest
 from app.modules.changes.approved_entity_state import apply_approved_entity_state

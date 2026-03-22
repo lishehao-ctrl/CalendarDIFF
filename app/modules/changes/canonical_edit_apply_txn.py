@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.review import Change, ChangeOrigin, ChangeType, EventEntity, EventEntityLifecycle, ReviewStatus
-from app.modules.runtime.apply.change_evidence import freeze_semantic_evidence
+from app.modules.common.change_evidence import freeze_semantic_evidence
 from app.modules.common.semantic_codec import parse_semantic_payload, semantic_delta_seconds, semantic_payloads_equivalent
 from app.modules.changes.approved_entity_state import apply_approved_entity_state
 from app.modules.changes.canonical_edit_audit import emit_canonical_edit_audit_event, reject_conflicting_pending_changes

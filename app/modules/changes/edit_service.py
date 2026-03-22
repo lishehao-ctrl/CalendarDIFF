@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.db.models.review import Change, ChangeType, ReviewStatus
 from app.modules.common.event_display import user_facing_event_view
 from app.modules.common.family_labels import load_latest_family_labels, require_latest_family_label
-from app.modules.runtime.apply.change_evidence import freeze_semantic_evidence
+from app.modules.common.change_evidence import freeze_semantic_evidence
 from app.modules.common.semantic_codec import parse_semantic_payload, semantic_delta_seconds, semantic_payloads_equivalent
 from app.modules.changes.canonical_edit_builder import build_candidate_after, edit_payload_from_event_json
 from app.modules.changes.canonical_edit_errors import CanonicalEditNotFoundError, CanonicalEditValidationError

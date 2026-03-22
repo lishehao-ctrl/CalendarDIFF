@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import logging
 import re
 from datetime import date, datetime, timezone
 from collections.abc import Callable
@@ -36,6 +37,7 @@ _GMAIL_FETCH_PROGRESS_BATCH = 10
 _GMAIL_FETCH_TAIL_PROGRESS = 5
 _GMAIL_CONNECTOR_CHUNK_SIZE = 25
 _GMAIL_CONNECTOR_METADATA_MAX_WORKERS = 8
+logger = logging.getLogger(__name__)
 
 
 def fetch_gmail_changes(
@@ -215,6 +217,7 @@ def fetch_gmail_changes(
             term_window=term_window,
             timezone_name=timezone_name,
             known_course_tokens=known_course_tokens,
+            gmail_diff_message_count=total_messages,
         ):
             continue
 
@@ -253,6 +256,7 @@ def matches_gmail_source_filters(
     term_window: SourceMonitoringWindow | None = None,
     timezone_name: str | None = None,
     known_course_tokens: set[str] | None = None,
+    gmail_diff_message_count: int | None = None,
 ) -> bool:
     metadata_label_ids_raw = getattr(metadata, "label_ids", [])
     metadata_label_ids = [value for value in metadata_label_ids_raw if isinstance(value, str)]
@@ -309,8 +313,39 @@ def matches_gmail_source_filters(
         body_text=metadata_body_text,
         label_ids=metadata_label_ids,
         known_course_tokens=known_course_tokens,
+        diff_message_count=gmail_diff_message_count,
     )
-    return not should_enforce_gmail_second_filter(second_filter)
+    enforced = should_enforce_gmail_second_filter(second_filter)
+    _log_gmail_second_filter_decision(
+        metadata=metadata,
+        second_filter=second_filter,
+        enforced=enforced,
+    )
+    return not enforced
+
+
+def _log_gmail_second_filter_decision(
+    *,
+    metadata: Any,
+    second_filter,
+    enforced: bool,
+) -> None:
+    reason_code = str(getattr(second_filter, "reason_code", "") or "")
+    if reason_code in {"secondary_filter_off", "secondary_filter_stub"}:
+        return
+    logger.info(
+        "gmail second filter decision message_id=%s subject=%r from_header=%r stage=%s reason_code=%s risk_band=%s label=%s confidence=%s would_suppress=%s enforced=%s",
+        str(getattr(metadata, "message_id", "") or ""),
+        str(getattr(metadata, "subject", "") or "")[:180],
+        str(getattr(metadata, "from_header", "") or "")[:180],
+        str(getattr(second_filter, "stage", "") or ""),
+        reason_code,
+        str(getattr(second_filter, "risk_band", "") or ""),
+        str(getattr(second_filter, "label", "") or ""),
+        getattr(second_filter, "confidence", None),
+        bool(getattr(second_filter, "would_suppress", False)),
+        enforced,
+    )
 
 
 def _bootstrap_gmail_messages(
@@ -383,6 +418,7 @@ def _bootstrap_gmail_messages(
             term_window=term_window,
             timezone_name=timezone_name,
             known_course_tokens=known_course_tokens,
+            gmail_diff_message_count=total_messages,
         ):
             continue
         message_payloads.append(
@@ -628,6 +664,7 @@ def _continue_gmail_connector_fetch(
             term_window=term_window,
             timezone_name=timezone_name,
             known_course_tokens=known_course_tokens,
+            gmail_diff_message_count=total_messages,
         ):
             continue
         matched_messages.append(
@@ -733,7 +770,13 @@ def _fetch_gmail_message_metadata_rows(
         out: list[Any] = []
         total = total_override if total_override is not None else len(message_ids)
         for index, message_id in enumerate(message_ids, start=1):
-            out.append(client.get_message_metadata(access_token=access_token, message_id=message_id))
+            metadata = _fetch_single_gmail_message_metadata_or_skip(
+                client=client,
+                access_token=access_token,
+                message_id=message_id,
+            )
+            if metadata is not None:
+                out.append(metadata)
             absolute_current = current_offset + index
             if _should_emit_gmail_progress(current=absolute_current, total=total):
                 _emit_progress(
@@ -752,7 +795,12 @@ def _fetch_gmail_message_metadata_rows(
     completed = 0
     with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="gmail-fetch") as pool:
         future_map = {
-            pool.submit(client.get_message_metadata, access_token=access_token, message_id=message_id): index
+            pool.submit(
+                _fetch_single_gmail_message_metadata_or_skip,
+                client=client,
+                access_token=access_token,
+                message_id=message_id,
+            ): index
             for index, message_id in enumerate(message_ids)
         }
         for future in as_completed(future_map):
@@ -771,6 +819,26 @@ def _fetch_gmail_message_metadata_rows(
                     unit="emails",
                 )
     return [row for row in results if row is not None]
+
+
+def _fetch_single_gmail_message_metadata_or_skip(
+    *,
+    client: GmailClient,
+    access_token: str,
+    message_id: str,
+) -> Any | None:
+    try:
+        return client.get_message_metadata(access_token=access_token, message_id=message_id)
+    except GmailAPIError as exc:
+        if exc.status_code in {404, 410}:
+            logger.info(
+                "gmail metadata fetch skipped missing message_id=%s status_code=%s detail=%s",
+                message_id,
+                exc.status_code,
+                str(exc),
+            )
+            return None
+        raise
 
 
 def _should_emit_gmail_progress(*, current: int, total: int) -> bool:

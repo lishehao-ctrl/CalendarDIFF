@@ -133,3 +133,58 @@ def test_claim_jobs_respects_existing_claimed_head(db_session: Session) -> None:
     claimed = claim_jobs(db_session, worker_id="test-worker")
     claimed_request_ids = {row.request_id for row in claimed}
     assert claimed_request_ids == {"req-b-tail"}
+
+
+def test_claim_jobs_does_not_block_newer_source_job_on_sleeping_retry_head(db_session: Session) -> None:
+    user = User(email="fifo3@example.com", notify_email="fifo3@example.com")
+    db_session.add(user)
+    db_session.flush()
+
+    source = _seed_source(db_session, user_id=user.id, source_key="fifo-sleeping-head")
+    now = datetime.now(timezone.utc)
+
+    db_session.add(
+        SyncRequest(
+            request_id="req-old-sleeping",
+            source_id=source.id,
+            trigger_type=IngestTriggerType.MANUAL,
+            status=SyncRequestStatus.QUEUED,
+            idempotency_key="req-old-sleeping",
+            metadata_json={},
+        )
+    )
+    db_session.add(
+        IngestJob(
+            request_id="req-old-sleeping",
+            source_id=source.id,
+            status=IngestJobStatus.PENDING,
+            attempt=1,
+            next_retry_at=now + timedelta(minutes=10),
+            payload_json={},
+        )
+    )
+    db_session.add(
+        SyncRequest(
+            request_id="req-new-ready",
+            source_id=source.id,
+            trigger_type=IngestTriggerType.MANUAL,
+            status=SyncRequestStatus.QUEUED,
+            idempotency_key="req-new-ready",
+            metadata_json={},
+        )
+    )
+    db_session.add(
+        IngestJob(
+            request_id="req-new-ready",
+            source_id=source.id,
+            status=IngestJobStatus.PENDING,
+            attempt=0,
+            next_retry_at=now - timedelta(seconds=1),
+            payload_json={},
+        )
+    )
+    db_session.commit()
+
+    claimed = claim_jobs(db_session, worker_id="test-worker")
+    claimed_request_ids = {row.request_id for row in claimed}
+    assert claimed_request_ids == {"req-new-ready"}

@@ -61,7 +61,7 @@ def test_parse_with_llm_processes_gmail_messages(monkeypatch) -> None:
 
 def test_parse_with_llm_processes_gmail_messages_with_controlled_parallelism(monkeypatch) -> None:
     observed: list[str] = []
-    monkeypatch.setattr(pipeline, "get_settings", lambda: SimpleNamespace(llm_worker_concurrency=8))
+    monkeypatch.setattr(pipeline, "gmail_parse_worker_count", lambda _count: 4)
     monkeypatch.setattr("app.db.session.get_session_factory", lambda: object())
     monkeypatch.setattr(
         pipeline,

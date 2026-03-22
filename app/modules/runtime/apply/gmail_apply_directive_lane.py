@@ -21,7 +21,7 @@ from app.modules.runtime.apply.gmail_directive_selector import entity_matches_di
 from app.modules.runtime.apply.payload_contracts import PayloadContractError, validate_gmail_directive_payload
 from app.modules.runtime.apply.pending_change_store import upsert_pending_change
 from app.modules.runtime.apply.product_scope import is_monitored_assignment_or_exam_directive
-from app.modules.runtime.apply.change_evidence import freeze_semantic_evidence
+from app.modules.common.change_evidence import freeze_semantic_evidence
 from app.modules.runtime.apply.unresolved_store import resolve_active_unresolved_records
 
 
