@@ -63,6 +63,21 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
       syncStatusesBySource: syncDetail ? { [source.source_id]: syncDetail } : {},
     })[0];
   }, [basePath, source, syncDetail]);
+  const needsReconnect = Boolean(
+    source &&
+      source.is_active &&
+      (source.oauth_connection_status === "not_connected" || source.source_recovery?.next_action === "reconnect_gmail"),
+  );
+  const connectionBadgeTone = !source ? "info" : !source.is_active ? "info" : needsReconnect ? "error" : "approved";
+  const connectionBadgeLabel = !source ? "Not connected" : !source.is_active ? "Archived" : needsReconnect ? "Reconnect required" : "Connected";
+  const currentMailboxStatus = !source ? "Not connected" : !source.is_active ? "Archived" : needsReconnect ? "Reconnect required" : "Connected";
+  const connectionSummary = !source
+    ? "No Gmail mailbox is connected yet."
+    : !source.is_active
+      ? "Reconnect this archived mailbox before trusting Gmail intake."
+      : needsReconnect
+        ? "Mailbox access is disconnected until Gmail is reconnected."
+        : "Mailbox is connected.";
 
   async function connect() {
     setConnecting(true);
@@ -130,7 +145,7 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
                 <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Source posture</p>
                 <h4 className="mt-2 text-lg font-semibold text-ink">Bootstrap vs replay</h4>
               </div>
-              <Badge tone={source?.is_active ? "approved" : "info"}>{source?.is_active ? "Connected" : "Archived"}</Badge>
+              <Badge tone={connectionBadgeTone}>{connectionBadgeLabel}</Badge>
             </div>
             <SourceObservabilitySections observability={observability} className="mt-4" />
           </Card>
@@ -148,12 +163,13 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
               </div>
             </div>
             <div className="mt-5 rounded-[1.15rem] border border-line/80 bg-white/70 p-4 text-sm text-[#314051]">
-              <p>Status: {source ? (source.is_active ? "Connected" : "Archived") : "Not connected"}</p>
+              <p>Status: {currentMailboxStatus}</p>
               <p className="mt-2">Source: {source ? `#${source.source_id}` : "Will be created on first connect"}</p>
               <p className="mt-2">Label: INBOX</p>
               {source?.oauth_account_email ? <p className="mt-2">Account: {source.oauth_account_email}</p> : null}
             </div>
             <SourceSyncProgress className="mt-4" progress={source?.sync_progress} stableLabel="Syncing Gmail source" />
+            <p className="mt-4 text-sm leading-6 text-[#596270]">{connectionSummary}</p>
             {source ? (
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button variant="ghost" onClick={() => void archive()} disabled={disconnecting}>
