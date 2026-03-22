@@ -9,6 +9,7 @@ from app.db.models.notify import Notification, NotificationChannel, Notification
 from app.db.models.review import Change, ChangeIntakePhase, ChangeReviewBucket, ChangeSourceRef, ReviewStatus
 from app.modules.common.event_display import event_display_dict, user_facing_event_view
 from app.modules.common.family_labels import load_latest_family_labels, require_latest_family_label
+from app.modules.changes.decision_support import build_change_decision_support
 from app.modules.changes.change_projection import build_change_projection_context
 
 
@@ -105,6 +106,11 @@ def _serialize_rows(
         after_payload = change.after_semantic_json if isinstance(change.after_semantic_json, dict) else None
         notification_state, deliver_after = _read_notification_state(notification, now=now)
         change_summary = projection.change_summary(change).model_dump(mode="json")
+        decision_support = build_change_decision_support(
+            change=change,
+            primary_source=primary_source,
+            change_summary=change_summary,
+        )
         before_family_name_override = _resolve_family_name_override(
             payload=before_payload,
             latest_family_labels=latest_family_labels,
@@ -155,6 +161,7 @@ def _serialize_rows(
                 "notification_state": notification_state,
                 "deliver_after": deliver_after,
                 "change_summary": change_summary,
+                "decision_support": decision_support,
             }
         )
 

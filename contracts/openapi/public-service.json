@@ -133,8 +133,7 @@
               "needs_user",
               "needs_canvas_ics",
               "needs_gmail_or_skip",
-              "needs_term_binding",
-              "needs_term_renewal",
+              "needs_monitoring_window",
               "ready"
             ],
             "title": "Onboarding Stage",
@@ -334,6 +333,29 @@
         "title": "ChangeBatchDecisionResponse",
         "type": "object"
       },
+      "ChangeDecisionOutcomePreviewResponse": {
+        "properties": {
+          "approve": {
+            "title": "Approve",
+            "type": "string"
+          },
+          "edit": {
+            "title": "Edit",
+            "type": "string"
+          },
+          "reject": {
+            "title": "Reject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approve",
+          "reject",
+          "edit"
+        ],
+        "title": "ChangeDecisionOutcomePreviewResponse",
+        "type": "object"
+      },
       "ChangeDecisionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -415,6 +437,63 @@
           "idempotent"
         ],
         "title": "ChangeDecisionResponse",
+        "type": "object"
+      },
+      "ChangeDecisionSupportResponse": {
+        "properties": {
+          "key_facts": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 0,
+            "title": "Key Facts",
+            "type": "array"
+          },
+          "outcome_preview": {
+            "$ref": "#/components/schemas/ChangeDecisionOutcomePreviewResponse"
+          },
+          "risk_level": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Risk Level",
+            "type": "string"
+          },
+          "risk_summary": {
+            "title": "Risk Summary",
+            "type": "string"
+          },
+          "suggested_action": {
+            "enum": [
+              "approve",
+              "reject",
+              "edit",
+              "review_carefully"
+            ],
+            "title": "Suggested Action",
+            "type": "string"
+          },
+          "suggested_action_reason": {
+            "title": "Suggested Action Reason",
+            "type": "string"
+          },
+          "why_now": {
+            "title": "Why Now",
+            "type": "string"
+          }
+        },
+        "required": [
+          "why_now",
+          "suggested_action",
+          "suggested_action_reason",
+          "risk_level",
+          "risk_summary",
+          "outcome_preview"
+        ],
+        "title": "ChangeDecisionSupportResponse",
         "type": "object"
       },
       "ChangeEditApplyResponse": {
@@ -840,6 +919,16 @@
             "title": "Change Type",
             "type": "string"
           },
+          "decision_support": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChangeDecisionSupportResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "deliver_after": {
             "anyOf": [
               {
@@ -864,6 +953,15 @@
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "intake_phase": {
+            "default": "replay",
+            "enum": [
+              "baseline",
+              "replay"
+            ],
+            "title": "Intake Phase",
+            "type": "string"
           },
           "notification_state": {
             "anyOf": [
@@ -914,6 +1012,15 @@
             },
             "title": "Proposal Sources",
             "type": "array"
+          },
+          "review_bucket": {
+            "default": "changes",
+            "enum": [
+              "initial_review",
+              "changes"
+            ],
+            "title": "Review Bucket",
+            "type": "string"
           },
           "review_note": {
             "anyOf": [
@@ -1343,6 +1450,11 @@
       },
       "ChangesWorkbenchSummaryResponse": {
         "properties": {
+          "baseline_review_pending": {
+            "default": 0,
+            "title": "Baseline Review Pending",
+            "type": "integer"
+          },
           "changes_pending": {
             "title": "Changes Pending",
             "type": "integer"
@@ -1367,6 +1479,7 @@
               {
                 "enum": [
                   "sources",
+                  "initial_review",
                   "changes",
                   "families"
                 ],
@@ -1384,12 +1497,16 @@
           },
           "sources": {
             "$ref": "#/components/schemas/ChangesWorkbenchSourcesResponse"
+          },
+          "workspace_posture": {
+            "$ref": "#/components/schemas/WorkspacePostureResponse"
           }
         },
         "required": [
           "changes_pending",
           "recommended_lane_reason_code",
           "recommended_action_reason",
+          "workspace_posture",
           "sources",
           "families",
           "manual",
@@ -2551,6 +2668,33 @@
             "title": "Source Kind",
             "type": "string"
           },
+          "source_product_phase": {
+            "anyOf": [
+              {
+                "enum": [
+                  "importing_baseline",
+                  "needs_initial_review",
+                  "monitoring_live",
+                  "needs_attention"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Product Phase"
+          },
+          "source_recovery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceRecoveryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "sync_progress": {
             "anyOf": [
               {
@@ -3412,6 +3556,35 @@
         "title": "OnboardingGmailSkipRequest",
         "type": "object"
       },
+      "OnboardingMonitoringWindowRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "monitor_since": {
+            "format": "date",
+            "title": "Monitor Since",
+            "type": "string"
+          }
+        },
+        "required": [
+          "monitor_since"
+        ],
+        "title": "OnboardingMonitoringWindowRequest",
+        "type": "object"
+      },
+      "OnboardingMonitoringWindowResponse": {
+        "properties": {
+          "monitor_since": {
+            "format": "date",
+            "title": "Monitor Since",
+            "type": "string"
+          }
+        },
+        "required": [
+          "monitor_since"
+        ],
+        "title": "OnboardingMonitoringWindowResponse",
+        "type": "object"
+      },
       "OnboardingOAuthSessionCreateResponse": {
         "properties": {
           "authorization_url": {
@@ -3476,8 +3649,7 @@
               "needs_user",
               "needs_canvas_ics",
               "needs_gmail_or_skip",
-              "needs_term_binding",
-              "needs_term_renewal",
+              "needs_monitoring_window",
               "ready"
             ],
             "title": "Stage",
@@ -3507,9 +3679,19 @@
             "title": "Connected",
             "type": "boolean"
           },
-          "has_term_binding": {
-            "title": "Has Term Binding",
+          "has_monitoring_window": {
+            "title": "Has Monitoring Window",
             "type": "boolean"
+          },
+          "monitoring_window": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OnboardingMonitoringWindowResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "oauth_account_email": {
             "anyOf": [
@@ -3545,23 +3727,13 @@
           "source_id": {
             "title": "Source Id",
             "type": "integer"
-          },
-          "term_binding": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OnboardingTermBindingResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
           }
         },
         "required": [
           "source_id",
           "provider",
           "connected",
-          "has_term_binding",
+          "has_monitoring_window",
           "runtime_state"
         ],
         "title": "OnboardingSourceResponse",
@@ -3609,6 +3781,16 @@
             "title": "Message",
             "type": "string"
           },
+          "monitoring_window": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OnboardingMonitoringWindowResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "registered_user_id": {
             "anyOf": [
               {
@@ -3635,22 +3817,11 @@
               "needs_user",
               "needs_canvas_ics",
               "needs_gmail_or_skip",
-              "needs_term_binding",
-              "needs_term_renewal",
+              "needs_monitoring_window",
               "ready"
             ],
             "title": "Stage",
             "type": "string"
-          },
-          "term_binding": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OnboardingTermBindingResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
           }
         },
         "required": [
@@ -3658,64 +3829,6 @@
           "message"
         ],
         "title": "OnboardingStatusResponse",
-        "type": "object"
-      },
-      "OnboardingTermBindingRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "term_from": {
-            "format": "date",
-            "title": "Term From",
-            "type": "string"
-          },
-          "term_key": {
-            "anyOf": [
-              {
-                "maxLength": 64,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Term Key"
-          },
-          "term_to": {
-            "format": "date",
-            "title": "Term To",
-            "type": "string"
-          }
-        },
-        "required": [
-          "term_from",
-          "term_to"
-        ],
-        "title": "OnboardingTermBindingRequest",
-        "type": "object"
-      },
-      "OnboardingTermBindingResponse": {
-        "properties": {
-          "term_from": {
-            "format": "date",
-            "title": "Term From",
-            "type": "string"
-          },
-          "term_key": {
-            "title": "Term Key",
-            "type": "string"
-          },
-          "term_to": {
-            "format": "date",
-            "title": "Term To",
-            "type": "string"
-          }
-        },
-        "required": [
-          "term_key",
-          "term_from",
-          "term_to"
-        ],
-        "title": "OnboardingTermBindingResponse",
         "type": "object"
       },
       "RawTypeSuggestionDecisionRequest": {
@@ -4211,6 +4324,45 @@
         "title": "SemanticEventDraft",
         "type": "object"
       },
+      "SourceBootstrapSummaryResponse": {
+        "properties": {
+          "conflict_count": {
+            "title": "Conflict Count",
+            "type": "integer"
+          },
+          "ignored_count": {
+            "title": "Ignored Count",
+            "type": "integer"
+          },
+          "imported_count": {
+            "title": "Imported Count",
+            "type": "integer"
+          },
+          "review_required_count": {
+            "title": "Review Required Count",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "idle",
+              "running",
+              "review_required",
+              "completed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "imported_count",
+          "review_required_count",
+          "ignored_count",
+          "conflict_count",
+          "state"
+        ],
+        "title": "SourceBootstrapSummaryResponse",
+        "type": "object"
+      },
       "SourceHealthSummaryResponse": {
         "properties": {
           "affected_provider": {
@@ -4289,6 +4441,16 @@
               }
             ]
           },
+          "bootstrap_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceBootstrapSummaryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "latest_replay": {
             "anyOf": [
               {
@@ -4312,6 +4474,33 @@
           "source_id": {
             "title": "Source Id",
             "type": "integer"
+          },
+          "source_product_phase": {
+            "anyOf": [
+              {
+                "enum": [
+                  "importing_baseline",
+                  "needs_initial_review",
+                  "monitoring_live",
+                  "needs_attention"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Product Phase"
+          },
+          "source_recovery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceRecoveryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -4565,6 +4754,77 @@
           "message"
         ],
         "title": "SourceOperatorGuidanceResponse",
+        "type": "object"
+      },
+      "SourceRecoveryResponse": {
+        "properties": {
+          "degraded_since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Degraded Since"
+          },
+          "impact_summary": {
+            "title": "Impact Summary",
+            "type": "string"
+          },
+          "last_good_sync_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Good Sync At"
+          },
+          "next_action": {
+            "enum": [
+              "reconnect_gmail",
+              "update_ics",
+              "retry_sync",
+              "wait"
+            ],
+            "title": "Next Action",
+            "type": "string"
+          },
+          "next_action_label": {
+            "title": "Next Action Label",
+            "type": "string"
+          },
+          "recovery_steps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recovery Steps",
+            "type": "array"
+          },
+          "trust_state": {
+            "enum": [
+              "trusted",
+              "stale",
+              "partial",
+              "blocked"
+            ],
+            "title": "Trust State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trust_state",
+          "impact_summary",
+          "next_action",
+          "next_action_label"
+        ],
+        "title": "SourceRecoveryResponse",
         "type": "object"
       },
       "SourceSyncHistoryResponse": {
@@ -5110,6 +5370,135 @@
         ],
         "title": "WebhookEnqueueResponse",
         "type": "object"
+      },
+      "WorkspacePostureInitialReviewResponse": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "completion_percent": {
+            "title": "Completion Percent",
+            "type": "integer"
+          },
+          "pending_count": {
+            "title": "Pending Count",
+            "type": "integer"
+          },
+          "reviewed_count": {
+            "title": "Reviewed Count",
+            "type": "integer"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pending_count",
+          "reviewed_count",
+          "total_count",
+          "completion_percent"
+        ],
+        "title": "WorkspacePostureInitialReviewResponse",
+        "type": "object"
+      },
+      "WorkspacePostureMonitoringResponse": {
+        "properties": {
+          "active_source_count": {
+            "default": 0,
+            "title": "Active Source Count",
+            "type": "integer"
+          },
+          "live_since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Since"
+          },
+          "replay_active": {
+            "default": false,
+            "title": "Replay Active",
+            "type": "boolean"
+          }
+        },
+        "title": "WorkspacePostureMonitoringResponse",
+        "type": "object"
+      },
+      "WorkspacePostureNextActionResponse": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "lane": {
+            "enum": [
+              "sources",
+              "initial_review",
+              "changes",
+              "families",
+              "manual"
+            ],
+            "title": "Lane",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lane",
+          "label",
+          "reason"
+        ],
+        "title": "WorkspacePostureNextActionResponse",
+        "type": "object"
+      },
+      "WorkspacePostureResponse": {
+        "properties": {
+          "initial_review": {
+            "$ref": "#/components/schemas/WorkspacePostureInitialReviewResponse"
+          },
+          "monitoring": {
+            "$ref": "#/components/schemas/WorkspacePostureMonitoringResponse"
+          },
+          "next_action": {
+            "$ref": "#/components/schemas/WorkspacePostureNextActionResponse"
+          },
+          "phase": {
+            "enum": [
+              "baseline_import",
+              "initial_review",
+              "monitoring_live",
+              "attention_required"
+            ],
+            "title": "Phase",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase",
+          "initial_review",
+          "monitoring",
+          "next_action"
+        ],
+        "title": "WorkspacePostureResponse",
+        "type": "object"
       }
     }
   },
@@ -5346,6 +5735,26 @@
             "schema": {
               "default": "pending",
               "title": "Review Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "review_bucket",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "title": "Review Bucket",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "intake_phase",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "title": "Intake Phase",
               "type": "string"
             }
           },
@@ -7383,6 +7792,65 @@
         ]
       }
     },
+    "/onboarding/monitoring-window": {
+      "post": {
+        "operationId": "save_monitoring_window_onboarding_monitoring_window_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingMonitoringWindowRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Monitoring Window",
+        "tags": [
+          "onboarding"
+        ]
+      }
+    },
     "/onboarding/registrations": {
       "post": {
         "operationId": "create_registration_onboarding_registrations_post",
@@ -7486,65 +7954,6 @@
           }
         },
         "summary": "Get Status",
-        "tags": [
-          "onboarding"
-        ]
-      }
-    },
-    "/onboarding/term-binding": {
-      "post": {
-        "operationId": "save_term_binding_onboarding_term_binding_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-API-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/OnboardingTermBindingRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OnboardingStatusResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Save Term Binding",
         "tags": [
           "onboarding"
         ]
@@ -7715,7 +8124,7 @@
         },
         "summary": "List Sources",
         "tags": [
-          "input-control-plane"
+          "sources"
         ]
       },
       "post": {
@@ -7772,7 +8181,7 @@
         },
         "summary": "Create Source",
         "tags": [
-          "input-control-plane"
+          "sources"
         ]
       }
     },
@@ -7834,7 +8243,7 @@
         },
         "summary": "Delete Source",
         "tags": [
-          "input-control-plane"
+          "sources"
         ]
       },
       "patch": {
@@ -7900,7 +8309,7 @@
         },
         "summary": "Patch Source",
         "tags": [
-          "input-control-plane"
+          "sources"
         ]
       }
     },
@@ -7968,7 +8377,7 @@
         },
         "summary": "Create Oauth Session",
         "tags": [
-          "input-control-plane"
+          "sources"
         ]
       }
     },
@@ -8026,7 +8435,7 @@
         },
         "summary": "Get Source Observability",
         "tags": [
-          "input-control-plane"
+          "sources"
         ]
       }
     },
@@ -8096,7 +8505,7 @@
         },
         "summary": "Get Source Sync History",
         "tags": [
-          "input-control-plane"
+          "sources"
         ]
       }
     },
@@ -8180,7 +8589,7 @@
         },
         "summary": "Create Sync Request",
         "tags": [
-          "input-control-plane"
+          "sources"
         ]
       }
     },
@@ -8263,7 +8672,7 @@
         },
         "summary": "Webhook Ingest",
         "tags": [
-          "input-control-plane"
+          "sources"
         ]
       }
     },
@@ -8321,7 +8730,7 @@
         },
         "summary": "Get Sync Request",
         "tags": [
-          "input-control-plane"
+          "sources"
         ]
       }
     }

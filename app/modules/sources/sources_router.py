@@ -18,7 +18,6 @@ from app.modules.sources.schemas import (
 from app.modules.sources.source_runtime_state import derive_source_runtime_state, derive_source_runtime_states
 from app.modules.sources.source_serializers import serialize_source
 from app.modules.sources.status_projection import (
-    build_source_operator_guidance_payload,
     build_source_observability_payload,
     build_source_sync_history_payload,
     build_sync_progress_payload,
@@ -88,6 +87,7 @@ def list_sources(
             if active_sync is not None
             else None
         )
+        observability = build_source_observability_payload(db, source_id=row.id)
         payloads.append(
             InputSourceResponse.model_validate(
                 serialize_source(
@@ -95,23 +95,9 @@ def list_sources(
                     runtime_state=projections[row.id],
                     active_request_id=active_sync.request_id if active_sync is not None else None,
                     sync_progress=sync_progress,
-                    operator_guidance=build_source_operator_guidance_payload(
-                        active_payload=(
-                            {
-                                "request_id": active_sync.request_id,
-                                "status": active_sync.status.value,
-                                "stage": active_sync.stage.value if getattr(active_sync, "stage", None) is not None else None,
-                                "substage": active_sync.substage,
-                                "stage_updated_at": active_sync.stage_updated_at,
-                                "updated_at": active_sync.updated_at,
-                                "progress": sync_progress,
-                            }
-                            if active_sync is not None
-                            else None
-                        ),
-                        latest_replay_payload=None,
-                        bootstrap_payload=None,
-                    ),
+                    operator_guidance=observability.get("operator_guidance"),
+                    source_product_phase=observability.get("source_product_phase"),
+                    source_recovery=observability.get("source_recovery"),
                 )
             )
         )

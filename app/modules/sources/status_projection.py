@@ -12,7 +12,7 @@ from app.db.models.runtime import (
     IngestResult,
     IngestUnresolvedRecord,
 )
-from app.db.models.input import IngestTriggerType, SyncRequest, SyncRequestStage, SyncRequestStatus
+from app.db.models.input import IngestTriggerType, InputSource, SyncRequest, SyncRequestStage, SyncRequestStatus
 from app.db.models.review import (
     Change,
     ChangeIntakePhase,
@@ -22,6 +22,9 @@ from app.db.models.review import (
     ReviewStatus,
 )
 from app.modules.llm_gateway.usage_tracking import LLM_USAGE_SUMMARY_KEY, present_llm_usage_summary
+from app.modules.sources.recovery_projection import build_source_product_phase, build_source_recovery_payload
+from app.modules.sources.source_runtime_state import derive_source_runtime_state
+from app.modules.sources.source_serializers import serialize_source
 
 INFLIGHT_SYNC_STATUSES = (SyncRequestStatus.PENDING, SyncRequestStatus.QUEUED, SyncRequestStatus.RUNNING)
 _DISPLAY_STATUS_PRIORITY = {
@@ -76,6 +79,8 @@ def build_sync_request_status_payload(db: Session, *, sync_request: SyncRequest)
 
 
 def build_source_observability_payload(db: Session, *, source_id: int) -> dict:
+    source = db.scalar(select(InputSource).where(InputSource.id == source_id).limit(1))
+    source_context = _build_source_context(db, source=source)
     sync_rows = list(
         db.scalars(
             select(SyncRequest)
@@ -84,27 +89,44 @@ def build_source_observability_payload(db: Session, *, source_id: int) -> dict:
         ).all()
     )
     if not sync_rows:
+        bootstrap_summary = {
+            "imported_count": 0,
+            "review_required_count": 0,
+            "ignored_count": 0,
+            "conflict_count": 0,
+            "state": "idle",
+        }
+        operator_guidance = {
+            "recommended_action": "continue_review",
+            "severity": "info",
+            "reason_code": "source_idle",
+            "message": "No active sync is running. Continue reviewing changes.",
+            "related_request_id": None,
+            "progress_age_seconds": None,
+        }
+        source_recovery = build_source_recovery_payload(
+            provider=str(source_context.get("provider") or ""),
+            oauth_connection_status=source_context.get("oauth_connection_status"),
+            runtime_state=source_context.get("runtime_state"),
+            operator_guidance=operator_guidance,
+            bootstrap_summary=bootstrap_summary,
+            active_payload=None,
+            latest_replay_payload=None,
+            bootstrap_payload=None,
+        )
         return {
             "source_id": source_id,
             "active_request_id": None,
             "bootstrap": None,
-            "bootstrap_summary": {
-                "imported_count": 0,
-                "review_required_count": 0,
-                "ignored_count": 0,
-                "conflict_count": 0,
-                "state": "idle",
-            },
+            "bootstrap_summary": bootstrap_summary,
             "latest_replay": None,
             "active": None,
-            "operator_guidance": {
-                "recommended_action": "continue_review",
-                "severity": "info",
-                "reason_code": "source_idle",
-                "message": "No active sync is running. Continue reviewing changes.",
-                "related_request_id": None,
-                "progress_age_seconds": None,
-            },
+            "operator_guidance": operator_guidance,
+            "source_product_phase": build_source_product_phase(
+                bootstrap_summary=bootstrap_summary,
+                source_recovery=source_recovery,
+            ),
+            "source_recovery": source_recovery,
         }
 
     bootstrap_row = _resolve_bootstrap_sync_row(db, sync_rows=sync_rows)
@@ -118,24 +140,41 @@ def build_source_observability_payload(db: Session, *, source_id: int) -> dict:
         row=active_row,
         phase=_derive_phase_for_row(row=active_row, bootstrap_request_id=bootstrap_row.request_id),
     )
+    bootstrap_summary = _build_source_bootstrap_summary_payload(
+        db,
+        source_id=source_id,
+        bootstrap_row=bootstrap_row,
+        bootstrap_payload=bootstrap_payload,
+        active_payload=active_payload,
+    )
+    operator_guidance = build_source_operator_guidance_payload(
+        active_payload=active_payload,
+        latest_replay_payload=latest_replay_payload,
+        bootstrap_payload=bootstrap_payload,
+    )
+    source_recovery = build_source_recovery_payload(
+        provider=str(source_context.get("provider") or ""),
+        oauth_connection_status=source_context.get("oauth_connection_status"),
+        runtime_state=source_context.get("runtime_state"),
+        operator_guidance=operator_guidance,
+        bootstrap_summary=bootstrap_summary,
+        active_payload=active_payload,
+        latest_replay_payload=latest_replay_payload,
+        bootstrap_payload=bootstrap_payload,
+    )
     return {
         "source_id": source_id,
         "active_request_id": active_row.request_id if active_row is not None else None,
         "bootstrap": bootstrap_payload,
-        "bootstrap_summary": _build_source_bootstrap_summary_payload(
-            db,
-            source_id=source_id,
-            bootstrap_row=bootstrap_row,
-            bootstrap_payload=bootstrap_payload,
-            active_payload=active_payload,
-        ),
+        "bootstrap_summary": bootstrap_summary,
         "latest_replay": latest_replay_payload,
         "active": active_payload,
-        "operator_guidance": build_source_operator_guidance_payload(
-            active_payload=active_payload,
-            latest_replay_payload=latest_replay_payload,
-            bootstrap_payload=bootstrap_payload,
+        "operator_guidance": operator_guidance,
+        "source_product_phase": build_source_product_phase(
+            bootstrap_summary=bootstrap_summary,
+            source_recovery=source_recovery,
         ),
+        "source_recovery": source_recovery,
     }
 
 
@@ -770,6 +809,18 @@ def _progress_age_seconds(updated_at_raw: object) -> int | None:
         else:
             updated_at = updated_at.astimezone(UTC)
     return int(max((datetime.now(UTC) - updated_at).total_seconds(), 0))
+
+
+def _build_source_context(db: Session, *, source: InputSource | None) -> dict:
+    if source is None:
+        return {"provider": "", "oauth_connection_status": None, "runtime_state": None}
+    runtime_state = derive_source_runtime_state(db, source=source)
+    payload = serialize_source(source, runtime_state=runtime_state)
+    return {
+        "provider": payload.get("provider"),
+        "oauth_connection_status": payload.get("oauth_connection_status"),
+        "runtime_state": payload.get("runtime_state"),
+    }
 
 
 def _derive_phase_for_row(*, row: SyncRequest | None, bootstrap_request_id: str) -> str | None:

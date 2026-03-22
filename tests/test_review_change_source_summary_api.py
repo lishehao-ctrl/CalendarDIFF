@@ -121,6 +121,9 @@ def test_review_changes_created_exposes_primary_source_summary(client, db_sessio
     assert payload["change_summary"]["new"]["source_kind"] == "calendar"
     assert payload["change_summary"]["new"]["source_observed_at"] == "2026-03-07T08:15:00Z"
     assert payload["after_display"]["family_name"] == "Exam"
+    assert payload["decision_support"]["suggested_action"] == "approve"
+    assert payload["decision_support"]["risk_level"] == "medium"
+    assert payload["decision_support"]["outcome_preview"]["approve"] == "Create a new live item in the workspace."
 
 
 def test_review_changes_removed_uses_persisted_source_refs_for_summary(client, db_session, auth_headers) -> None:
@@ -212,3 +215,6 @@ def test_review_changes_removed_uses_persisted_source_refs_for_summary(client, d
     assert payload["change_summary"]["old"]["source_kind"] == "calendar"
     assert payload["change_summary"]["old"]["source_observed_at"] == "2026-03-07T08:15:00Z"
     assert payload["change_summary"]["new"]["source_label"] is None
+    assert payload["decision_support"]["suggested_action"] == "review_carefully"
+    assert payload["decision_support"]["risk_level"] == "high"
+    assert payload["decision_support"]["outcome_preview"]["reject"] == "Keep the current live item unchanged."

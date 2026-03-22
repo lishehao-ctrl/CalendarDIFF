@@ -119,6 +119,9 @@ def test_sources_api_exposes_gmail_sync_progress(input_client, db_session, authe
     assert payload["sync_progress"]["total"] == 100
     assert payload["sync_progress"]["unit"] == "emails"
     assert payload["operator_guidance"]["recommended_action"] == "continue_review_with_caution"
+    assert payload["source_product_phase"] == "importing_baseline"
+    assert payload["source_recovery"]["trust_state"] == "blocked"
+    assert payload["source_recovery"]["next_action"] == "reconnect_gmail"
 
 
 def test_sync_request_status_exposes_calendar_component_progress(input_client, db_session, authenticate_client) -> None:
@@ -327,6 +330,9 @@ def test_source_observability_exposes_bootstrap_summary(input_client, db_session
         "conflict_count": 1,
         "state": "review_required",
     }
+    assert payload["source_product_phase"] == "needs_initial_review"
+    assert payload["source_recovery"]["trust_state"] == "partial"
+    assert payload["source_recovery"]["next_action_label"] == "Finish Initial Review"
 
 
 def test_sync_request_status_exposes_llm_usage_summary_and_elapsed_ms(input_client, db_session, authenticate_client) -> None:

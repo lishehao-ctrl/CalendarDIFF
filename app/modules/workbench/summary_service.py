@@ -6,8 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource
-from app.db.models.review import Change, ChangeReviewBucket, ReviewStatus
-from app.db.models.review import EventEntity, EventEntityLifecycle
+from app.db.models.review import Change, ChangeReviewBucket, EventEntity, EventEntityLifecycle, ReviewStatus
 from app.db.models.shared import (
     CourseRawTypeSuggestion,
     CourseRawTypeSuggestionStatus,
@@ -15,14 +14,17 @@ from app.db.models.shared import (
     CourseWorkItemRawType,
     User,
 )
-from app.modules.sources.sources_service import list_input_sources
 from app.modules.sources.source_runtime_state import derive_source_runtime_states
+from app.modules.sources.source_serializers import serialize_source
+from app.modules.sources.sources_service import list_input_sources
 from app.modules.sources.status_projection import (
     build_source_observability_payload,
     build_source_operator_guidance_payload,
     build_sync_progress_payload,
     get_display_sync_request_for_source,
 )
+from app.modules.workbench.workspace_posture import build_workspace_posture, compute_monitoring_live_since
+
 
 def get_changes_workbench_summary(
     db: Session,
@@ -30,6 +32,15 @@ def get_changes_workbench_summary(
     user_id: int,
 ) -> dict:
     user = db.scalar(select(User).where(User.id == user_id).limit(1))
+    baseline_review_total = int(
+        db.scalar(
+            select(func.count(Change.id)).where(
+                Change.user_id == user_id,
+                Change.review_bucket == ChangeReviewBucket.INITIAL_REVIEW,
+            )
+        )
+        or 0
+    )
     changes_pending = int(
         db.scalar(
             select(func.count(Change.id)).where(
@@ -49,6 +60,18 @@ def get_changes_workbench_summary(
             )
         )
         or 0
+    )
+    baseline_review_reviewed = max(baseline_review_total - baseline_review_pending, 0)
+    baseline_review_completed_at = (
+        db.scalar(
+            select(func.max(Change.reviewed_at)).where(
+                Change.user_id == user_id,
+                Change.review_bucket == ChangeReviewBucket.INITIAL_REVIEW,
+                Change.review_status.in_((ReviewStatus.APPROVED, ReviewStatus.REJECTED)),
+            )
+        )
+        if baseline_review_pending == 0 and baseline_review_total > 0
+        else None
     )
     pending_raw_type_suggestions = int(
         db.scalar(
@@ -80,12 +103,35 @@ def get_changes_workbench_summary(
         )
         or 0
     )
-    sources_summary = _build_sources_workbench_summary(db=db, user_id=user_id)
+    sources_summary, source_observability_rows = _build_sources_workbench_summary(db=db, user_id=user_id)
     recommended_lane, recommended_lane_reason_code, recommended_action_reason = _recommend_workbench_lane(
         baseline_review_pending=baseline_review_pending,
         changes_pending=changes_pending,
         families_attention_count=families_attention_count,
         sources_summary=sources_summary,
+    )
+    workspace_posture = build_workspace_posture(
+        baseline_review_pending=baseline_review_pending,
+        baseline_review_reviewed=baseline_review_reviewed,
+        baseline_review_total=baseline_review_total,
+        baseline_review_completed_at=baseline_review_completed_at,
+        changes_pending=changes_pending,
+        families_attention_count=families_attention_count,
+        manual_active_count=manual_active_count,
+        sources_summary=sources_summary,
+        source_product_phases=[
+            str(row.get("source_product_phase") or "")
+            for row in source_observability_rows
+            if isinstance(row, dict)
+        ],
+        monitoring_live_since=compute_monitoring_live_since(source_observability_rows=source_observability_rows),
+        replay_active=any(
+            isinstance(row, dict)
+            and isinstance(row.get("active"), dict)
+            and str((row.get("active") or {}).get("phase") or "") == "replay"
+            and str((row.get("active") or {}).get("status") or "") in {"PENDING", "QUEUED", "RUNNING"}
+            for row in source_observability_rows
+        ),
     )
     return {
         "changes_pending": changes_pending,
@@ -93,6 +139,7 @@ def get_changes_workbench_summary(
         "recommended_lane": recommended_lane,
         "recommended_lane_reason_code": recommended_lane_reason_code,
         "recommended_action_reason": recommended_action_reason,
+        "workspace_posture": workspace_posture,
         "sources": sources_summary,
         "families": {
             "attention_count": families_attention_count,
@@ -109,22 +156,25 @@ def get_changes_workbench_summary(
     }
 
 
-def _build_sources_workbench_summary(db: Session, *, user_id: int) -> dict:
+def _build_sources_workbench_summary(db: Session, *, user_id: int) -> tuple[dict, list[dict]]:
     source_rows = list_input_sources(db, user_id=user_id, status="active")
     if not source_rows:
-        return {
-            "active_count": 0,
-            "running_count": 0,
-            "queued_count": 0,
-            "attention_count": 0,
-            "blocking_count": 0,
-            "recommended_action": "continue_review",
-            "severity": "info",
-            "reason_code": "sources_missing",
-            "message": "No active sources are connected yet.",
-            "related_request_id": None,
-            "progress_age_seconds": None,
-        }
+        return (
+            {
+                "active_count": 0,
+                "running_count": 0,
+                "queued_count": 0,
+                "attention_count": 0,
+                "blocking_count": 0,
+                "recommended_action": "continue_review",
+                "severity": "info",
+                "reason_code": "sources_missing",
+                "message": "No active sources are connected yet.",
+                "related_request_id": None,
+                "progress_age_seconds": None,
+            },
+            [],
+        )
 
     projections = derive_source_runtime_states(db, sources=source_rows)
     running_count = 0
@@ -132,6 +182,7 @@ def _build_sources_workbench_summary(db: Session, *, user_id: int) -> dict:
     attention_count = 0
     blocking_count = 0
     strongest_guidance: dict | None = None
+    source_observability_rows: list[dict] = []
 
     for row in source_rows:
         runtime_state = projections.get(row.id)
@@ -140,7 +191,11 @@ def _build_sources_workbench_summary(db: Session, *, user_id: int) -> dict:
                 running_count += 1
             elif runtime_state.sync_state == "queued":
                 queued_count += 1
-        guidance = _build_source_guidance_payload(db=db, source=row)
+        observability = build_source_observability_payload(db, source_id=row.id)
+        source_observability_rows.append(observability)
+        guidance = observability.get("operator_guidance") if isinstance(observability, dict) else None
+        if not isinstance(guidance, dict):
+            guidance = _build_source_guidance_payload(db=db, source=row)
         if str(guidance.get("recommended_action") or "") != "continue_review":
             attention_count += 1
         if str(guidance.get("severity") or "") == "blocking":
@@ -156,19 +211,22 @@ def _build_sources_workbench_summary(db: Session, *, user_id: int) -> dict:
         "related_request_id": None,
         "progress_age_seconds": None,
     }
-    return {
-        "active_count": len(source_rows),
-        "running_count": running_count,
-        "queued_count": queued_count,
-        "attention_count": attention_count,
-        "blocking_count": blocking_count,
-        "recommended_action": aggregate["recommended_action"],
-        "severity": aggregate["severity"],
-        "reason_code": aggregate["reason_code"],
-        "message": aggregate["message"],
-        "related_request_id": aggregate.get("related_request_id"),
-        "progress_age_seconds": aggregate.get("progress_age_seconds"),
-    }
+    return (
+        {
+            "active_count": len(source_rows),
+            "running_count": running_count,
+            "queued_count": queued_count,
+            "attention_count": attention_count,
+            "blocking_count": blocking_count,
+            "recommended_action": aggregate["recommended_action"],
+            "severity": aggregate["severity"],
+            "reason_code": aggregate["reason_code"],
+            "message": aggregate["message"],
+            "related_request_id": aggregate.get("related_request_id"),
+            "progress_age_seconds": aggregate.get("progress_age_seconds"),
+        },
+        source_observability_rows,
+    )
 
 
 def _build_source_guidance_payload(db: Session, *, source: InputSource) -> dict:

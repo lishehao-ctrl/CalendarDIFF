@@ -28,6 +28,9 @@ SourceRuntimeStateLiteral = Literal["active", "inactive", "archived", "queued", 
 SourceOperatorActionLiteral = Literal["continue_review", "continue_review_with_caution", "wait_for_runtime", "investigate_runtime"]
 SourceOperatorSeverityLiteral = Literal["info", "warning", "blocking"]
 SourceBootstrapStateLiteral = Literal["idle", "running", "review_required", "completed"]
+SourceProductPhaseLiteral = Literal["importing_baseline", "needs_initial_review", "monitoring_live", "needs_attention"]
+SourceRecoveryTrustStateLiteral = Literal["trusted", "stale", "partial", "blocked"]
+SourceRecoveryActionLiteral = Literal["reconnect_gmail", "update_ics", "retry_sync", "wait"]
 
 
 class SourceOperatorGuidanceResponse(BaseModel):
@@ -37,6 +40,16 @@ class SourceOperatorGuidanceResponse(BaseModel):
     message: str
     related_request_id: str | None = None
     progress_age_seconds: int | None = None
+
+
+class SourceRecoveryResponse(BaseModel):
+    trust_state: SourceRecoveryTrustStateLiteral
+    impact_summary: str
+    next_action: SourceRecoveryActionLiteral
+    next_action_label: str
+    last_good_sync_at: datetime | None = None
+    degraded_since: datetime | None = None
+    recovery_steps: list[str] = Field(default_factory=list)
 
 
 class InputSourceCreateRequest(BaseModel):
@@ -86,6 +99,8 @@ class InputSourceResponse(BaseModel):
     active_request_id: str | None = None
     sync_progress: dict | None = None
     operator_guidance: SourceOperatorGuidanceResponse | None = None
+    source_product_phase: SourceProductPhaseLiteral | None = None
+    source_recovery: SourceRecoveryResponse | None = None
 
 
 class SyncRequestCreateResponse(BaseModel):
@@ -163,6 +178,8 @@ class SourceObservabilityResponse(BaseModel):
     latest_replay: SourceObservabilitySyncResponse | None = None
     active: SourceObservabilitySyncResponse | None = None
     operator_guidance: SourceOperatorGuidanceResponse | None = None
+    source_product_phase: SourceProductPhaseLiteral | None = None
+    source_recovery: SourceRecoveryResponse | None = None
 
 
 class SourceSyncHistoryResponse(BaseModel):
