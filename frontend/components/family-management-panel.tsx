@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import {
@@ -19,13 +20,15 @@ import {
   relinkFamilyRawType,
   updateFamily,
 } from "@/lib/api/families";
+import { listManualEvents } from "@/lib/api/manual";
 import { useApiResource } from "@/lib/use-api-resource";
-import { formatDateTime } from "@/lib/presenters";
+import { formatDateTime, formatSemanticDue } from "@/lib/presenters";
 import type {
   CourseIdentity,
   CourseWorkItemFamily,
   CourseWorkItemFamilyStatus,
   CourseWorkItemRawType,
+  ManualEvent,
   RawTypeSuggestionItem,
 } from "@/lib/types";
 
@@ -43,6 +46,7 @@ const PAGE_SIZE = {
   families: 8,
   rawTypes: 10,
   suggestions: 8,
+  events: 6,
 } as const;
 
 function emptyCourseIdentity(): CourseIdentityForm {
@@ -151,6 +155,20 @@ function paginateRows<T>(rows: T[], page: number, pageSize: number) {
   };
 }
 
+function familyEventTitle(event: ManualEvent) {
+  return event.event?.event_display.display_label || event.event_name || event.raw_type || "Untitled event";
+}
+
+function compareManualEvents(left: ManualEvent, right: ManualEvent) {
+  const leftDue = `${left.due_date || ""} ${left.due_time || ""}`.trim();
+  const rightDue = `${right.due_date || ""} ${right.due_time || ""}`.trim();
+  const dueCompare = leftDue.localeCompare(rightDue);
+  if (dueCompare !== 0) return dueCompare;
+  const titleCompare = familyEventTitle(left).localeCompare(familyEventTitle(right));
+  if (titleCompare !== 0) return titleCompare;
+  return left.entity_uid.localeCompare(right.entity_uid);
+}
+
 function PaginationControls({
   page,
   totalPages,
@@ -185,14 +203,17 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
   const courses = useApiResource<{ courses: CourseIdentity[] }>(() => listFamilyCourses(), []);
   const rawTypes = useApiResource<CourseWorkItemRawType[]>(() => listFamilyRawTypes(), []);
   const suggestions = useApiResource<RawTypeSuggestionItem[]>(() => listFamilyRawTypeSuggestions({ status: "pending", limit: 100 }), []);
+  const manualEvents = useApiResource<ManualEvent[]>(() => listManualEvents(), []);
 
   const [workspaceArea, setWorkspaceArea] = useState<WorkspaceArea>("families");
   const [query, setQuery] = useState("");
   const [selectedCourse, setSelectedCourse] = useState<string>("all");
   const [selectedFamilyId, setSelectedFamilyId] = useState<number | null>(null);
+  const [familyChooserOpen, setFamilyChooserOpen] = useState(false);
   const [familyPage, setFamilyPage] = useState(1);
   const [rawTypePage, setRawTypePage] = useState(1);
   const [suggestionPage, setSuggestionPage] = useState(1);
+  const [eventPage, setEventPage] = useState(1);
   const [banner, setBanner] = useState<{ tone: "info" | "error"; text: string } | null>(null);
   const [busyFamilyId, setBusyFamilyId] = useState<number | null>(null);
   const [busyCreate, setBusyCreate] = useState(false);
@@ -245,6 +266,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
     setFamilyPage(1);
     setRawTypePage(1);
     setSuggestionPage(1);
+    setEventPage(1);
   }, [deferredQuery, selectedCourse, workspaceArea]);
 
   useEffect(() => {
@@ -270,6 +292,13 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
         : [],
     [rawTypes.data, selectedFamily],
   );
+  const selectedFamilyEvents = useMemo(
+    () =>
+      selectedFamily
+        ? [...((manualEvents.data || []).filter((event) => event.family_id === selectedFamily.id))].sort(compareManualEvents)
+        : [],
+    [manualEvents.data, selectedFamily],
+  );
 
   useEffect(() => {
     if (!selectedFamily) {
@@ -278,6 +307,10 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
     }
     setDraftLabel(selectedFamily.canonical_label);
   }, [selectedFamily]);
+
+  useEffect(() => {
+    setEventPage(1);
+  }, [selectedFamilyId]);
 
   useEffect(() => {
     if (selectedCourse === "all") {
@@ -304,10 +337,11 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
   const pagedFamilies = paginateRows(visibleFamilies, familyPage, PAGE_SIZE.families);
   const pagedRawTypes = paginateRows(visibleRawTypes, rawTypePage, PAGE_SIZE.rawTypes);
   const pagedSuggestions = paginateRows(visibleSuggestions, suggestionPage, PAGE_SIZE.suggestions);
+  const pagedEvents = paginateRows(selectedFamilyEvents, eventPage, PAGE_SIZE.events);
   const newRawTypes = useMemo(() => parseRawTypeKeywords(newRawTypesInput), [newRawTypesInput]);
 
   async function refreshAll() {
-    await Promise.all([families.refresh(), status.refresh(), courses.refresh(), rawTypes.refresh(), suggestions.refresh()]);
+    await Promise.all([families.refresh(), status.refresh(), courses.refresh(), rawTypes.refresh(), suggestions.refresh(), manualEvents.refresh()]);
   }
 
   async function saveSelectedFamily() {
@@ -478,7 +512,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
 
       {workspaceArea === "families" ? (
         <div className="grid gap-4 xl:grid-cols-[minmax(340px,0.9fr)_minmax(0,1.1fr)]">
-          <Card className="animate-surface-enter p-5">
+          <Card className="order-2 animate-surface-enter p-5 xl:order-1">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Families</p>
@@ -555,7 +589,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
             <PaginationControls page={pagedFamilies.page} totalPages={pagedFamilies.totalPages} onPageChange={setFamilyPage} />
           </Card>
 
-          <Card className="animate-surface-enter p-5">
+          <Card className="order-1 animate-surface-enter p-5 xl:order-2">
             {selectedFamily ? (
               <div>
                 <div className="flex items-start justify-between gap-4">
@@ -564,7 +598,13 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                     <h3 className="mt-1 text-lg font-semibold text-ink">{selectedFamily.canonical_label}</h3>
                     <p className="mt-2 text-sm text-[#596270]">{selectedFamily.course_display}</p>
                   </div>
-                  <Badge tone={selectedFamilyRawTypes.length >= 3 ? "pending" : "info"}>{selectedFamilyRawTypes.length} raw labels</Badge>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="ghost" className="xl:hidden" onClick={() => setFamilyChooserOpen(true)}>
+                      Choose family
+                    </Button>
+                    <Badge tone={selectedFamilyRawTypes.length >= 3 ? "pending" : "info"}>{selectedFamilyRawTypes.length} raw labels</Badge>
+                    <Badge tone="info">{selectedFamilyEvents.length} events</Badge>
+                  </div>
                 </div>
 
                 <div className="mt-5 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
@@ -593,6 +633,50 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                     )}
                   </div>
                 </div>
+
+                <div className="mt-4 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Event preview</p>
+                  <p className="mt-2 text-sm text-[#596270]">Read-only preview of the live events currently assigned to this family.</p>
+                  <div className="mt-4 space-y-3">
+                    {manualEvents.loading && !manualEvents.data ? (
+                      <div className="rounded-[1rem] border border-dashed border-line/80 bg-white/65 p-4 text-sm text-[#596270]">
+                        Loading current live events…
+                      </div>
+                    ) : manualEvents.error ? (
+                      <div className="rounded-[1rem] border border-[#efc4b5] bg-[#fff3ef] p-4 text-sm text-[#7f3d2a]">
+                        Event preview is unavailable right now. {manualEvents.error}
+                      </div>
+                    ) : pagedEvents.rows.length === 0 ? (
+                      <div className="rounded-[1rem] border border-dashed border-line/80 bg-white/65 p-4 text-sm text-[#596270]">
+                        No current live events are assigned to this family.
+                      </div>
+                    ) : (
+                      pagedEvents.rows.map((event) => (
+                        <div key={event.entity_uid} className="rounded-[1rem] border border-line/80 bg-white/80 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-medium text-ink">{familyEventTitle(event)}</p>
+                              <p className="mt-1 text-sm text-[#596270]">
+                                {formatSemanticDue(
+                                  event.event as unknown as Record<string, unknown>,
+                                  formatSemanticDue(event as unknown as Record<string, unknown>, "No due time"),
+                                )}
+                              </p>
+                            </div>
+                            {event.ordinal != null ? <Badge tone="info">#{event.ordinal}</Badge> : null}
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2 text-xs text-[#6d7885]">
+                            {event.raw_type ? <span>{event.raw_type}</span> : null}
+                            <span>Updated {formatDateTime(event.updated_at)}</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {!manualEvents.loading && !manualEvents.error ? (
+                    <PaginationControls page={pagedEvents.page} totalPages={pagedEvents.totalPages} onPageChange={setEventPage} />
+                  ) : null}
+                </div>
               </div>
             ) : (
               <EmptyState title="No family selected" description="Pick a family from the list to edit its canonical label." />
@@ -600,6 +684,43 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
           </Card>
         </div>
       ) : null}
+
+      <Sheet open={familyChooserOpen} onOpenChange={setFamilyChooserOpen}>
+        <SheetContent side="bottom" className="overflow-y-auto xl:hidden">
+          <SheetHeader>
+            <div>
+              <SheetTitle>Choose family</SheetTitle>
+              <SheetDescription>Pick a family to review its naming detail.</SheetDescription>
+            </div>
+            <SheetDismissButton />
+          </SheetHeader>
+          <div className="mt-6 space-y-3">
+            {visibleFamilies.map((family) => (
+              <button
+                key={family.id}
+                type="button"
+                onClick={() => {
+                  setSelectedFamilyId(family.id);
+                  setFamilyChooserOpen(false);
+                }}
+                className={`block w-full rounded-[1.15rem] border p-4 text-left transition-all duration-300 ${
+                  selectedFamily?.id === family.id
+                    ? "border-[rgba(31,94,255,0.24)] bg-white shadow-[0_16px_32px_rgba(20,32,44,0.08)]"
+                    : "border-line/80 bg-white/72 hover:bg-white"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{family.course_display}</p>
+                    <p className="mt-2 font-medium text-ink">{family.canonical_label}</p>
+                  </div>
+                  <Badge tone="info">{family.raw_types.length} raw</Badge>
+                </div>
+              </button>
+            ))}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {workspaceArea === "raw-types" ? (
         <Card className="animate-surface-enter p-5">

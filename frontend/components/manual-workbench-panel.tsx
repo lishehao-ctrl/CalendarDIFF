@@ -6,6 +6,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import {
   createManualEvent,
@@ -22,8 +23,6 @@ type Banner = {
   tone: "info" | "error";
   text: string;
 } | null;
-
-type ManualSection = "events" | "add";
 
 type EventFormState = {
   familyId: string;
@@ -100,36 +99,12 @@ function FieldLabel({ htmlFor, children }: { htmlFor?: string; children: React.R
   );
 }
 
-function SectionButton({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        active
-          ? "rounded-[0.95rem] bg-ink px-4 py-2 text-sm font-medium text-paper transition"
-          : "rounded-[0.95rem] px-4 py-2 text-sm font-medium text-[#596270] transition hover:bg-white"
-      }
-    >
-      {label}
-    </button>
-  );
-}
-
 export function ManualWorkbenchPanel() {
   const families = useApiResource<CourseWorkItemFamily[]>(() => listFamilies(), []);
   const manualEvents = useApiResource<ManualEvent[]>(() => listManualEvents(), []);
 
   const [banner, setBanner] = useState<Banner>(null);
-  const [section, setSection] = useState<ManualSection>("events");
+  const [addOpen, setAddOpen] = useState(false);
   const [selectedCourseKey, setSelectedCourseKey] = useState("");
   const [selectedFamilyId, setSelectedFamilyId] = useState("all");
   const [addCourseKey, setAddCourseKey] = useState("");
@@ -267,7 +242,7 @@ export function ManualWorkbenchPanel() {
       await createManualEvent(payload);
       setBanner({ tone: "info", text: "Event added." });
       await manualEvents.refresh();
-      setSection("events");
+      setAddOpen(false);
       setSelectedCourseKey(addCourseKey);
       setSelectedFamilyId(String(payload.family_id));
       setAddEventForm((prev) => emptyEventForm(prev.familyId || String(payload.family_id)));
@@ -311,281 +286,303 @@ export function ManualWorkbenchPanel() {
       ) : null}
 
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="inline-flex flex-wrap items-center gap-1 rounded-[1rem] border border-line/80 bg-white/72 p-1 shadow-[var(--shadow-panel)]">
-          <SectionButton active={section === "events"} label="Events" onClick={() => setSection("events")} />
-          <SectionButton active={section === "add"} label="Add Event" onClick={() => setSection("add")} />
-        </div>
         <p className="text-sm text-[#596270]">
           {eventRows.length} events · {courseCount} courses
         </p>
+        <Button size="sm" variant={addOpen ? "secondary" : "ghost"} onClick={() => setAddOpen((current) => !current)}>
+          <Plus className="mr-2 h-4 w-4" />
+          {addOpen ? "Hide add form" : "Add event"}
+        </Button>
       </div>
 
-      {section === "events" ? (
-        <div className="space-y-4">
-          <Card className="p-5">
-            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
-              <div>
-                <FieldLabel htmlFor="manual-events-course">Course</FieldLabel>
-                <select
-                  id="manual-events-course"
-                  value={selectedCourseKey}
-                  onChange={(event) => setSelectedCourseKey(event.target.value)}
-                  className={selectClassName}
-                >
-                  {courseOptions.map((course) => (
-                    <option key={course} value={course}>
-                      {course}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <FieldLabel htmlFor="manual-events-family">Family</FieldLabel>
-                <select
-                  id="manual-events-family"
-                  value={selectedFamilyId}
-                  onChange={(event) => setSelectedFamilyId(event.target.value)}
-                  className={selectClassName}
-                >
-                  <option value="all">All families</option>
-                  {eventFilterFamilies.map((family) => (
-                    <option key={family.id} value={family.id}>
-                      {family.canonical_label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="pb-2 text-sm text-[#596270]">{filteredEventRows.length} events</div>
+      <Sheet open={addOpen} onOpenChange={setAddOpen}>
+        <SheetContent side="bottom" className="overflow-y-auto">
+          <SheetHeader>
+            <div>
+              <SheetTitle>Add fallback event</SheetTitle>
+              <SheetDescription>Create a manual event only when the system cannot safely express canonical state.</SheetDescription>
             </div>
-          </Card>
+            <SheetDismissButton />
+          </SheetHeader>
+          <div className="mt-6 space-y-4">
+            {!familyRows.length ? (
+              <EmptyState title="No families yet" description="Create a family from Families before adding a fallback event." />
+            ) : (
+              <>
+                <Card className="p-5">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <FieldLabel htmlFor="manual-add-course">Course</FieldLabel>
+                      <select
+                        id="manual-add-course"
+                        value={addCourseKey}
+                        onChange={(event) => setAddCourseKey(event.target.value)}
+                        className={selectClassName}
+                      >
+                        {familyCourseOptions.map((course) => (
+                          <option key={course} value={course}>
+                            {course}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <FieldLabel htmlFor="manual-add-family">Family</FieldLabel>
+                      <select
+                        id="manual-add-family"
+                        value={addEventForm.familyId}
+                        onChange={(event) => setAddEventForm((prev) => ({ ...prev, familyId: event.target.value }))}
+                        className={selectClassName}
+                      >
+                        <option value="">Select a family</option>
+                        {addFormFamilies.map((family) => (
+                          <option key={family.id} value={family.id}>
+                            {family.canonical_label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </Card>
 
-          {filteredEventRows.length === 0 ? (
-            <EmptyState title="No events in this view" description="Pick another course or family, or add a manual event from the Add Event block." />
-          ) : (
-            <Card className="p-4">
-              <div className="space-y-3">
-                {filteredEventRows.map((event) => {
-                  const expanded = expandedEventUid === event.entity_uid;
-                  return (
-                    <div key={event.entity_uid} className="rounded-[1.15rem] border border-line/80 bg-white/78 px-4 py-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-ink">{eventSummaryLabel(event)}</p>
-                        </div>
-                        <Button size="sm" variant="ghost" onClick={() => (expanded ? clearExpandedEvent() : openEvent(event))}>
-                          {expanded ? "Close" : "Open"}
-                          {expanded ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
-                        </Button>
+                <Card className="p-5">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <FieldLabel htmlFor="manual-add-name">Event name</FieldLabel>
+                      <Input id="manual-add-name" value={addEventForm.eventName} onChange={(event) => setAddEventForm((prev) => ({ ...prev, eventName: event.target.value }))} placeholder="Homework 5" />
+                    </div>
+                    <div>
+                      <FieldLabel htmlFor="manual-add-raw-type">Raw type</FieldLabel>
+                      <Input id="manual-add-raw-type" value={addEventForm.rawType} onChange={(event) => setAddEventForm((prev) => ({ ...prev, rawType: event.target.value }))} placeholder="hw" />
+                    </div>
+                    <div>
+                      <FieldLabel htmlFor="manual-add-ordinal">Number</FieldLabel>
+                      <Input id="manual-add-ordinal" value={addEventForm.ordinal} onChange={(event) => setAddEventForm((prev) => ({ ...prev, ordinal: event.target.value }))} placeholder="5" />
+                    </div>
+                    <div>
+                      <FieldLabel htmlFor="manual-add-date">Due date</FieldLabel>
+                      <Input id="manual-add-date" type="date" value={addEventForm.dueDate} onChange={(event) => setAddEventForm((prev) => ({ ...prev, dueDate: event.target.value }))} />
+                    </div>
+                    <div>
+                      <FieldLabel htmlFor="manual-add-precision">Time mode</FieldLabel>
+                      <select
+                        id="manual-add-precision"
+                        value={addEventForm.timePrecision}
+                        onChange={(event) => setAddEventForm((prev) => ({ ...prev, timePrecision: event.target.value as "date_only" | "datetime" }))}
+                        className={selectClassName}
+                      >
+                        <option value="date_only">Date only</option>
+                        <option value="datetime">Date and time</option>
+                      </select>
+                    </div>
+                    {addEventForm.timePrecision === "datetime" ? (
+                      <div>
+                        <FieldLabel htmlFor="manual-add-time">Due time</FieldLabel>
+                        <Input id="manual-add-time" type="time" value={addEventForm.dueTime} onChange={(event) => setAddEventForm((prev) => ({ ...prev, dueTime: event.target.value }))} />
                       </div>
+                    ) : null}
+                  </div>
+                  <div className="mt-4">
+                    <FieldLabel htmlFor="manual-add-reason">Reason</FieldLabel>
+                    <Textarea id="manual-add-reason" value={addEventForm.reason} onChange={(event) => setAddEventForm((prev) => ({ ...prev, reason: event.target.value }))} placeholder="Optional note for the audit trail" className="min-h-[92px]" />
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <Button onClick={() => void submitNewEvent()} disabled={busyEvent === "create" || !addFormFamilies.length}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      {busyEvent === "create" ? "Adding..." : "Add event"}
+                    </Button>
+                  </div>
+                </Card>
+              </>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
 
-                      {expanded ? (
-                        <div className="mt-4 border-t border-line/70 pt-4">
-                          <div className="grid gap-4 md:grid-cols-2">
-                            <div>
-                              <FieldLabel htmlFor={`event-family-${event.entity_uid}`}>Family</FieldLabel>
-                              <select
-                                id={`event-family-${event.entity_uid}`}
-                                value={editEventForm.familyId}
-                                onChange={(nextEvent) => setEditEventForm((prev) => ({ ...prev, familyId: nextEvent.target.value }))}
-                                className={selectClassName}
-                              >
-                                <option value="">Select a family</option>
-                                {familyRows.map((family) => (
-                                  <option key={family.id} value={family.id}>
-                                    {family.course_display} - {family.canonical_label}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <FieldLabel htmlFor={`event-name-${event.entity_uid}`}>Event name</FieldLabel>
-                              <Input
-                                id={`event-name-${event.entity_uid}`}
-                                value={editEventForm.eventName}
-                                onChange={(nextEvent) => setEditEventForm((prev) => ({ ...prev, eventName: nextEvent.target.value }))}
-                              />
-                            </div>
-                            <div>
-                              <FieldLabel htmlFor={`event-raw-type-${event.entity_uid}`}>Raw type</FieldLabel>
-                              <Input
-                                id={`event-raw-type-${event.entity_uid}`}
-                                value={editEventForm.rawType}
-                                onChange={(nextEvent) => setEditEventForm((prev) => ({ ...prev, rawType: nextEvent.target.value }))}
-                              />
-                            </div>
-                            <div>
-                              <FieldLabel htmlFor={`event-ordinal-${event.entity_uid}`}>Number</FieldLabel>
-                              <Input
-                                id={`event-ordinal-${event.entity_uid}`}
-                                value={editEventForm.ordinal}
-                                onChange={(nextEvent) => setEditEventForm((prev) => ({ ...prev, ordinal: nextEvent.target.value }))}
-                                placeholder="3"
-                              />
-                            </div>
-                            <div>
-                              <FieldLabel htmlFor={`event-date-${event.entity_uid}`}>Due date</FieldLabel>
-                              <Input
-                                id={`event-date-${event.entity_uid}`}
-                                type="date"
-                                value={editEventForm.dueDate}
-                                onChange={(nextEvent) => setEditEventForm((prev) => ({ ...prev, dueDate: nextEvent.target.value }))}
-                              />
-                            </div>
-                            <div>
-                              <FieldLabel htmlFor={`event-precision-${event.entity_uid}`}>Time mode</FieldLabel>
-                              <select
-                                id={`event-precision-${event.entity_uid}`}
-                                value={editEventForm.timePrecision}
-                                onChange={(nextEvent) =>
-                                  setEditEventForm((prev) => ({ ...prev, timePrecision: nextEvent.target.value as "date_only" | "datetime" }))
-                                }
-                                className={selectClassName}
-                              >
-                                <option value="date_only">Date only</option>
-                                <option value="datetime">Date and time</option>
-                              </select>
-                            </div>
-                            {editEventForm.timePrecision === "datetime" ? (
+      <div className="space-y-4">
+        <Card className="p-5">
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+            <div>
+              <FieldLabel htmlFor="manual-events-course">Course</FieldLabel>
+              <select
+                id="manual-events-course"
+                value={selectedCourseKey}
+                onChange={(event) => setSelectedCourseKey(event.target.value)}
+                className={selectClassName}
+              >
+                {courseOptions.map((course) => (
+                  <option key={course} value={course}>
+                    {course}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <FieldLabel htmlFor="manual-events-family">Family</FieldLabel>
+              <select
+                id="manual-events-family"
+                value={selectedFamilyId}
+                onChange={(event) => setSelectedFamilyId(event.target.value)}
+                className={selectClassName}
+              >
+                <option value="all">All families</option>
+                {eventFilterFamilies.map((family) => (
+                  <option key={family.id} value={family.id}>
+                    {family.canonical_label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="pb-2 text-sm text-[#596270]">{filteredEventRows.length} events</div>
+          </div>
+        </Card>
+
+        {filteredEventRows.length === 0 ? (
+          <EmptyState title="No events in this view" description="Pick another course or family, or add a manual event when fallback work is needed." />
+        ) : (
+          <Card className="p-4">
+            <div className="space-y-3">
+              {filteredEventRows.map((event) => {
+                const expanded = expandedEventUid === event.entity_uid;
+                return (
+                  <div key={event.entity_uid} className="rounded-[1.15rem] border border-line/80 bg-white/78 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-ink">{eventSummaryLabel(event)}</p>
+                      </div>
+                      <Button size="sm" variant="ghost" onClick={() => (expanded ? clearExpandedEvent() : openEvent(event))}>
+                        {expanded ? "Close" : "Open"}
+                        {expanded ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
+                      </Button>
+                    </div>
+
+                    {expanded ? (
+                      <div className="mt-4 border-t border-line/70 pt-4">
+                        <div className="grid gap-4 lg:grid-cols-2">
+                          <div className="rounded-[1rem] border border-line/70 bg-white/70 p-4">
+                            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Identity</p>
+                            <div className="mt-4 space-y-4">
                               <div>
-                                <FieldLabel htmlFor={`event-time-${event.entity_uid}`}>Due time</FieldLabel>
+                                <FieldLabel htmlFor={`event-family-${event.entity_uid}`}>Family</FieldLabel>
+                                <select
+                                  id={`event-family-${event.entity_uid}`}
+                                  value={editEventForm.familyId}
+                                  onChange={(nextEvent) => setEditEventForm((prev) => ({ ...prev, familyId: nextEvent.target.value }))}
+                                  className={selectClassName}
+                                >
+                                  <option value="">Select a family</option>
+                                  {familyRows.map((family) => (
+                                    <option key={family.id} value={family.id}>
+                                      {family.course_display} - {family.canonical_label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <FieldLabel htmlFor={`event-name-${event.entity_uid}`}>Event name</FieldLabel>
                                 <Input
-                                  id={`event-time-${event.entity_uid}`}
-                                  type="time"
-                                  value={editEventForm.dueTime}
-                                  onChange={(nextEvent) => setEditEventForm((prev) => ({ ...prev, dueTime: nextEvent.target.value }))}
+                                  id={`event-name-${event.entity_uid}`}
+                                  value={editEventForm.eventName}
+                                  onChange={(nextEvent) => setEditEventForm((prev) => ({ ...prev, eventName: nextEvent.target.value }))}
                                 />
                               </div>
-                            ) : null}
+                              <div>
+                                <FieldLabel htmlFor={`event-raw-type-${event.entity_uid}`}>Raw type</FieldLabel>
+                                <Input
+                                  id={`event-raw-type-${event.entity_uid}`}
+                                  value={editEventForm.rawType}
+                                  onChange={(nextEvent) => setEditEventForm((prev) => ({ ...prev, rawType: nextEvent.target.value }))}
+                                />
+                              </div>
+                              <div>
+                                <FieldLabel htmlFor={`event-ordinal-${event.entity_uid}`}>Number</FieldLabel>
+                                <Input
+                                  id={`event-ordinal-${event.entity_uid}`}
+                                  value={editEventForm.ordinal}
+                                  onChange={(nextEvent) => setEditEventForm((prev) => ({ ...prev, ordinal: nextEvent.target.value }))}
+                                  placeholder="3"
+                                />
+                              </div>
+                            </div>
                           </div>
-                          <div className="mt-4">
-                            <FieldLabel htmlFor={`event-reason-${event.entity_uid}`}>Reason</FieldLabel>
-                            <Textarea
-                              id={`event-reason-${event.entity_uid}`}
-                              value={editEventForm.reason}
-                              onChange={(nextEvent) => setEditEventForm((prev) => ({ ...prev, reason: nextEvent.target.value }))}
-                              placeholder="Optional note for the audit trail"
-                              className="min-h-[92px]"
-                            />
+
+                          <div className="rounded-[1rem] border border-line/70 bg-white/70 p-4">
+                            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Timing</p>
+                            <div className="mt-4 space-y-4">
+                              <div>
+                                <FieldLabel htmlFor={`event-date-${event.entity_uid}`}>Due date</FieldLabel>
+                                <Input
+                                  id={`event-date-${event.entity_uid}`}
+                                  type="date"
+                                  value={editEventForm.dueDate}
+                                  onChange={(nextEvent) => setEditEventForm((prev) => ({ ...prev, dueDate: nextEvent.target.value }))}
+                                />
+                              </div>
+                              <div>
+                                <FieldLabel htmlFor={`event-precision-${event.entity_uid}`}>Time mode</FieldLabel>
+                                <select
+                                  id={`event-precision-${event.entity_uid}`}
+                                  value={editEventForm.timePrecision}
+                                  onChange={(nextEvent) =>
+                                    setEditEventForm((prev) => ({ ...prev, timePrecision: nextEvent.target.value as "date_only" | "datetime" }))
+                                  }
+                                  className={selectClassName}
+                                >
+                                  <option value="date_only">Date only</option>
+                                  <option value="datetime">Date and time</option>
+                                </select>
+                              </div>
+                              {editEventForm.timePrecision === "datetime" ? (
+                                <div>
+                                  <FieldLabel htmlFor={`event-time-${event.entity_uid}`}>Due time</FieldLabel>
+                                  <Input
+                                    id={`event-time-${event.entity_uid}`}
+                                    type="time"
+                                    value={editEventForm.dueTime}
+                                    onChange={(nextEvent) => setEditEventForm((prev) => ({ ...prev, dueTime: nextEvent.target.value }))}
+                                  />
+                                </div>
+                              ) : null}
+                            </div>
                           </div>
-                          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                            <p className="text-sm text-[#596270]">
-                              {formatSemanticDue(event as unknown as Record<string, unknown>, "No due date")} · Updated {formatDateTime(event.updated_at, "Recently")}
-                            </p>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Button size="sm" variant="ghost" onClick={() => void removeEvent(event)} disabled={busyEvent === "delete"}>
-                                <Trash2 className="mr-1.5 h-4 w-4" />
-                                Delete
-                              </Button>
-                              <Button size="sm" onClick={() => void submitEditedEvent()} disabled={busyEvent === "save"}>
-                                {busyEvent === "save" ? "Saving..." : "Save"}
-                              </Button>
+
+                          <div className="rounded-[1rem] border border-line/70 bg-white/70 p-4 lg:col-span-2">
+                            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Audit note</p>
+                            <div className="mt-4">
+                              <FieldLabel htmlFor={`event-reason-${event.entity_uid}`}>Reason</FieldLabel>
+                              <Textarea
+                                id={`event-reason-${event.entity_uid}`}
+                                value={editEventForm.reason}
+                                onChange={(nextEvent) => setEditEventForm((prev) => ({ ...prev, reason: nextEvent.target.value }))}
+                                placeholder="Optional note for the audit trail"
+                                className="min-h-[92px]"
+                              />
                             </div>
                           </div>
                         </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
-          )}
-        </div>
-      ) : null}
-
-      {section === "add" ? (
-        <div className="space-y-4">
-          {!familyRows.length ? (
-            <EmptyState title="No families yet" description="Create a family from Family before adding manual events under it." />
-          ) : (
-            <>
-              <Card className="p-5">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <FieldLabel htmlFor="manual-add-course">Course</FieldLabel>
-                    <select
-                      id="manual-add-course"
-                      value={addCourseKey}
-                      onChange={(event) => setAddCourseKey(event.target.value)}
-                      className={selectClassName}
-                    >
-                      {familyCourseOptions.map((course) => (
-                        <option key={course} value={course}>
-                          {course}
-                        </option>
-                      ))}
-                    </select>
+                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                          <p className="text-sm text-[#596270]">
+                            {formatSemanticDue(event as unknown as Record<string, unknown>, "No due date")} · Updated {formatDateTime(event.updated_at, "Recently")}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button size="sm" variant="ghost" onClick={() => void removeEvent(event)} disabled={busyEvent === "delete"}>
+                              <Trash2 className="mr-1.5 h-4 w-4" />
+                              Delete
+                            </Button>
+                            <Button size="sm" onClick={() => void submitEditedEvent()} disabled={busyEvent === "save"}>
+                              {busyEvent === "save" ? "Saving..." : "Save"}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
-                  <div>
-                    <FieldLabel htmlFor="manual-add-family">Family</FieldLabel>
-                    <select
-                      id="manual-add-family"
-                      value={addEventForm.familyId}
-                      onChange={(event) => setAddEventForm((prev) => ({ ...prev, familyId: event.target.value }))}
-                      className={selectClassName}
-                    >
-                      <option value="">Select a family</option>
-                      {addFormFamilies.map((family) => (
-                        <option key={family.id} value={family.id}>
-                          {family.canonical_label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </Card>
-
-              <Card className="p-5">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <FieldLabel htmlFor="manual-add-name">Event name</FieldLabel>
-                    <Input id="manual-add-name" value={addEventForm.eventName} onChange={(event) => setAddEventForm((prev) => ({ ...prev, eventName: event.target.value }))} placeholder="Homework 5" />
-                  </div>
-                  <div>
-                    <FieldLabel htmlFor="manual-add-raw-type">Raw type</FieldLabel>
-                    <Input id="manual-add-raw-type" value={addEventForm.rawType} onChange={(event) => setAddEventForm((prev) => ({ ...prev, rawType: event.target.value }))} placeholder="hw" />
-                  </div>
-                  <div>
-                    <FieldLabel htmlFor="manual-add-ordinal">Number</FieldLabel>
-                    <Input id="manual-add-ordinal" value={addEventForm.ordinal} onChange={(event) => setAddEventForm((prev) => ({ ...prev, ordinal: event.target.value }))} placeholder="5" />
-                  </div>
-                  <div>
-                    <FieldLabel htmlFor="manual-add-date">Due date</FieldLabel>
-                    <Input id="manual-add-date" type="date" value={addEventForm.dueDate} onChange={(event) => setAddEventForm((prev) => ({ ...prev, dueDate: event.target.value }))} />
-                  </div>
-                  <div>
-                    <FieldLabel htmlFor="manual-add-precision">Time mode</FieldLabel>
-                    <select
-                      id="manual-add-precision"
-                      value={addEventForm.timePrecision}
-                      onChange={(event) => setAddEventForm((prev) => ({ ...prev, timePrecision: event.target.value as "date_only" | "datetime" }))}
-                      className={selectClassName}
-                    >
-                      <option value="date_only">Date only</option>
-                      <option value="datetime">Date and time</option>
-                    </select>
-                  </div>
-                  {addEventForm.timePrecision === "datetime" ? (
-                    <div>
-                      <FieldLabel htmlFor="manual-add-time">Due time</FieldLabel>
-                      <Input id="manual-add-time" type="time" value={addEventForm.dueTime} onChange={(event) => setAddEventForm((prev) => ({ ...prev, dueTime: event.target.value }))} />
-                    </div>
-                  ) : null}
-                </div>
-                <div className="mt-4">
-                  <FieldLabel htmlFor="manual-add-reason">Reason</FieldLabel>
-                  <Textarea id="manual-add-reason" value={addEventForm.reason} onChange={(event) => setAddEventForm((prev) => ({ ...prev, reason: event.target.value }))} placeholder="Optional note for the audit trail" className="min-h-[92px]" />
-                </div>
-                <div className="mt-4 flex justify-end">
-                  <Button onClick={() => void submitNewEvent()} disabled={busyEvent === "create" || !addFormFamilies.length}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    {busyEvent === "create" ? "Adding..." : "Add event"}
-                  </Button>
-                </div>
-              </Card>
-            </>
-          )}
-        </div>
-      ) : null}
+                );
+              })}
+            </div>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }
