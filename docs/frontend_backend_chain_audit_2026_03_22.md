@@ -15,6 +15,7 @@
 - `Overview -> Open Sources`
 - `Sources -> Canvas ICS detail -> Run sync`
 - `Changes -> Edit then approve -> Preview changes`
+- `Changes -> Evidence` 对 `removed` 类 item 会默认落到 `before`，不会再盲打 `after preview`
 - `Changes -> Reject`
 - `Manual -> Create`
 - `Manual -> Update`
@@ -28,26 +29,7 @@
 
 ## 仍需要改进的点
 
-### 1. `Changes` evidence 的 `after preview` 仍然会打 404
-
-现象：
-
-- `Changes` 页打开某些 item 时，console 仍会出现
-  - `/api/backend/changes/{id}/evidence/after/preview -> 404`
-- UI 虽然能降级到 raw / fallback 文案，不会直接阻塞主路径
-
-影响：
-
-- 会制造前端错误噪音
-- 用户看到的是“Structured preview unavailable”，但并不知道这是数据缺失还是接口缺失
-
-建议：
-
-- 要么补齐 `after preview` 的真实后端能力
-- 要么前端只在后端明确声明 `after preview` 可用时才发请求
-- 不要继续保留“每次都请求，然后靠 404 降级”的模式
-
-### 2. `Changes -> Approve` 的高风险删除链还没有在生产做最终验收
+### 1. `Changes -> Approve` 的高风险删除链还没有在生产做最终验收
 
 现状：
 
@@ -67,7 +49,7 @@
   - canonical state 变化
   - 变更消失后的 queue / overview / source posture 是否一致
 
-### 3. `Families` 写路径还没做生产复验
+### 2. `Families` 写路径还没做生产复验
 
 现状：
 
@@ -89,7 +71,7 @@
   - 后端写请求
   - 再次刷新后的持久状态
 
-### 4. `release_aws_main.sh` 已能重建容器，但校验还不够严格
+### 3. `release_aws_main.sh` 已能重建容器，但校验还不够严格
 
 现象：
 
@@ -110,7 +92,7 @@
 - 用严格状态码校验，而不是只打印响应文本
 - 把“容器刚启动后的短暂 502”从“真实发布失败”里区分出来
 
-### 5. `Source detail` 虽然已修成自动轮询，但手动 sync 期间仍可继续点 `Run sync`
+### 4. `Source detail` 虽然已修成自动轮询，但手动 sync 期间仍可继续点 `Run sync`
 
 现象：
 
@@ -129,7 +111,7 @@
   - 最近更新时间
   - 当前阶段
 
-### 6. Gmail connect 页的状态语义已修正，但建议再补一个“为什么现在是 reconnect required”的更直白解释
+### 5. Gmail connect 页的状态语义已修正，但建议再补一个“为什么现在是 reconnect required”的更直白解释
 
 现状：
 
@@ -149,11 +131,10 @@
 
 建议按这个顺序继续收口：
 
-1. 修 `Changes evidence after preview 404`
-2. 验 `Changes -> Approve`
-3. 验 `Families` 三条写路径
-4. 强化 `release_aws_main.sh` 的健康校验
-5. 禁用 active sync 期间重复点击 `Run sync`
+1. 验 `Changes -> Approve`
+2. 验 `Families` 三条写路径
+3. 强化 `release_aws_main.sh` 的健康校验
+4. 禁用 active sync 期间重复点击 `Run sync`
 
 ## 当前结论
 
