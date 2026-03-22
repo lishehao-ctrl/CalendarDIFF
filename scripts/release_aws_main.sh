@@ -9,6 +9,7 @@ AWS_APP_DIR="${AWS_APP_DIR:-/home/ubuntu/apps/CalendarDIFF}"
 REMOTE_GIT_URL="${REMOTE_GIT_URL:-git@github.com:lishehao/CalendarDIFF.git}"
 DOMAIN="${DOMAIN:-cal.shehao.app}"
 BUNDLE_PATH="${BUNDLE_PATH:-/tmp/calendardiff-release.bundle}"
+DEPLOY_SERVICES="${DEPLOY_SERVICES:-frontend public-service}"
 
 cd "$ROOT_DIR"
 
@@ -44,6 +45,15 @@ rm -f "$REMOTE_BUNDLE"
 REMOTE_SYNC
 
 rm -f "$BUNDLE_PATH"
+
+echo "Rebuilding remote services on $AWS_USER@$AWS_HOST..."
+ssh -i "$AWS_SSH_KEY" -o StrictHostKeyChecking=accept-new "$AWS_USER@$AWS_HOST" bash -s -- "$AWS_APP_DIR" "$DEPLOY_SERVICES" <<'REMOTE_DEPLOY'
+set -euo pipefail
+APP_DIR="$1"
+DEPLOY_SERVICES="$2"
+cd "$APP_DIR"
+sudo docker compose up -d --build $DEPLOY_SERVICES
+REMOTE_DEPLOY
 
 echo "Verifying remote runtime..."
 ssh -i "$AWS_SSH_KEY" -o StrictHostKeyChecking=accept-new "$AWS_USER@$AWS_HOST" bash -s -- "$AWS_APP_DIR" "$DOMAIN" <<'REMOTE_VERIFY'

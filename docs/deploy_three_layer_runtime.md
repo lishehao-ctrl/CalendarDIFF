@@ -87,6 +87,31 @@ Release rule:
 ## Release posture
 The default deployment assumption is one backend process per environment. Ingest/review/notification/llm work still happen, but as background tasks in that process.
 
+## AWS release script behavior
+`scripts/release_aws_main.sh` is the default production sync path.
+
+It now performs the full release sequence:
+
+1. push local `HEAD` to `origin/main`
+2. sync the AWS checkout via git bundle
+3. rebuild and restart `frontend` and `public-service`
+4. verify nginx plus `health` and `login`
+
+Operational rule:
+
+- a release is not complete after git sync alone
+- the production host must be running newly rebuilt `frontend` and `public-service` containers
+- `postgres` and `redis` stay untouched during the normal release path
+- `rpg.shehao.app` remains untouched
+
+Optional override:
+
+```bash
+DEPLOY_SERVICES="frontend public-service" scripts/release_aws_main.sh
+```
+
+Use that variable only when you intentionally need a different compose target set.
+
 ## OpenAPI
 Only one default snapshot is maintained:
 

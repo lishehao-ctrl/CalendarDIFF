@@ -47,6 +47,7 @@ Preferred pattern:
 2. upload the bundle to AWS
 3. fetch bundle on AWS checkout
 4. hard reset checkout to bundle HEAD
+5. rebuild and restart `frontend` and `public-service`
 
 After sync, verify:
 
@@ -58,6 +59,19 @@ ssh -i ~/.ssh/aws-main.pem ubuntu@54.152.242.119 \
 Expected:
 
 - exact release candidate commit
+- newly recreated `frontend` / `public-service` containers running that commit
+
+Current default release command:
+
+```bash
+scripts/release_aws_main.sh
+```
+
+Current script behavior:
+
+- syncs the AWS checkout
+- runs `sudo docker compose up -d --build frontend public-service`
+- then verifies nginx, `health`, and `login`
 
 ## Reset and launch
 
@@ -81,6 +95,11 @@ Result:
 - database reset to empty state
 - alembic upgraded to head
 - frontend and public-service rebuilt and restarted
+
+Note:
+
+- even for normal in-place releases, do not stop at git sync
+- if containers are not rebuilt, the host may keep serving old code from old images
 
 ## Post-reset smoke
 

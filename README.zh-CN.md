@@ -210,6 +210,12 @@ python scripts/update_openapi_snapshots.py
 scripts/release_aws_main.sh
 ```
 
+这个脚本现在是完整发布动作，不只是同步 git：
+
+- 把 AWS checkout 同步到本地 `HEAD`
+- 重建并重启 `frontend` 和 `public-service`
+- 校验 `health` 与 `login`
+
 这次真实生产发布流程记录在：
 
 - `docs/production_release_runbook_2026_03_21.md`

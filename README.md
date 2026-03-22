@@ -210,6 +210,12 @@ Normal AWS sync path:
 scripts/release_aws_main.sh
 ```
 
+That script is a full release step, not just a git sync:
+
+- syncs the AWS checkout to local `HEAD`
+- rebuilds and restarts `frontend` and `public-service`
+- verifies `health` and `login`
+
 The actual launch flow used for the current production cut is recorded in:
 
 - `docs/production_release_runbook_2026_03_21.md`
