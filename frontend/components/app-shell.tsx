@@ -38,12 +38,12 @@ type SessionUser = {
 };
 
 const items: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; description: string }> = [
-  { href: "/", label: "Overview", icon: LayoutDashboard, description: "Next action" },
-  { href: "/sources", label: "Sources", icon: BellDot, description: "Connection and runtime" },
-  { href: "/changes", label: "Changes", icon: GitCompareArrows, description: "Primary workspace" },
-  { href: "/families", label: "Families", icon: Link2, description: "Naming" },
-  { href: "/manual", label: "Manual", icon: Pencil, description: "Repairs" },
-  { href: "/settings", label: "Settings", icon: Settings2, description: "Preferences" }
+  { href: "/", label: "Overview", icon: LayoutDashboard, description: "Workspace posture" },
+  { href: "/sources", label: "Sources", icon: BellDot, description: "Trust and recovery" },
+  { href: "/changes", label: "Changes", icon: GitCompareArrows, description: "Replay review" },
+  { href: "/families", label: "Families", icon: Link2, description: "Naming governance" },
+  { href: "/manual", label: "Manual", icon: Pencil, description: "Fallback lane" },
+  { href: "/settings", label: "Settings", icon: Settings2, description: "Account and timezone" }
 ] as const;
 
 const DESKTOP_NAV_COLLAPSED_KEY = "calendardiff.desktop-nav-collapsed";

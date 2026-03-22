@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArchiveRestore, CalendarSync, CheckCircle2, ChevronRight, CircleAlert, Mailbox, RefreshCw, Trash2 } from "lucide-react";
+import { ArchiveRestore, CalendarSync, ChevronRight, Mailbox, RefreshCw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { SourceSyncProgress } from "@/components/source-sync-progress";
+import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { startOnboardingGmailOAuth } from "@/lib/api/onboarding";
 import { createOAuthSession, createSyncRequest, deleteSource as deleteSourceRequest, getSyncRequest, listSources, sourceListCacheKey, updateSource } from "@/lib/api/sources";
 import { withBasePath } from "@/lib/demo-mode";
@@ -23,6 +24,22 @@ type Banner = {
   text: string;
 } | null;
 
+function useSourceToolsSheetSide() {
+  const [side, setSide] = useState<"right" | "bottom">("right");
+
+  useEffect(() => {
+    function update() {
+      setSide(window.innerWidth < 1024 ? "bottom" : "right");
+    }
+
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  return side;
+}
+
 function sourceNeedsAttention(source: SourceRow) {
   return Boolean(source.last_error_message) || source.runtime_state === "rebind_pending" || source.config_state === "rebind_pending" || source.oauth_connection_status === "not_connected";
 }
@@ -33,12 +50,6 @@ function syncTone(value: string | undefined) {
   if (["succeeded", "success"].includes(value)) return "approved";
   if (["failed", "error"].includes(value)) return "error";
   return "default";
-}
-
-function sourceHealthTone(source: SourceRow) {
-  if (sourceNeedsAttention(source)) return "pending";
-  if (!source.is_active) return "info";
-  return "approved";
 }
 
 function buildSourceInsight(source: SourceRow) {
@@ -153,29 +164,29 @@ function ConnectSourceCard({
   iconShellClassName: string;
 }) {
   return (
-    <Card className="animate-surface-enter interactive-lift bg-white/72 p-5">
+    <div className="rounded-[1rem] border border-line/70 bg-white/60 p-3.5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <div className={iconShellClassName}>{icon}</div>
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{provider}</p>
-            <h3 className="mt-1 text-lg font-semibold text-ink">{title}</h3>
+            <h3 className="mt-1 text-sm font-semibold text-ink">{title}</h3>
+            <p className="mt-1 text-xs text-[#596270]">{detail}</p>
           </div>
         </div>
         <Badge tone={attention ? "pending" : connected ? "approved" : "info"}>
           {attention ? "Attention" : connected ? "Connected" : "Not connected"}
         </Badge>
       </div>
-      <p className="mt-3 text-sm text-[#596270]">{detail}</p>
-      <div className="mt-4">
-        <Button asChild>
+      <div className="mt-3">
+        <Button asChild size="sm" variant={connected ? "ghost" : "secondary"}>
           <Link href={href}>
             {connected ? "Manage" : "Connect"}
             <ChevronRight className="ml-2 h-4 w-4" />
           </Link>
         </Button>
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -198,8 +209,9 @@ function ConnectedSourceCard({
 }) {
   const recovery = resolveRecovery(source, observability);
   const productPhase = resolveProductPhase(source, observability);
-  const bootstrapSummary = observability?.bootstrap_summary || null;
   const needsAttention = recovery ? recovery.trust_state !== "trusted" : sourceNeedsAttention(source);
+  const normalizedSyncLabel = syncLabel?.toLowerCase() || "";
+  const showSyncBadge = normalizedSyncLabel !== "" && normalizedSyncLabel !== "idle";
   const detailHref = withBasePath(basePath, `/sources/${source.source_id}`);
   const primaryAction =
     recovery?.next_action === "reconnect_gmail" ? (
@@ -235,7 +247,6 @@ function ConnectedSourceCard({
                 <h3 className="text-base font-semibold text-ink">{formatSourceTitle(source)}</h3>
                 <Badge tone="info">{productPhaseLabel(productPhase)}</Badge>
                 <Badge tone={trustStateTone(recovery?.trust_state)}>{trustStateLabel(recovery?.trust_state)}</Badge>
-                <Badge tone={syncTone(syncLabel)}>{formatStatusLabel(syncLabel, "Idle")}</Badge>
               </div>
               <p className="mt-2 text-sm text-[#596270]">{formatSourceSubtitle(source)}</p>
             </div>
@@ -254,40 +265,12 @@ function ConnectedSourceCard({
 
           <div className="rounded-[1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
             <p className="font-medium text-ink">{recovery?.impact_summary || buildSourceInsight(source).title}</p>
-            {recovery?.next_action_label ? (
-              <p className="mt-2 text-[#596270]">
-                Next step: {recovery.next_action_label}
-              </p>
-            ) : recovery?.impact_summary ? null : buildSourceInsight(source).detail ? (
+            {!recovery?.impact_summary && buildSourceInsight(source).detail ? (
               <p className="mt-2 text-[#596270]">{buildSourceInsight(source).detail}</p>
             ) : null}
-            {bootstrapSummary ? (
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <p>Imported: {bootstrapSummary.imported_count}</p>
-                <p>Needs review: {bootstrapSummary.review_required_count}</p>
-                <p>Ignored: {bootstrapSummary.ignored_count}</p>
-                <p>Conflicts: {bootstrapSummary.conflict_count}</p>
-              </div>
-            ) : null}
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <span className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5 text-sm text-[#314051]">
-              Updated {formatDateTime(source.last_polled_at, "Never")}
-            </span>
-            {recovery?.last_good_sync_at ? (
-              <span className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5 text-sm text-[#314051]">
-                Last good sync {formatDateTime(recovery.last_good_sync_at)}
-              </span>
-            ) : null}
-            {recovery?.degraded_since ? (
-              <span className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5 text-sm text-[#314051]">
-                Degraded since {formatDateTime(recovery.degraded_since)}
-              </span>
-            ) : null}
-          </div>
-
-          {source.sync_progress ? <SourceSyncProgress className="mt-1" progress={source.sync_progress} /> : null}
+          {showSyncBadge && source.sync_progress ? <SourceSyncProgress className="mt-1" progress={source.sync_progress} /> : null}
         </div>
       </div>
     </Card>
@@ -338,7 +321,9 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
   const [busyDelete, setBusyDelete] = useState<number | null>(null);
   const [busyReactivate, setBusyReactivate] = useState<number | null>(null);
   const [banner, setBanner] = useState<Banner>(null);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const oauthQueryHandled = useRef(false);
+  const toolsSheetSide = useSourceToolsSheetSide();
 
   const activeSources = useMemo(
     () =>
@@ -641,128 +626,140 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
         </Card>
       ) : null}
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
-        <div className="space-y-4">
-          <Card className="animate-surface-enter animate-surface-delay-1 p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Connected sources</p>
-                <h3 className="mt-1 text-lg font-semibold text-ink">Current intake</h3>
-              </div>
-              <Badge tone="info">{activeSources.length}</Badge>
+      <div className="space-y-4">
+        <Card className="animate-surface-enter animate-surface-delay-1 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Connected sources</p>
+              <h3 className="mt-1 text-lg font-semibold text-ink">Current intake</h3>
             </div>
+            <Badge tone="info">{activeSources.length}</Badge>
+          </div>
 
-            <div className="mt-4 space-y-3">
-              {activeSources.length === 0 ? (
-                <EmptyState title="No connected sources" description="Connect Canvas ICS or Gmail to start intake." />
-              ) : (
-                <>
-                  {attentionSources.length > 0 ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-xs uppercase tracking-[0.18em] text-ember">Needs attention</p>
-                        <Badge tone="pending">{attentionSources.length}</Badge>
-                      </div>
-                      {attentionSources.map((source) => (
-                        <ConnectedSourceCard
-                          key={source.source_id}
-                          source={source}
-                          observability={observabilityMap.data[source.source_id]}
-                          syncLabel={
-                            syncState[source.source_id] ||
-                            (source.sync_state !== "idle" ? source.sync_state : undefined) ||
-                            (source.config_state === "rebind_pending" ? "rebind_pending" : undefined)
-                          }
-                          onSync={triggerSync}
-                          onDelete={archiveSource}
-                          busyDelete={busyDelete}
-                          basePath={basePath}
-                        />
-                      ))}
+          <div className="mt-4 space-y-3">
+            {activeSources.length === 0 ? (
+              <EmptyState title="No connected sources" description="Connect Canvas ICS or Gmail to start intake." />
+            ) : (
+              <>
+                {attentionSources.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs uppercase tracking-[0.18em] text-ember">Needs attention</p>
+                      <Badge tone="pending">{attentionSources.length}</Badge>
                     </div>
-                  ) : null}
+                    {attentionSources.map((source) => (
+                      <ConnectedSourceCard
+                        key={source.source_id}
+                        source={source}
+                        observability={observabilityMap.data[source.source_id]}
+                        syncLabel={
+                          syncState[source.source_id] ||
+                          (source.sync_state !== "idle" ? source.sync_state : undefined) ||
+                          (source.config_state === "rebind_pending" ? "rebind_pending" : undefined)
+                        }
+                        onSync={triggerSync}
+                        onDelete={archiveSource}
+                        busyDelete={busyDelete}
+                        basePath={basePath}
+                      />
+                    ))}
+                  </div>
+                ) : null}
 
-                  {healthySources.length > 0 ? (
-                    <div className={`${attentionSources.length > 0 ? "border-t border-line/80 pt-4" : ""} space-y-3`}>
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Healthy</p>
-                        <Badge tone="approved">{healthySources.length}</Badge>
-                      </div>
-                      {healthySources.map((source) => (
-                        <ConnectedSourceCard
-                          key={source.source_id}
-                          source={source}
-                          observability={observabilityMap.data[source.source_id]}
-                          syncLabel={
-                            syncState[source.source_id] ||
-                            (source.sync_state !== "idle" ? source.sync_state : undefined) ||
-                            (source.config_state === "rebind_pending" ? "rebind_pending" : undefined)
-                          }
-                          onSync={triggerSync}
-                          onDelete={archiveSource}
-                          busyDelete={busyDelete}
-                          basePath={basePath}
-                        />
-                      ))}
+                {healthySources.length > 0 ? (
+                  <div className={`${attentionSources.length > 0 ? "border-t border-line/80 pt-4" : ""} space-y-3`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Healthy</p>
+                      <Badge tone="approved">{healthySources.length}</Badge>
                     </div>
-                  ) : null}
-                </>
-              )}
-            </div>
-          </Card>
-        </div>
+                    {healthySources.map((source) => (
+                      <ConnectedSourceCard
+                        key={source.source_id}
+                        source={source}
+                        observability={observabilityMap.data[source.source_id]}
+                        syncLabel={
+                          syncState[source.source_id] ||
+                          (source.sync_state !== "idle" ? source.sync_state : undefined) ||
+                          (source.config_state === "rebind_pending" ? "rebind_pending" : undefined)
+                        }
+                        onSync={triggerSync}
+                        onDelete={archiveSource}
+                        busyDelete={busyDelete}
+                        basePath={basePath}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
 
-        <div className="space-y-4">
-          <Card className="animate-surface-enter animate-surface-delay-2 p-5">
-            <div className="flex items-start justify-between gap-4">
+          {(archivedSources.length > 0 || activeProviders.size < 2) ? (
+            <div className="mt-4 text-xs text-[#6d7885]">
+              <button type="button" className="font-medium text-cobalt transition hover:text-[#1f4fd6]" onClick={() => setToolsOpen(true)}>
+                Open source tools
+              </button>
+            </div>
+          ) : null}
+        </Card>
+      </div>
+
+      <Sheet open={toolsOpen} onOpenChange={setToolsOpen}>
+        <SheetContent side={toolsSheetSide} className="overflow-y-auto">
+          <SheetHeader>
+            <div>
+              <SheetTitle>Source tools</SheetTitle>
+              <SheetDescription>Connect a new source, repair an existing one, or recover an archived connection.</SheetDescription>
+            </div>
+            <SheetDismissButton />
+          </SheetHeader>
+
+          <div className="mt-6 space-y-6">
+            <div className="space-y-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Connect or reconnect</p>
-                <h3 className="mt-1 text-lg font-semibold text-ink">Bring intake online</h3>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Connect or repair</p>
               </div>
+              <div className="grid gap-3">
+                <ConnectSourceCard
+                  provider="Canvas ICS"
+                  title="Student calendar feed"
+                  detail="Connect or update the calendar feed."
+                  connected={activeProviders.has("ics")}
+                  attention={activeSources.some((source) => source.provider === "ics" && sourceNeedsAttention(source))}
+                  href={withBasePath(basePath, "/sources/connect/canvas-ics")}
+                  icon={<CalendarSync className="h-5 w-5" />}
+                  iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(31,94,255,0.1)] text-cobalt"
+                />
+                <ConnectSourceCard
+                  provider="Gmail"
+                  title="OAuth mailbox"
+                  detail="Connect Gmail if email changes should count."
+                  connected={activeProviders.has("gmail")}
+                  attention={activeSources.some((source) => source.provider === "gmail" && sourceNeedsAttention(source))}
+                  href={withBasePath(basePath, "/sources/connect/gmail")}
+                  icon={<Mailbox className="h-5 w-5" />}
+                  iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(215,90,45,0.12)] text-ember"
+                />
+              </div>
+
+              {!activeProviders.has("gmail") ? (
+                <div className="pt-1">
+                  <Button variant="ghost" onClick={() => void startGmailConnect()}>
+                    Connect Gmail now
+                  </Button>
+                </div>
+              ) : null}
             </div>
 
-            <div className="mt-4 grid gap-3">
-              <ConnectSourceCard
-                provider="Canvas ICS"
-                title="Student calendar feed"
-                detail="Connect or update the calendar feed."
-                connected={activeProviders.has("ics")}
-                attention={activeSources.some((source) => source.provider === "ics" && sourceNeedsAttention(source))}
-                href={withBasePath(basePath, "/sources/connect/canvas-ics")}
-                icon={<CalendarSync className="h-5 w-5" />}
-                iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(31,94,255,0.1)] text-cobalt"
-              />
-              <ConnectSourceCard
-                provider="Gmail"
-                title="OAuth mailbox"
-                detail="Connect Gmail if email changes should count."
-                connected={activeProviders.has("gmail")}
-                attention={activeSources.some((source) => source.provider === "gmail" && sourceNeedsAttention(source))}
-                href={withBasePath(basePath, "/sources/connect/gmail")}
-                icon={<Mailbox className="h-5 w-5" />}
-                iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(215,90,45,0.12)] text-ember"
-              />
-            </div>
-
-            {!activeProviders.has("gmail") ? (
-              <div className="mt-4">
-                <Button variant="ghost" onClick={() => void startGmailConnect()}>
-                  Connect Gmail now
-                </Button>
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Archived</p>
+                  <h3 className="mt-1 text-lg font-semibold text-ink">Recover previous connections</h3>
+                </div>
+                <Badge tone="info">{archivedSources.length}</Badge>
               </div>
-            ) : null}
-          </Card>
 
-          <Card className="animate-surface-enter animate-surface-delay-3 p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Archived</p>
-                <h3 className="mt-1 text-lg font-semibold text-ink">Recover previous connections</h3>
-              </div>
-              <Badge tone="info">{archivedSources.length}</Badge>
-            </div>
-
-            <div className="mt-4 space-y-3">
               {archivedSources.length === 0 ? (
                 <div className="rounded-[1.1rem] border border-dashed border-line/80 bg-white/40 p-5 text-sm text-[#596270]">No archived sources.</div>
               ) : (
@@ -777,9 +774,9 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
                 ))
               )}
             </div>
-          </Card>
-        </div>
-      </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

@@ -133,16 +133,16 @@ export function buildOverviewSurface(params: {
     initialReview.pending_count > 0
       ? {
           key: "needs-review",
-          eyebrow: "Initial Review",
-          title: "Finish the baseline review",
-          metric: `${initialReview.pending_count}`,
+          eyebrow: "Changes",
+          title: "Changes queue",
+          metric: `${summary.changes_pending}`,
           summary:
-            initialReview.pending_count === 1
-              ? "1 baseline item remains before monitoring can fully settle into replay."
-              : `${initialReview.pending_count} baseline items remain before monitoring can fully settle into replay.`,
-          ctaLabel: "Open Initial Review",
-          ctaHref: "/initial-review",
-          tone: "pending",
+            summary.changes_pending > 0
+              ? `${summary.changes_pending} replay change${summary.changes_pending === 1 ? "" : "s"} are waiting in Changes.`
+              : "Changes is quiet right now.",
+          ctaLabel: "Open Changes",
+          ctaHref: "/changes",
+          tone: summary.changes_pending > 0 ? "pending" : "info",
         }
       : {
           key: "needs-review",

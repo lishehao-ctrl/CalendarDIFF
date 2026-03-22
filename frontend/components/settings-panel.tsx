@@ -11,7 +11,6 @@ import { getSettingsProfile, settingsProfileCacheKey, updateSettingsProfile } fr
 import { getBrowserTimeZone } from "@/lib/browser-timezone";
 import { formatTimeZoneLabel, listCommonTimeZones, listSupportedTimeZones, searchTimeZones } from "@/lib/timezones";
 import { useApiResource } from "@/lib/use-api-resource";
-import { formatDateTime } from "@/lib/presenters";
 import type { UserProfile } from "@/lib/types";
 
 export function SettingsPanel() {
@@ -217,18 +216,6 @@ export function SettingsPanel() {
           </div>
         </Card>
 
-        <Card className="p-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Runtime</p>
-          <h3 className="mt-2 text-lg font-semibold text-ink">Current defaults</h3>
-          <div className="mt-4 flex flex-wrap gap-2 text-sm text-[#314051]">
-            <span className="rounded-full border border-line/80 bg-white/70 px-3 py-1.5">{formatDateTime(user.data.created_at, "Not available")}</span>
-            <span className="rounded-full border border-line/80 bg-white/70 px-3 py-1.5">{user.data.timezone_name}</span>
-            <span className="rounded-full border border-line/80 bg-white/70 px-3 py-1.5">
-              {user.data.timezone_source === "manual" ? "Manual override" : "Auto timezone"}
-            </span>
-            <span className="rounded-full border border-line/80 bg-white/70 px-3 py-1.5">{user.data.calendar_delay_seconds}s delay</span>
-          </div>
-        </Card>
       </div>
 
       {banner ? (

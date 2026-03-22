@@ -890,6 +890,7 @@ export function ChangeItemsPanel({
   const [editContextBusy, setEditContextBusy] = useState(false);
   const [editContextError, setEditContextError] = useState<string | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const { side: drawerSide, isDesktop } = useWorkspaceLayout();
   const changeQuery: Parameters<typeof listChanges>[0] = {
     review_status: statusFilter,
@@ -1191,13 +1192,16 @@ export function ChangeItemsPanel({
                     : "Finish the baseline before monitoring goes live."
                   : "Review live changes with decision support."}
               </h3>
-              <p className="mt-3 text-sm text-[#596270]">
+              <p className="mt-3 hidden text-sm text-[#596270] md:block">
                 {lane === "initial_review"
                   ? initialReviewComplete
                     ? "Monitoring is now live for your connected sources. New day-to-day updates will show up in Changes."
                     : "Initial Review is only for baseline import items. Once this queue is clear, replay review becomes the normal daily lane."
                   : "Changes is for ongoing replay review after the baseline is established. Each detail view explains why the item is here, what to do next, and what the risk is."}
               </p>
+              {lane === "changes" ? (
+                <p className="mt-2 text-sm text-[#596270] md:hidden">Daily replay review only.</p>
+              ) : null}
               {lane === "initial_review" ? (
                 <div className="mt-5 max-w-xl space-y-3">
                   <div className="flex flex-wrap gap-2">
@@ -1235,12 +1239,19 @@ export function ChangeItemsPanel({
                 </div>
               ) : null}
             </div>
-            <div className="flex flex-wrap gap-2">
-              {statusOptions.map((status) => (
-                <Button key={status} variant={statusFilter === status ? "primary" : "ghost"} size="sm" onClick={() => setStatusFilter(status)}>
-                  {formatStatusLabel(status)}
+            <div className="w-full md:w-auto">
+              <div className="hidden w-max gap-2 md:flex">
+                {statusOptions.map((status) => (
+                  <Button key={status} variant={statusFilter === status ? "primary" : "ghost"} size="sm" onClick={() => setStatusFilter(status)}>
+                    {formatStatusLabel(status)}
+                  </Button>
+                ))}
+              </div>
+              <div className="md:hidden">
+                <Button size="sm" variant="ghost" onClick={() => setMobileFiltersOpen(true)}>
+                  Filters
                 </Button>
-              ))}
+              </div>
             </div>
           </div>
 
@@ -1251,7 +1262,8 @@ export function ChangeItemsPanel({
           ) : null}
 
           {lane === "changes" && summaryData.baseline_review_pending > 0 ? (
-            <Card className="border-[rgba(215,90,45,0.18)] bg-[#fff8f4] p-4">
+            <>
+            <Card className="hidden border-[rgba(215,90,45,0.18)] bg-[#fff8f4] p-4 md:block">
               <p className="text-sm font-medium text-ink">
                 {summaryData.baseline_review_pending === 1
                   ? "1 baseline item is waiting in Initial Review."
@@ -1266,11 +1278,27 @@ export function ChangeItemsPanel({
                 </Button>
               </div>
             </Card>
+            <div className="flex items-center justify-between gap-3 rounded-[1rem] border border-[rgba(215,90,45,0.18)] bg-[#fff8f4] px-4 py-3 text-sm md:hidden">
+              <span className="text-[#314051]">
+                {summaryData.baseline_review_pending === 1
+                  ? "1 baseline item waiting"
+                  : `${summaryData.baseline_review_pending} baseline items waiting`}
+              </span>
+              <Button asChild size="sm" variant="ghost">
+                <Link href={withBasePath(basePath, "/initial-review")}>Open</Link>
+              </Button>
+            </div>
+            </>
           ) : null}
 
-          <div className="flex flex-wrap items-center gap-3 text-sm text-[#596270]">
-            <Badge tone="info">{lane === "initial_review" ? "Initial Review lane" : `${formatStatusLabel(statusFilter)} lane`}</Badge>
-            <label className="flex items-center gap-2 rounded-full border border-line/80 bg-white/75 px-3 py-1.5 text-sm text-[#314051]">
+          <div className="flex flex-col gap-3 text-sm text-[#596270] md:flex-row md:flex-wrap md:items-center">
+            <div className="flex items-center gap-3">
+              <Badge tone="info">{lane === "initial_review" ? "Initial Review lane" : `${formatStatusLabel(statusFilter)} lane`}</Badge>
+              <span className="hidden md:inline">{rows.length} visible changes</span>
+              <span className="hidden md:inline">•</span>
+              <span className="hidden md:inline">{groups.length} course group{groups.length === 1 ? "" : "s"}</span>
+            </div>
+            <label className="hidden items-center gap-2 rounded-full border border-line/80 bg-white/75 px-3 py-1.5 text-sm text-[#314051] md:flex">
               <span className="text-[#6d7885]">Source</span>
               <select
                 aria-label="Filter changes by source"
@@ -1286,9 +1314,6 @@ export function ChangeItemsPanel({
                 ))}
               </select>
             </label>
-            <span>{rows.length} visible changes</span>
-            <span>•</span>
-            <span>{groups.length} course group{groups.length === 1 ? "" : "s"}</span>
           </div>
         </div>
       </Card>
@@ -1481,6 +1506,54 @@ export function ChangeItemsPanel({
               </div>
             </>
           ) : null}
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
+        <SheetContent side="bottom" className="overflow-y-auto md:hidden">
+          <SheetHeader>
+            <div>
+              <SheetTitle>Review filters</SheetTitle>
+              <SheetDescription>Adjust lane status and source scope.</SheetDescription>
+            </div>
+            <SheetDismissButton />
+          </SheetHeader>
+          <div className="mt-6 space-y-5">
+            <div className="space-y-3">
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Status</p>
+              <div className="flex flex-wrap gap-2">
+                {statusOptions.map((status) => (
+                  <Button
+                    key={status}
+                    variant={statusFilter === status ? "primary" : "ghost"}
+                    size="sm"
+                    onClick={() => setStatusFilter(status)}
+                  >
+                    {formatStatusLabel(status)}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-3">
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Source</p>
+              <select
+                aria-label="Filter changes by source"
+                className="h-11 w-full rounded-2xl border border-line bg-white/80 px-4 text-sm text-ink outline-none transition focus:border-cobalt focus:bg-white"
+                value={sourceFilter}
+                onChange={(event) => setSourceFilter(event.target.value)}
+              >
+                <option value="all">All</option>
+                {(sources.data || []).map((source) => (
+                  <option key={source.source_id} value={String(source.source_id)}>
+                    {source.display_name || source.provider || `Source ${source.source_id}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="rounded-[1rem] border border-line/80 bg-white/72 p-4 text-sm text-[#596270]">
+              {rows.length} visible changes · {groups.length} course group{groups.length === 1 ? "" : "s"}
+            </div>
+          </div>
         </SheetContent>
       </Sheet>
     </div>

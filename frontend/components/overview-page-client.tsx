@@ -88,17 +88,7 @@ export default function OverviewPage({ basePath = "" }: { basePath?: string }) {
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>
-            <p className="text-sm text-[#596270]">{surface.hero.ctaReason}</p>
           </div>
-          {surface.hero.meta.length > 0 ? (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {surface.hero.meta.map((item) => (
-                <Badge key={item} tone="info">
-                  {item}
-                </Badge>
-              ))}
-            </div>
-          ) : null}
         </div>
       </Card>
 
