@@ -2,6 +2,12 @@
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from app.db.base import Base
 from app.db.model_registry import load_all_models
@@ -9,35 +15,42 @@ from app.db.model_registry import load_all_models
 load_all_models()
 
 VALID_OWNERS = {
-    "input-service",
-    "ingest-service",
-    "review-service",
-    "notification-service",
-    "platform-shared",
+    "shared",
+    "sources",
+    "runtime.connectors",
+    "runtime.llm",
+    "runtime.apply",
+    "changes",
+    "families",
+    "notify",
 }
 
 TABLE_OWNERSHIP: dict[str, str] = {
-    "users": "platform-shared",
-    "user_sessions": "platform-shared",
-    "input_sources": "input-service",
-    "input_source_configs": "input-service",
-    "input_source_secrets": "input-service",
-    "input_source_cursors": "input-service",
-    "sync_requests": "input-service",
-    "ingest_jobs": "ingest-service",
-    "ingest_results": "ingest-service",
-    "integration_outbox": "platform-shared",
-    "integration_inbox": "platform-shared",
-    "ingest_apply_log": "review-service",
-    "source_event_observations": "review-service",
-    "event_entities": "review-service",
-    "changes": "review-service",
-    "change_source_refs": "review-service",
-    "course_work_item_label_families": "review-service",
-    "course_work_item_raw_types": "review-service",
-    "course_raw_type_suggestions": "review-service",
-    "notifications": "notification-service",
-    "digest_send_log": "notification-service",
+    "users": "shared",
+    "user_sessions": "shared",
+    "input_sources": "sources",
+    "input_source_configs": "sources",
+    "input_source_secrets": "sources",
+    "input_source_cursors": "sources",
+    "sync_requests": "sources",
+    "ingest_jobs": "runtime.connectors",
+    "ingest_results": "runtime.connectors",
+    "calendar_component_parse_tasks": "runtime.llm",
+    "gmail_message_parse_cache": "runtime.llm",
+    "calendar_component_parse_cache": "runtime.llm",
+    "integration_outbox": "shared",
+    "integration_inbox": "shared",
+    "ingest_apply_log": "runtime.apply",
+    "source_event_observations": "runtime.apply",
+    "event_entities": "runtime.apply",
+    "ingest_unresolved_records": "runtime.apply",
+    "changes": "changes",
+    "change_source_refs": "changes",
+    "course_work_item_label_families": "families",
+    "course_work_item_raw_types": "families",
+    "course_raw_type_suggestions": "families",
+    "notifications": "notify",
+    "digest_send_log": "notify",
 }
 
 

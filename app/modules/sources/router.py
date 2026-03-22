@@ -9,7 +9,7 @@ from app.modules.sources.sources_router import router as sources_router
 from app.modules.sources.sync_requests_router import router as sync_requests_router
 from app.modules.sources.webhooks_router import router as webhooks_router
 
-router = APIRouter(tags=["input-control-plane"], dependencies=[Depends(require_public_api_key)])
+router = APIRouter(tags=["sources"], dependencies=[Depends(require_public_api_key)])
 
 router.include_router(sources_router)
 router.include_router(sync_requests_router)

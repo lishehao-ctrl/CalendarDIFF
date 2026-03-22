@@ -15,7 +15,7 @@ def require_registered_user_or_409(user: User = Depends(get_authenticated_user_o
 def require_owned_source_or_404(*, db: Session, user_id: int, source_id: int):
     source = get_input_source(db, user_id=user_id, source_id=source_id)
     if source is None:
-        raise HTTPException(status_code=404, detail="Input source not found")
+        raise HTTPException(status_code=404, detail="Source not found")
     return source
 
 

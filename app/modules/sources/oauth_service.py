@@ -74,7 +74,7 @@ def handle_gmail_oauth_callback(
 
     source = db.get(InputSource, source_id)
     if source is None or source.provider != "gmail":
-        raise RuntimeError("Input source not found for oauth callback")
+        raise RuntimeError("Source not found for oauth callback")
 
     client = gmail_client or GmailClient()
     previous_payload = _load_existing_gmail_secret_payload(source)

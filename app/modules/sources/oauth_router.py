@@ -24,7 +24,7 @@ from app.modules.sources.schemas import (
 _OAUTH_RUNTIME = build_oauth_runtime_config()
 
 router = APIRouter()
-public_router = APIRouter(tags=["input-control-plane-public"])
+public_router = APIRouter(tags=["sources-public"])
 
 
 @router.post(
