@@ -161,6 +161,10 @@ def _serialize_rows(
                 "notification_state": notification_state,
                 "deliver_after": deliver_after,
                 "change_summary": change_summary,
+                "evidence_availability": {
+                    "before": isinstance(change.before_evidence_json, dict),
+                    "after": isinstance(change.after_evidence_json, dict),
+                },
                 "decision_support": decision_support,
             }
         )

@@ -54,6 +54,20 @@ type LoadedEvidence = {
 
 type StructuredEvidenceItem = EvidencePreviewResponse["structured_items"][number];
 
+function getEvidenceAvailability(change: ChangeItem) {
+  return {
+    before: change.evidence_availability?.before ?? Boolean(change.before_event || change.before_display),
+    after: change.evidence_availability?.after ?? Boolean(change.after_event || change.after_display),
+  };
+}
+
+function defaultEvidenceSide(change: ChangeItem): "before" | "after" {
+  const availability = getEvidenceAvailability(change);
+  if (availability.after) return "after";
+  if (availability.before) return "before";
+  return "after";
+}
+
 function groupChangesByCourse(rows: ChangeItem[]) {
   const groups = new Map<string, ChangeItem[]>();
   for (const row of rows) {
@@ -523,6 +537,7 @@ function DecisionWorkspace({
   compact?: boolean;
 }) {
   const summary = summarizeChange(selected);
+  const selectedEvidenceAvailability = getEvidenceAvailability(selected);
   const beforeDue = formatSemanticDue((selected.before_event || {}) as Record<string, unknown>, "No previous time");
   const afterDue = formatSemanticDue((selected.after_event || {}) as Record<string, unknown>, "No new time");
   const pending = selected.review_status === "pending";
@@ -640,15 +655,34 @@ function DecisionWorkspace({
       >
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant={currentEvidenceSide === "before" ? "secondary" : "ghost"} onClick={() => onEvidenceSideChange("before")}>
+            <Button
+              size="sm"
+              variant={currentEvidenceSide === "before" ? "secondary" : "ghost"}
+              onClick={() => onEvidenceSideChange("before")}
+              disabled={!selectedEvidenceAvailability.before}
+            >
               <FileSearch className="mr-2 h-4 w-4" />
               {previewBusy === "before" ? "Loading..." : "Preview before"}
             </Button>
-            <Button size="sm" variant={currentEvidenceSide === "after" ? "secondary" : "ghost"} onClick={() => onEvidenceSideChange("after")}>
+            <Button
+              size="sm"
+              variant={currentEvidenceSide === "after" ? "secondary" : "ghost"}
+              onClick={() => onEvidenceSideChange("after")}
+              disabled={!selectedEvidenceAvailability.after}
+            >
               <CalendarRange className="mr-2 h-4 w-4" />
               {previewBusy === "after" ? "Loading..." : "Preview after"}
             </Button>
           </div>
+          {!selectedEvidenceAvailability.before || !selectedEvidenceAvailability.after ? (
+            <p className="text-xs text-[#6d7885]">
+              {selectedEvidenceAvailability.before && !selectedEvidenceAvailability.after
+                ? "Only frozen before evidence is available for this change."
+                : !selectedEvidenceAvailability.before && selectedEvidenceAvailability.after
+                  ? "Only frozen after evidence is available for this change."
+                  : "No frozen evidence is available for this change."}
+            </p>
+          ) : null}
           <div className="inline-flex flex-wrap gap-2 rounded-full border border-line/80 bg-white/60 p-2">
             <Button size="sm" variant={evidenceView === "summary" ? "primary" : "ghost"} onClick={() => onEvidenceViewChange("summary")}>
               Summary
@@ -915,6 +949,7 @@ export function ChangeItemsPanel({
   const rows = useMemo(() => data || [], [data]);
   const groups = useMemo(() => groupChangesByCourse(rows), [rows]);
   const selected = rows.find((row) => row.id === selectedChangeId) || null;
+  const selectedEvidenceAvailability = selected ? getEvidenceAvailability(selected) : { before: false, after: false };
   const selectedIdsSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const allVisibleSelected = rows.length > 0 && rows.every((row) => selectedIdsSet.has(row.id));
 
@@ -931,6 +966,7 @@ export function ChangeItemsPanel({
 
     if (!selectedChangeId || !rows.some((row) => row.id === selectedChangeId)) {
       setSelectedChangeId(rows[0].id);
+      setCurrentEvidenceSide(defaultEvidenceSide(rows[0]));
       setEvidence(null);
       if (statusFilter !== "pending") {
         setLearningOpen(false);
@@ -958,6 +994,30 @@ export function ChangeItemsPanel({
       setPreviewBusy(side);
       setCurrentEvidenceSide(side);
       await markViewed(change);
+      const availability = getEvidenceAvailability(change);
+      if (!availability[side]) {
+        const message =
+          side === "after"
+            ? "No frozen after evidence is available for this change."
+            : "No frozen before evidence is available for this change.";
+        setEvidence({
+          payload: {
+            side,
+            content_type: "text/plain",
+            truncated: false,
+            filename: `change-${change.id}-${side}.txt`,
+            provider: null,
+            structured_kind: "generic",
+            structured_items: [],
+            event_count: 0,
+            events: [],
+            preview_text: message,
+          },
+          summaryFallback: message,
+        });
+        setPreviewBusy(null);
+        return;
+      }
       try {
         const payload = await previewChangeEvidence(change.id, side);
         const fallback =
@@ -995,6 +1055,12 @@ export function ChangeItemsPanel({
       setEditContext(null);
       setEditContextError(null);
       setEditContextBusy(false);
+      return;
+    }
+
+    const preferredSide = getEvidenceAvailability(selected)[currentEvidenceSide] ? currentEvidenceSide : defaultEvidenceSide(selected);
+    if (preferredSide !== currentEvidenceSide) {
+      setCurrentEvidenceSide(preferredSide);
       return;
     }
 

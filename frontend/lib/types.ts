@@ -373,6 +373,10 @@ export type ChangeItem = {
       source_observed_at?: string | null;
     };
   } | null;
+  evidence_availability?: {
+    before: boolean;
+    after: boolean;
+  };
   decision_support?: ChangeDecisionSupport | null;
 };
 

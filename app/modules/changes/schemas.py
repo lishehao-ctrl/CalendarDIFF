@@ -40,6 +40,11 @@ class ChangeSummary(BaseModel):
     new: ChangeSummarySide
 
 
+class ChangeEvidenceAvailabilityResponse(BaseModel):
+    before: bool
+    after: bool
+
+
 class ChangeItemResponse(BaseModel):
     id: int
     entity_uid: str
@@ -64,6 +69,7 @@ class ChangeItemResponse(BaseModel):
     notification_state: str | None = None
     deliver_after: datetime | None = None
     change_summary: ChangeSummary | None = None
+    evidence_availability: ChangeEvidenceAvailabilityResponse
     decision_support: "ChangeDecisionSupportResponse | None" = None
 
 

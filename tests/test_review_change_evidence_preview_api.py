@@ -132,3 +132,53 @@ def test_review_change_after_preview_returns_frozen_gmail_evidence(client, db_se
     assert payload["structured_kind"] == "gmail_event"
     assert payload["structured_items"][0]["sender"] == "Professor Example <prof@example.edu>"
     assert "Please submit Quiz 1" in (payload["preview_text"] or "")
+
+
+def test_change_listing_exposes_frozen_evidence_availability(client, db_session, auth_headers) -> None:
+    user, _source = _create_user_with_source(db_session, provider="ics", source_kind=SourceKind.CALENDAR)
+    before_payload = {
+        "uid": "ent-before-only",
+        "course_dept": "CSE",
+        "course_number": 100,
+        "family_name": "Quiz",
+        "event_name": "Quiz 2",
+        "ordinal": 2,
+        "due_date": "2026-03-28",
+        "due_time": "10:00:00",
+        "time_precision": "datetime",
+    }
+    before_evidence = freeze_observation_evidence(
+        provider="ics",
+        event_payload={
+            "source_facts": {
+                "external_event_id": "evt-before-only",
+                "source_title": "Quiz 2",
+                "source_summary": "Calendar event",
+                "source_dtstart_utc": "2026-03-28T10:00:00+00:00",
+                "source_dtend_utc": "2026-03-28T11:00:00+00:00",
+                "location": "Center Hall",
+            }
+        },
+        semantic_payload=before_payload,
+    )
+    db_session.add(
+        Change(
+            user_id=user.id,
+            entity_uid="ent-before-only",
+            change_origin=ChangeOrigin.INGEST_PROPOSAL,
+            change_type=ChangeType.REMOVED,
+            detected_at=datetime.now(timezone.utc),
+            before_semantic_json=before_payload,
+            after_semantic_json=None,
+            before_evidence_json=before_evidence.model_dump(mode="json") if before_evidence is not None else None,
+            after_evidence_json=None,
+            review_status=ReviewStatus.PENDING,
+        )
+    )
+    db_session.commit()
+
+    response = client.get("/changes?review_status=pending", headers=auth_headers(client, user=user))
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["evidence_availability"] == {"before": True, "after": False}
