@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArchiveRestore, ExternalLink, RefreshCw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -169,14 +169,34 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
   const [busyReconnect, setBusyReconnect] = useState(false);
 
   const source = useMemo(() => (sources.data || []).find((row) => row.source_id === sourceId) || null, [sourceId, sources.data]);
+  const activeSync = observability.data?.active || null;
 
-  async function refreshAll(options?: { background?: boolean; force?: boolean }) {
+  const shouldPollActiveSync = Boolean(
+    (activeSync && activeSync.status !== "SUCCEEDED" && activeSync.status !== "FAILED") ||
+      source?.runtime_state === "running" ||
+      source?.runtime_state === "queued" ||
+      source?.runtime_state === "rebind_pending" ||
+      source?.sync_state === "running" ||
+      source?.sync_state === "queued",
+  );
+
+  const refreshAll = useCallback(async (options?: { background?: boolean; force?: boolean }) => {
     await Promise.all([
       sources.refresh({ background: options?.background, force: options?.force }),
       observability.refresh({ background: options?.background, force: options?.force }),
       history.refresh({ background: options?.background, force: options?.force }),
     ]);
-  }
+  }, [history, observability, sources]);
+
+  useEffect(() => {
+    if (!shouldPollActiveSync) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      void refreshAll({ background: true, force: true });
+    }, 2000);
+    return () => window.clearInterval(intervalId);
+  }, [refreshAll, shouldPollActiveSync]);
 
   async function runSync() {
     setBusySync(true);
@@ -246,7 +266,6 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
     return <EmptyState title="Source not found" description="This source is unavailable in the current workspace." />;
   }
 
-  const activeSync = observability.data?.active || null;
   const bootstrap = observability.data?.bootstrap || null;
   const bootstrapSummary = observability.data?.bootstrap_summary || null;
   const latestReplay = observability.data?.latest_replay || null;
