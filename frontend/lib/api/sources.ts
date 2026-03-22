@@ -6,6 +6,18 @@ import type {
   SyncStatus,
 } from "@/lib/types";
 
+export function sourceListCacheKey(status: "active" | "archived" | "all" = "active") {
+  return `sources:list${buildQuery({ status })}`;
+}
+
+export function sourceObservabilityCacheKey(sourceId: number) {
+  return `sources:${sourceId}:observability`;
+}
+
+export function sourceSyncHistoryCacheKey(sourceId: number, limit?: number) {
+  return `sources:${sourceId}:sync-history${buildQuery({ limit })}`;
+}
+
 export async function listSources(params?: { status?: "active" | "archived" | "all" }) {
   return apiGet<SourceRow[]>(`/sources${buildQuery({ status: params?.status || "active" })}`);
 }

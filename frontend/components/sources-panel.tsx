@@ -2,21 +2,20 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArchiveRestore, CalendarSync, CheckCircle2, ChevronRight, CircleAlert, Mailbox, RefreshCw, Trash2 } from "lucide-react";
+import { ArchiveRestore, CalendarSync, ChevronRight, Mailbox, RefreshCw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { SourceSyncProgress } from "@/components/source-sync-progress";
 import { startOnboardingGmailOAuth } from "@/lib/api/onboarding";
-import { createOAuthSession, createSyncRequest, deleteSource as deleteSourceRequest, getSyncRequest, listSources, updateSource } from "@/lib/api/sources";
+import { createOAuthSession, createSyncRequest, deleteSource as deleteSourceRequest, getSyncRequest, listSources, sourceListCacheKey, updateSource } from "@/lib/api/sources";
 import { withBasePath } from "@/lib/demo-mode";
-import { deriveSourceImportState } from "@/lib/import-review";
-import { buildSourceObservabilityViews } from "@/lib/source-observability";
 import { useApiResource } from "@/lib/use-api-resource";
 import { useSourceObservabilityMap } from "@/lib/use-source-observability-map";
 import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
-import type { SourceObservabilityView, SourceRow, SyncStatus } from "@/lib/types";
+import type { SourceObservabilityResponse, SourceRecovery, SourceRow, SyncStatus } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const oauthQueryKeys = ["oauth_provider", "oauth_status", "source_id", "request_id", "message"] as const;
 
@@ -35,12 +34,6 @@ function syncTone(value: string | undefined) {
   if (["succeeded", "success"].includes(value)) return "approved";
   if (["failed", "error"].includes(value)) return "error";
   return "default";
-}
-
-function sourceHealthTone(source: SourceRow) {
-  if (sourceNeedsAttention(source)) return "pending";
-  if (!source.is_active) return "info";
-  return "approved";
 }
 
 function buildSourceInsight(source: SourceRow) {
@@ -76,6 +69,59 @@ function formatSourceSubtitle(source: SourceRow) {
   return source.oauth_account_email || `${formatStatusLabel(source.source_kind, "Email")} · ${source.source_key}`;
 }
 
+function productPhaseLabel(phase: SourceRow["source_product_phase"] | SourceObservabilityResponse["source_product_phase"]) {
+  switch (phase) {
+    case "importing_baseline":
+      return "Baseline import";
+    case "needs_initial_review":
+      return "Initial Review";
+    case "monitoring_live":
+      return "Monitoring live";
+    case "needs_attention":
+      return "Attention required";
+    default:
+      return "Phase unavailable";
+  }
+}
+
+function trustStateLabel(trustState: SourceRecovery["trust_state"] | null | undefined) {
+  switch (trustState) {
+    case "trusted":
+      return "Trusted";
+    case "stale":
+      return "Stale";
+    case "partial":
+      return "Partially trusted";
+    case "blocked":
+      return "Blocked";
+    default:
+      return "Trust unavailable";
+  }
+}
+
+function trustStateTone(trustState: SourceRecovery["trust_state"] | null | undefined) {
+  switch (trustState) {
+    case "trusted":
+      return "approved";
+    case "stale":
+      return "info";
+    case "partial":
+      return "pending";
+    case "blocked":
+      return "error";
+    default:
+      return "info";
+  }
+}
+
+function resolveProductPhase(source: SourceRow, observability: SourceObservabilityResponse | undefined) {
+  return observability?.source_product_phase || source.source_product_phase || null;
+}
+
+function resolveRecovery(source: SourceRow, observability: SourceObservabilityResponse | undefined) {
+  return observability?.source_recovery || source.source_recovery || null;
+}
+
 function sourceSetupHref(basePath: string, provider: string) {
   if (provider === "ics") return withBasePath(basePath, "/sources/connect/canvas-ics");
   if (provider === "gmail") return withBasePath(basePath, "/sources/connect/gmail");
@@ -102,36 +148,35 @@ function ConnectSourceCard({
   iconShellClassName: string;
 }) {
   return (
-    <Card className="animate-surface-enter interactive-lift bg-white/72 p-5">
+    <div className="rounded-[1.1rem] border border-line/80 bg-white/72 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <div className={iconShellClassName}>{icon}</div>
+          <div className={cn(iconShellClassName, "h-10 w-10 rounded-[1rem]")}>{icon}</div>
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{provider}</p>
-            <h3 className="mt-1 text-lg font-semibold text-ink">{title}</h3>
+            <h3 className="mt-1 text-sm font-semibold text-ink">{title}</h3>
+            <p className="mt-1 text-xs text-[#596270]">{detail}</p>
           </div>
         </div>
         <Badge tone={attention ? "pending" : connected ? "approved" : "info"}>
           {attention ? "Attention" : connected ? "Connected" : "Not connected"}
         </Badge>
       </div>
-      <p className="mt-3 text-sm text-[#596270]">{detail}</p>
       <div className="mt-4">
-        <Button asChild>
+        <Button asChild size="sm" variant={connected ? "ghost" : "secondary"}>
           <Link href={href}>
             {connected ? "Manage" : "Connect"}
             <ChevronRight className="ml-2 h-4 w-4" />
           </Link>
         </Button>
       </div>
-    </Card>
+    </div>
   );
 }
 
 function ConnectedSourceCard({
   source,
   observability,
-  importState,
   syncLabel,
   onSync,
   onDelete,
@@ -139,47 +184,52 @@ function ConnectedSourceCard({
   basePath,
 }: {
   source: SourceRow;
-  observability: SourceObservabilityView;
-  importState: ReturnType<typeof deriveSourceImportState>;
+  observability: SourceObservabilityResponse | undefined;
   syncLabel?: string;
   onSync: (sourceId: number) => void;
   onDelete: (sourceId: number, provider: string) => void;
   busyDelete: number | null;
   basePath: string;
 }) {
-  const needsAttention = sourceNeedsAttention(source);
+  const recovery = resolveRecovery(source, observability);
+  const productPhase = resolveProductPhase(source, observability);
+  const bootstrapSummary = observability?.bootstrap_summary || null;
+  const needsAttention = recovery ? recovery.trust_state !== "trusted" : sourceNeedsAttention(source);
   const detailHref = withBasePath(basePath, `/sources/${source.source_id}`);
+  const showSyncBadge = Boolean(syncLabel && syncLabel.toLowerCase() !== "idle");
+  const showBootstrapSummary =
+    Boolean(bootstrapSummary) &&
+    (productPhase !== "monitoring_live" ||
+      (bootstrapSummary?.review_required_count || 0) > 0 ||
+      (bootstrapSummary?.conflict_count || 0) > 0);
+  const secondaryTimestamp = recovery?.degraded_since
+    ? `Last good sync ${formatDateTime(recovery.last_good_sync_at, "Not recorded")} · Degraded since ${formatDateTime(recovery.degraded_since)}`
+    : recovery?.last_good_sync_at
+      ? `Last good sync ${formatDateTime(recovery.last_good_sync_at)}`
+      : `Updated ${formatDateTime(source.last_polled_at, "Never")}`;
   const primaryAction =
-    importState.phase === "initial_review_ready" ? (
+    recovery?.next_action === "reconnect_gmail" ? (
+      <Button asChild className="w-full justify-center">
+        <Link href={sourceSetupHref(basePath, source.provider)}>Reconnect Gmail</Link>
+      </Button>
+    ) : recovery?.next_action === "update_ics" ? (
+      <Button asChild className="w-full justify-center">
+        <Link href={sourceSetupHref(basePath, source.provider)}>Update Canvas ICS</Link>
+      </Button>
+    ) : recovery?.next_action === "retry_sync" ? (
+      <Button onClick={() => onSync(source.source_id)} className="w-full justify-center">
+        <RefreshCw className="mr-2 h-4 w-4" />
+        {recovery.next_action_label || "Retry sync"}
+      </Button>
+    ) : productPhase === "needs_initial_review" ? (
       <Button asChild className="w-full justify-center">
         <Link href={withBasePath(basePath, "/initial-review")}>Open Initial Review</Link>
       </Button>
     ) : (
-      <Button onClick={() => onSync(source.source_id)} className="w-full justify-center">
-        <RefreshCw className="mr-2 h-4 w-4" />
-        Sync now
-      </Button>
-    );
-  const remediationAction =
-    source.provider === "gmail" && needsAttention ? (
-      <Button asChild variant="secondary" className="w-full justify-center">
-        <Link href={sourceSetupHref(basePath, source.provider)}>Reconnect Gmail</Link>
-      </Button>
-    ) : source.provider === "ics" && needsAttention ? (
-      <Button asChild variant="secondary" className="w-full justify-center">
-        <Link href={sourceSetupHref(basePath, source.provider)}>Update Canvas ICS</Link>
-      </Button>
-    ) : (
-      <Button asChild variant="ghost" className="w-full justify-center">
+      <Button asChild className="w-full justify-center">
         <Link href={detailHref}>Open details</Link>
       </Button>
     );
-  const insight =
-    importState.phase === "baseline_running"
-      ? { title: "Baseline import in progress", detail: "The first import is still building this source baseline." }
-      : importState.phase === "initial_review_ready"
-        ? { title: "Initial Review is next", detail: "The first import finished. Review the baseline before treating later changes as replay." }
-        : buildSourceInsight(source);
 
   return (
     <Card className={needsAttention ? "animate-surface-enter interactive-lift border-[rgba(215,90,45,0.28)] bg-white p-5" : "animate-surface-enter interactive-lift bg-white p-5"}>
@@ -189,27 +239,18 @@ function ConnectedSourceCard({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-base font-semibold text-ink">{formatSourceTitle(source)}</h3>
-                <Badge tone={sourceHealthTone(source)}>{needsAttention ? "Needs attention" : "Healthy"}</Badge>
-                <Badge tone={syncTone(syncLabel)}>{formatStatusLabel(syncLabel, "Idle")}</Badge>
-                {importState.phase === "baseline_running" ? <Badge tone="pending">Baseline import</Badge> : null}
-                {importState.phase === "initial_review_ready" ? <Badge tone="pending">Initial Review</Badge> : null}
+                <Badge tone="info">{productPhaseLabel(productPhase)}</Badge>
+                <Badge tone={trustStateTone(recovery?.trust_state)}>{trustStateLabel(recovery?.trust_state)}</Badge>
+                {showSyncBadge ? <Badge tone={syncTone(syncLabel)}>{formatStatusLabel(syncLabel, "Idle")}</Badge> : null}
               </div>
               <p className="mt-2 text-sm text-[#596270]">{formatSourceSubtitle(source)}</p>
             </div>
             <div className="grid w-full shrink-0 gap-2 sm:grid-cols-2 lg:w-[340px]">
               {primaryAction}
-              {remediationAction}
-              {source.provider === "gmail" && needsAttention ? (
-                <Button asChild variant="ghost" className="w-full justify-center">
-                  <Link href={detailHref}>Open details</Link>
-                </Button>
-              ) : source.provider === "ics" && needsAttention ? (
-                <Button asChild variant="ghost" className="w-full justify-center">
-                  <Link href={detailHref}>Open details</Link>
-                </Button>
-              ) : (
-                <div className="hidden sm:block" />
-              )}
+              <Button asChild variant="ghost" className="w-full justify-center">
+                <Link href={detailHref}>Open details</Link>
+              </Button>
+              <div className="hidden sm:block" />
               <Button variant="ghost" className="w-full justify-center" onClick={() => onDelete(source.source_id, source.provider)} disabled={busyDelete === source.source_id}>
                 <Trash2 className="mr-2 h-4 w-4" />
                 {busyDelete === source.source_id ? "Archiving..." : "Archive"}
@@ -217,39 +258,26 @@ function ConnectedSourceCard({
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <span className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5 text-sm text-[#314051]">
-              Updated {formatDateTime(source.last_polled_at, "Never")}
-            </span>
-            {importState.importedCount > 0 ? (
-              <span className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5 text-sm text-[#314051]">
-                Imported {importState.importedCount}
-              </span>
-            ) : null}
-            {importState.reviewRequiredCount > 0 ? (
-              <span className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5 text-sm text-[#314051]">
-                Needs review {importState.reviewRequiredCount}
-              </span>
-            ) : null}
-            {typeof importState.bootstrapRecordsCount === "number" ? (
-              <span className="rounded-full border border-line/80 bg-white/85 px-3 py-1.5 text-sm text-[#314051]">
-                Baseline scanned {importState.bootstrapRecordsCount}
-              </span>
-            ) : null}
-          </div>
-
           <div className="rounded-[1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
-            <p className="font-medium text-ink">{insight.title}</p>
-            {insight.detail ? <p className="mt-2 text-[#596270]">{insight.detail}</p> : null}
-            {importState.phase !== "replay_review" ? (
+            <p className="font-medium text-ink">{recovery?.impact_summary || buildSourceInsight(source).title}</p>
+            {recovery?.next_action_label ? (
+              <p className="mt-2 text-[#596270]">
+                Next step: {recovery.next_action_label}
+              </p>
+            ) : recovery?.impact_summary ? null : buildSourceInsight(source).detail ? (
+              <p className="mt-2 text-[#596270]">{buildSourceInsight(source).detail}</p>
+            ) : null}
+            {showBootstrapSummary && bootstrapSummary ? (
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <p>Imported: {importState.importedCount}</p>
-                <p>Needs review: {importState.reviewRequiredCount}</p>
-                <p>Ignored: {importState.ignoredCount}</p>
-                <p>Conflicts: {importState.conflictCount}</p>
+                <p>Imported: {bootstrapSummary.imported_count}</p>
+                <p>Needs review: {bootstrapSummary.review_required_count}</p>
+                <p>Ignored: {bootstrapSummary.ignored_count}</p>
+                <p>Conflicts: {bootstrapSummary.conflict_count}</p>
               </div>
             ) : null}
           </div>
+
+          <p className="text-xs leading-5 text-[#6d7885]">{secondaryTimestamp}</p>
 
           {source.sync_progress ? <SourceSyncProgress className="mt-1" progress={source.sync_progress} /> : null}
         </div>
@@ -291,8 +319,12 @@ function ArchivedSourceCard({
 }
 
 export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
-  const active = useApiResource<SourceRow[]>(() => listSources({ status: "active" }), []);
-  const archived = useApiResource<SourceRow[]>(() => listSources({ status: "archived" }), []);
+  const active = useApiResource<SourceRow[]>(() => listSources({ status: "active" }), [], null, {
+    cacheKey: sourceListCacheKey("active"),
+  });
+  const archived = useApiResource<SourceRow[]>(() => listSources({ status: "archived" }), [], null, {
+    cacheKey: sourceListCacheKey("archived"),
+  });
   const [syncState, setSyncState] = useState<Record<number, string>>({});
   const [syncDetails, setSyncDetails] = useState<Record<number, SyncStatus | undefined>>({});
   const [busyDelete, setBusyDelete] = useState<number | null>(null);
@@ -331,25 +363,45 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
   );
   const archivedSources = useMemo(() => (archived.data || []).filter((source) => !source.is_active), [archived.data]);
   const activeProviders = useMemo(() => new Set(activeSources.map((source) => source.provider)), [activeSources]);
-  const attentionSources = useMemo(() => activeSources.filter((source) => sourceNeedsAttention(source)), [activeSources]);
-  const healthySources = useMemo(() => activeSources.filter((source) => !sourceNeedsAttention(source)), [activeSources]);
-  const observabilityViews = useMemo(
-    () => buildSourceObservabilityViews(activeSources, { previewMode: basePath === "/preview", syncStatusesBySource: syncDetails }),
-    [activeSources, basePath, syncDetails],
-  );
   const observabilityMap = useSourceObservabilityMap(activeSources);
-  const observabilityBySourceId = useMemo(() => Object.fromEntries(observabilityViews.map((view) => [view.source_id, view])), [observabilityViews]);
-  const importStates = useMemo(
-    () => Object.fromEntries(activeSources.map((source) => [source.source_id, deriveSourceImportState(source, observabilityMap.data[source.source_id])])),
+  const attentionSources = useMemo(
+    () => activeSources.filter((source) => {
+      const recovery = resolveRecovery(source, observabilityMap.data[source.source_id]);
+      return recovery ? recovery.trust_state !== "trusted" : sourceNeedsAttention(source);
+    }),
+    [activeSources, observabilityMap.data],
+  );
+  const healthySources = useMemo(
+    () => activeSources.filter((source) => {
+      const recovery = resolveRecovery(source, observabilityMap.data[source.source_id]);
+      return recovery ? recovery.trust_state === "trusted" : !sourceNeedsAttention(source);
+    }),
     [activeSources, observabilityMap.data],
   );
   const initialReviewReady = useMemo(
-    () => Object.values(importStates).filter((state) => state.phase === "initial_review_ready"),
-    [importStates],
+    () =>
+      activeSources.filter(
+        (source) => resolveProductPhase(source, observabilityMap.data[source.source_id]) === "needs_initial_review",
+      ),
+    [activeSources, observabilityMap.data],
   );
   const baselineRunning = useMemo(
-    () => Object.values(importStates).filter((state) => state.phase === "baseline_running"),
-    [importStates],
+    () =>
+      activeSources.filter(
+        (source) => resolveProductPhase(source, observabilityMap.data[source.source_id]) === "importing_baseline",
+      ),
+    [activeSources, observabilityMap.data],
+  );
+  const activeRequestPairs = useMemo(
+    () =>
+      ((active.data || []) as SourceRow[])
+        .filter((source) => source.is_active && source.active_request_id)
+        .map((source) => ({ sourceId: source.source_id, requestId: source.active_request_id as string })),
+    [active.data],
+  );
+  const activeRequestPairsKey = useMemo(
+    () => activeRequestPairs.map((pair) => `${pair.sourceId}:${pair.requestId}`).sort().join("|"),
+    [activeRequestPairs],
   );
   const refreshAll = useCallback(async (options?: { background?: boolean }) => {
     await Promise.all([active.refresh(options), archived.refresh(options)]);
@@ -357,19 +409,15 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    const requestPairs = activeSources
-      .filter((source) => source.active_request_id)
-      .map((source) => ({ sourceId: source.source_id, requestId: source.active_request_id as string }));
-
-    if (requestPairs.length === 0) {
-      setSyncDetails({});
+    if (activeRequestPairs.length === 0) {
+      setSyncDetails((current) => (Object.keys(current).length === 0 ? current : {}));
       return;
     }
 
     async function poll() {
       try {
         const rows = await Promise.all(
-          requestPairs.map(async ({ sourceId, requestId }) => ({
+          activeRequestPairs.map(async ({ sourceId, requestId }) => ({
             sourceId,
             payload: await getSyncRequest(requestId),
           })),
@@ -406,7 +454,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [activeSources, refreshAll]);
+  }, [activeRequestPairs, activeRequestPairsKey, refreshAll]);
 
   const pollSyncRequest = useCallback(
     async (sourceId: number, requestId: string, options?: { successMessage?: string; failurePrefix?: string }) => {
@@ -611,8 +659,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
                         <ConnectedSourceCard
                           key={source.source_id}
                           source={source}
-                          observability={observabilityBySourceId[source.source_id]}
-                          importState={importStates[source.source_id]}
+                          observability={observabilityMap.data[source.source_id]}
                           syncLabel={
                             syncState[source.source_id] ||
                             (source.sync_state !== "idle" ? source.sync_state : undefined) ||
@@ -637,8 +684,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
                         <ConnectedSourceCard
                           key={source.source_id}
                           source={source}
-                          observability={observabilityBySourceId[source.source_id]}
-                          importState={importStates[source.source_id]}
+                          observability={observabilityMap.data[source.source_id]}
                           syncLabel={
                             syncState[source.source_id] ||
                             (source.sync_state !== "idle" ? source.sync_state : undefined) ||
@@ -662,8 +708,9 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
           <Card className="animate-surface-enter animate-surface-delay-2 p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Connect or reconnect</p>
-                <h3 className="mt-1 text-lg font-semibold text-ink">Bring intake online</h3>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Connection tools</p>
+                <h3 className="mt-1 text-lg font-semibold text-ink">Connect or repair a source</h3>
+                <p className="mt-2 text-sm text-[#596270]">Use these only when setup or reconnect work is needed.</p>
               </div>
             </div>
 

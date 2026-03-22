@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   BellDot,
@@ -25,6 +25,7 @@ import { getBrowserTimeZone } from "@/lib/browser-timezone";
 import { withBasePath } from "@/lib/demo-mode";
 import type { OnboardingStage } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { preloadWorkspaceLane } from "@/lib/workspace-preload";
 
 type SessionUser = {
   id: number;
@@ -37,12 +38,12 @@ type SessionUser = {
 };
 
 const items: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; description: string }> = [
-  { href: "/", label: "Overview", icon: LayoutDashboard, description: "Next action" },
-  { href: "/sources", label: "Sources", icon: BellDot, description: "Connection and runtime" },
-  { href: "/changes", label: "Changes", icon: GitCompareArrows, description: "Primary workspace" },
-  { href: "/families", label: "Families", icon: Link2, description: "Naming" },
-  { href: "/manual", label: "Manual", icon: Pencil, description: "Repairs" },
-  { href: "/settings", label: "Settings", icon: Settings2, description: "Preferences" }
+  { href: "/", label: "Overview", icon: LayoutDashboard, description: "Workspace posture" },
+  { href: "/sources", label: "Sources", icon: BellDot, description: "Trust and recovery" },
+  { href: "/changes", label: "Changes", icon: GitCompareArrows, description: "Replay review" },
+  { href: "/families", label: "Families", icon: Link2, description: "Naming governance" },
+  { href: "/manual", label: "Manual", icon: Pencil, description: "Fallback lane" },
+  { href: "/settings", label: "Settings", icon: Settings2, description: "Account and timezone" }
 ] as const;
 
 const DESKTOP_NAV_COLLAPSED_KEY = "calendardiff.desktop-nav-collapsed";
@@ -59,12 +60,14 @@ function NavContentWithItems({
   items,
   collapsed,
   onToggleCollapse,
+  onPrimeRoute,
   logoutRedirectTo = "/login",
 }: {
   pathname: string;
   items: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; description: string }>;
   collapsed: boolean;
   onToggleCollapse?: () => void;
+  onPrimeRoute?: (href: string) => void;
   logoutRedirectTo?: string;
 }) {
   return (
@@ -113,6 +116,8 @@ function NavContentWithItems({
               prefetch
               aria-label={label}
               title={label}
+              onMouseEnter={() => onPrimeRoute?.(href)}
+              onFocus={() => onPrimeRoute?.(href)}
               className={cn(
                 "group relative transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
                 collapsed
@@ -174,6 +179,9 @@ export function AppShell({
   const [timezoneSynced, setTimezoneSynced] = useState(false);
   const onboardingReady = sessionUser.onboarding_stage === "ready";
   const navItems = items.map((item) => ({ ...item, href: withBasePath(basePath, item.href) }));
+  const primeRoute = useCallback((href: string) => {
+    preloadWorkspaceLane(href);
+  }, []);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -221,6 +229,28 @@ export function AppShell({
     };
   }, [sessionUser.timezone_name, sessionUser.timezone_source, timezoneSynced]);
 
+  useEffect(() => {
+    if (!onboardingReady || typeof window === "undefined") {
+      return;
+    }
+
+    const warmRoutes = [withBasePath(basePath, "/sources"), withBasePath(basePath, "/changes"), withBasePath(basePath, "/settings")];
+    const runWarmup = () => {
+      for (const href of warmRoutes) {
+        primeRoute(href);
+      }
+    };
+
+    const requestIdle = typeof window.requestIdleCallback === "function" ? window.requestIdleCallback.bind(window) : null;
+    if (requestIdle) {
+      const idleId = requestIdle(() => runWarmup(), { timeout: 1200 });
+      return () => window.cancelIdleCallback?.(idleId);
+    }
+
+    const timeoutId = globalThis.setTimeout(runWarmup, 350);
+    return () => globalThis.clearTimeout(timeoutId);
+  }, [basePath, onboardingReady, primeRoute]);
+
   return (
     <div className="mx-auto flex min-h-screen max-w-[1500px] gap-6 p-4 md:p-6">
       <aside
@@ -234,6 +264,7 @@ export function AppShell({
           items={navItems}
           collapsed={desktopNavCollapsed}
           onToggleCollapse={() => setDesktopNavCollapsed((current) => !current)}
+          onPrimeRoute={primeRoute}
           logoutRedirectTo={basePath ? withBasePath(basePath, "/") : "/login"}
         />
       </aside>
@@ -267,6 +298,7 @@ export function AppShell({
                     pathname={pathname}
                     items={navItems}
                     collapsed={false}
+                    onPrimeRoute={primeRoute}
                     logoutRedirectTo={basePath ? withBasePath(basePath, "/") : "/login"}
                   />
                 </Dialog.Content>

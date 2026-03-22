@@ -12,6 +12,28 @@ import type {
   ChangeEditRequest,
 } from "@/lib/types";
 
+export function changesSummaryCacheKey() {
+  return "changes:summary";
+}
+
+export function changesListCacheKey(params: {
+  review_status: "pending" | "approved" | "rejected" | "all";
+  review_bucket?: "initial_review" | "changes" | "all";
+  intake_phase?: "baseline" | "replay" | "all";
+  limit?: number;
+  offset?: number;
+  source_id?: number | null;
+}) {
+  return `changes:list${buildQuery({
+    review_status: params.review_status,
+    review_bucket: params.review_bucket,
+    intake_phase: params.intake_phase,
+    limit: params.limit,
+    offset: params.offset,
+    source_id: params.source_id,
+  })}`;
+}
+
 export async function getChangesSummary() {
   return apiGet<ChangesWorkbenchSummary>("/changes/summary");
 }

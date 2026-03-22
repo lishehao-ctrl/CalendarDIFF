@@ -8,12 +8,22 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { SourceSyncProgress } from "@/components/source-sync-progress";
-import { createOAuthSession, createSyncRequest, deleteSource, getSourceObservability, getSourceSyncHistory, listSources, updateSource } from "@/lib/api/sources";
+import {
+  createOAuthSession,
+  createSyncRequest,
+  deleteSource,
+  getSourceObservability,
+  getSourceSyncHistory,
+  listSources,
+  sourceListCacheKey,
+  sourceObservabilityCacheKey,
+  sourceSyncHistoryCacheKey,
+  updateSource,
+} from "@/lib/api/sources";
 import { withBasePath } from "@/lib/demo-mode";
-import { deriveSourceImportState } from "@/lib/import-review";
 import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
 import { formatElapsedMs } from "@/lib/source-observability";
-import type { SourceObservabilitySync, SourceRow, SourceSyncHistoryResponse } from "@/lib/types";
+import type { SourceObservabilitySync, SourceRecovery, SourceRow, SourceSyncHistoryResponse } from "@/lib/types";
 import { useApiResource } from "@/lib/use-api-resource";
 
 function sourceTitle(source: SourceRow) {
@@ -32,6 +42,51 @@ function sourceSubtitle(source: SourceRow) {
 
 function connectHref(basePath: string, provider: string) {
   return provider === "ics" ? withBasePath(basePath, "/sources/connect/canvas-ics") : withBasePath(basePath, "/sources/connect/gmail");
+}
+
+function productPhaseLabel(phase: SourceRow["source_product_phase"] | null | undefined) {
+  switch (phase) {
+    case "importing_baseline":
+      return "Baseline import";
+    case "needs_initial_review":
+      return "Initial Review";
+    case "monitoring_live":
+      return "Monitoring live";
+    case "needs_attention":
+      return "Attention required";
+    default:
+      return "Phase unavailable";
+  }
+}
+
+function trustStateLabel(trustState: SourceRecovery["trust_state"] | null | undefined) {
+  switch (trustState) {
+    case "trusted":
+      return "Trusted";
+    case "stale":
+      return "Stale";
+    case "partial":
+      return "Partially trusted";
+    case "blocked":
+      return "Blocked";
+    default:
+      return "Trust unavailable";
+  }
+}
+
+function trustStateTone(trustState: SourceRecovery["trust_state"] | null | undefined) {
+  switch (trustState) {
+    case "trusted":
+      return "approved";
+    case "stale":
+      return "info";
+    case "partial":
+      return "pending";
+    case "blocked":
+      return "error";
+    default:
+      return "info";
+  }
 }
 
 function usageFact(label: string, value: string) {
@@ -96,9 +151,15 @@ function SyncRunCard({
 }
 
 export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: number; basePath?: string }) {
-  const sources = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), []);
-  const observability = useApiResource(() => getSourceObservability(sourceId), [sourceId]);
-  const history = useApiResource<SourceSyncHistoryResponse>(() => getSourceSyncHistory(sourceId, { limit: 8 }), [sourceId]);
+  const sources = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), [], null, {
+    cacheKey: sourceListCacheKey("all"),
+  });
+  const observability = useApiResource(() => getSourceObservability(sourceId), [sourceId], null, {
+    cacheKey: sourceObservabilityCacheKey(sourceId),
+  });
+  const history = useApiResource<SourceSyncHistoryResponse>(() => getSourceSyncHistory(sourceId, { limit: 8 }), [sourceId], null, {
+    cacheKey: sourceSyncHistoryCacheKey(sourceId, 8),
+  });
   const [banner, setBanner] = useState<{ tone: "info" | "error"; text: string } | null>(null);
   const [busySync, setBusySync] = useState(false);
   const [busyArchive, setBusyArchive] = useState(false);
@@ -180,8 +241,12 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
   const bootstrap = observability.data?.bootstrap || null;
   const bootstrapSummary = observability.data?.bootstrap_summary || null;
   const latestReplay = observability.data?.latest_replay || null;
-  const needsReconnect = Boolean(source.last_error_message) || source.oauth_connection_status === "not_connected";
-  const importState = deriveSourceImportState(source, observability.data);
+  const sourceRecovery = observability.data?.source_recovery || source.source_recovery || null;
+  const sourceProductPhase = observability.data?.source_product_phase || source.source_product_phase || null;
+  const needsReconnect =
+    sourceRecovery?.next_action === "reconnect_gmail" ||
+    Boolean(source.last_error_message) ||
+    source.oauth_connection_status === "not_connected";
   const bootstrapConnector = bootstrap?.connector_result && typeof bootstrap.connector_result === "object" ? (bootstrap.connector_result as Record<string, unknown>) : null;
   const bootstrapRecordsCount = typeof bootstrapConnector?.records_count === "number" ? bootstrapConnector.records_count : null;
 
@@ -193,27 +258,58 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
           <div className="max-w-3xl">
             <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Source detail</p>
             <h2 className="mt-3 text-3xl font-semibold text-ink">{sourceTitle(source)}</h2>
-            <p className="mt-3 text-sm leading-7 text-[#596270]">{sourceSubtitle(source)}</p>
+            <p className="mt-3 text-sm leading-7 text-[#596270]">{sourceRecovery?.impact_summary || sourceSubtitle(source)}</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <Badge tone="info">{formatStatusLabel(source.provider)}</Badge>
               <Badge tone={source.is_active ? "approved" : "info"}>{source.is_active ? "Active" : "Archived"}</Badge>
-              <Badge tone={source.last_error_message ? "error" : "approved"}>{source.last_error_message ? "Needs attention" : "Healthy"}</Badge>
+              <Badge tone="info">{productPhaseLabel(sourceProductPhase)}</Badge>
+              <Badge tone={trustStateTone(sourceRecovery?.trust_state)}>{trustStateLabel(sourceRecovery?.trust_state)}</Badge>
             </div>
+            {sourceRecovery?.next_action_label ? (
+              <p className="mt-4 text-sm text-[#314051]">Next step: {sourceRecovery.next_action_label}</p>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => void runSync()} disabled={busySync || !source.is_active}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              {busySync ? "Running..." : "Run sync"}
-            </Button>
-            {source.provider === "gmail" ? (
-              <Button variant="ghost" onClick={() => void reconnectSource()} disabled={busyReconnect}>
+            {sourceProductPhase === "needs_initial_review" ? (
+              <Button asChild>
+                <Link href={withBasePath(basePath, "/initial-review")}>Open Initial Review</Link>
+              </Button>
+            ) : sourceRecovery?.next_action === "reconnect_gmail" && source.provider === "gmail" ? (
+              <Button onClick={() => void reconnectSource()} disabled={busyReconnect}>
                 <ExternalLink className="mr-2 h-4 w-4" />
-                {busyReconnect ? "Redirecting..." : needsReconnect ? "Reconnect Gmail" : "Open Gmail connection"}
+                {busyReconnect ? "Redirecting..." : sourceRecovery.next_action_label}
+              </Button>
+            ) : sourceRecovery?.next_action === "update_ics" && source.provider === "ics" ? (
+              <Button asChild>
+                <Link href={connectHref(basePath, source.provider)}>{sourceRecovery.next_action_label}</Link>
               </Button>
             ) : (
-              <Button asChild variant="ghost">
-                <Link href={connectHref(basePath, source.provider)}>Open connection flow</Link>
+              <Button onClick={() => void runSync()} disabled={busySync || !source.is_active}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                {busySync ? "Running..." : sourceRecovery?.next_action === "retry_sync" ? sourceRecovery.next_action_label : "Run sync"}
               </Button>
+            )}
+            {source.provider === "gmail" ? (
+              sourceRecovery?.next_action === "reconnect_gmail" ? (
+                <Button asChild variant="ghost">
+                  <Link href={withBasePath(basePath, `/sources/${sourceId}`)}>Open details</Link>
+                </Button>
+              ) : (
+                <Button variant="ghost" onClick={() => void reconnectSource()} disabled={busyReconnect}>
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  {busyReconnect ? "Redirecting..." : needsReconnect ? sourceRecovery?.next_action_label || "Reconnect Gmail" : "Open Gmail connection"}
+                </Button>
+              )
+            ) : (
+              sourceRecovery?.next_action === "update_ics" ? (
+                <Button asChild variant="ghost">
+                  <Link href={withBasePath(basePath, `/sources/${sourceId}`)}>Open details</Link>
+                </Button>
+              ) : (
+                <Button asChild variant="ghost">
+                  <Link href={connectHref(basePath, source.provider)}>Open connection flow</Link>
+                </Button>
+              )
             )}
             {source.is_active ? (
               <Button variant="ghost" onClick={() => void archiveSource()} disabled={busyArchive}>
@@ -254,15 +350,28 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
           <div className="mt-4 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-medium text-ink">{source.operator_guidance?.message || observability.data?.operator_guidance?.message || "No active operator guidance."}</p>
-                <p className="mt-2 text-sm text-[#596270]">{formatStatusLabel(source.runtime_state, "Unknown runtime")} · {formatStatusLabel(source.sync_state, "Idle")}</p>
+                <p className="text-sm font-medium text-ink">{sourceRecovery?.impact_summary || "Recovery posture is not available yet."}</p>
+                <p className="mt-2 text-sm text-[#596270]">{productPhaseLabel(sourceProductPhase)} · {trustStateLabel(sourceRecovery?.trust_state)}</p>
               </div>
-              {source.operator_guidance?.severity || observability.data?.operator_guidance?.severity ? (
-                <Badge tone={(source.operator_guidance?.severity || observability.data?.operator_guidance?.severity) === "blocking" ? "error" : "pending"}>
-                  {formatStatusLabel(source.operator_guidance?.severity || observability.data?.operator_guidance?.severity)}
-                </Badge>
-              ) : null}
+              <Badge tone={trustStateTone(sourceRecovery?.trust_state)}>{trustStateLabel(sourceRecovery?.trust_state)}</Badge>
             </div>
+            {sourceRecovery ? (
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                {usageFact("Next action", sourceRecovery.next_action_label)}
+                {usageFact("Last good sync", formatDateTime(sourceRecovery.last_good_sync_at, "Not recorded"))}
+                {usageFact("Degraded since", formatDateTime(sourceRecovery.degraded_since, "Not degraded"))}
+              </div>
+            ) : null}
+            {sourceRecovery?.recovery_steps?.length ? (
+              <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/75 p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Recovery steps</p>
+                <div className="mt-3 space-y-2 text-sm text-[#314051]">
+                  {sourceRecovery.recovery_steps.map((step) => (
+                    <p key={step}>{step}</p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {activeSync ? (
               <>
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -275,20 +384,6 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
             ) : source.sync_progress ? (
               <SourceSyncProgress className="mt-4" progress={source.sync_progress} />
             ) : null}
-
-            <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/75 p-4">
-              <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Review phase</p>
-              <p className="mt-2 text-sm font-medium text-ink">
-                {importState.phase === "baseline_running"
-                  ? "Baseline import"
-                  : importState.phase === "initial_review_ready"
-                    ? "Initial Review"
-                    : importState.phase === "replay_review"
-                      ? "Replay review"
-                      : "Phase not exposed"}
-              </p>
-              <p className="mt-2 text-sm text-[#596270]">{importState.summary}</p>
-            </div>
           </div>
         </Card>
 

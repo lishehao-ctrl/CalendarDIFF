@@ -6,14 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/data-states";
-import { getChangesSummary, listChanges } from "@/lib/api/changes";
-import { getOnboardingStatus } from "@/lib/api/onboarding";
-import { listSources } from "@/lib/api/sources";
+import { changesListCacheKey, changesSummaryCacheKey, getChangesSummary, listChanges } from "@/lib/api/changes";
+import { getOnboardingStatus, onboardingStatusCacheKey } from "@/lib/api/onboarding";
 import { withBasePath } from "@/lib/demo-mode";
-import { buildInitialReviewSummary } from "@/lib/import-review";
-import { buildOverviewCards } from "@/lib/overview";
-import type { ChangesWorkbenchSummary, OnboardingStatus, ChangeItem, SourceRow } from "@/lib/types";
-import { useSourceObservabilityMap } from "@/lib/use-source-observability-map";
+import { buildOverviewSurface } from "@/lib/overview";
+import type { ChangeItem, ChangesWorkbenchSummary, OnboardingStatus } from "@/lib/types";
 import { useApiResource } from "@/lib/use-api-resource";
 
 const cardIcons = {
@@ -24,44 +21,42 @@ const cardIcons = {
 } as const;
 
 export default function OverviewPage({ basePath = "" }: { basePath?: string }) {
-  const summary = useApiResource<ChangesWorkbenchSummary>(() => getChangesSummary(), []);
+  const topPendingParams = {
+    review_status: "pending" as const,
+    review_bucket: "changes" as const,
+    intake_phase: "replay" as const,
+    limit: 1,
+  };
+  const summary = useApiResource<ChangesWorkbenchSummary>(() => getChangesSummary(), [], null, {
+    cacheKey: changesSummaryCacheKey(),
+  });
   const topPendingChange = useApiResource<ChangeItem[]>(
-    () => listChanges({ review_status: "pending", review_bucket: "changes", intake_phase: "replay", limit: 1 }),
+    () => listChanges(topPendingParams),
     [],
+    null,
+    { cacheKey: changesListCacheKey(topPendingParams) },
   );
-  const onboarding = useApiResource<OnboardingStatus>(() => getOnboardingStatus(), []);
-  const sources = useApiResource<SourceRow[]>(() => listSources({ status: "active" }), []);
-  const observability = useSourceObservabilityMap(sources.data || []);
+  const onboarding = useApiResource<OnboardingStatus>(() => getOnboardingStatus(), [], null, {
+    cacheKey: onboardingStatusCacheKey(),
+  });
 
-  if (summary.loading || topPendingChange.loading || onboarding.loading || sources.loading || observability.loading) {
+  if (summary.loading || topPendingChange.loading || onboarding.loading) {
     return <LoadingState label="overview" />;
   }
 
-  const errorMessage =
-    summary.error ||
-    topPendingChange.error ||
-    onboarding.error ||
-    sources.error ||
-    observability.error;
+  const errorMessage = summary.error || topPendingChange.error || onboarding.error;
   if (errorMessage) {
     return <ErrorState message={`Overview could not assemble the current workspace state. ${errorMessage}`} actionLabel="Open Sources" actionHref={withBasePath(basePath, "/sources")} />;
   }
 
-  if (!summary.data || !onboarding.data || !topPendingChange.data || !sources.data) {
+  if (!summary.data || !onboarding.data || !topPendingChange.data) {
     return <ErrorState message="Overview could not assemble the current workspace state." />;
   }
 
-  const initialReview = buildInitialReviewSummary({
-    sources: sources.data,
-    observabilityMap: observability.data,
-    workbenchSummary: summary.data,
-  });
-
-  const cards = buildOverviewCards({
+  const surface = buildOverviewSurface({
     summary: summary.data,
     topPendingChange: topPendingChange.data[0] || null,
     onboarding: onboarding.data,
-    initialReview,
   });
 
   return (
@@ -69,14 +64,36 @@ export default function OverviewPage({ basePath = "" }: { basePath?: string }) {
       <Card className="animate-surface-enter relative overflow-hidden p-6 md:p-7">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.14),transparent_36%),radial-gradient(circle_at_82%_18%,rgba(215,90,45,0.12),transparent_26%)]" />
         <div className="relative max-w-3xl">
-          <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">Overview</p>
-          <h1 className="mt-3 text-3xl font-semibold text-ink">Route attention to the right lane.</h1>
-          <p className="mt-3 text-sm text-[#596270]">Four cards. One next step.</p>
+          <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">{surface.hero.eyebrow}</p>
+          <h1 className="mt-3 text-3xl font-semibold text-ink">{surface.hero.title}</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-[#596270]">{surface.hero.summary}</p>
+          {surface.hero.progressLabel && typeof surface.hero.progressPercent === "number" ? (
+            <div className="mt-5 max-w-xl space-y-2">
+              <div className="flex items-center justify-between gap-3 text-sm text-[#596270]">
+                <span>{surface.hero.progressLabel}</span>
+                <span>{surface.hero.progressPercent}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-white/60">
+                <div
+                  className="h-2 rounded-full bg-cobalt transition-all duration-500"
+                  style={{ width: `${Math.min(Math.max(surface.hero.progressPercent, 0), 100)}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Link href={withBasePath(basePath, surface.hero.ctaHref)}>
+              <Button>
+                {surface.hero.ctaLabel}
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
         </div>
       </Card>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        {cards.map((card, index) => {
+        {surface.cards.map((card, index) => {
           const Icon = cardIcons[card.key];
           return (
             <Card
