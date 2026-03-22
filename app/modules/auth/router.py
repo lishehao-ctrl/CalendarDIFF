@@ -26,6 +26,7 @@ def register_auth(
             notify_email=payload.notify_email,
             password=payload.password,
             timezone_name=payload.timezone_name,
+            language_code=payload.language_code,
         )
     except AuthEmailExistsError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -48,6 +49,7 @@ def login_auth(
             notify_email=payload.notify_email,
             password=payload.password,
             timezone_name=payload.timezone_name,
+            language_code=payload.language_code,
         )
     except InvalidCredentialsError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
@@ -83,6 +85,7 @@ def _to_auth_session_user(db: Session, *, user: User) -> AuthSessionUserResponse
         notify_email=user.notify_email or "",
         timezone_name=user.timezone_name,
         timezone_source=user.timezone_source,
+        language_code=user.language_code,
         created_at=user.created_at,
         onboarding_stage=status_payload.stage,  # type: ignore[arg-type]
         first_source_id=status_payload.first_source_id,

@@ -13,19 +13,26 @@ def test_register_login_session_logout_flow(input_client, db_session) -> None:
     register_response = input_client.post(
         "/auth/register",
         headers={"X-API-Key": "test-api-key"},
-        json={"notify_email": "owner@example.com", "password": "password123", "timezone_name": "America/Los_Angeles"},
+        json={
+            "notify_email": "owner@example.com",
+            "password": "password123",
+            "timezone_name": "America/Los_Angeles",
+            "language_code": "zh-CN",
+        },
     )
     assert register_response.status_code == 201
     assert register_response.json()["authenticated"] is True
     assert register_response.json()["user"]["notify_email"] == "owner@example.com"
     assert register_response.json()["user"]["timezone_name"] == "America/Los_Angeles"
     assert register_response.json()["user"]["timezone_source"] == "auto"
+    assert register_response.json()["user"]["language_code"] == "zh-CN"
     assert "calendardiff_session" in register_response.headers.get("set-cookie", "")
 
     session_response = input_client.get("/auth/session", headers={"X-API-Key": "test-api-key"})
     assert session_response.status_code == 200
     assert session_response.json()["user"]["notify_email"] == "owner@example.com"
     assert session_response.json()["user"]["timezone_name"] == "America/Los_Angeles"
+    assert session_response.json()["user"]["language_code"] == "zh-CN"
     assert session_response.json()["user"]["onboarding_stage"] == "needs_canvas_ics"
 
     logout_response = input_client.post("/auth/logout", headers={"X-API-Key": "test-api-key"})
@@ -38,17 +45,24 @@ def test_register_login_session_logout_flow(input_client, db_session) -> None:
     login_response = input_client.post(
         "/auth/login",
         headers={"X-API-Key": "test-api-key"},
-        json={"notify_email": "owner@example.com", "password": "password123", "timezone_name": "America/Chicago"},
+        json={
+            "notify_email": "owner@example.com",
+            "password": "password123",
+            "timezone_name": "America/Chicago",
+            "language_code": "en",
+        },
     )
     assert login_response.status_code == 200
     assert login_response.json()["authenticated"] is True
     assert login_response.json()["user"]["timezone_name"] == "America/Chicago"
+    assert login_response.json()["user"]["language_code"] == "en"
 
     db_session.expire_all()
     refreshed = db_session.scalar(select(User).where(User.notify_email == "owner@example.com"))
     assert refreshed is not None
     assert refreshed.timezone_name == "America/Chicago"
     assert refreshed.timezone_source == "auto"
+    assert refreshed.language_code == "en"
 
 
 def test_login_invalid_password_returns_401(input_client, db_session) -> None:
@@ -75,6 +89,7 @@ def test_login_allows_existing_bootstrap_short_password(input_client, db_session
         password_hash=_hash_password("123456"),
         timezone_name="America/Los_Angeles",
         timezone_source="manual",
+        language_code="en",
         onboarding_completed_at=None,
     )
     db_session.add(user)
@@ -89,6 +104,7 @@ def test_login_allows_existing_bootstrap_short_password(input_client, db_session
     assert response.status_code == 200
     assert response.json()["authenticated"] is True
     assert response.json()["user"]["notify_email"] == "lishehao@gmail.com"
+    assert response.json()["user"]["language_code"] == "en"
 
 
 def test_login_does_not_override_manual_timezone(input_client, db_session) -> None:

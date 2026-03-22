@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.models.shared import User, UserSession
+from app.modules.common.language import DEFAULT_LANGUAGE_CODE, normalize_language_code
 from app.modules.settings.service import sync_auto_timezone
 
 AUTH_SESSION_COOKIE_NAME = "calendardiff_session"
@@ -33,7 +34,14 @@ class AuthenticationRequiredError(RuntimeError):
     pass
 
 
-def register_user(db: Session, *, notify_email: str, password: str, timezone_name: str | None = None) -> User:
+def register_user(
+    db: Session,
+    *,
+    notify_email: str,
+    password: str,
+    timezone_name: str | None = None,
+    language_code: str | None = None,
+) -> User:
     normalized_email = _normalize_notify_email(notify_email)
     _validate_password(password)
 
@@ -42,12 +50,14 @@ def register_user(db: Session, *, notify_email: str, password: str, timezone_nam
         raise AuthEmailExistsError("notify_email already exists")
 
     normalized_timezone = _normalize_timezone_name(timezone_name) if timezone_name is not None else "UTC"
+    normalized_language = normalize_language_code(language_code) if language_code is not None else DEFAULT_LANGUAGE_CODE
     user = User(
         email=None,
         notify_email=normalized_email,
         password_hash=_hash_password(password),
         timezone_name=normalized_timezone,
         timezone_source="auto",
+        language_code=normalized_language,
         onboarding_completed_at=None,
     )
     db.add(user)
@@ -56,13 +66,24 @@ def register_user(db: Session, *, notify_email: str, password: str, timezone_nam
     return user
 
 
-def login_user(db: Session, *, notify_email: str, password: str, timezone_name: str | None = None) -> User:
+def login_user(
+    db: Session,
+    *,
+    notify_email: str,
+    password: str,
+    timezone_name: str | None = None,
+    language_code: str | None = None,
+) -> User:
     normalized_email = _normalize_notify_email(notify_email)
     user = db.scalar(select(User).where(User.notify_email == normalized_email).limit(1))
     if user is None or not user.password_hash:
         raise InvalidCredentialsError("invalid credentials")
     if not bcrypt.checkpw(password.encode("utf-8"), user.password_hash.encode("utf-8")):
         raise InvalidCredentialsError("invalid credentials")
+    if language_code is not None:
+        user.language_code = normalize_language_code(language_code)
+        db.commit()
+        db.refresh(user)
     return sync_auto_timezone(db, user=user, timezone_name=timezone_name)
 
 

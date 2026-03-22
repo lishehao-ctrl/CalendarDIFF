@@ -33,6 +33,7 @@ def ensure_env_admin_user(
             password_hash=_hash_password(password),
             timezone_name=normalized_timezone,
             timezone_source="manual",
+            language_code="en",
             onboarding_completed_at=None,
         )
         db.add(user)
@@ -42,6 +43,7 @@ def ensure_env_admin_user(
         user.password_hash = _hash_password(password)
         user.timezone_name = normalized_timezone
         user.timezone_source = "manual"
+        user.language_code = user.language_code or "en"
 
     db.commit()
     db.refresh(user)

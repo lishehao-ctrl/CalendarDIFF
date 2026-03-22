@@ -11,6 +11,7 @@ def to_user_response(user: User) -> UserResponse:
         notify_email=user.notify_email,
         timezone_name=user.timezone_name,
         timezone_source=user.timezone_source,
+        language_code=user.language_code,
         calendar_delay_seconds=user.calendar_delay_seconds,
         created_at=user.created_at,
     )

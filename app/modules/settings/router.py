@@ -35,6 +35,7 @@ def patch_profile(
             notify_email=payload.notify_email,
             timezone_name=payload.timezone_name,
             timezone_source=payload.timezone_source,
+            language_code=payload.language_code,
             calendar_delay_seconds=payload.calendar_delay_seconds,
         )
     except ValueError as exc:

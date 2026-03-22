@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from app.db.models.shared import User
+from app.modules.common.language import normalize_language_code
 
 
 def update_current_user(
@@ -16,6 +17,7 @@ def update_current_user(
     notify_email: str | None = None,
     timezone_name: str | None = None,
     timezone_source: str | None = None,
+    language_code: str | None = None,
     calendar_delay_seconds: int | None = None,
 ) -> User:
     if email is not None:
@@ -25,6 +27,8 @@ def update_current_user(
     if timezone_name is not None:
         user.timezone_name = _normalize_timezone_name(timezone_name)
         user.timezone_source = _normalize_timezone_source(timezone_source) if timezone_source is not None else "manual"
+    if language_code is not None:
+        user.language_code = normalize_language_code(language_code)
     if calendar_delay_seconds is not None:
         user.calendar_delay_seconds = calendar_delay_seconds
     db.commit()

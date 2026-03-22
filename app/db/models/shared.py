@@ -8,6 +8,7 @@ from sqlalchemy import BigInteger, DateTime, Enum as SAEnum, Float, ForeignKey, 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.modules.common.language import DEFAULT_LANGUAGE_CODE
 
 if TYPE_CHECKING:
     from app.db.models.input import InputSource
@@ -38,6 +39,7 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     timezone_name: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC", server_default="UTC")
     timezone_source: Mapped[str] = mapped_column(String(16), nullable=False, default="auto", server_default="auto")
+    language_code: Mapped[str] = mapped_column(String(16), nullable=False, default=DEFAULT_LANGUAGE_CODE, server_default=DEFAULT_LANGUAGE_CODE)
     calendar_delay_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=120, server_default="120")
     onboarding_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     gmail_onboarding_skipped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -6,6 +6,8 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.modules.common.language import DEFAULT_LANGUAGE_CODE, LanguageCodeLiteral, normalize_language_code
+
 
 class UserResponse(BaseModel):
     id: int
@@ -13,6 +15,7 @@ class UserResponse(BaseModel):
     notify_email: str | None
     timezone_name: str
     timezone_source: str
+    language_code: LanguageCodeLiteral = DEFAULT_LANGUAGE_CODE
     calendar_delay_seconds: int
     created_at: datetime
 
@@ -22,6 +25,7 @@ class UserUpdateRequest(BaseModel):
     notify_email: str | None = Field(default=None, max_length=255)
     timezone_name: str | None = Field(default=None, max_length=64)
     timezone_source: str | None = Field(default=None, max_length=16)
+    language_code: LanguageCodeLiteral | None = Field(default=None)
     calendar_delay_seconds: int | None = Field(default=None, ge=0, le=3600)
 
     model_config = {"extra": "forbid"}
@@ -54,6 +58,13 @@ class UserUpdateRequest(BaseModel):
         if stripped not in {"auto", "manual"}:
             raise ValueError("timezone_source must be either 'auto' or 'manual'")
         return stripped
+
+    @field_validator("language_code")
+    @classmethod
+    def validate_language_code(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return normalize_language_code(value)
 
 
 def _is_valid_email_address(value: str | None) -> bool:

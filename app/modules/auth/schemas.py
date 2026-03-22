@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.modules.common.language import DEFAULT_LANGUAGE_CODE, LanguageCodeLiteral, normalize_language_code
 from app.modules.onboarding.schemas import OnboardingStageLiteral
 
 
@@ -14,6 +15,7 @@ class AuthRegisterRequest(BaseModel):
     notify_email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=8, max_length=128)
     timezone_name: str | None = Field(default=None, max_length=64)
+    language_code: LanguageCodeLiteral | None = Field(default=None)
 
     model_config = {"extra": "forbid"}
 
@@ -34,6 +36,13 @@ class AuthRegisterRequest(BaseModel):
             return None
         return _normalize_timezone_name(value)
 
+    @field_validator("language_code")
+    @classmethod
+    def _validate_language_code(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return normalize_language_code(value)
+
 
 class AuthLoginRequest(AuthRegisterRequest):
     password: str = Field(min_length=1, max_length=128)
@@ -44,6 +53,7 @@ class AuthSessionUserResponse(BaseModel):
     notify_email: str
     timezone_name: str
     timezone_source: str
+    language_code: LanguageCodeLiteral = DEFAULT_LANGUAGE_CODE
     created_at: datetime
     onboarding_stage: OnboardingStageLiteral
     first_source_id: int | None
