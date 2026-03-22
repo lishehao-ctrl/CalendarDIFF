@@ -12,6 +12,7 @@ import { SourceSyncProgress } from "@/components/source-sync-progress";
 import { withBasePath } from "@/lib/demo-mode";
 import { startOnboardingGmailOAuth } from "@/lib/api/onboarding";
 import { buildSourceObservabilityViews } from "@/lib/source-observability";
+import { invalidateSourceCaches } from "@/lib/source-cache";
 import { createOAuthSession, deleteSource, getSyncRequest, listSources, sourceListCacheKey } from "@/lib/api/sources";
 import { useApiResource } from "@/lib/use-api-resource";
 import type { SourceRow, SyncStatus } from "@/lib/types";
@@ -19,6 +20,7 @@ import type { SourceRow, SyncStatus } from "@/lib/types";
 export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) {
   const { data, loading, error, refresh } = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), [], null, {
     cacheKey: sourceListCacheKey("all"),
+    readCachedSnapshot: false,
   });
   const [syncDetail, setSyncDetail] = useState<SyncStatus | null>(null);
   const [banner, setBanner] = useState<{ tone: "info" | "error"; text: string } | null>(null);
@@ -84,6 +86,7 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
     setBanner(null);
     try {
       await deleteSource(source.source_id);
+      invalidateSourceCaches(source.source_id);
       setBanner({ tone: "info", text: "Mailbox disconnected and archived." });
       await refresh({ force: true });
     } catch (err) {

@@ -12,6 +12,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { SourceSyncProgress } from "@/components/source-sync-progress";
 import { withBasePath } from "@/lib/demo-mode";
 import { buildSourceObservabilityViews } from "@/lib/source-observability";
+import { invalidateSourceCaches } from "@/lib/source-cache";
 import { deleteSource, getSyncRequest, listSources, sourceListCacheKey, updateSource } from "@/lib/api/sources";
 import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime } from "@/lib/presenters";
@@ -20,6 +21,7 @@ import type { SourceRow, SyncStatus } from "@/lib/types";
 export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
   const { data, loading, error, refresh } = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), [], null, {
     cacheKey: sourceListCacheKey("all"),
+    readCachedSnapshot: false,
   });
   const [syncDetail, setSyncDetail] = useState<SyncStatus | null>(null);
   const [canvasIcsUrl, setCanvasIcsUrl] = useState("");
@@ -86,6 +88,7 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
     setBanner(null);
     try {
       await updateSource(source.source_id, { is_active: true, secrets: { url: normalizedUrl } });
+      invalidateSourceCaches(source.source_id);
       setBanner({ tone: "info", text: source.is_active ? "Canvas ICS link updated." : "Canvas ICS link reactivated and updated." });
       setCanvasIcsUrl("");
       await refresh({ force: true });
@@ -104,6 +107,7 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
     setBanner(null);
     try {
       await deleteSource(source.source_id);
+      invalidateSourceCaches(source.source_id);
       setBanner({ tone: "info", text: "Canvas ICS link archived." });
       await refresh({ force: true });
     } catch (err) {

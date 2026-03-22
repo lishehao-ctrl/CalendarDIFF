@@ -22,6 +22,7 @@ import {
 } from "@/lib/api/sources";
 import { withBasePath } from "@/lib/demo-mode";
 import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
+import { invalidateSourceCaches } from "@/lib/source-cache";
 import { formatElapsedMs } from "@/lib/source-observability";
 import type { SourceObservabilitySync, SourceRecovery, SourceRow, SourceSyncHistoryResponse } from "@/lib/types";
 import { useApiResource } from "@/lib/use-api-resource";
@@ -153,6 +154,7 @@ function SyncRunCard({
 export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: number; basePath?: string }) {
   const sources = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), [], null, {
     cacheKey: sourceListCacheKey("all"),
+    readCachedSnapshot: false,
   });
   const observability = useApiResource(() => getSourceObservability(sourceId), [sourceId], null, {
     cacheKey: sourceObservabilityCacheKey(sourceId),
@@ -181,6 +183,7 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
     setBanner(null);
     try {
       await createSyncRequest(sourceId, { metadata: { kind: "ui_source_detail_sync" } });
+      invalidateSourceCaches(sourceId);
       setBanner({ tone: "info", text: "Sync request queued." });
       await refreshAll({ force: true });
     } catch (err) {
@@ -195,6 +198,7 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
     setBanner(null);
     try {
       await deleteSource(sourceId);
+      invalidateSourceCaches(sourceId);
       setBanner({ tone: "info", text: "Source archived." });
       await refreshAll({ force: true });
     } catch (err) {
@@ -209,6 +213,7 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
     setBanner(null);
     try {
       await updateSource(sourceId, { is_active: true });
+      invalidateSourceCaches(sourceId);
       setBanner({ tone: "info", text: "Source reactivated." });
       await refreshAll({ force: true });
     } catch (err) {

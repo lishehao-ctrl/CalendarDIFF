@@ -6,6 +6,7 @@ import { getCachedResourceSnapshot, invalidateCachedResource, preloadResource, w
 type UseApiResourceOptions = {
   cacheKey?: string;
   staleMs?: number;
+  readCachedSnapshot?: boolean;
 };
 
 export function useApiResource<T>(
@@ -14,9 +15,10 @@ export function useApiResource<T>(
   initialData: T | null = null,
   options?: UseApiResourceOptions,
 ) {
+  const readCachedSnapshot = options?.readCachedSnapshot !== false;
   const initialSnapshot = useMemo(
-    () => (options?.cacheKey ? getCachedResourceSnapshot<T>(options.cacheKey, options.staleMs) : null),
-    [options?.cacheKey, options?.staleMs],
+    () => (readCachedSnapshot && options?.cacheKey ? getCachedResourceSnapshot<T>(options.cacheKey, options.staleMs) : null),
+    [readCachedSnapshot, options?.cacheKey, options?.staleMs],
   );
   const [dataState, setDataState] = useState<T | null>(initialData ?? initialSnapshot?.data ?? null);
   const [loading, setLoading] = useState(initialData === null && initialSnapshot?.data == null);
@@ -83,7 +85,8 @@ export function useApiResource<T>(
   useEffect(() => {
     const cacheKey = optionsRef.current?.cacheKey;
     const staleMs = optionsRef.current?.staleMs;
-    const cached = cacheKey ? getCachedResourceSnapshot<T>(cacheKey, staleMs) : null;
+    const shouldReadCachedSnapshot = optionsRef.current?.readCachedSnapshot !== false;
+    const cached = cacheKey && shouldReadCachedSnapshot ? getCachedResourceSnapshot<T>(cacheKey, staleMs) : null;
     if (cached?.data !== undefined) {
       applyData(cached.data);
       setLoading(false);

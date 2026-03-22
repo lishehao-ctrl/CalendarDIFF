@@ -288,8 +288,8 @@ class ChangeEditRequest(BaseModel):
     def _validate_target_mode(self) -> "ChangeEditRequest":
         if self.mode == "proposal" and self.target.change_id is None:
             raise ValueError("proposal edits require target.change_id")
-        if self.mode == "canonical" and not self.target.entity_uid:
-            raise ValueError("canonical edits require target.entity_uid")
+        if self.mode == "canonical" and self.target.change_id is None and not self.target.entity_uid:
+            raise ValueError("canonical edits require target.change_id or target.entity_uid")
         return self
 
 

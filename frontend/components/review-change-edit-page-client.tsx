@@ -86,7 +86,10 @@ export function ChangeItemEditPageClient({ mode, changeId, basePath = "" }: { mo
 
     return {
       mode,
-      target: { change_id: data.change_id },
+      target: {
+        change_id: data.change_id,
+        entity_uid: mode === "canonical" ? data.entity_uid : null,
+      },
       patch: {
         due_date: form.due_date || null,
         due_time: form.time_precision === "date_only" ? null : form.due_time || null,

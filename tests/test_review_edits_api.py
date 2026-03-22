@@ -180,3 +180,73 @@ def test_review_edit_canonical_applies_directly_to_entity_state(client, db_sessi
     assert entity.manual_support is True
     assert audit_change is not None
     assert audit_change.review_status == ReviewStatus.APPROVED
+
+
+def test_review_edit_canonical_preview_accepts_change_id_target(client, db_session, auth_headers) -> None:
+    user = _create_user(db_session)
+    family = _create_family(db_session, user_id=user.id, canonical_label="Homework")
+    entity_uid = "canonical-edit-from-change"
+    db_session.add(
+        EventEntity(
+            user_id=user.id,
+            entity_uid=entity_uid,
+            lifecycle=EventEntityLifecycle.ACTIVE,
+            course_dept="CSE",
+            course_number=8,
+            course_suffix="A",
+            family_id=family.id,
+            raw_type="Homework",
+            event_name="HW3",
+            ordinal=3,
+            due_date=datetime(2026, 3, 12, tzinfo=timezone.utc).date(),
+            time_precision="date_only",
+        )
+    )
+    db_session.flush()
+    change = Change(
+        user_id=user.id,
+        entity_uid=entity_uid,
+        change_origin=ChangeOrigin.INGEST_PROPOSAL,
+        change_type=ChangeType.DUE_CHANGED,
+        detected_at=datetime.now(timezone.utc),
+        before_semantic_json={**_semantic_payload(uid=entity_uid, event_name="HW3", due_date="2026-03-12"), "family_id": family.id},
+        after_semantic_json={**_semantic_payload(uid=entity_uid, event_name="HW3", due_date="2026-03-13"), "family_id": family.id},
+        review_status=ReviewStatus.PENDING,
+    )
+    db_session.add(change)
+    db_session.commit()
+
+    headers = auth_headers(client, user=user)
+    preview_response = client.post(
+        "/changes/edits/preview",
+        headers=headers,
+        json={
+            "mode": "canonical",
+            "target": {"change_id": change.id},
+            "patch": {"event_name": "HW3 Updated", "due_date": "2026-03-14"},
+            "reason": "manual fix",
+        },
+    )
+    assert preview_response.status_code == 200
+    preview_payload = preview_response.json()
+    assert preview_payload["entity_uid"] == entity_uid
+    assert preview_payload["candidate_after"]["event_name"] == "HW3 Updated"
+    assert preview_payload["candidate_after"]["due_date"] == "2026-03-14"
+
+    apply_response = client.post(
+        "/changes/edits",
+        headers=headers,
+        json={
+            "mode": "canonical",
+            "target": {"change_id": change.id},
+            "patch": {"event_name": "HW3 Updated", "due_date": "2026-03-14"},
+            "reason": "manual fix",
+        },
+    )
+    assert apply_response.status_code == 200
+
+    db_session.expire_all()
+    entity = db_session.scalar(select(EventEntity).where(EventEntity.user_id == user.id, EventEntity.entity_uid == entity_uid))
+    assert entity is not None
+    assert entity.event_name == "HW3 Updated"
+    assert entity.due_date.isoformat() == "2026-03-14"

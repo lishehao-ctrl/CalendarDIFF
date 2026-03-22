@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader,
 import { startOnboardingGmailOAuth } from "@/lib/api/onboarding";
 import { createOAuthSession, createSyncRequest, deleteSource as deleteSourceRequest, getSyncRequest, listSources, sourceListCacheKey, updateSource } from "@/lib/api/sources";
 import { withBasePath } from "@/lib/demo-mode";
+import { invalidateSourceCaches } from "@/lib/source-cache";
 import { useApiResource } from "@/lib/use-api-resource";
 import { useSourceObservabilityMap } from "@/lib/use-source-observability-map";
 import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
@@ -503,6 +504,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
     }
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 
+    invalidateSourceCaches(sourceId ?? undefined);
     void refreshAll({ background: true, force: true, refreshObservability: true });
     if (status === "success" && requestId && sourceId) {
       void pollSyncRequest(sourceId, requestId, {
@@ -516,6 +518,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
     setBanner(null);
     try {
       const created = await createSyncRequest(sourceId, { metadata: { kind: "ui_manual_sync" } });
+      invalidateSourceCaches(sourceId);
       await pollSyncRequest(sourceId, created.request_id);
     } catch (err) {
       const text = err instanceof Error ? err.message : "Sync failed";
@@ -538,6 +541,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
     setBanner(null);
     try {
       await deleteSourceRequest(sourceId);
+      invalidateSourceCaches(sourceId);
       setBanner({
         tone: "info",
         text: provider === "gmail" ? "Mailbox disconnected and archived." : provider === "ics" ? "Canvas ICS link archived." : "Source archived.",
@@ -555,6 +559,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
     setBanner(null);
     try {
       await updateSource(sourceId, { is_active: true });
+      invalidateSourceCaches(sourceId);
       setBanner({ tone: "info", text: `Source #${sourceId} reactivated.` });
       await refreshAll({ background: true, force: true, refreshObservability: true });
     } catch (err) {
