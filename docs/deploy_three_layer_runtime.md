@@ -78,6 +78,12 @@ Operational rule:
 - do not make deployment depend on a BERT / secondary model being online
 - the main deployable path remains deterministic prefilter -> LLM -> Changes/Families/Manual/Sources
 
+Release rule:
+- treat the Gmail secondary filter as an optional pluggable module
+- production release must succeed with `off/noop`
+- `shadow` and `enforce` are upgrade modes, not release prerequisites
+- keep BERT training scripts, evaluation scripts, and threshold tuning outside the critical release checklist
+
 ## Release posture
 The default deployment assumption is one backend process per environment. Ingest/review/notification/llm work still happen, but as background tasks in that process.
 

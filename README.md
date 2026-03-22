@@ -1,23 +1,68 @@
 # CalendarDIFF
 
-CalendarDIFF now runs as a single backend process by default.
+CalendarDIFF is a single-host, monolith-style app for keeping grade-relevant deadline changes in one workflow.
 
-## Default runtime
+It does not try to classify all course communication.
+Its job is to:
+
+1. ingest Canvas ICS and Gmail signals
+2. build a canonical event baseline
+3. surface safe review proposals
+4. keep ongoing replay changes in one daily review lane
+
+## Product shape
+
+Current user-facing product lanes:
+
+- `Overview`
+- `Sources`
+- `Changes`
+- `Families`
+- `Manual`
+- `Settings`
+
+Important workflow distinction:
+
+- `Initial Review` is a temporary baseline-review workspace after first import
+- `Changes` is the normal daily replay-review workspace after baseline is established
+
+The intended user flow is:
+
+1. register or sign in
+2. finish onboarding
+3. connect required Canvas ICS
+4. optionally connect Gmail
+5. choose the initial monitoring window
+6. complete `Initial Review`
+7. use `Changes` for day-to-day review
+
+## Runtime model
+
+CalendarDIFF now runs as one backend process by default.
+
 - Backend: `services.app_api.main:app`
 - Frontend: Next.js app in `frontend/`
 - Infra: PostgreSQL + Redis
-- Default ports:
-  - Backend `8200`
-  - Frontend `3000`
-  - PostgreSQL `5432`
-  - Redis `6379`
 
-Legacy split-service entrypoints are removed from the default repository path. The repo no longer treats `input/ingest/review/notification/llm` as separately launched services.
+Default local ports:
+
+- Backend: `8200`
+- Frontend: `3000`
+- PostgreSQL: `5432`
+- Redis: `6379`
+
+Legacy split-service entrypoints are no longer the default repo path.
 
 ## Local setup
-1. Copy `.env.example` to `.env` and fill in the required values.
+
+1. Copy `.env.example` to `.env` and fill in required values.
 2. Install backend dependencies.
-3. Install frontend dependencies with `cd frontend && npm install`.
+3. Install frontend dependencies:
+
+```bash
+cd frontend && npm install
+```
+
 4. Start the default stack:
 
 ```bash
@@ -42,6 +87,7 @@ curl http://127.0.0.1:8200/health
 ```
 
 ## Direct backend run
+
 ```bash
 SERVICE_NAME=backend RUN_MIGRATIONS=true PORT=8200 ./scripts/start_service.sh
 ```
@@ -49,17 +95,85 @@ SERVICE_NAME=backend RUN_MIGRATIONS=true PORT=8200 ./scripts/start_service.sh
 `SERVICE_NAME` only accepts `backend`.
 
 ## Public HTTP surface
+
+Current public route groups:
+
 - `/auth/*`
 - `/settings/profile`
 - `/sources/*`
+- `/onboarding/*`
 - `/changes*`
 - `/families*`
 - `/manual/events*`
-- `/onboarding/*`
 - `/health`
 
+Current onboarding endpoints include:
+
+- `POST /onboarding/registrations`
+- `GET /onboarding/status`
+- `POST /onboarding/canvas-ics`
+- `POST /onboarding/gmail/oauth-sessions`
+- `POST /onboarding/gmail-skip`
+- `POST /onboarding/monitoring-window`
+
+## Runtime truth
+
+`sync_requests` is the single user-visible runtime state machine.
+
+Fine-grained runtime truth lives on:
+
+- `stage`
+- `substage`
+- `stage_updated_at`
+- `progress_json`
+
+User-facing source posture and workbench posture are derived from explicit runtime state rather than old incidental payload inference.
+
+## Product contracts already in use
+
+Current backend contracts exposed to the frontend include:
+
+- `GET /changes/summary`
+  - `workspace_posture`
+- `GET /changes`
+  - `decision_support` on each change item
+- `GET /sources`
+  - `source_product_phase`
+  - `source_recovery`
+- `GET /sources/{source_id}/observability`
+  - `bootstrap_summary`
+  - `source_product_phase`
+  - `source_recovery`
+
+## Optional integrations
+
+Supported integrations remain:
+
+- Gmail OAuth
+- Canvas ICS
+- SMTP delivery
+- fixture builders and probe scripts
+
+Operational rule:
+
+- BERT / Gmail secondary filtering is not part of the required deployable path
+- production should continue to work with:
+  - `GMAIL_SECONDARY_FILTER_MODE=off`
+  - `GMAIL_SECONDARY_FILTER_PROVIDER=noop`
+
+Recommended architecture stance:
+
+- treat the Gmail secondary filter as a pluggable module, not a required runtime dependency
+- keep training/evaluation artifacts separate from the production-critical path
+- allow runtime switching by config only:
+  - `off`
+  - `shadow`
+  - `enforce`
+- never make onboarding, source intake, review, or deploy health depend on the BERT module being available
+
 ## OpenAPI
-A single canonical snapshot is maintained at:
+
+Canonical snapshot:
 
 ```text
 contracts/openapi/public-service.json
@@ -71,35 +185,48 @@ Refresh it with:
 python scripts/update_openapi_snapshots.py
 ```
 
-## Worker model
-The monolith still runs the ingest, review-apply, notification, and llm worker loops internally. Those loops are background tasks within the backend process, not separate services.
+## Deployment
 
-Worker enable flags remain:
-- `INGEST_SERVICE_ENABLE_WORKER`
-- `REVIEW_SERVICE_ENABLE_APPLY_WORKER`
-- `NOTIFICATION_SERVICE_ENABLE_WORKER`
-- `LLM_SERVICE_ENABLE_WORKER`
+Current production host:
 
-## Optional integrations
-The repo still supports Gmail OAuth, Canvas ICS, SMTP delivery, fixture builders, and probe scripts. Those assets remain available, but they are not part of the default runtime story.
+- domain: `cal.shehao.app`
+- host: `ubuntu@54.152.242.119`
+- app dir: `/home/ubuntu/apps/CalendarDIFF`
+
+Shared-host rule:
+
+- CalendarDIFF owns only `cal.shehao.app`
+- RPG stays separate on `rpg.shehao.app`
+
+Read these before host changes:
+
+- `skills/aws-release/SKILL.md`
+- `docs/deploy_three_layer_runtime.md`
+- `docs/nginx_live_routing_architecture.md`
+
+Normal AWS sync path:
+
+```bash
+scripts/release_aws_main.sh
+```
+
+The actual launch flow used for the current production cut is recorded in:
+
+- `docs/production_release_runbook_2026_03_21.md`
 
 ## Verification baseline
+
 Backend regression:
 
 ```bash
-pytest tests/test_core_ingest_gmail_directive_apply.py \
-  tests/test_core_ingest_apply_calendar_delta.py \
-  tests/test_input_gmail_source_api.py \
-  tests/test_input_ics_source_api.py \
-  tests/test_input_oauth_service.py \
-  tests/test_onboarding_flow_api.py \
-  tests/test_review_*.py \
-  tests/test_manual_events_api.py \
-  tests/test_course_work_item_families_api.py \
-  tests/test_course_raw_types_api.py \
-  tests/test_users_timezone_api.py \
+pytest tests/test_review_items_summary_api.py \
+  tests/test_review_change_source_summary_api.py \
+  tests/test_source_sync_progress_api.py \
+  tests/test_source_read_bridge.py \
   tests/test_openapi_contract_snapshots.py \
-  tests/test_runtime_entrypoints.py
+  tests/test_review_changes_unified.py \
+  tests/test_review_changes_batch_api.py \
+  tests/test_review_edits_api.py
 ```
 
 Frontend regression:
