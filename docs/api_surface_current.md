@@ -35,7 +35,7 @@ This document is the current public contract. Retired legacy public paths should
 - `POST /onboarding/canvas-ics`
 - `POST /onboarding/gmail/oauth-sessions`
 - `POST /onboarding/gmail-skip`
-- `POST /onboarding/term-binding`
+- `POST /onboarding/monitoring-window`
 - `GET /changes/summary`
   - returns workbench/intake summary across `Changes`, `Families`, `Manual`, and `Sources`
 - `GET /changes`
