@@ -31,7 +31,7 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
       return;
     }
     const intervalId = window.setInterval(() => {
-      void refresh({ background: true });
+      void refresh({ background: true, force: true });
     }, 2000);
     return () => window.clearInterval(intervalId);
   }, [refresh, source]);
@@ -85,7 +85,7 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
     try {
       await deleteSource(source.source_id);
       setBanner({ tone: "info", text: "Mailbox disconnected and archived." });
-      await refresh();
+      await refresh({ force: true });
     } catch (err) {
       setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to disconnect Gmail" });
     } finally {

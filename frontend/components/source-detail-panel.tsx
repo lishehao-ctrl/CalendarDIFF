@@ -168,8 +168,12 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
 
   const source = useMemo(() => (sources.data || []).find((row) => row.source_id === sourceId) || null, [sourceId, sources.data]);
 
-  async function refreshAll() {
-    await Promise.all([sources.refresh(), observability.refresh(), history.refresh()]);
+  async function refreshAll(options?: { background?: boolean; force?: boolean }) {
+    await Promise.all([
+      sources.refresh({ background: options?.background, force: options?.force }),
+      observability.refresh({ background: options?.background, force: options?.force }),
+      history.refresh({ background: options?.background, force: options?.force }),
+    ]);
   }
 
   async function runSync() {
@@ -178,7 +182,7 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
     try {
       await createSyncRequest(sourceId, { metadata: { kind: "ui_source_detail_sync" } });
       setBanner({ tone: "info", text: "Sync request queued." });
-      await refreshAll();
+      await refreshAll({ force: true });
     } catch (err) {
       setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to run sync." });
     } finally {
@@ -192,7 +196,7 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
     try {
       await deleteSource(sourceId);
       setBanner({ tone: "info", text: "Source archived." });
-      await refreshAll();
+      await refreshAll({ force: true });
     } catch (err) {
       setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to archive source." });
     } finally {
@@ -206,7 +210,7 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
     try {
       await updateSource(sourceId, { is_active: true });
       setBanner({ tone: "info", text: "Source reactivated." });
-      await refreshAll();
+      await refreshAll({ force: true });
     } catch (err) {
       setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to reactivate source." });
     } finally {

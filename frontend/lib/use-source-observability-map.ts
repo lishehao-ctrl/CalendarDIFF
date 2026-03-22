@@ -7,16 +7,16 @@ import type { SourceObservabilityResponse, SourceRow } from "@/lib/types";
 
 const OBSERVABILITY_STALE_MS = 10_000;
 
-export function useSourceObservabilityMap(sources: SourceRow[]) {
+export function useSourceObservabilityMap(sources: SourceRow[], refreshNonce = 0) {
   const [data, setData] = useState<Record<number, SourceObservabilityResponse>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const latestSourcesRef = useRef<SourceRow[]>(sources);
   const sourceIdsKey = sources
     .filter((source) => source.is_active)
-    .map((source) => source.source_id)
-    .sort((left, right) => left - right)
-    .join(",");
+    .map((source) => `${source.source_id}:${source.updated_at || ""}:${source.active_request_id || ""}:${source.oauth_connection_status || ""}:${source.runtime_state || ""}`)
+    .sort((left, right) => left.localeCompare(right))
+    .join("|");
 
   useEffect(() => {
     latestSourcesRef.current = sources;
@@ -45,7 +45,8 @@ export function useSourceObservabilityMap(sources: SourceRow[]) {
         .map((row) => [row.sourceId, row.snapshot.data as SourceObservabilityResponse]),
     );
     const missingCache = cachedRows.some((row) => row.snapshot.data === undefined);
-    const needsRefresh = cachedRows.some((row) => !row.snapshot.fresh);
+    const forceRefresh = refreshNonce > 0;
+    const needsRefresh = forceRefresh || cachedRows.some((row) => !row.snapshot.fresh);
 
     setData(nextCachedData);
     setLoading(missingCache);
@@ -62,6 +63,7 @@ export function useSourceObservabilityMap(sources: SourceRow[]) {
           key: sourceObservabilityCacheKey(source.source_id),
           loader: () => getSourceObservability(source.source_id),
           staleMs: OBSERVABILITY_STALE_MS,
+          force: forceRefresh,
         }),
       })),
     )
@@ -82,7 +84,7 @@ export function useSourceObservabilityMap(sources: SourceRow[]) {
     return () => {
       cancelled = true;
     };
-  }, [sourceIdsKey]);
+  }, [refreshNonce, sourceIdsKey]);
 
   return { data, loading, error };
 }

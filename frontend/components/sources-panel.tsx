@@ -322,6 +322,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
   const [busyReactivate, setBusyReactivate] = useState<number | null>(null);
   const [banner, setBanner] = useState<Banner>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [observabilityRefreshNonce, setObservabilityRefreshNonce] = useState(0);
   const oauthQueryHandled = useRef(false);
   const toolsSheetSide = useSourceToolsSheetSide();
 
@@ -356,7 +357,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
   );
   const archivedSources = useMemo(() => (archived.data || []).filter((source) => !source.is_active), [archived.data]);
   const activeProviders = useMemo(() => new Set(activeSources.map((source) => source.provider)), [activeSources]);
-  const observabilityMap = useSourceObservabilityMap(activeSources);
+  const observabilityMap = useSourceObservabilityMap(activeSources, observabilityRefreshNonce);
   const attentionSources = useMemo(
     () => activeSources.filter((source) => {
       const recovery = resolveRecovery(source, observabilityMap.data[source.source_id]);
@@ -396,8 +397,14 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
     () => activeRequestPairs.map((pair) => `${pair.sourceId}:${pair.requestId}`).sort().join("|"),
     [activeRequestPairs],
   );
-  const refreshAll = useCallback(async (options?: { background?: boolean }) => {
-    await Promise.all([active.refresh(options), archived.refresh(options)]);
+  const refreshAll = useCallback(async (options?: { background?: boolean; force?: boolean; refreshObservability?: boolean }) => {
+    await Promise.all([
+      active.refresh({ background: options?.background, force: options?.force }),
+      archived.refresh({ background: options?.background, force: options?.force }),
+    ]);
+    if (options?.refreshObservability) {
+      setObservabilityRefreshNonce((current) => current + 1);
+    }
   }, [active, archived]);
 
   useEffect(() => {
@@ -429,7 +436,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
         setSyncDetails(next);
         setSyncState((prev) => ({ ...prev, ...nextSyncState }));
         if (sawTerminal) {
-          void refreshAll({ background: true });
+          void refreshAll({ background: true, force: true, refreshObservability: true });
         }
       } catch {
         if (!cancelled) {
@@ -467,7 +474,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
-      await refreshAll({ background: true });
+      await refreshAll({ background: true, force: true, refreshObservability: true });
     },
     [refreshAll],
   );
@@ -496,7 +503,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
     }
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 
-    void refreshAll({ background: true });
+    void refreshAll({ background: true, force: true, refreshObservability: true });
     if (status === "success" && requestId && sourceId) {
       void pollSyncRequest(sourceId, requestId, {
         successMessage: "Gmail initial sync succeeded.",
@@ -535,7 +542,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
         tone: "info",
         text: provider === "gmail" ? "Mailbox disconnected and archived." : provider === "ics" ? "Canvas ICS link archived." : "Source archived.",
       });
-      await refreshAll({ background: true });
+      await refreshAll({ background: true, force: true, refreshObservability: true });
     } catch (err) {
       setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to archive source" });
     } finally {
@@ -549,7 +556,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
     try {
       await updateSource(sourceId, { is_active: true });
       setBanner({ tone: "info", text: `Source #${sourceId} reactivated.` });
-      await refreshAll({ background: true });
+      await refreshAll({ background: true, force: true, refreshObservability: true });
     } catch (err) {
       setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to reactivate source" });
     } finally {

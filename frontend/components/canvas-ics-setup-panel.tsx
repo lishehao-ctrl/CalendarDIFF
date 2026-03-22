@@ -34,7 +34,7 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
       return;
     }
     const intervalId = window.setInterval(() => {
-      void refresh({ background: true });
+      void refresh({ background: true, force: true });
     }, 2000);
     return () => window.clearInterval(intervalId);
   }, [refresh, source]);
@@ -88,7 +88,7 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
       await updateSource(source.source_id, { is_active: true, secrets: { url: normalizedUrl } });
       setBanner({ tone: "info", text: source.is_active ? "Canvas ICS link updated." : "Canvas ICS link reactivated and updated." });
       setCanvasIcsUrl("");
-      await refresh();
+      await refresh({ force: true });
     } catch (err) {
       setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to save Canvas ICS link" });
     } finally {
@@ -105,7 +105,7 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
     try {
       await deleteSource(source.source_id);
       setBanner({ tone: "info", text: "Canvas ICS link archived." });
-      await refresh();
+      await refresh({ force: true });
     } catch (err) {
       setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to archive Canvas ICS link" });
     } finally {
