@@ -24,6 +24,7 @@ from app.modules.sources.sources_service import create_input_source
 
 
 DEFAULT_NOTIFY_EMAIL = "agent-live-eval@example.com"
+DEFAULT_OTHER_NOTIFY_EMAIL = "agent-live-eval-other@example.com"
 DEFAULT_PASSWORD = "password123"
 DEFAULT_TIMEZONE = "America/Los_Angeles"
 
@@ -31,6 +32,7 @@ DEFAULT_TIMEZONE = "America/Los_Angeles"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Seed a repeatable local fixture user for agent live eval runs.")
     parser.add_argument("--notify-email", default=DEFAULT_NOTIFY_EMAIL)
+    parser.add_argument("--other-notify-email", default=DEFAULT_OTHER_NOTIFY_EMAIL)
     parser.add_argument("--password", default=DEFAULT_PASSWORD)
     parser.add_argument("--timezone", default=DEFAULT_TIMEZONE)
     parser.add_argument("--course", default="CSE 160 WI26")
@@ -43,10 +45,15 @@ def main() -> None:
     session_factory = get_session_factory()
     with session_factory() as db:
         user = db.scalar(select(User).where(User.notify_email == args.notify_email).limit(1))
+        other_user = db.scalar(select(User).where(User.notify_email == args.other_notify_email).limit(1))
         if user is not None and bool(args.reset):
             db.delete(user)
             db.commit()
             user = None
+        if other_user is not None and bool(args.reset):
+            db.delete(other_user)
+            db.commit()
+            other_user = None
         if user is None:
             user = register_user(
                 db,
@@ -54,6 +61,17 @@ def main() -> None:
                 password=str(args.password),
                 timezone_name=str(args.timezone),
             )
+        if other_user is None:
+            other_user = register_user(
+                db,
+                notify_email=str(args.other_notify_email),
+                password=str(args.password),
+                timezone_name=str(args.timezone),
+            )
+        if other_user.onboarding_completed_at is None:
+            other_user.onboarding_completed_at = datetime.now(UTC)
+            db.commit()
+            db.refresh(other_user)
         source = create_input_source(
             db,
             user=user,
@@ -90,6 +108,8 @@ def main() -> None:
         payload = {
             "user_id": user.id,
             "notify_email": user.notify_email,
+            "other_user_id": other_user.id,
+            "other_notify_email": other_user.notify_email,
             "password": args.password,
             "timezone_name": user.timezone_name,
             "source_id": source.id,

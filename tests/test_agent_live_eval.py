@@ -57,6 +57,34 @@ def test_build_expanded_scenarios_marks_optional_targets_as_skipped() -> None:
     assert by_id["ticket.missing-get"].metadata["target_id"] == "missing-ticket-1000"
 
 
+def test_build_full_scenarios_adds_mcp_matrix() -> None:
+    plan = live_eval.build_full_scenarios(
+        {
+            "primary_change_id": 11,
+            "repeat_change_id": 12,
+            "cancel_change_id": 13,
+            "drift_change_id": 14,
+            "reviewed_change_id": 15,
+            "executable_source_id": 21,
+            "selected_source_id": 21,
+            "disconnected_gmail_source_id": 22,
+            "missing_change_id": 999001,
+            "missing_source_id": 999002,
+            "missing_proposal_id": 999003,
+            "missing_ticket_id": "missing-ticket-1000",
+            "cross_user_notify_email": "other@example.com",
+        }
+    )
+
+    by_id = {row.scenario_id: row for row in plan}
+    assert len(plan) == 36
+    assert by_id["mcp.token.create"].enabled is True
+    assert by_id["mcp.impl.workspace-scoped"].enabled is True
+    assert by_id["mcp.impl.workspace-scoped"].metadata["cross_user_notify_email"] == "other@example.com"
+    assert by_id["mcp.impl.change-proposal"].metadata["target_id"] == 12
+    assert by_id["mcp.auth.verify-revoked"].enabled is True
+
+
 def test_compute_summary_counts_failures_and_guard_violations() -> None:
     plan = [
         live_eval.ScenarioSpec("proposal.ok", "Proposal ok", "change_proposal", "change_proposal_create"),

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import anyio
 import json
 import math
 import statistics
@@ -13,6 +14,10 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+from mcp.server.auth.provider import AccessToken
+from mcp.server.fastmcp import Context
+from mcp.server.fastmcp.server import RequestContext
 from sqlalchemy import select
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +28,15 @@ import scripts.run_year_timeline_replay_smoke as replay
 from app.db.models.agents import ApprovalTicket, AgentProposal
 from app.db.models.review import Change, ReviewStatus
 from app.db.session import get_session_factory
+from services.mcp_server.main import (
+    CalendarDIFFTokenVerifier,
+    confirm_approval_ticket_impl,
+    create_approval_ticket_impl,
+    create_change_decision_proposal_impl,
+    get_workspace_context_impl,
+    list_pending_changes_impl,
+    mcp,
+)
 
 OUTPUT_ROOT = REPO_ROOT / "output"
 SCENARIO_PLAN_FILE = "scenario-plan.json"
@@ -35,6 +49,11 @@ SUMMARY_FILE = "SUMMARY.md"
 SUMMARY_JSON_FILE = "SUMMARY.json"
 DEFAULT_PENDING_LIMIT = 10
 MISSING_ID_SENTINEL = 999_999_999
+
+
+@dataclass
+class _FakeRequest:
+    user: object
 
 
 @dataclass(frozen=True)
@@ -91,7 +110,8 @@ def parse_args() -> argparse.Namespace:
     run.add_argument("--api-key", required=True)
     run.add_argument("--notify-email", required=True)
     run.add_argument("--password", required=True)
-    run.add_argument("--scenario-set", default="core", choices=["core", "expanded"])
+    run.add_argument("--scenario-set", default="core", choices=["core", "expanded", "full"])
+    run.add_argument("--cross-user-notify-email", default=None)
     run.add_argument("--output-root", default=str(OUTPUT_ROOT))
 
     report = subparsers.add_parser("report")
@@ -123,6 +143,11 @@ class AgentLiveEvalRunner:
             "source_ticket_id": None,
             "source_proposal_executable": None,
             "source_nonexec_proposal_id": None,
+            "mcp_token_id": None,
+            "mcp_token_plaintext": None,
+            "mcp_token_access": None,
+            "mcp_change_proposal_id": None,
+            "mcp_ticket_id": None,
         }
         touch_file(self.run_dir / SCENARIO_RESULTS_FILE)
         touch_file(self.run_dir / API_TRACE_FILE)
@@ -281,6 +306,45 @@ class AgentLiveEvalRunner:
             }
             append_jsonl(self.run_dir / API_TRACE_FILE, trace)
             raise
+
+    def _record_mcp_trace(
+        self,
+        *,
+        scenario_id: str,
+        action: str,
+        success: bool,
+        elapsed_ms: float,
+        request_payload: dict[str, Any] | None = None,
+        response_payload: Any = None,
+        error: str | None = None,
+    ) -> None:
+        append_jsonl(
+            self.run_dir / MCP_TRACE_FILE,
+            {
+                "scenario_id": scenario_id,
+                "action": action,
+                "success": success,
+                "elapsed_ms": elapsed_ms,
+                "request": request_payload or {},
+                "response_excerpt": excerpt_payload(response_payload),
+                "error": error,
+                "recorded_at": utc_now_iso(),
+            },
+        )
+
+    def _verify_mcp_token(self, *, token: str) -> AccessToken | None:
+        return anyio.run(CalendarDIFFTokenVerifier().verify_token, token)
+
+    def _build_mcp_context(self, access: AccessToken) -> Context:
+        request = _FakeRequest(user=AuthenticatedUser(access))
+        request_context = RequestContext(
+            request_id=f"mcp-eval-{int(time.time() * 1000)}",
+            meta=None,
+            session=None,
+            lifespan_context=None,
+            request=request,
+        )
+        return Context(request_context=request_context, fastmcp=mcp)
 
     def execute(self, scenario: ScenarioSpec) -> ScenarioResult:
         handler = getattr(self, f"_run_{scenario.operation}")
@@ -940,6 +1004,266 @@ class AgentLiveEvalRunner:
             note="missing approval ticket safely rejected" if success else "missing approval ticket did not return 404",
         )
 
+    def _run_mcp_token_create(self, scenario: ScenarioSpec) -> ScenarioResult:
+        http_status, payload, elapsed_ms = self.request_json(
+            method="POST",
+            path="/settings/mcp-tokens",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[201],
+            json_body={"label": "Agent Live Eval", "expires_in_days": 30},
+        )
+        success = (
+            http_status == 201
+            and isinstance(payload, dict)
+            and isinstance(payload.get("token"), str)
+            and str(payload.get("token") or "").startswith("cdmcp_")
+        )
+        if success:
+            self.runtime_state["mcp_token_id"] = str(payload["token_id"])
+            self.runtime_state["mcp_token_plaintext"] = str(payload["token"])
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[201],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="mcp access token created" if success else "mcp access token creation failed",
+        )
+
+    def _run_mcp_token_list(self, scenario: ScenarioSpec) -> ScenarioResult:
+        token_id = self.runtime_state.get("mcp_token_id")
+        if token_id is None:
+            return self._skipped_result(scenario, "mcp token missing")
+        http_status, payload, elapsed_ms = self.request_json(
+            method="GET",
+            path="/settings/mcp-tokens",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[200],
+        )
+        rows = payload if isinstance(payload, list) else []
+        matched = next((row for row in rows if isinstance(row, dict) and str(row.get("token_id") or "") == str(token_id)), None)
+        success = http_status == 200 and isinstance(matched, dict) and "token" not in matched
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[200],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="mcp token listed without secret" if success else "mcp token list did not expose the expected row shape",
+        )
+
+    def _run_mcp_verify_valid(self, scenario: ScenarioSpec) -> ScenarioResult:
+        token = self.runtime_state.get("mcp_token_plaintext")
+        if token is None:
+            return self._skipped_result(scenario, "mcp token missing")
+        started = time.monotonic()
+        access = self._verify_mcp_token(token=token)
+        elapsed_ms = round((time.monotonic() - started) * 1000.0, 2)
+        success = access is not None and access.client_id == f"user:{int(self.user['id'])}"
+        self._record_mcp_trace(
+            scenario_id=scenario.scenario_id,
+            action="verify_token",
+            success=success,
+            elapsed_ms=elapsed_ms,
+            request_payload={"token_id": self.runtime_state.get("mcp_token_id")},
+            response_payload={"client_id": getattr(access, "client_id", None), "scopes": getattr(access, "scopes", None)} if access is not None else None,
+        )
+        if success:
+            self.runtime_state["mcp_token_access"] = access
+        return build_mcp_result(
+            scenario,
+            success=success,
+            elapsed_ms=elapsed_ms,
+            note="valid mcp token verified" if success else "valid mcp token did not verify",
+            response_payload={"client_id": getattr(access, "client_id", None), "scopes": getattr(access, "scopes", None)} if access is not None else None,
+        )
+
+    def _run_mcp_workspace_context_scoped(self, scenario: ScenarioSpec) -> ScenarioResult:
+        access = self.runtime_state.get("mcp_token_access")
+        other_email = scenario.metadata.get("cross_user_notify_email")
+        if access is None:
+            return self._skipped_result(scenario, "verified mcp access missing")
+        started = time.monotonic()
+        payload = get_workspace_context_impl(notify_email=str(other_email) if other_email else None, ctx=self._build_mcp_context(access))
+        elapsed_ms = round((time.monotonic() - started) * 1000.0, 2)
+        other_payload = get_workspace_context_impl(notify_email=str(other_email), ctx=None) if other_email else None
+        token_sources = int(((payload.get("summary") or {}).get("sources") or {}).get("active_count") or 0) if isinstance(payload, dict) else 0
+        other_sources = int(((other_payload.get("summary") or {}).get("sources") or {}).get("active_count") or 0) if isinstance(other_payload, dict) else 0
+        token_changes = int((payload.get("summary") or {}).get("changes_pending") or 0) if isinstance(payload, dict) else 0
+        other_changes = int((other_payload.get("summary") or {}).get("changes_pending") or 0) if isinstance(other_payload, dict) else 0
+        success = (
+            isinstance(payload, dict)
+            and isinstance(payload.get("summary"), dict)
+            and (token_sources > other_sources or token_changes > other_changes)
+        )
+        self._record_mcp_trace(
+            scenario_id=scenario.scenario_id,
+            action="get_workspace_context_impl",
+            success=success,
+            elapsed_ms=elapsed_ms,
+            request_payload={"notify_email": other_email},
+            response_payload={"token_scoped": payload, "other_user": other_payload},
+        )
+        return build_mcp_result(
+            scenario,
+            success=success,
+            elapsed_ms=elapsed_ms,
+            note="mcp workspace context stayed token-scoped" if success else "mcp workspace context did not stay token-scoped",
+            response_payload={"token_scoped": payload, "other_user": other_payload},
+        )
+
+    def _run_mcp_list_pending_changes(self, scenario: ScenarioSpec) -> ScenarioResult:
+        access = self.runtime_state.get("mcp_token_access")
+        other_email = scenario.metadata.get("cross_user_notify_email")
+        if access is None:
+            return self._skipped_result(scenario, "verified mcp access missing")
+        started = time.monotonic()
+        payload = list_pending_changes_impl(notify_email=str(other_email) if other_email else None, limit=10, ctx=self._build_mcp_context(access))
+        elapsed_ms = round((time.monotonic() - started) * 1000.0, 2)
+        other_payload = list_pending_changes_impl(notify_email=str(other_email), limit=10, ctx=None) if other_email else []
+        success = isinstance(payload, list) and len(payload) > len(other_payload)
+        self._record_mcp_trace(
+            scenario_id=scenario.scenario_id,
+            action="list_pending_changes_impl",
+            success=success,
+            elapsed_ms=elapsed_ms,
+            request_payload={"notify_email": other_email, "limit": 10},
+            response_payload={"token_scoped": payload, "other_user": other_payload},
+        )
+        return build_mcp_result(
+            scenario,
+            success=success,
+            elapsed_ms=elapsed_ms,
+            note="mcp pending change listing matched token user" if success else "mcp pending change listing did not match token user",
+            response_payload={"token_scoped": payload, "other_user": other_payload},
+        )
+
+    def _run_mcp_change_proposal_create(self, scenario: ScenarioSpec) -> ScenarioResult:
+        access = self.runtime_state.get("mcp_token_access")
+        change_id = scenario.metadata.get("target_id")
+        if access is None or change_id is None:
+            return self._skipped_result(scenario, "mcp access or reusable pending change missing")
+        started = time.monotonic()
+        payload = create_change_decision_proposal_impl(change_id=int(change_id), ctx=self._build_mcp_context(access))
+        elapsed_ms = round((time.monotonic() - started) * 1000.0, 2)
+        success = isinstance(payload, dict) and payload.get("proposal_id") is not None
+        self._record_mcp_trace(
+            scenario_id=scenario.scenario_id,
+            action="create_change_decision_proposal_impl",
+            success=success,
+            elapsed_ms=elapsed_ms,
+            request_payload={"change_id": int(change_id)},
+            response_payload=payload,
+        )
+        if success:
+            self.runtime_state["mcp_change_proposal_id"] = int(payload["proposal_id"])
+        return build_mcp_result(
+            scenario,
+            success=success,
+            elapsed_ms=elapsed_ms,
+            note="mcp created a change proposal" if success else "mcp change proposal creation failed",
+            response_payload=payload,
+        )
+
+    def _run_mcp_ticket_create(self, scenario: ScenarioSpec) -> ScenarioResult:
+        access = self.runtime_state.get("mcp_token_access")
+        proposal_id = self.runtime_state.get("mcp_change_proposal_id")
+        if access is None or proposal_id is None:
+            return self._skipped_result(scenario, "mcp proposal missing")
+        started = time.monotonic()
+        payload = create_approval_ticket_impl(proposal_id=int(proposal_id), channel="mcp-live-eval", ctx=self._build_mcp_context(access))
+        elapsed_ms = round((time.monotonic() - started) * 1000.0, 2)
+        success = isinstance(payload, dict) and payload.get("ticket_id") is not None
+        self._record_mcp_trace(
+            scenario_id=scenario.scenario_id,
+            action="create_approval_ticket_impl",
+            success=success,
+            elapsed_ms=elapsed_ms,
+            request_payload={"proposal_id": int(proposal_id)},
+            response_payload=payload,
+        )
+        if success:
+            self.runtime_state["mcp_ticket_id"] = str(payload["ticket_id"])
+        return build_mcp_result(
+            scenario,
+            success=success,
+            elapsed_ms=elapsed_ms,
+            note="mcp created an approval ticket" if success else "mcp approval ticket creation failed",
+            response_payload=payload,
+        )
+
+    def _run_mcp_ticket_confirm(self, scenario: ScenarioSpec) -> ScenarioResult:
+        access = self.runtime_state.get("mcp_token_access")
+        ticket_id = self.runtime_state.get("mcp_ticket_id")
+        if access is None or ticket_id is None:
+            return self._skipped_result(scenario, "mcp ticket missing")
+        started = time.monotonic()
+        payload = confirm_approval_ticket_impl(ticket_id=str(ticket_id), ctx=self._build_mcp_context(access))
+        elapsed_ms = round((time.monotonic() - started) * 1000.0, 2)
+        success = isinstance(payload, dict) and isinstance(payload.get("executed_result"), dict) and bool(payload.get("executed_result"))
+        self._record_mcp_trace(
+            scenario_id=scenario.scenario_id,
+            action="confirm_approval_ticket_impl",
+            success=success,
+            elapsed_ms=elapsed_ms,
+            request_payload={"ticket_id": str(ticket_id)},
+            response_payload=payload,
+        )
+        return build_mcp_result(
+            scenario,
+            success=success,
+            elapsed_ms=elapsed_ms,
+            note="mcp confirmed an approval ticket" if success else "mcp approval ticket confirm failed",
+            response_payload=payload,
+        )
+
+    def _run_mcp_token_revoke(self, scenario: ScenarioSpec) -> ScenarioResult:
+        token_id = self.runtime_state.get("mcp_token_id")
+        if token_id is None:
+            return self._skipped_result(scenario, "mcp token missing")
+        http_status, payload, elapsed_ms = self.request_json(
+            method="DELETE",
+            path=f"/settings/mcp-tokens/{token_id}",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[200],
+        )
+        success = http_status == 200 and isinstance(payload, dict) and payload.get("revoked_at") is not None
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[200],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="mcp access token revoked" if success else "mcp access token revoke failed",
+        )
+
+    def _run_mcp_verify_revoked(self, scenario: ScenarioSpec) -> ScenarioResult:
+        token = self.runtime_state.get("mcp_token_plaintext")
+        if token is None:
+            return self._skipped_result(scenario, "mcp token missing")
+        started = time.monotonic()
+        access = self._verify_mcp_token(token=token)
+        elapsed_ms = round((time.monotonic() - started) * 1000.0, 2)
+        success = access is None
+        self._record_mcp_trace(
+            scenario_id=scenario.scenario_id,
+            action="verify_token",
+            success=success,
+            elapsed_ms=elapsed_ms,
+            request_payload={"token_id": self.runtime_state.get("mcp_token_id")},
+            response_payload={"client_id": getattr(access, "client_id", None)} if access is not None else None,
+        )
+        return build_mcp_result(
+            scenario,
+            success=success,
+            elapsed_ms=elapsed_ms,
+            note="revoked mcp token stopped verifying" if success else "revoked mcp token still verified",
+            response_payload={"client_id": getattr(access, "client_id", None)} if access is not None else None,
+        )
+
 
 def build_http_result(
     scenario: ScenarioSpec,
@@ -960,6 +1284,34 @@ def build_http_result(
         success=success,
         expected_statuses=expected_statuses,
         http_status=http_status,
+        started_at="",
+        finished_at="",
+        elapsed_ms=elapsed_ms,
+        target_kind=str(scenario.metadata.get("target_kind")) if scenario.metadata.get("target_kind") else None,
+        target_id=str(scenario.metadata.get("target_id")) if scenario.metadata.get("target_id") is not None else None,
+        note=note,
+        error_code=extract_error_code(response_payload),
+        response_excerpt=excerpt_payload(response_payload),
+    )
+
+
+def build_mcp_result(
+    scenario: ScenarioSpec,
+    *,
+    success: bool,
+    elapsed_ms: float,
+    note: str,
+    response_payload: Any,
+) -> ScenarioResult:
+    return ScenarioResult(
+        scenario_id=scenario.scenario_id,
+        name=scenario.name,
+        category=scenario.category,
+        operation=scenario.operation,
+        status="passed" if success else "failed",
+        success=success,
+        expected_statuses=None,
+        http_status=None,
         started_at="",
         finished_at="",
         elapsed_ms=elapsed_ms,
@@ -1264,6 +1616,86 @@ def build_expanded_scenarios(snapshot: dict[str, Any]) -> list[ScenarioSpec]:
     return scenarios
 
 
+def build_full_scenarios(snapshot: dict[str, Any]) -> list[ScenarioSpec]:
+    scenarios = build_expanded_scenarios(snapshot)
+    cross_user_notify_email = snapshot.get("cross_user_notify_email")
+    repeat_change_id = snapshot.get("repeat_change_id")
+    scenarios.extend(
+        [
+            ScenarioSpec(
+                "mcp.token.create",
+                "Create MCP access token via settings API",
+                "mcp_token",
+                "mcp_token_create",
+            ),
+            ScenarioSpec(
+                "mcp.token.list",
+                "List MCP access tokens via settings API",
+                "mcp_token",
+                "mcp_token_list",
+            ),
+            ScenarioSpec(
+                "mcp.auth.verify-valid",
+                "Valid MCP token verifies successfully",
+                "mcp_auth",
+                "mcp_verify_valid",
+            ),
+            ScenarioSpec(
+                "mcp.impl.workspace-scoped",
+                "MCP workspace context stays token-scoped",
+                "mcp_impl",
+                "mcp_workspace_context_scoped",
+                enabled=cross_user_notify_email is not None,
+                skip_reason="no cross-user notify email provided" if cross_user_notify_email is None else None,
+                metadata={"cross_user_notify_email": cross_user_notify_email},
+            ),
+            ScenarioSpec(
+                "mcp.impl.list-pending",
+                "MCP pending change listing matches token user",
+                "mcp_impl",
+                "mcp_list_pending_changes",
+                enabled=cross_user_notify_email is not None,
+                skip_reason="no cross-user notify email provided" if cross_user_notify_email is None else None,
+                metadata={"cross_user_notify_email": cross_user_notify_email},
+            ),
+            ScenarioSpec(
+                "mcp.impl.change-proposal",
+                "MCP creates a change decision proposal",
+                "mcp_impl",
+                "mcp_change_proposal_create",
+                enabled=repeat_change_id is not None,
+                skip_reason="no reusable pending change discovered during preflight" if repeat_change_id is None else None,
+                metadata={"target_kind": "change", "target_id": repeat_change_id},
+            ),
+            ScenarioSpec(
+                "mcp.impl.ticket-create",
+                "MCP creates an approval ticket",
+                "mcp_ticket",
+                "mcp_ticket_create",
+            ),
+            ScenarioSpec(
+                "mcp.impl.ticket-confirm",
+                "MCP confirms an approval ticket",
+                "mcp_ticket",
+                "mcp_ticket_confirm",
+            ),
+            ScenarioSpec(
+                "mcp.token.revoke",
+                "Revoke MCP access token via settings API",
+                "mcp_token",
+                "mcp_token_revoke",
+            ),
+            ScenarioSpec(
+                "mcp.auth.verify-revoked",
+                "Revoked MCP token stops verifying",
+                "mcp_auth",
+                "mcp_verify_revoked",
+            ),
+        ]
+    )
+    return scenarios
+
+
 def collect_proposal_audit(*, user_id: int, started_at: datetime) -> dict[str, Any]:
     session_factory = get_session_factory()
     with session_factory() as db:
@@ -1355,14 +1787,23 @@ def compute_summary(
         else:
             bucket["failed"] += 1
 
-    proposal_create_results = [row for row in executed if row.operation in {"change_proposal_create", "source_proposal_create"}]
+    proposal_create_results = [
+        row
+        for row in executed
+        if row.operation in {"change_proposal_create", "source_proposal_create", "mcp_change_proposal_create"}
+    ]
     ticket_create_results = [
         row
         for row in executed
         if row.operation == "change_ticket_create"
+        or row.operation == "mcp_ticket_create"
         or (row.operation == "source_ticket_guard_or_create" and row.expected_statuses == [201])
     ]
-    ticket_confirm_results = [row for row in executed if row.operation in {"change_ticket_confirm", "change_ticket_reconfirm", "source_ticket_confirm"}]
+    ticket_confirm_results = [
+        row
+        for row in executed
+        if row.operation in {"change_ticket_confirm", "change_ticket_reconfirm", "source_ticket_confirm", "mcp_ticket_confirm"}
+    ]
     source_guard_failures = [
         row for row in results
         if row.operation == "source_ticket_guard_or_create"
@@ -1425,7 +1866,12 @@ def _expected_created_proposal_count(results: list[ScenarioResult]) -> int:
     for row in results:
         if not row.success:
             continue
-        if row.operation in {"change_proposal_create", "source_proposal_create", "source_proposal_create_nonexec"}:
+        if row.operation in {
+            "change_proposal_create",
+            "source_proposal_create",
+            "source_proposal_create_nonexec",
+            "mcp_change_proposal_create",
+        }:
             total += 1
         elif row.operation == "change_proposal_repeat":
             total += 2
@@ -1439,7 +1885,7 @@ def _expected_created_ticket_count(results: list[ScenarioResult]) -> int:
     for row in results:
         if not row.success:
             continue
-        if row.operation in {"change_ticket_create", "change_ticket_cancel", "change_ticket_drift_confirm"}:
+        if row.operation in {"change_ticket_create", "change_ticket_cancel", "change_ticket_drift_confirm", "mcp_ticket_create"}:
             total += 1
         elif row.operation == "source_ticket_guard_or_create" and row.http_status == 201:
             total += 1
@@ -1506,8 +1952,11 @@ def run_eval(args: argparse.Namespace) -> Path:
         started_at=started_at,
     )
     workspace_snapshot = runner.bootstrap_workspace_snapshot()
+    workspace_snapshot["cross_user_notify_email"] = str(args.cross_user_notify_email).strip() if args.cross_user_notify_email else None
     if str(args.scenario_set) == "expanded":
         plan = build_expanded_scenarios(workspace_snapshot)
+    elif str(args.scenario_set) == "full":
+        plan = build_full_scenarios(workspace_snapshot)
     else:
         plan = build_core_scenarios(workspace_snapshot)
     write_json(
@@ -1534,6 +1983,7 @@ def run_eval(args: argparse.Namespace) -> Path:
                 "missing_source_id": workspace_snapshot["missing_source_id"],
                 "missing_proposal_id": workspace_snapshot["missing_proposal_id"],
                 "missing_ticket_id": workspace_snapshot["missing_ticket_id"],
+                "cross_user_notify_email": workspace_snapshot["cross_user_notify_email"],
             },
             "scenarios": [row.to_dict() for row in plan],
         },
