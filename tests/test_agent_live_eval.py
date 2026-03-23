@@ -9,7 +9,9 @@ import scripts.run_agent_live_eval as live_eval
 def test_build_core_scenarios_marks_missing_targets_as_skipped() -> None:
     plan = live_eval.build_core_scenarios(
         {
+            "primary_change_id": None,
             "selected_change_id": None,
+            "executable_source_id": None,
             "selected_source_id": None,
             "missing_change_id": 999001,
             "missing_source_id": 999002,
@@ -23,6 +25,36 @@ def test_build_core_scenarios_marks_missing_targets_as_skipped() -> None:
     assert by_id["source.context.primary"].skip_reason == "no source discovered during preflight"
     assert by_id["change.context.missing"].metadata["target_id"] == 999001
     assert by_id["source.context.missing"].metadata["target_id"] == 999002
+
+
+def test_build_expanded_scenarios_marks_optional_targets_as_skipped() -> None:
+    plan = live_eval.build_expanded_scenarios(
+        {
+            "primary_change_id": 11,
+            "repeat_change_id": None,
+            "cancel_change_id": None,
+            "drift_change_id": None,
+            "reviewed_change_id": None,
+            "executable_source_id": 21,
+            "selected_source_id": 21,
+            "disconnected_gmail_source_id": None,
+            "missing_change_id": 999001,
+            "missing_source_id": 999002,
+            "missing_proposal_id": 999003,
+            "missing_ticket_id": "missing-ticket-1000",
+        }
+    )
+
+    by_id = {row.scenario_id: row for row in plan}
+    assert len(plan) == 26
+    assert by_id["change.context.primary"].enabled is True
+    assert by_id["change.proposal.repeat"].enabled is False
+    assert by_id["change.ticket.cancel"].enabled is False
+    assert by_id["change.ticket.drift-confirm"].enabled is False
+    assert by_id["source.context.disconnected-gmail"].enabled is False
+    assert by_id["source.proposal.create-nonexec"].enabled is False
+    assert by_id["change.proposal.missing-fetch"].metadata["target_id"] == 999003
+    assert by_id["ticket.missing-get"].metadata["target_id"] == "missing-ticket-1000"
 
 
 def test_compute_summary_counts_failures_and_guard_violations() -> None:

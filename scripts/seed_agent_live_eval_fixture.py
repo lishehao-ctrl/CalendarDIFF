@@ -65,28 +65,49 @@ def main() -> None:
                 secrets={"url": "https://example.com/agent-live-eval/calendar.ics"},
             ),
         )
+        disconnected_gmail_source = create_input_source(
+            db,
+            user=user,
+            payload=InputSourceCreateRequest(
+                source_kind="email",
+                provider="gmail",
+                display_name="Agent Live Eval Gmail",
+                config={"label_id": "INBOX", "monitor_since": "2026-01-05"},
+                secrets={},
+            ),
+        )
         family = create_family(
             db,
             user_id=user.id,
             course_display=str(args.course),
             canonical_label="Homework",
         )
-        seed_pending_changes(db, user_id=user.id, source_id=source.id, family_id=family.id)
+        seed_changes(db, user_id=user.id, source_id=source.id, family_id=family.id)
         seed_failed_sync(db, source_id=source.id)
         db.refresh(user)
         db.refresh(source)
+        db.refresh(disconnected_gmail_source)
         payload = {
             "user_id": user.id,
             "notify_email": user.notify_email,
             "password": args.password,
             "timezone_name": user.timezone_name,
             "source_id": source.id,
+            "disconnected_gmail_source_id": disconnected_gmail_source.id,
             "family_id": family.id,
             "pending_change_ids": [
                 row.id
                 for row in db.scalars(
                     select(Change)
                     .where(Change.user_id == user.id, Change.review_status == ReviewStatus.PENDING)
+                    .order_by(Change.detected_at.desc(), Change.id.desc())
+                ).all()
+            ],
+            "reviewed_change_ids": [
+                row.id
+                for row in db.scalars(
+                    select(Change)
+                    .where(Change.user_id == user.id, Change.review_status != ReviewStatus.PENDING)
                     .order_by(Change.detected_at.desc(), Change.id.desc())
                 ).all()
             ],
@@ -99,7 +120,7 @@ def main() -> None:
                 ).all()
             ],
         }
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
 def create_family(db, *, user_id: int, course_display: str, canonical_label: str) -> CourseWorkItemLabelFamily:
@@ -127,7 +148,7 @@ def create_family(db, *, user_id: int, course_display: str, canonical_label: str
     return family
 
 
-def seed_pending_changes(db, *, user_id: int, source_id: int, family_id: int) -> None:
+def seed_changes(db, *, user_id: int, source_id: int, family_id: int) -> None:
     now = datetime.now(UTC)
     baseline_change = Change(
         user_id=user_id,
@@ -153,7 +174,7 @@ def seed_pending_changes(db, *, user_id: int, source_id: int, family_id: int) ->
         },
         review_status=ReviewStatus.PENDING,
     )
-    replay_change = Change(
+    primary_replay_change = Change(
         user_id=user_id,
         entity_uid="agent-live-eval-replay",
         change_origin=ChangeOrigin.INGEST_PROPOSAL,
@@ -193,7 +214,112 @@ def seed_pending_changes(db, *, user_id: int, source_id: int, family_id: int) ->
         after_evidence_json={"provider": "ics"},
         review_status=ReviewStatus.PENDING,
     )
-    db.add_all([baseline_change, replay_change])
+    repeat_change = Change(
+        user_id=user_id,
+        entity_uid="agent-live-eval-repeat",
+        change_origin=ChangeOrigin.INGEST_PROPOSAL,
+        change_type=ChangeType.DUE_CHANGED,
+        intake_phase=ChangeIntakePhase.REPLAY,
+        review_bucket=ChangeReviewBucket.CHANGES,
+        detected_at=now - timedelta(minutes=4),
+        before_semantic_json={
+            "uid": "agent-live-eval-repeat",
+            "course_dept": "CSE",
+            "course_number": 160,
+            "course_quarter": "WI",
+            "course_year2": 26,
+            "family_id": family_id,
+            "family_name": "Homework",
+            "event_name": "Homework 3",
+            "ordinal": 3,
+            "due_date": "2026-03-23",
+            "due_time": "23:59:00",
+            "time_precision": "datetime",
+        },
+        after_semantic_json={
+            "uid": "agent-live-eval-repeat",
+            "course_dept": "CSE",
+            "course_number": 160,
+            "course_quarter": "WI",
+            "course_year2": 26,
+            "family_id": family_id,
+            "family_name": "Homework",
+            "event_name": "Homework 3",
+            "ordinal": 3,
+            "due_date": "2026-03-24",
+            "due_time": "23:59:00",
+            "time_precision": "datetime",
+        },
+        before_evidence_json={"provider": "ics"},
+        after_evidence_json={"provider": "ics"},
+        review_status=ReviewStatus.PENDING,
+    )
+    drift_change = Change(
+        user_id=user_id,
+        entity_uid="agent-live-eval-drift",
+        change_origin=ChangeOrigin.INGEST_PROPOSAL,
+        change_type=ChangeType.DUE_CHANGED,
+        intake_phase=ChangeIntakePhase.REPLAY,
+        review_bucket=ChangeReviewBucket.CHANGES,
+        detected_at=now - timedelta(minutes=3),
+        before_semantic_json={
+            "uid": "agent-live-eval-drift",
+            "course_dept": "CSE",
+            "course_number": 160,
+            "course_quarter": "WI",
+            "course_year2": 26,
+            "family_id": family_id,
+            "family_name": "Homework",
+            "event_name": "Homework 4",
+            "ordinal": 4,
+            "due_date": "2026-03-25",
+            "due_time": "23:59:00",
+            "time_precision": "datetime",
+        },
+        after_semantic_json={
+            "uid": "agent-live-eval-drift",
+            "course_dept": "CSE",
+            "course_number": 160,
+            "course_quarter": "WI",
+            "course_year2": 26,
+            "family_id": family_id,
+            "family_name": "Homework",
+            "event_name": "Homework 4",
+            "ordinal": 4,
+            "due_date": "2026-03-26",
+            "due_time": "23:59:00",
+            "time_precision": "datetime",
+        },
+        before_evidence_json={"provider": "ics"},
+        after_evidence_json={"provider": "ics"},
+        review_status=ReviewStatus.PENDING,
+    )
+    reviewed_change = Change(
+        user_id=user_id,
+        entity_uid="agent-live-eval-reviewed",
+        change_origin=ChangeOrigin.INGEST_PROPOSAL,
+        change_type=ChangeType.CREATED,
+        intake_phase=ChangeIntakePhase.REPLAY,
+        review_bucket=ChangeReviewBucket.CHANGES,
+        detected_at=now - timedelta(minutes=2),
+        after_semantic_json={
+            "uid": "agent-live-eval-reviewed",
+            "course_dept": "CSE",
+            "course_number": 160,
+            "course_quarter": "WI",
+            "course_year2": 26,
+            "family_id": family_id,
+            "family_name": "Homework",
+            "event_name": "Homework 5",
+            "ordinal": 5,
+            "due_date": "2026-03-27",
+            "due_time": "23:59:00",
+            "time_precision": "datetime",
+        },
+        review_status=ReviewStatus.APPROVED,
+        reviewed_at=now - timedelta(minutes=1),
+    )
+    db.add_all([baseline_change, primary_replay_change, repeat_change, drift_change, reviewed_change])
     db.flush()
     db.add_all(
         [
@@ -207,12 +333,39 @@ def seed_pending_changes(db, *, user_id: int, source_id: int, family_id: int) ->
                 confidence=0.95,
             ),
             ChangeSourceRef(
-                change_id=replay_change.id,
+                change_id=primary_replay_change.id,
                 position=0,
                 source_id=source_id,
                 source_kind="calendar",
                 provider="ics",
                 external_event_id="evt-agent-live-eval-replay",
+                confidence=0.95,
+            ),
+            ChangeSourceRef(
+                change_id=repeat_change.id,
+                position=0,
+                source_id=source_id,
+                source_kind="calendar",
+                provider="ics",
+                external_event_id="evt-agent-live-eval-repeat",
+                confidence=0.95,
+            ),
+            ChangeSourceRef(
+                change_id=drift_change.id,
+                position=0,
+                source_id=source_id,
+                source_kind="calendar",
+                provider="ics",
+                external_event_id="evt-agent-live-eval-drift",
+                confidence=0.95,
+            ),
+            ChangeSourceRef(
+                change_id=reviewed_change.id,
+                position=0,
+                source_id=source_id,
+                source_kind="calendar",
+                provider="ics",
+                external_event_id="evt-agent-live-eval-reviewed",
                 confidence=0.95,
             ),
         ]

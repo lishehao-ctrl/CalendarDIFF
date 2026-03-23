@@ -21,6 +21,7 @@ if str(REPO_ROOT) not in sys.path:
 
 import scripts.run_year_timeline_replay_smoke as replay
 from app.db.models.agents import ApprovalTicket, AgentProposal
+from app.db.models.review import Change, ReviewStatus
 from app.db.session import get_session_factory
 
 OUTPUT_ROOT = REPO_ROOT / "output"
@@ -90,7 +91,7 @@ def parse_args() -> argparse.Namespace:
     run.add_argument("--api-key", required=True)
     run.add_argument("--notify-email", required=True)
     run.add_argument("--password", required=True)
-    run.add_argument("--scenario-set", default="core", choices=["core"])
+    run.add_argument("--scenario-set", default="core", choices=["core", "expanded"])
     run.add_argument("--output-root", default=str(OUTPUT_ROOT))
 
     report = subparsers.add_parser("report")
@@ -116,9 +117,12 @@ class AgentLiveEvalRunner:
         self.runtime_state: dict[str, Any] = {
             "change_proposal_id": None,
             "change_ticket_id": None,
+            "cancel_ticket_id": None,
+            "drift_ticket_id": None,
             "source_proposal_id": None,
             "source_ticket_id": None,
             "source_proposal_executable": None,
+            "source_nonexec_proposal_id": None,
         }
         touch_file(self.run_dir / SCENARIO_RESULTS_FILE)
         touch_file(self.run_dir / API_TRACE_FILE)
@@ -153,22 +157,79 @@ class AgentLiveEvalRunner:
             expected_statuses=[200],
         )[1]
 
-        selected_change = pending_changes[0] if isinstance(pending_changes, list) and pending_changes else None
+        pending_change_ids = [int(row["id"]) for row in pending_changes if isinstance(row, dict) and row.get("id") is not None]
         selected_source = sources[0] if isinstance(sources, list) and sources else None
         max_change_id = max((int(row.get("id", 0)) for row in pending_changes if isinstance(row, dict)), default=0)
         max_source_id = max((int(row.get("source_id", 0)) for row in sources if isinstance(row, dict)), default=0)
+        runtime_targets = self._load_runtime_targets(user_id=int(self.user["id"]), pending_change_ids=pending_change_ids, sources=sources)
 
         self.workspace_snapshot = {
             "auth_session": auth_session,
             "summary": summary,
             "pending_changes": pending_changes if isinstance(pending_changes, list) else [],
             "sources": sources if isinstance(sources, list) else [],
-            "selected_change_id": int(selected_change["id"]) if isinstance(selected_change, dict) and selected_change.get("id") else None,
             "selected_source_id": int(selected_source["source_id"]) if isinstance(selected_source, dict) and selected_source.get("source_id") else None,
             "missing_change_id": max(max_change_id + 1000, MISSING_ID_SENTINEL),
             "missing_source_id": max(max_source_id + 1000, MISSING_ID_SENTINEL),
+            **runtime_targets,
         }
         return self.workspace_snapshot
+
+    def _load_runtime_targets(self, *, user_id: int, pending_change_ids: list[int], sources: Any) -> dict[str, Any]:
+        reviewed_change_id: int | None = None
+        max_proposal_id = 0
+        max_ticket_numeric_id = 0
+        session_factory = get_session_factory()
+        with session_factory() as db:
+            reviewed_change_id = db.scalar(
+                select(Change.id)
+                .where(Change.user_id == user_id, Change.review_status != ReviewStatus.PENDING)
+                .order_by(Change.detected_at.desc(), Change.id.desc())
+                .limit(1)
+            )
+            proposal_ids = db.scalars(select(AgentProposal.id).where(AgentProposal.user_id == user_id)).all()
+            if proposal_ids:
+                max_proposal_id = max(int(value) for value in proposal_ids)
+            ticket_rows = db.scalars(select(ApprovalTicket.ticket_id).where(ApprovalTicket.user_id == user_id)).all()
+            for ticket_id in ticket_rows:
+                if isinstance(ticket_id, str) and ticket_id.isdigit():
+                    max_ticket_numeric_id = max(max_ticket_numeric_id, int(ticket_id))
+
+        source_rows = sources if isinstance(sources, list) else []
+        executable_source_id = next(
+            (
+                int(row["source_id"])
+                for row in source_rows
+                if isinstance(row, dict)
+                and row.get("source_id") is not None
+                and isinstance(row.get("source_recovery"), dict)
+                and str((row.get("source_recovery") or {}).get("next_action") or "") == "retry_sync"
+            ),
+            None,
+        )
+        disconnected_gmail_source_id = next(
+            (
+                int(row["source_id"])
+                for row in source_rows
+                if isinstance(row, dict)
+                and row.get("source_id") is not None
+                and str(row.get("provider") or "") == "gmail"
+                and str(row.get("oauth_connection_status") or "") == "not_connected"
+            ),
+            None,
+        )
+        pending_ids = [int(value) for value in pending_change_ids]
+        return {
+            "primary_change_id": pending_ids[0] if len(pending_ids) > 0 else None,
+            "repeat_change_id": pending_ids[1] if len(pending_ids) > 1 else None,
+            "cancel_change_id": pending_ids[2] if len(pending_ids) > 2 else None,
+            "drift_change_id": pending_ids[3] if len(pending_ids) > 3 else None,
+            "reviewed_change_id": int(reviewed_change_id) if reviewed_change_id is not None else None,
+            "executable_source_id": executable_source_id,
+            "disconnected_gmail_source_id": disconnected_gmail_source_id,
+            "missing_proposal_id": max(max_proposal_id + 1000, MISSING_ID_SENTINEL),
+            "missing_ticket_id": f"missing-ticket-{max_ticket_numeric_id + 1000}",
+        }
 
     def request_json(
         self,
@@ -378,6 +439,78 @@ class AgentLiveEvalRunner:
             note="change proposal fetched" if success else "change proposal fetch failed",
         )
 
+    def _run_change_proposal_repeat(self, scenario: ScenarioSpec) -> ScenarioResult:
+        change_id = scenario.metadata.get("target_id")
+        if change_id is None:
+            return self._skipped_result(scenario, "no repeat-change candidate available")
+        first_status, first_payload, first_elapsed = self.request_json(
+            method="POST",
+            path="/agent/proposals/change-decision",
+            scenario_id=f"{scenario.scenario_id}.first",
+            expected_statuses=[201],
+            json_body={"change_id": int(change_id)},
+        )
+        second_status, second_payload, second_elapsed = self.request_json(
+            method="POST",
+            path="/agent/proposals/change-decision",
+            scenario_id=f"{scenario.scenario_id}.second",
+            expected_statuses=[201],
+            json_body={"change_id": int(change_id)},
+        )
+        first_id = first_payload.get("proposal_id") if isinstance(first_payload, dict) else None
+        second_id = second_payload.get("proposal_id") if isinstance(second_payload, dict) else None
+        success = first_status == 201 and second_status == 201 and first_id and second_id and int(first_id) != int(second_id)
+        return build_http_result(
+            scenario,
+            success=bool(success),
+            expected_statuses=[201],
+            http_status=second_status,
+            elapsed_ms=round(first_elapsed + second_elapsed, 2),
+            response_payload={"first": first_payload, "second": second_payload},
+            note="repeated proposal creation stayed auditable" if success else "repeated proposal creation did not produce distinct rows",
+        )
+
+    def _run_change_proposal_reviewed_conflict(self, scenario: ScenarioSpec) -> ScenarioResult:
+        change_id = scenario.metadata.get("target_id")
+        if change_id is None:
+            return self._skipped_result(scenario, "no reviewed change available")
+        http_status, payload, elapsed_ms = self.request_json(
+            method="POST",
+            path="/agent/proposals/change-decision",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[409],
+            json_body={"change_id": int(change_id)},
+        )
+        success = http_status == 409 and extract_error_code(payload) == "agents.proposals.change.already_reviewed"
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[409],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="reviewed change proposal safely conflicted" if success else "reviewed change proposal did not return the expected conflict",
+        )
+
+    def _run_change_proposal_fetch_missing(self, scenario: ScenarioSpec) -> ScenarioResult:
+        proposal_id = int(scenario.metadata["target_id"])
+        http_status, payload, elapsed_ms = self.request_json(
+            method="GET",
+            path=f"/agent/proposals/{proposal_id}",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[404],
+        )
+        success = http_status == 404
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[404],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="missing proposal safely rejected" if success else "missing proposal did not return 404",
+        )
+
     def _run_change_ticket_create(self, scenario: ScenarioSpec) -> ScenarioResult:
         proposal_id = self.runtime_state.get("change_proposal_id")
         if proposal_id is None:
@@ -400,6 +533,27 @@ class AgentLiveEvalRunner:
             elapsed_ms=elapsed_ms,
             response_payload=payload,
             note="change approval ticket created" if success else "change approval ticket creation failed",
+        )
+
+    def _run_change_ticket_get(self, scenario: ScenarioSpec) -> ScenarioResult:
+        ticket_id = self.runtime_state.get("change_ticket_id")
+        if ticket_id is None:
+            return self._skipped_result(scenario, "change ticket missing")
+        http_status, payload, elapsed_ms = self.request_json(
+            method="GET",
+            path=f"/agent/approval-tickets/{ticket_id}",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[200],
+        )
+        success = http_status == 200 and isinstance(payload, dict) and str(payload.get("ticket_id") or "") == str(ticket_id)
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[200],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="change approval ticket fetched" if success else "change approval ticket fetch failed",
         )
 
     def _run_change_ticket_confirm(self, scenario: ScenarioSpec) -> ScenarioResult:
@@ -445,6 +599,155 @@ class AgentLiveEvalRunner:
             elapsed_ms=elapsed_ms,
             response_payload=payload,
             note="change approval ticket re-confirm stayed idempotent" if success else "re-confirm was not idempotent",
+        )
+
+    def _run_change_ticket_cancel(self, scenario: ScenarioSpec) -> ScenarioResult:
+        change_id = scenario.metadata.get("target_id")
+        if change_id is None:
+            return self._skipped_result(scenario, "no cancel-change candidate available")
+        proposal_status, proposal_payload, proposal_elapsed = self.request_json(
+            method="POST",
+            path="/agent/proposals/change-decision",
+            scenario_id=f"{scenario.scenario_id}.proposal",
+            expected_statuses=[201],
+            json_body={"change_id": int(change_id)},
+        )
+        proposal_id = proposal_payload.get("proposal_id") if isinstance(proposal_payload, dict) else None
+        if proposal_status != 201 or proposal_id is None:
+            return build_http_result(
+                scenario,
+                success=False,
+                expected_statuses=[201],
+                http_status=proposal_status,
+                elapsed_ms=proposal_elapsed,
+                response_payload=proposal_payload,
+                note="cancel-flow proposal creation failed",
+            )
+        ticket_status, ticket_payload, ticket_elapsed = self.request_json(
+            method="POST",
+            path="/agent/approval-tickets",
+            scenario_id=f"{scenario.scenario_id}.ticket",
+            expected_statuses=[201],
+            json_body={"proposal_id": int(proposal_id), "channel": "live_eval"},
+        )
+        ticket_id = ticket_payload.get("ticket_id") if isinstance(ticket_payload, dict) else None
+        if ticket_status != 201 or ticket_id is None:
+            return build_http_result(
+                scenario,
+                success=False,
+                expected_statuses=[201],
+                http_status=ticket_status,
+                elapsed_ms=round(proposal_elapsed + ticket_elapsed, 2),
+                response_payload={"proposal": proposal_payload, "ticket": ticket_payload},
+                note="cancel-flow ticket creation failed",
+            )
+        cancel_status, cancel_payload, cancel_elapsed = self.request_json(
+            method="POST",
+            path=f"/agent/approval-tickets/{ticket_id}/cancel",
+            scenario_id=f"{scenario.scenario_id}.cancel",
+            expected_statuses=[200],
+            json_body={},
+        )
+        success = cancel_status == 200 and isinstance(cancel_payload, dict) and cancel_payload.get("status") == "canceled"
+        if success:
+            self.runtime_state["cancel_ticket_id"] = str(ticket_id)
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[200],
+            http_status=cancel_status,
+            elapsed_ms=round(proposal_elapsed + ticket_elapsed + cancel_elapsed, 2),
+            response_payload={"proposal": proposal_payload, "ticket": ticket_payload, "cancel": cancel_payload},
+            note="change approval ticket canceled" if success else "change approval ticket cancel flow failed",
+        )
+
+    def _run_change_ticket_confirm_canceled(self, scenario: ScenarioSpec) -> ScenarioResult:
+        ticket_id = self.runtime_state.get("cancel_ticket_id")
+        if ticket_id is None:
+            return self._skipped_result(scenario, "canceled ticket missing")
+        http_status, payload, elapsed_ms = self.request_json(
+            method="POST",
+            path=f"/agent/approval-tickets/{ticket_id}/confirm",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[409],
+            json_body={},
+        )
+        success = http_status == 409 and extract_error_code(payload) == "agents.approval.ticket_canceled"
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[409],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="canceled approval ticket stayed blocked" if success else "canceled approval ticket did not stay blocked",
+        )
+
+    def _run_change_ticket_drift_confirm(self, scenario: ScenarioSpec) -> ScenarioResult:
+        change_id = scenario.metadata.get("target_id")
+        if change_id is None:
+            return self._skipped_result(scenario, "no drift-change candidate available")
+        proposal_status, proposal_payload, proposal_elapsed = self.request_json(
+            method="POST",
+            path="/agent/proposals/change-decision",
+            scenario_id=f"{scenario.scenario_id}.proposal",
+            expected_statuses=[201],
+            json_body={"change_id": int(change_id)},
+        )
+        proposal_id = proposal_payload.get("proposal_id") if isinstance(proposal_payload, dict) else None
+        if proposal_status != 201 or proposal_id is None:
+            return build_http_result(
+                scenario,
+                success=False,
+                expected_statuses=[201],
+                http_status=proposal_status,
+                elapsed_ms=proposal_elapsed,
+                response_payload=proposal_payload,
+                note="drift-flow proposal creation failed",
+            )
+        ticket_status, ticket_payload, ticket_elapsed = self.request_json(
+            method="POST",
+            path="/agent/approval-tickets",
+            scenario_id=f"{scenario.scenario_id}.ticket",
+            expected_statuses=[201],
+            json_body={"proposal_id": int(proposal_id), "channel": "live_eval"},
+        )
+        ticket_id = ticket_payload.get("ticket_id") if isinstance(ticket_payload, dict) else None
+        if ticket_status != 201 or ticket_id is None:
+            return build_http_result(
+                scenario,
+                success=False,
+                expected_statuses=[201],
+                http_status=ticket_status,
+                elapsed_ms=round(proposal_elapsed + ticket_elapsed, 2),
+                response_payload={"proposal": proposal_payload, "ticket": ticket_payload},
+                note="drift-flow ticket creation failed",
+            )
+        session_factory = get_session_factory()
+        with session_factory() as db:
+            row = db.scalar(select(Change).where(Change.id == int(change_id), Change.user_id == int(self.user["id"])).limit(1))
+            if row is not None:
+                row.review_status = ReviewStatus.REJECTED
+                row.reviewed_at = datetime.now(UTC)
+                db.commit()
+        confirm_status, confirm_payload, confirm_elapsed = self.request_json(
+            method="POST",
+            path=f"/agent/approval-tickets/{ticket_id}/confirm",
+            scenario_id=f"{scenario.scenario_id}.confirm",
+            expected_statuses=[409],
+            json_body={},
+        )
+        success = confirm_status == 409 and extract_error_code(confirm_payload) == "agents.approval.change_state_drifted"
+        if success:
+            self.runtime_state["drift_ticket_id"] = str(ticket_id)
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[409],
+            http_status=confirm_status,
+            elapsed_ms=round(proposal_elapsed + ticket_elapsed + confirm_elapsed, 2),
+            response_payload={"proposal": proposal_payload, "ticket": ticket_payload, "confirm": confirm_payload},
+            note="drifted approval ticket safely conflicted" if success else "drifted approval ticket did not return the expected conflict",
         )
 
     def _run_source_context(self, scenario: ScenarioSpec) -> ScenarioResult:
@@ -513,6 +816,36 @@ class AgentLiveEvalRunner:
             note="source recovery proposal persisted" if success else "source recovery proposal creation failed",
         )
 
+    def _run_source_proposal_create_nonexec(self, scenario: ScenarioSpec) -> ScenarioResult:
+        source_id = scenario.metadata.get("target_id")
+        if source_id is None:
+            return self._skipped_result(scenario, "no non-executable source available")
+        http_status, payload, elapsed_ms = self.request_json(
+            method="POST",
+            path="/agent/proposals/source-recovery",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[201],
+            json_body={"source_id": int(source_id)},
+        )
+        success = (
+            http_status == 201
+            and isinstance(payload, dict)
+            and payload.get("proposal_id") is not None
+            and isinstance(payload.get("suggested_payload"), dict)
+            and str((payload.get("suggested_payload") or {}).get("kind") or "") != "run_source_sync"
+        )
+        if success:
+            self.runtime_state["source_nonexec_proposal_id"] = int(payload["proposal_id"])
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[201],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="non-executable source recovery proposal persisted" if success else "non-executable source recovery proposal creation failed",
+        )
+
     def _run_source_ticket_guard_or_create(self, scenario: ScenarioSpec) -> ScenarioResult:
         proposal_id = self.runtime_state.get("source_proposal_id")
         if proposal_id is None:
@@ -543,6 +876,28 @@ class AgentLiveEvalRunner:
             note=note,
         )
 
+    def _run_source_ticket_guard_nonexec(self, scenario: ScenarioSpec) -> ScenarioResult:
+        proposal_id = self.runtime_state.get("source_nonexec_proposal_id")
+        if proposal_id is None:
+            return self._skipped_result(scenario, "non-executable source proposal missing")
+        http_status, payload, elapsed_ms = self.request_json(
+            method="POST",
+            path="/agent/approval-tickets",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[409],
+            json_body={"proposal_id": int(proposal_id), "channel": "live_eval"},
+        )
+        success = http_status == 409 and extract_error_code(payload) == "agents.approval.proposal_not_executable"
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[409],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="non-executable source proposal stayed guarded" if success else "non-executable source proposal incorrectly created a ticket",
+        )
+
     def _run_source_ticket_confirm(self, scenario: ScenarioSpec) -> ScenarioResult:
         ticket_id = self.runtime_state.get("source_ticket_id")
         if ticket_id is None:
@@ -564,6 +919,25 @@ class AgentLiveEvalRunner:
             elapsed_ms=elapsed_ms,
             response_payload=payload,
             note="source recovery ticket executed" if success else "source recovery ticket did not execute run_source_sync",
+        )
+
+    def _run_change_ticket_missing_get(self, scenario: ScenarioSpec) -> ScenarioResult:
+        ticket_id = str(scenario.metadata["target_id"])
+        http_status, payload, elapsed_ms = self.request_json(
+            method="GET",
+            path=f"/agent/approval-tickets/{ticket_id}",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[404],
+        )
+        success = http_status == 404
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[404],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="missing approval ticket safely rejected" if success else "missing approval ticket did not return 404",
         )
 
 
@@ -598,8 +972,8 @@ def build_http_result(
 
 
 def build_core_scenarios(snapshot: dict[str, Any]) -> list[ScenarioSpec]:
-    selected_change_id = snapshot.get("selected_change_id")
-    selected_source_id = snapshot.get("selected_source_id")
+    selected_change_id = snapshot.get("primary_change_id")
+    selected_source_id = snapshot.get("executable_source_id") or snapshot.get("selected_source_id")
     missing_change_id = int(snapshot["missing_change_id"])
     missing_source_id = int(snapshot["missing_source_id"])
     return [
@@ -710,6 +1084,186 @@ def build_core_scenarios(snapshot: dict[str, Any]) -> list[ScenarioSpec]:
     ]
 
 
+def build_expanded_scenarios(snapshot: dict[str, Any]) -> list[ScenarioSpec]:
+    selected_change_id = snapshot.get("primary_change_id")
+    repeat_change_id = snapshot.get("repeat_change_id")
+    cancel_change_id = snapshot.get("cancel_change_id")
+    drift_change_id = snapshot.get("drift_change_id")
+    reviewed_change_id = snapshot.get("reviewed_change_id")
+    selected_source_id = snapshot.get("executable_source_id") or snapshot.get("selected_source_id")
+    disconnected_gmail_source_id = snapshot.get("disconnected_gmail_source_id")
+    missing_change_id = int(snapshot["missing_change_id"])
+    missing_source_id = int(snapshot["missing_source_id"])
+    missing_proposal_id = int(snapshot["missing_proposal_id"])
+    missing_ticket_id = str(snapshot["missing_ticket_id"])
+
+    scenarios: list[ScenarioSpec] = [
+        ScenarioSpec("workspace.context.primary", "Workspace context primary read", "workspace_context", "workspace_context"),
+        ScenarioSpec("workspace.context.repeat", "Workspace context repeat read", "workspace_context", "workspace_context"),
+        ScenarioSpec(
+            "change.context.primary",
+            "Existing change context read",
+            "change_context",
+            "change_context",
+            enabled=selected_change_id is not None,
+            skip_reason="no pending change discovered during preflight" if selected_change_id is None else None,
+            metadata={"target_kind": "change", "target_id": selected_change_id},
+        ),
+        ScenarioSpec(
+            "change.context.reviewed",
+            "Reviewed change context read",
+            "change_context",
+            "change_context",
+            enabled=reviewed_change_id is not None,
+            skip_reason="no reviewed change discovered for this user" if reviewed_change_id is None else None,
+            metadata={"target_kind": "change", "target_id": reviewed_change_id},
+        ),
+        ScenarioSpec(
+            "change.context.missing",
+            "Missing change context read",
+            "change_context",
+            "change_context_missing",
+            metadata={"target_kind": "change", "target_id": missing_change_id},
+        ),
+        ScenarioSpec(
+            "change.proposal.create",
+            "Create change decision proposal",
+            "change_proposal",
+            "change_proposal_create",
+            enabled=selected_change_id is not None,
+            skip_reason="no pending change discovered during preflight" if selected_change_id is None else None,
+            metadata={"target_kind": "change", "target_id": selected_change_id},
+        ),
+        ScenarioSpec(
+            "change.proposal.fetch",
+            "Fetch created change proposal",
+            "change_proposal",
+            "change_proposal_fetch",
+            metadata={"target_kind": "proposal"},
+        ),
+        ScenarioSpec(
+            "change.proposal.repeat",
+            "Create repeated proposal on another pending change",
+            "change_proposal",
+            "change_proposal_repeat",
+            enabled=repeat_change_id is not None,
+            skip_reason="no second pending change discovered during preflight" if repeat_change_id is None else None,
+            metadata={"target_kind": "change", "target_id": repeat_change_id},
+        ),
+        ScenarioSpec(
+            "change.proposal.reviewed-conflict",
+            "Reviewed change proposal safely conflicts",
+            "change_proposal",
+            "change_proposal_reviewed_conflict",
+            enabled=reviewed_change_id is not None,
+            skip_reason="no reviewed change discovered for this user" if reviewed_change_id is None else None,
+            metadata={"target_kind": "change", "target_id": reviewed_change_id},
+        ),
+        ScenarioSpec(
+            "change.proposal.missing-fetch",
+            "Missing proposal fetch",
+            "change_proposal",
+            "change_proposal_fetch_missing",
+            metadata={"target_kind": "proposal", "target_id": missing_proposal_id},
+        ),
+        ScenarioSpec("change.ticket.create", "Create approval ticket for change proposal", "change_ticket", "change_ticket_create", metadata={"target_kind": "approval_ticket"}),
+        ScenarioSpec("change.ticket.get", "Fetch created change approval ticket", "change_ticket", "change_ticket_get", metadata={"target_kind": "approval_ticket"}),
+        ScenarioSpec("change.ticket.confirm", "Confirm change approval ticket", "change_ticket", "change_ticket_confirm", metadata={"target_kind": "approval_ticket"}),
+        ScenarioSpec("change.ticket.reconfirm", "Re-confirm change approval ticket", "change_ticket", "change_ticket_reconfirm", metadata={"target_kind": "approval_ticket"}),
+        ScenarioSpec(
+            "change.ticket.cancel",
+            "Create and cancel a change approval ticket",
+            "change_ticket",
+            "change_ticket_cancel",
+            enabled=cancel_change_id is not None,
+            skip_reason="no third pending change discovered during preflight" if cancel_change_id is None else None,
+            metadata={"target_kind": "change", "target_id": cancel_change_id},
+        ),
+        ScenarioSpec("change.ticket.confirm-canceled", "Canceled approval ticket stays blocked", "change_ticket", "change_ticket_confirm_canceled", metadata={"target_kind": "approval_ticket"}),
+        ScenarioSpec(
+            "change.ticket.drift-confirm",
+            "Drifted change approval ticket conflicts on confirm",
+            "change_ticket",
+            "change_ticket_drift_confirm",
+            enabled=drift_change_id is not None,
+            skip_reason="no fourth pending change discovered during preflight" if drift_change_id is None else None,
+            metadata={"target_kind": "change", "target_id": drift_change_id},
+        ),
+        ScenarioSpec(
+            "source.context.primary",
+            "Executable source context read",
+            "source_context",
+            "source_context",
+            enabled=selected_source_id is not None,
+            skip_reason="no executable source discovered" if selected_source_id is None else None,
+            metadata={"target_kind": "source", "target_id": selected_source_id},
+        ),
+        ScenarioSpec(
+            "source.context.disconnected-gmail",
+            "Disconnected Gmail source context read",
+            "source_context",
+            "source_context",
+            enabled=disconnected_gmail_source_id is not None,
+            skip_reason="no disconnected gmail source discovered" if disconnected_gmail_source_id is None else None,
+            metadata={"target_kind": "source", "target_id": disconnected_gmail_source_id},
+        ),
+        ScenarioSpec(
+            "source.context.missing",
+            "Missing source context read",
+            "source_context",
+            "source_context_missing",
+            metadata={"target_kind": "source", "target_id": missing_source_id},
+        ),
+        ScenarioSpec(
+            "source.proposal.create-executable",
+            "Create executable source recovery proposal",
+            "source_proposal",
+            "source_proposal_create",
+            enabled=selected_source_id is not None,
+            skip_reason="no executable source discovered" if selected_source_id is None else None,
+            metadata={"target_kind": "source", "target_id": selected_source_id},
+        ),
+        ScenarioSpec(
+            "source.ticket.guard-or-create-executable",
+            "Create approval ticket for executable source recovery",
+            "source_ticket",
+            "source_ticket_guard_or_create",
+            metadata={"target_kind": "approval_ticket"},
+        ),
+        ScenarioSpec(
+            "source.ticket.confirm-executable",
+            "Confirm executable source recovery ticket",
+            "source_ticket",
+            "source_ticket_confirm",
+            metadata={"target_kind": "approval_ticket"},
+        ),
+        ScenarioSpec(
+            "source.proposal.create-nonexec",
+            "Create non-executable source recovery proposal",
+            "source_proposal",
+            "source_proposal_create_nonexec",
+            enabled=disconnected_gmail_source_id is not None,
+            skip_reason="no disconnected gmail source discovered" if disconnected_gmail_source_id is None else None,
+            metadata={"target_kind": "source", "target_id": disconnected_gmail_source_id},
+        ),
+        ScenarioSpec(
+            "source.ticket.guard-nonexec",
+            "Non-executable source recovery stays guarded",
+            "source_ticket",
+            "source_ticket_guard_nonexec",
+            metadata={"target_kind": "approval_ticket"},
+        ),
+        ScenarioSpec(
+            "ticket.missing-get",
+            "Missing approval ticket fetch",
+            "change_ticket",
+            "change_ticket_missing_get",
+            metadata={"target_kind": "approval_ticket", "target_id": missing_ticket_id},
+        ),
+    ]
+    return scenarios
+
+
 def collect_proposal_audit(*, user_id: int, started_at: datetime) -> dict[str, Any]:
     session_factory = get_session_factory()
     with session_factory() as db:
@@ -816,6 +1370,8 @@ def compute_summary(
         and not row.success
     ]
 
+    expected_proposal_count = _expected_created_proposal_count(results)
+    expected_ticket_count = _expected_created_ticket_count(results)
     summary = {
         "generated_at": utc_now_iso(),
         "scenario_count": len(plan),
@@ -845,18 +1401,11 @@ def compute_summary(
             "ticket_rows": int(ticket_audit.get("count") or 0),
             "proposal_persistence_completeness": ratio(
                 int(proposal_audit.get("count") or 0),
-                len([row for row in passed if row.operation in {"change_proposal_create", "source_proposal_create"}]),
+                expected_proposal_count,
             ),
             "ticket_persistence_completeness": ratio(
                 int(ticket_audit.get("count") or 0),
-                len(
-                    [
-                        row
-                        for row in passed
-                        if row.operation == "change_ticket_create"
-                        or (row.operation == "source_ticket_guard_or_create" and row.http_status == 201)
-                    ]
-                ),
+                expected_ticket_count,
             ),
         },
         "threshold_failures": build_threshold_failures(
@@ -869,6 +1418,32 @@ def compute_summary(
         ),
     }
     return summary
+
+
+def _expected_created_proposal_count(results: list[ScenarioResult]) -> int:
+    total = 0
+    for row in results:
+        if not row.success:
+            continue
+        if row.operation in {"change_proposal_create", "source_proposal_create", "source_proposal_create_nonexec"}:
+            total += 1
+        elif row.operation == "change_proposal_repeat":
+            total += 2
+        elif row.operation in {"change_ticket_cancel", "change_ticket_drift_confirm"}:
+            total += 1
+    return total
+
+
+def _expected_created_ticket_count(results: list[ScenarioResult]) -> int:
+    total = 0
+    for row in results:
+        if not row.success:
+            continue
+        if row.operation in {"change_ticket_create", "change_ticket_cancel", "change_ticket_drift_confirm"}:
+            total += 1
+        elif row.operation == "source_ticket_guard_or_create" and row.http_status == 201:
+            total += 1
+    return total
 
 
 def build_threshold_failures(
@@ -931,7 +1506,10 @@ def run_eval(args: argparse.Namespace) -> Path:
         started_at=started_at,
     )
     workspace_snapshot = runner.bootstrap_workspace_snapshot()
-    plan = build_core_scenarios(workspace_snapshot)
+    if str(args.scenario_set) == "expanded":
+        plan = build_expanded_scenarios(workspace_snapshot)
+    else:
+        plan = build_core_scenarios(workspace_snapshot)
     write_json(
         run_dir / SCENARIO_PLAN_FILE,
         {
@@ -944,10 +1522,18 @@ def run_eval(args: argparse.Namespace) -> Path:
                 "summary": workspace_snapshot["summary"],
                 "pending_change_count": len(workspace_snapshot["pending_changes"]),
                 "source_count": len(workspace_snapshot["sources"]),
-                "selected_change_id": workspace_snapshot["selected_change_id"],
+                "primary_change_id": workspace_snapshot["primary_change_id"],
+                "repeat_change_id": workspace_snapshot["repeat_change_id"],
+                "cancel_change_id": workspace_snapshot["cancel_change_id"],
+                "drift_change_id": workspace_snapshot["drift_change_id"],
+                "reviewed_change_id": workspace_snapshot["reviewed_change_id"],
                 "selected_source_id": workspace_snapshot["selected_source_id"],
+                "executable_source_id": workspace_snapshot["executable_source_id"],
+                "disconnected_gmail_source_id": workspace_snapshot["disconnected_gmail_source_id"],
                 "missing_change_id": workspace_snapshot["missing_change_id"],
                 "missing_source_id": workspace_snapshot["missing_source_id"],
+                "missing_proposal_id": workspace_snapshot["missing_proposal_id"],
+                "missing_ticket_id": workspace_snapshot["missing_ticket_id"],
             },
             "scenarios": [row.to_dict() for row in plan],
         },
