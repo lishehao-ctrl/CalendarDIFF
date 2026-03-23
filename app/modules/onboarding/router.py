@@ -8,6 +8,7 @@ from app.core.security import require_public_api_key
 from app.db.models.shared import User
 from app.db.session import get_db
 from app.modules.auth.deps import get_authenticated_user_or_401
+from app.modules.common.api_errors import api_error_detail
 from app.modules.onboarding.schemas import (
     OnboardingCanvasIcsRequest,
     OnboardingGmailOAuthRequest,
@@ -57,7 +58,15 @@ def create_registration(
         )
     except OnboardingRegisterError as exc:
         status_code = exc.status_code if exc.status_code in {409, 422} else status.HTTP_422_UNPROCESSABLE_ENTITY
-        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status_code,
+            detail=api_error_detail(
+                code=exc.code,
+                message=str(exc),
+                message_code=exc.message_code,
+                message_params=exc.message_params,
+            ),
+        ) from exc
 
     return OnboardingRegisterResponse(
         status="accepted",
@@ -76,7 +85,14 @@ def upsert_canvas_ics(
     try:
         status_payload = upsert_onboarding_canvas_ics(db, user=user, url=payload.url)
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=sanitize_log_message(str(exc))) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=api_error_detail(
+                code="onboarding_canvas_ics_invalid",
+                message=sanitize_log_message(str(exc)),
+                message_code="onboarding.canvas_ics.validation_error",
+            ),
+        ) from exc
     return _serialize_onboarding_status(status_payload)
 
 
@@ -94,7 +110,14 @@ def create_onboarding_gmail_oauth_session(
             return_to=payload.return_to,
         )
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=sanitize_log_message(str(exc))) from exc
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=api_error_detail(
+                code="onboarding_gmail_oauth_unavailable",
+                message=sanitize_log_message(str(exc)),
+                message_code="onboarding.gmail_oauth.unavailable",
+            ),
+        ) from exc
     return OnboardingOAuthSessionCreateResponse(
         source_id=source.id,
         provider="gmail",
@@ -127,9 +150,24 @@ def save_monitoring_window(
             monitor_since=payload.monitor_since.isoformat(),
         )
     except OnboardingRegisterError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=api_error_detail(
+                code=exc.code,
+                message=str(exc),
+                message_code=exc.message_code,
+                message_params=exc.message_params,
+            ),
+        ) from exc
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=sanitize_log_message(str(exc))) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=api_error_detail(
+                code="onboarding_monitoring_window_invalid",
+                message=sanitize_log_message(str(exc)),
+                message_code="onboarding.monitoring_window.validation_error",
+            ),
+        ) from exc
     return _serialize_onboarding_status(status_payload)
 
 
@@ -137,11 +175,15 @@ def _serialize_onboarding_status(status_payload) -> OnboardingStatusResponse:
     return OnboardingStatusResponse(
         stage=status_payload.stage,  # type: ignore[arg-type]
         message=status_payload.message,
+        message_code=status_payload.message_code,
+        message_params=status_payload.message_params,
         registered_user_id=status_payload.registered_user_id,
         first_source_id=status_payload.first_source_id,
         source_health=SourceHealthSummaryResponse(
             status=status_payload.source_health.status,  # type: ignore[arg-type]
             message=status_payload.source_health.message,
+            message_code=status_payload.source_health.message_code,
+            message_params=status_payload.source_health.message_params,
             affected_source_id=status_payload.source_health.affected_source_id,
             affected_provider=status_payload.source_health.affected_provider,
         ),

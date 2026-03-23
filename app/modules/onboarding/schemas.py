@@ -37,6 +37,8 @@ class OnboardingRegisterRequest(BaseModel):
 class SourceHealthSummaryResponse(BaseModel):
     status: SourceHealthStatusLiteral
     message: str
+    message_code: str
+    message_params: dict = Field(default_factory=dict)
     affected_source_id: int | None = None
     affected_provider: str | None = None
 
@@ -58,6 +60,8 @@ class OnboardingSourceResponse(BaseModel):
 class OnboardingStatusResponse(BaseModel):
     stage: OnboardingStageLiteral
     message: str
+    message_code: str
+    message_params: dict = Field(default_factory=dict)
     registered_user_id: int | None = None
     first_source_id: int | None = None
     source_health: SourceHealthSummaryResponse | None = None

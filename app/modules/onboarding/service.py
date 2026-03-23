@@ -32,15 +32,28 @@ from app.modules.sources.sources_service import update_input_source
 
 
 class OnboardingRegisterError(RuntimeError):
-    def __init__(self, message: str, *, status_code: int = 422) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int = 422,
+        code: str = "onboarding_invalid_input",
+        message_code: str | None = None,
+        message_params: dict | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.code = code
+        self.message_code = message_code or code
+        self.message_params = message_params or {}
 
 
 @dataclass(frozen=True)
 class SourceHealthSummary:
     status: str
     message: str
+    message_code: str
+    message_params: dict
     affected_source_id: int | None
     affected_provider: str | None
 
@@ -60,6 +73,8 @@ class OnboardingSourceSummary:
 class OnboardingStatus:
     stage: str
     message: str
+    message_code: str
+    message_params: dict
     registered_user_id: int | None
     first_source_id: int | None
     source_health: SourceHealthSummary
@@ -96,7 +111,7 @@ def get_onboarding_status_for_user(db: Session, *, user: User) -> OnboardingStat
     first_source_id = all_sources[0].id if all_sources else None
     monitoring_window = _preferred_monitoring_window(canvas_summary=canvas_summary, gmail_summary=gmail_summary)
 
-    stage, message = _derive_stage_and_message(
+    stage, message, message_code, message_params = _derive_stage_and_message(
         user=user,
         canvas_source=canvas_summary,
         gmail_source=gmail_summary,
@@ -106,6 +121,8 @@ def get_onboarding_status_for_user(db: Session, *, user: User) -> OnboardingStat
     return OnboardingStatus(
         stage=stage,
         message=message,
+        message_code=message_code,
+        message_params=message_params,
         registered_user_id=user.id,
         first_source_id=first_source_id,
         source_health=source_health,
@@ -128,7 +145,12 @@ def register_onboarding(
 ) -> OnboardingRegisterResult:
     normalized = notify_email.strip().lower()
     if normalized != (user.notify_email or "").strip().lower():
-        raise OnboardingRegisterError("notify_email is managed by auth register flow", status_code=422)
+        raise OnboardingRegisterError(
+            "notify_email is managed by auth register flow",
+            status_code=422,
+            code="onboarding_notify_email_managed_by_auth",
+            message_code="onboarding.notify_email_managed_by_auth",
+        )
 
     status = get_onboarding_status_for_user(db, user=user)
     return OnboardingRegisterResult(
@@ -214,7 +236,12 @@ def apply_onboarding_monitoring_window(
 
     canvas_source = get_canvas_ics_source_for_user(db, user_id=user.id)
     if canvas_source is None or not _source_has_canvas_url(canvas_source):
-        raise OnboardingRegisterError("Connect Canvas ICS before saving the monitoring window", status_code=409)
+        raise OnboardingRegisterError(
+            "Connect Canvas ICS before saving the monitoring window",
+            status_code=409,
+            code="onboarding_canvas_required_before_monitoring_window",
+            message_code="onboarding.canvas_required_before_monitoring_window",
+        )
 
     gmail_source = get_gmail_source_for_user(db, user_id=user.id)
     connected_sources = [canvas_source]
@@ -318,9 +345,14 @@ def _derive_stage_and_message(
     canvas_source: OnboardingSourceSummary | None,
     gmail_source: OnboardingSourceSummary | None,
     gmail_skipped: bool,
-) -> tuple[str, str]:
+) -> tuple[str, str, str, dict]:
     if canvas_source is None or not canvas_source.connected:
-        return "needs_canvas_ics", "Add your Canvas ICS link before anything else."
+        return (
+            "needs_canvas_ics",
+            "Add your Canvas ICS link before anything else.",
+            "onboarding.stage.needs_canvas_ics",
+            {},
+        )
 
     canvas_binding = canvas_source.monitoring_window
     gmail_connected = gmail_source is not None and gmail_source.connected
@@ -329,12 +361,22 @@ def _derive_stage_and_message(
         connected_sources.append(gmail_source)
 
     if canvas_binding is None and not gmail_connected and not gmail_skipped:
-        return "needs_gmail_or_skip", "Connect Gmail now or skip it for this workspace."
+        return (
+            "needs_gmail_or_skip",
+            "Connect Gmail now or skip it for this workspace.",
+            "onboarding.stage.needs_gmail_or_skip",
+            {},
+        )
 
     if any(source.monitoring_window is None for source in connected_sources):
-        return "needs_monitoring_window", "Use the default 90-day monitoring window or choose an earlier start date before sync begins."
+        return (
+            "needs_monitoring_window",
+            "Use the default 90-day monitoring window or choose an earlier start date before sync begins.",
+            "onboarding.stage.needs_monitoring_window",
+            {},
+        )
 
-    return "ready", "Onboarding complete."
+    return "ready", "Onboarding complete.", "onboarding.stage.ready", {}
 
 
 def _derive_source_health(*, active_sources: list[InputSource], first_error_source: InputSource | None) -> SourceHealthSummary:
@@ -342,6 +384,8 @@ def _derive_source_health(*, active_sources: list[InputSource], first_error_sour
         return SourceHealthSummary(
             status="disconnected",
             message="No active sources connected yet.",
+            message_code="onboarding.source_health.disconnected",
+            message_params={},
             affected_source_id=None,
             affected_provider=None,
         )
@@ -349,12 +393,16 @@ def _derive_source_health(*, active_sources: list[InputSource], first_error_sour
         return SourceHealthSummary(
             status="attention",
             message="A connected source needs attention before syncs are reliable.",
+            message_code="onboarding.source_health.attention",
+            message_params={},
             affected_source_id=first_error_source.id,
             affected_provider=first_error_source.provider,
         )
     return SourceHealthSummary(
         status="healthy",
         message="Connected sources are ready for intake.",
+        message_code="onboarding.source_health.healthy",
+        message_params={},
         affected_source_id=None,
         affected_provider=None,
     )
