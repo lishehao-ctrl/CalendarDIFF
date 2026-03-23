@@ -16,13 +16,12 @@ from app.modules.sources.schemas import (
     SourceObservabilityResponse,
     SourceSyncHistoryResponse,
 )
-from app.modules.sources.source_runtime_state import derive_source_runtime_state, derive_source_runtime_states
+from app.modules.sources.source_runtime_state import derive_source_runtime_state
+from app.modules.sources.read_service import build_source_read_payload
 from app.modules.sources.source_serializers import serialize_source
 from app.modules.sources.status_projection import (
     build_source_observability_payload,
     build_source_sync_history_payload,
-    build_sync_progress_payload,
-    get_display_sync_request_for_source,
 )
 from app.modules.sources.sources_service import (
     GmailSourceAlreadyExistsError,
@@ -95,30 +94,7 @@ def list_sources(
             ),
         )
     rows = list_input_sources(db, user_id=user.id, status=normalized_status)
-    projections = derive_source_runtime_states(db, sources=rows)
-    payloads: list[InputSourceResponse] = []
-    for row in rows:
-        active_sync = get_display_sync_request_for_source(db, source_id=row.id)
-        sync_progress = (
-            build_sync_progress_payload(db, sync_request=active_sync)
-            if active_sync is not None
-            else None
-        )
-        observability = build_source_observability_payload(db, source_id=row.id)
-        payloads.append(
-            InputSourceResponse.model_validate(
-                serialize_source(
-                    row,
-                    runtime_state=projections[row.id],
-                    active_request_id=active_sync.request_id if active_sync is not None else None,
-                    sync_progress=sync_progress,
-                    operator_guidance=observability.get("operator_guidance"),
-                    source_product_phase=observability.get("source_product_phase"),
-                    source_recovery=observability.get("source_recovery"),
-                )
-            )
-        )
-    return payloads
+    return [InputSourceResponse.model_validate(build_source_read_payload(db, source=row)) for row in rows]
 
 
 @router.patch("/sources/{source_id}", response_model=InputSourceResponse)

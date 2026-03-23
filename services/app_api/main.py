@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.modules.auth.bootstrap import bootstrap_env_admin_user
 from app.core.oauth_config import log_input_oauth_startup
+from app.modules.agents.router import router as agents_router
 from app.modules.auth.router import router as auth_router
 from app.modules.families.router import router as families_router
 from app.modules.health.router import router as health_router
@@ -26,6 +27,7 @@ app = create_service_app(
     routers=[
         health_router,
         auth_router,
+        agents_router,
         settings_router,
         manual_router,
         onboarding_router,

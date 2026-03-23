@@ -67,6 +67,27 @@ class UserUpdateRequest(BaseModel):
         return normalize_language_code(value)
 
 
+class McpAccessTokenCreateRequest(BaseModel):
+    label: str = Field(min_length=1, max_length=128)
+    expires_in_days: int | None = Field(default=30, ge=1, le=365)
+
+    model_config = {"extra": "forbid"}
+
+
+class McpAccessTokenResponse(BaseModel):
+    token_id: str
+    label: str
+    scopes: list[str] = Field(default_factory=list)
+    last_used_at: datetime | None = None
+    expires_at: datetime | None = None
+    revoked_at: datetime | None = None
+    created_at: datetime
+
+
+class McpAccessTokenCreateResponse(McpAccessTokenResponse):
+    token: str
+
+
 def _is_valid_email_address(value: str | None) -> bool:
     if value is None:
         return False
@@ -100,6 +121,9 @@ def _normalize_timezone_name(value: str) -> str:
 
 
 __all__ = [
+    "McpAccessTokenCreateRequest",
+    "McpAccessTokenCreateResponse",
+    "McpAccessTokenResponse",
     "UserResponse",
     "UserUpdateRequest",
 ]

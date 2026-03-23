@@ -1,9 +1,564 @@
 {
   "components": {
     "schemas": {
+      "AgentBlockingConditionResponse": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "blocking"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "severity"
+        ],
+        "title": "AgentBlockingConditionResponse",
+        "type": "object"
+      },
+      "AgentChangeContextResponse": {
+        "properties": {
+          "available_next_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Available Next Tools",
+            "type": "array"
+          },
+          "blocking_conditions": {
+            "items": {
+              "$ref": "#/components/schemas/AgentBlockingConditionResponse"
+            },
+            "title": "Blocking Conditions",
+            "type": "array"
+          },
+          "change": {
+            "$ref": "#/components/schemas/ChangeItemResponse"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "recommended_next_action": {
+            "$ref": "#/components/schemas/AgentRecommendedActionResponse"
+          }
+        },
+        "required": [
+          "generated_at",
+          "change",
+          "recommended_next_action"
+        ],
+        "title": "AgentChangeContextResponse",
+        "type": "object"
+      },
+      "AgentChangeDecisionProposalRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "change_id": {
+            "minimum": 1.0,
+            "title": "Change Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "change_id"
+        ],
+        "title": "AgentChangeDecisionProposalRequest",
+        "type": "object"
+      },
+      "AgentProposalResponse": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "context": {
+            "additionalProperties": true,
+            "title": "Context",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "proposal_id": {
+            "title": "Proposal Id",
+            "type": "integer"
+          },
+          "proposal_type": {
+            "enum": [
+              "change_decision",
+              "source_recovery"
+            ],
+            "title": "Proposal Type",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "risk_level": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Risk Level",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "accepted",
+              "rejected",
+              "expired",
+              "superseded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "suggested_action": {
+            "title": "Suggested Action",
+            "type": "string"
+          },
+          "suggested_payload": {
+            "additionalProperties": true,
+            "title": "Suggested Payload",
+            "type": "object"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "summary_code": {
+            "title": "Summary Code",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_kind": {
+            "title": "Target Kind",
+            "type": "string"
+          },
+          "target_snapshot": {
+            "additionalProperties": true,
+            "title": "Target Snapshot",
+            "type": "object"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "proposal_id",
+          "proposal_type",
+          "status",
+          "target_kind",
+          "target_id",
+          "summary",
+          "summary_code",
+          "reason",
+          "reason_code",
+          "risk_level",
+          "confidence",
+          "suggested_action",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AgentProposalResponse",
+        "type": "object"
+      },
+      "AgentRecommendedActionResponse": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "lane": {
+            "enum": [
+              "sources",
+              "initial_review",
+              "changes",
+              "families",
+              "manual"
+            ],
+            "title": "Lane",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "reason_params": {
+            "additionalProperties": true,
+            "title": "Reason Params",
+            "type": "object"
+          },
+          "recommended_tool": {
+            "title": "Recommended Tool",
+            "type": "string"
+          },
+          "risk_level": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Risk Level",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lane",
+          "label",
+          "reason",
+          "reason_code",
+          "risk_level",
+          "recommended_tool"
+        ],
+        "title": "AgentRecommendedActionResponse",
+        "type": "object"
+      },
+      "AgentSourceContextResponse": {
+        "properties": {
+          "active_sync_request": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncRequestStatusResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "available_next_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Available Next Tools",
+            "type": "array"
+          },
+          "blocking_conditions": {
+            "items": {
+              "$ref": "#/components/schemas/AgentBlockingConditionResponse"
+            },
+            "title": "Blocking Conditions",
+            "type": "array"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "observability": {
+            "$ref": "#/components/schemas/SourceObservabilityResponse"
+          },
+          "recommended_next_action": {
+            "$ref": "#/components/schemas/AgentRecommendedActionResponse"
+          },
+          "source": {
+            "$ref": "#/components/schemas/InputSourceResponse"
+          }
+        },
+        "required": [
+          "generated_at",
+          "source",
+          "observability",
+          "recommended_next_action"
+        ],
+        "title": "AgentSourceContextResponse",
+        "type": "object"
+      },
+      "AgentSourceRecoveryProposalRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "source_id": {
+            "minimum": 1.0,
+            "title": "Source Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_id"
+        ],
+        "title": "AgentSourceRecoveryProposalRequest",
+        "type": "object"
+      },
+      "AgentWorkspaceContextResponse": {
+        "properties": {
+          "available_next_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Available Next Tools",
+            "type": "array"
+          },
+          "blocking_conditions": {
+            "items": {
+              "$ref": "#/components/schemas/AgentBlockingConditionResponse"
+            },
+            "title": "Blocking Conditions",
+            "type": "array"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "recommended_next_action": {
+            "$ref": "#/components/schemas/AgentRecommendedActionResponse"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ChangesWorkbenchSummaryResponse"
+          },
+          "top_pending_changes": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeItemResponse"
+            },
+            "title": "Top Pending Changes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at",
+          "summary",
+          "top_pending_changes",
+          "recommended_next_action"
+        ],
+        "title": "AgentWorkspaceContextResponse",
+        "type": "object"
+      },
+      "ApprovalTicketCancelRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "ApprovalTicketCancelRequest",
+        "type": "object"
+      },
+      "ApprovalTicketConfirmRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "ApprovalTicketConfirmRequest",
+        "type": "object"
+      },
+      "ApprovalTicketCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "channel": {
+            "default": "web",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Channel",
+            "type": "string"
+          },
+          "proposal_id": {
+            "minimum": 1.0,
+            "title": "Proposal Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "proposal_id"
+        ],
+        "title": "ApprovalTicketCreateRequest",
+        "type": "object"
+      },
+      "ApprovalTicketResponse": {
+        "properties": {
+          "action_type": {
+            "title": "Action Type",
+            "type": "string"
+          },
+          "canceled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canceled At"
+          },
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "executed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executed At"
+          },
+          "executed_result": {
+            "additionalProperties": true,
+            "title": "Executed Result",
+            "type": "object"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "payload_hash": {
+            "title": "Payload Hash",
+            "type": "string"
+          },
+          "proposal_id": {
+            "title": "Proposal Id",
+            "type": "integer"
+          },
+          "risk_level": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Risk Level",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "executed",
+              "canceled",
+              "expired",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_kind": {
+            "title": "Target Kind",
+            "type": "string"
+          },
+          "target_snapshot": {
+            "additionalProperties": true,
+            "title": "Target Snapshot",
+            "type": "object"
+          },
+          "ticket_id": {
+            "title": "Ticket Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticket_id",
+          "proposal_id",
+          "channel",
+          "action_type",
+          "target_kind",
+          "target_id",
+          "payload_hash",
+          "risk_level",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ApprovalTicketResponse",
+        "type": "object"
+      },
       "AuthLoginRequest": {
         "additionalProperties": false,
         "properties": {
+          "language_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "en",
+                  "zh-CN"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Code"
+          },
           "notify_email": {
             "maxLength": 255,
             "minLength": 3,
@@ -52,6 +607,21 @@
       "AuthRegisterRequest": {
         "additionalProperties": false,
         "properties": {
+          "language_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "en",
+                  "zh-CN"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Code"
+          },
           "notify_email": {
             "maxLength": 255,
             "minLength": 3,
@@ -123,6 +693,15 @@
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "language_code": {
+            "default": "en",
+            "enum": [
+              "en",
+              "zh-CN"
+            ],
+            "title": "Language Code",
+            "type": "string"
           },
           "notify_email": {
             "title": "Notify Email",
@@ -333,6 +912,56 @@
         "title": "ChangeBatchDecisionResponse",
         "type": "object"
       },
+      "ChangeDecisionFactItemResponse": {
+        "properties": {
+          "code": {
+            "enum": [
+              "course",
+              "item",
+              "proposed_time",
+              "primary_source",
+              "time_change",
+              "effective_time",
+              "current_time"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "value"
+        ],
+        "title": "ChangeDecisionFactItemResponse",
+        "type": "object"
+      },
+      "ChangeDecisionOutcomePreviewCodesResponse": {
+        "properties": {
+          "approve": {
+            "title": "Approve",
+            "type": "string"
+          },
+          "edit": {
+            "title": "Edit",
+            "type": "string"
+          },
+          "reject": {
+            "title": "Reject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approve",
+          "reject",
+          "edit"
+        ],
+        "title": "ChangeDecisionOutcomePreviewCodesResponse",
+        "type": "object"
+      },
       "ChangeDecisionOutcomePreviewResponse": {
         "properties": {
           "approve": {
@@ -441,6 +1070,15 @@
       },
       "ChangeDecisionSupportResponse": {
         "properties": {
+          "key_fact_items": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeDecisionFactItemResponse"
+            },
+            "maxItems": 4,
+            "minItems": 0,
+            "title": "Key Fact Items",
+            "type": "array"
+          },
           "key_facts": {
             "items": {
               "type": "string"
@@ -453,6 +1091,9 @@
           "outcome_preview": {
             "$ref": "#/components/schemas/ChangeDecisionOutcomePreviewResponse"
           },
+          "outcome_preview_codes": {
+            "$ref": "#/components/schemas/ChangeDecisionOutcomePreviewCodesResponse"
+          },
           "risk_level": {
             "enum": [
               "low",
@@ -464,6 +1105,10 @@
           },
           "risk_summary": {
             "title": "Risk Summary",
+            "type": "string"
+          },
+          "risk_summary_code": {
+            "title": "Risk Summary Code",
             "type": "string"
           },
           "suggested_action": {
@@ -480,18 +1125,30 @@
             "title": "Suggested Action Reason",
             "type": "string"
           },
+          "suggested_action_reason_code": {
+            "title": "Suggested Action Reason Code",
+            "type": "string"
+          },
           "why_now": {
             "title": "Why Now",
+            "type": "string"
+          },
+          "why_now_code": {
+            "title": "Why Now Code",
             "type": "string"
           }
         },
         "required": [
           "why_now",
+          "why_now_code",
           "suggested_action",
           "suggested_action_reason",
+          "suggested_action_reason_code",
           "risk_level",
           "risk_summary",
-          "outcome_preview"
+          "risk_summary_code",
+          "outcome_preview",
+          "outcome_preview_codes"
         ],
         "title": "ChangeDecisionSupportResponse",
         "type": "object"
@@ -859,6 +1516,24 @@
         "title": "ChangeEditTargetRequest",
         "type": "object"
       },
+      "ChangeEvidenceAvailabilityResponse": {
+        "properties": {
+          "after": {
+            "title": "After",
+            "type": "boolean"
+          },
+          "before": {
+            "title": "Before",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "before",
+          "after"
+        ],
+        "title": "ChangeEvidenceAvailabilityResponse",
+        "type": "object"
+      },
       "ChangeItemResponse": {
         "properties": {
           "after_display": {
@@ -949,6 +1624,9 @@
           "entity_uid": {
             "title": "Entity Uid",
             "type": "string"
+          },
+          "evidence_availability": {
+            "$ref": "#/components/schemas/ChangeEvidenceAvailabilityResponse"
           },
           "id": {
             "title": "Id",
@@ -1089,7 +1767,8 @@
           "viewed_at",
           "viewed_note",
           "reviewed_at",
-          "review_note"
+          "review_note",
+          "evidence_availability"
         ],
         "title": "ChangeItemResponse",
         "type": "object"
@@ -1380,6 +2059,15 @@
             "title": "Message",
             "type": "string"
           },
+          "message_code": {
+            "title": "Message Code",
+            "type": "string"
+          },
+          "message_params": {
+            "additionalProperties": true,
+            "title": "Message Params",
+            "type": "object"
+          },
           "progress_age_seconds": {
             "anyOf": [
               {
@@ -1443,7 +2131,8 @@
           "recommended_action",
           "severity",
           "reason_code",
-          "message"
+          "message",
+          "message_code"
         ],
         "title": "ChangesWorkbenchSourcesResponse",
         "type": "object"
@@ -1473,6 +2162,15 @@
           "recommended_action_reason": {
             "title": "Recommended Action Reason",
             "type": "string"
+          },
+          "recommended_action_reason_code": {
+            "title": "Recommended Action Reason Code",
+            "type": "string"
+          },
+          "recommended_action_reason_params": {
+            "additionalProperties": true,
+            "title": "Recommended Action Reason Params",
+            "type": "object"
           },
           "recommended_lane": {
             "anyOf": [
@@ -1506,6 +2204,7 @@
           "changes_pending",
           "recommended_lane_reason_code",
           "recommended_action_reason",
+          "recommended_action_reason_code",
           "workspace_posture",
           "sources",
           "families",
@@ -3460,6 +4159,175 @@
         "title": "ManualEventWriteRequest",
         "type": "object"
       },
+      "McpAccessTokenCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_in_days": {
+            "anyOf": [
+              {
+                "maximum": 365.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 30,
+            "title": "Expires In Days"
+          },
+          "label": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "McpAccessTokenCreateRequest",
+        "type": "object"
+      },
+      "McpAccessTokenCreateResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "token_id": {
+            "title": "Token Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token_id",
+          "label",
+          "created_at",
+          "token"
+        ],
+        "title": "McpAccessTokenCreateResponse",
+        "type": "object"
+      },
+      "McpAccessTokenResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
+          "token_id": {
+            "title": "Token Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token_id",
+          "label",
+          "created_at"
+        ],
+        "title": "McpAccessTokenResponse",
+        "type": "object"
+      },
       "OAuthSessionCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3781,6 +4649,15 @@
             "title": "Message",
             "type": "string"
           },
+          "message_code": {
+            "title": "Message Code",
+            "type": "string"
+          },
+          "message_params": {
+            "additionalProperties": true,
+            "title": "Message Params",
+            "type": "object"
+          },
           "monitoring_window": {
             "anyOf": [
               {
@@ -3826,7 +4703,8 @@
         },
         "required": [
           "stage",
-          "message"
+          "message",
+          "message_code"
         ],
         "title": "OnboardingStatusResponse",
         "type": "object"
@@ -4391,6 +5269,15 @@
             "title": "Message",
             "type": "string"
           },
+          "message_code": {
+            "title": "Message Code",
+            "type": "string"
+          },
+          "message_params": {
+            "additionalProperties": true,
+            "title": "Message Params",
+            "type": "object"
+          },
           "status": {
             "enum": [
               "healthy",
@@ -4403,7 +5290,8 @@
         },
         "required": [
           "status",
-          "message"
+          "message",
+          "message_code"
         ],
         "title": "SourceHealthSummaryResponse",
         "type": "object"
@@ -4701,6 +5589,15 @@
             "title": "Message",
             "type": "string"
           },
+          "message_code": {
+            "title": "Message Code",
+            "type": "string"
+          },
+          "message_params": {
+            "additionalProperties": true,
+            "title": "Message Params",
+            "type": "object"
+          },
           "progress_age_seconds": {
             "anyOf": [
               {
@@ -4751,7 +5648,8 @@
           "recommended_action",
           "severity",
           "reason_code",
-          "message"
+          "message",
+          "message_code"
         ],
         "title": "SourceOperatorGuidanceResponse",
         "type": "object"
@@ -4769,6 +5667,10 @@
               }
             ],
             "title": "Degraded Since"
+          },
+          "impact_code": {
+            "title": "Impact Code",
+            "type": "string"
           },
           "impact_summary": {
             "title": "Impact Summary",
@@ -4800,6 +5702,13 @@
             "title": "Next Action Label",
             "type": "string"
           },
+          "recovery_step_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recovery Step Codes",
+            "type": "array"
+          },
           "recovery_steps": {
             "items": {
               "type": "string"
@@ -4821,6 +5730,7 @@
         "required": [
           "trust_state",
           "impact_summary",
+          "impact_code",
           "next_action",
           "next_action_label"
         ],
@@ -5206,6 +6116,15 @@
             "title": "Id",
             "type": "integer"
           },
+          "language_code": {
+            "default": "en",
+            "enum": [
+              "en",
+              "zh-CN"
+            ],
+            "title": "Language Code",
+            "type": "string"
+          },
           "notify_email": {
             "anyOf": [
               {
@@ -5265,6 +6184,21 @@
               }
             ],
             "title": "Email"
+          },
+          "language_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "en",
+                  "zh-CN"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Code"
           },
           "notify_email": {
             "anyOf": [
@@ -5459,12 +6393,22 @@
           "reason": {
             "title": "Reason",
             "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "reason_params": {
+            "additionalProperties": true,
+            "title": "Reason Params",
+            "type": "object"
           }
         },
         "required": [
           "lane",
           "label",
-          "reason"
+          "reason",
+          "reason_code"
         ],
         "title": "WorkspacePostureNextActionResponse",
         "type": "object"
@@ -5508,6 +6452,600 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/agent/approval-tickets": {
+      "post": {
+        "operationId": "post_approval_ticket_agent_approval_tickets_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalTicketCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalTicketResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Approval Ticket",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/agent/approval-tickets/{ticket_id}": {
+      "get": {
+        "operationId": "get_approval_ticket_route_agent_approval_tickets__ticket_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalTicketResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Approval Ticket Route",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/agent/approval-tickets/{ticket_id}/cancel": {
+      "post": {
+        "operationId": "post_approval_ticket_cancel_agent_approval_tickets__ticket_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalTicketCancelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalTicketResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Approval Ticket Cancel",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/agent/approval-tickets/{ticket_id}/confirm": {
+      "post": {
+        "operationId": "post_approval_ticket_confirm_agent_approval_tickets__ticket_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalTicketConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalTicketResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Approval Ticket Confirm",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/agent/context/changes/{change_id}": {
+      "get": {
+        "operationId": "get_agent_change_context_agent_context_changes__change_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "title": "Change Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentChangeContextResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Change Context",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/agent/context/sources/{source_id}": {
+      "get": {
+        "operationId": "get_agent_source_context_agent_context_sources__source_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSourceContextResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Source Context",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/agent/context/workspace": {
+      "get": {
+        "operationId": "get_agent_workspace_context_agent_context_workspace_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentWorkspaceContextResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Workspace Context",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/agent/proposals/change-decision": {
+      "post": {
+        "operationId": "post_agent_change_decision_proposal_agent_proposals_change_decision_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentChangeDecisionProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Agent Change Decision Proposal",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/agent/proposals/source-recovery": {
+      "post": {
+        "operationId": "post_agent_source_recovery_proposal_agent_proposals_source_recovery_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentSourceRecoveryProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Agent Source Recovery Proposal",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/agent/proposals/{proposal_id}": {
+      "get": {
+        "operationId": "get_agent_proposal_route_agent_proposals__proposal_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Proposal Route",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
     "/auth/login": {
       "post": {
         "operationId": "login_auth_auth_login_post",
@@ -7956,6 +9494,174 @@
         "summary": "Get Status",
         "tags": [
           "onboarding"
+        ]
+      }
+    },
+    "/settings/mcp-tokens": {
+      "get": {
+        "operationId": "get_mcp_tokens_settings_mcp_tokens_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/McpAccessTokenResponse"
+                  },
+                  "title": "Response Get Mcp Tokens Settings Mcp Tokens Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Mcp Tokens",
+        "tags": [
+          "settings"
+        ]
+      },
+      "post": {
+        "operationId": "post_mcp_token_settings_mcp_tokens_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/McpAccessTokenCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpAccessTokenCreateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Mcp Token",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/settings/mcp-tokens/{token_id}": {
+      "delete": {
+        "operationId": "delete_mcp_token_settings_mcp_tokens__token_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token_id",
+            "required": true,
+            "schema": {
+              "title": "Token Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpAccessTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Mcp Token",
+        "tags": [
+          "settings"
         ]
       }
     },

@@ -32,6 +32,7 @@ CalendarDIFF is a split frontend/backend app:
 
 - Next.js frontend listens on `127.0.0.1:3000`
 - FastAPI public backend listens on `127.0.0.1:8000`
+- MCP server listens on `127.0.0.1:8766`
 
 So the reverse proxy must route by path, not just by domain.
 
@@ -42,12 +43,14 @@ For `cal.shehao.app`:
 - `/` and normal app pages -> `127.0.0.1:3000`
 - `/oauth/callbacks/*` -> `127.0.0.1:8000`
 - `/health` -> `127.0.0.1:8000/health`
+- `/mcp` -> `127.0.0.1:8766/mcp`
 
 This preserves three distinct concerns:
 
 1. frontend page rendering
 2. backend OAuth callback handling
 3. backend health checks
+4. MCP streamable-http access
 
 ## Why This Site Must Stay Separate
 
@@ -87,11 +90,13 @@ Before editing live Nginx:
 2. confirm CalendarDIFF still owns only `cal.shehao.app`
 3. preserve `3000` for frontend page traffic unless the app architecture changed
 4. preserve `8000` for `public-service` unless the backend exposure changed
-5. preserve `/oauth/callbacks/*` direct routing to backend
-6. preserve `/health` direct routing to backend
-7. avoid moving CalendarDIFF back into `default`
-8. run `sudo nginx -t` before reload
-9. validate externally after reload
+5. preserve `8766` for MCP unless the MCP exposure changed
+6. preserve `/oauth/callbacks/*` direct routing to backend
+7. preserve `/health` direct routing to backend
+8. preserve `/mcp` direct routing to the MCP service
+9. avoid moving CalendarDIFF back into `default`
+10. run `sudo nginx -t` before reload
+11. validate externally after reload
 
 ## Minimal Validation Checklist
 
@@ -101,6 +106,7 @@ After any Nginx change, verify:
 curl -I https://cal.shehao.app
 curl -I https://cal.shehao.app/login
 curl -s https://cal.shehao.app/health
+curl -I https://cal.shehao.app/mcp
 ```
 
 Expected results:
@@ -108,6 +114,7 @@ Expected results:
 - root redirects to `/login` or renders the app shell
 - `/login` returns `200`
 - `/health` returns backend JSON with `status: ok`
+- `/mcp` returns an MCP endpoint response rather than the frontend app shell
 
 ## When This Document Must Be Updated
 
@@ -115,6 +122,7 @@ Update this document if any of the following change:
 
 - CalendarDIFF stops using `3000` for frontend
 - CalendarDIFF stops using `8000` for `public-service`
+- CalendarDIFF stops using `8766` for MCP
 - OAuth callback path changes
 - host/domain ownership changes
 - the shared upgrade map moves

@@ -13,7 +13,8 @@ User-facing product lanes are converging to:
 
 That process contains these module boundaries:
 - `auth`: session auth, register/login/logout, bootstrap admin
-- `settings`: user profile and timezone settings behind `/settings/profile`
+- `agents`: read-only context aggregation, persisted proposal generation, and approval-ticket execution gateway
+- `settings`: user profile, timezone settings, and user-owned MCP access tokens
 - `sources`: source CRUD, OAuth session creation, sync requests, observability, webhooks
 - `runtime.connectors`: source polling, connector runtime, provider discovery, replay/bootstrap continuation
   - includes provider-specific clients under `runtime.connectors.clients`
@@ -72,11 +73,15 @@ The backend workbench overview should not be reconstructed in the UI from multip
 
 ## Entry points
 - Default backend entrypoint: `services/app_api/main.py`
+- External MCP entrypoint: `services/mcp_server/main.py`
 
 There is no compatibility public-app wrapper or default split runtime entrypoint anymore.
 
 ## Public route groups
 - `/auth/*`
+- `/agent/context/*`
+- `/agent/proposals/*`
+- `/agent/approval-tickets/*`
 - `/settings/profile`
 - `/sources/*`
 - `/onboarding/*`
@@ -99,6 +104,9 @@ Worker loops for `runtime.connectors`, `runtime.apply`, notification dispatch, a
 - Canonical OpenAPI snapshot: `contracts/openapi/public-service.json`
 - Runtime flow and module ownership docs live in:
   - `docs/api_surface_current.md`
+  - `docs/project_structure.md`
+  - `docs/deployment.md`
   - `docs/dataflow_input_to_notification.md`
   - `docs/event_contracts.md`
+  - `docs/frontend_backend_contracts.md`
   - `docs/service_table_ownership.md`

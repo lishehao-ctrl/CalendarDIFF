@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 
 MODEL_MODULES = (
+    "app.db.models.agents",
     "app.db.models.shared",
     "app.db.models.input",
     "app.db.models.runtime",

@@ -1,0 +1,95 @@
+---
+name: calendardiff-openclaw-mcp
+description: Use the CalendarDIFF MCP tools to inspect workspace state, create proposals, and manage low-risk approval tickets safely.
+metadata: {"openclaw":{"emoji":"📅","requires":{"bins":["python"],"env":["CALENDARDIFF_MCP_DEFAULT_NOTIFY_EMAIL"]}}}
+---
+
+# CalendarDIFF OpenClaw MCP Skill
+
+This skill assumes the CalendarDIFF MCP server is already configured as a fixed MCP server in OpenClaw.
+
+Use this skill when the task is about:
+
+- understanding the current CalendarDIFF workspace state
+- understanding a specific change or source
+- creating a change-decision proposal
+- creating a source-recovery proposal
+- creating or confirming a low-risk approval ticket
+
+Do not use this skill to bypass the CalendarDIFF approval workflow.
+
+## Required workflow
+
+Always follow this order:
+
+1. read context first
+2. create a proposal if action is needed
+3. create an approval ticket if the proposal is executable
+4. confirm the ticket only when the user clearly wants execution
+
+Do not skip directly from context to execution.
+
+## Primary tools
+
+- `get_workspace_context`
+- `list_pending_changes`
+- `list_sources`
+- `get_change_context`
+- `get_source_context`
+- `create_change_decision_proposal`
+- `create_source_recovery_proposal`
+- `get_proposal`
+- `create_approval_ticket`
+- `get_approval_ticket`
+- `confirm_approval_ticket`
+- `cancel_approval_ticket`
+
+## Safe operating rules
+
+- Read-only context tools are preferred first.
+- Proposal tools are preferred before any execution.
+- Only confirm approval tickets for currently supported low-risk actions.
+- If a proposal is not executable, stop at proposal and tell the user it stays web-only.
+- If a ticket reports drift, expiry, or cancellation, do not retry blindly. Re-read context first.
+
+## Recommended patterns
+
+### To summarize the workspace
+
+1. call `get_workspace_context`
+2. optionally call `list_pending_changes`
+3. explain:
+   - what is pending
+   - what lane should be used next
+   - whether anything is blocking
+
+### To handle one change
+
+1. call `get_change_context`
+2. if the user wants a recommendation, call `create_change_decision_proposal`
+3. if the proposal is executable and the user wants execution:
+   - call `create_approval_ticket`
+   - call `confirm_approval_ticket`
+
+### To handle one source issue
+
+1. call `get_source_context`
+2. if the user wants a recovery recommendation, call `create_source_recovery_proposal`
+3. only proceed to approval if the proposal payload is executable
+
+## Current execution limits
+
+Currently executable:
+
+- direct change decision proposals whose suggested action becomes `approve` or `reject`
+- source-recovery proposals whose payload becomes `run_source_sync`
+
+Not currently executable:
+
+- reconnect Gmail
+- update source settings
+- edit-then-approve
+- family relink / rename
+- manual event create / update / delete
+
+When one of the non-executable paths is suggested, explain that the user must continue in the web app.

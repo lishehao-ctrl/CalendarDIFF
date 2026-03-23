@@ -9,7 +9,7 @@ AWS_APP_DIR="${AWS_APP_DIR:-/home/ubuntu/apps/CalendarDIFF}"
 REMOTE_GIT_URL="${REMOTE_GIT_URL:-git@github.com:lishehao/CalendarDIFF.git}"
 DOMAIN="${DOMAIN:-cal.shehao.app}"
 BUNDLE_PATH="${BUNDLE_PATH:-/tmp/calendardiff-release.bundle}"
-DEPLOY_SERVICES="${DEPLOY_SERVICES:-frontend public-service}"
+DEPLOY_SERVICES="${DEPLOY_SERVICES:-frontend public-service mcp-service}"
 
 cd "$ROOT_DIR"
 

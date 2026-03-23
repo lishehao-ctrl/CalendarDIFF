@@ -49,6 +49,30 @@ services:
     ports:
       - "8000:8000"
 
+  mcp-service:
+    build: .
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/deadline_diff
+      REDIS_URL: redis://redis:6379/0
+      CALENDARDIFF_MCP_MODE: public
+      CALENDARDIFF_MCP_TRANSPORT: streamable-http
+      CALENDARDIFF_MCP_HOST: 0.0.0.0
+      CALENDARDIFF_MCP_PORT: 8766
+      PYTHONPATH: /app
+    volumes:
+      - ./:/app
+      - ${HOST_SECRETS_DIR:-/tmp/calendardiff-secrets}:${HOST_SECRETS_DIR:-/tmp/calendardiff-secrets}:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: python -m services.mcp_server.main
+    ports:
+      - "127.0.0.1:8766:8766"
+
   frontend:
     build:
       context: ./frontend
