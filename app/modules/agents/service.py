@@ -6,6 +6,10 @@ from sqlalchemy.orm import Session
 
 from app.modules.changes.change_listing_service import get_change, list_changes
 from app.modules.common.api_errors import api_error_detail
+from app.modules.families.family_service import get_course_work_item_family
+from app.modules.families.raw_type_service import list_course_raw_types
+from app.modules.families.raw_type_suggestion_service import list_raw_type_suggestion_items
+from app.modules.families.serializers import to_course_family_response, to_course_raw_type_response
 from app.modules.sources.read_service import build_source_read_payload
 from app.modules.sources.sources_service import get_input_source
 from app.modules.sources.status_projection import build_source_observability_payload, build_sync_request_status_payload, get_display_sync_request_for_source
@@ -77,6 +81,53 @@ def build_source_agent_context(db: Session, *, user_id: int, source_id: int) -> 
         "recommended_next_action": _source_recommended_next_action(source=source_payload, observability=observability),
         "blocking_conditions": _source_blocking_conditions(source=source_payload, observability=observability),
         "available_next_tools": _source_available_next_tools(source=source_payload, observability=observability),
+    }
+
+
+def build_family_agent_context(db: Session, *, user_id: int, family_id: int) -> dict:
+    family = get_course_work_item_family(db, user_id=user_id, family_id=family_id)
+    if family is None:
+        raise AgentContextNotFoundError(
+            code="agents.context.family_not_found",
+            message="Family not found",
+            message_code="agents.context.family_not_found",
+        )
+    family_payload = to_course_family_response(family).model_dump(mode="json")
+    raw_type_payloads = [
+        to_course_raw_type_response(row).model_dump(mode="json")
+        for row in list_course_raw_types(db, user_id=user_id, family_id=family.id)
+    ]
+    suggestion_payloads = [
+        row
+        for row in list_raw_type_suggestion_items(
+            db,
+            user_id=user_id,
+            status="pending",
+            course_dept=family.course_dept,
+            course_number=family.course_number,
+            course_suffix=family.course_suffix,
+            course_quarter=family.course_quarter,
+            course_year2=family.course_year2,
+            limit=200,
+            offset=0,
+        )
+        if int(row.get("source_family_id") or 0) == int(family.id) or int(row.get("suggested_family_id") or 0) == int(family.id)
+    ]
+    return {
+        "generated_at": datetime.now(timezone.utc),
+        "family": family_payload,
+        "raw_types": raw_type_payloads,
+        "pending_raw_type_suggestions": suggestion_payloads,
+        "recommended_next_action": _family_recommended_next_action(
+            family=family_payload,
+            pending_suggestion_count=len(suggestion_payloads),
+        ),
+        "blocking_conditions": _family_blocking_conditions(
+            pending_suggestion_count=len(suggestion_payloads),
+        ),
+        "available_next_tools": _family_available_next_tools(
+            pending_suggestion_count=len(suggestion_payloads),
+        ),
     }
 
 
@@ -267,6 +318,48 @@ def _source_available_next_tools(*, source: dict, observability: dict) -> list[s
     return _dedupe_strings(tools)
 
 
+def _family_recommended_next_action(*, family: dict, pending_suggestion_count: int) -> dict:
+    canonical_label = str(family.get("canonical_label") or "Family")
+    if pending_suggestion_count > 0:
+        return {
+            "lane": "families",
+            "label": "Review observed labels",
+            "reason": f"{pending_suggestion_count} observed-label suggestions still need review for {canonical_label}.",
+            "reason_code": "agents.context.family.pending_raw_type_suggestions",
+            "reason_params": {"pending_count": pending_suggestion_count},
+            "risk_level": "medium",
+            "recommended_tool": "review_family_raw_type_suggestions",
+        }
+    return {
+        "lane": "families",
+        "label": "Review canonical family",
+        "reason": f"{canonical_label} is ready for canonical label and relink review.",
+        "reason_code": "agents.context.family.review_family_detail",
+        "reason_params": {},
+        "risk_level": "low",
+        "recommended_tool": "review_family_detail",
+    }
+
+
+def _family_blocking_conditions(*, pending_suggestion_count: int) -> list[dict]:
+    if pending_suggestion_count <= 0:
+        return []
+    return [
+        {
+            "code": "family_pending_raw_type_suggestions",
+            "message": f"{pending_suggestion_count} observed-label suggestions are still waiting for review.",
+            "severity": "warning",
+        }
+    ]
+
+
+def _family_available_next_tools(*, pending_suggestion_count: int) -> list[str]:
+    tools = ["review_family_detail", "review_family_raw_types"]
+    if pending_suggestion_count > 0:
+        tools.append("review_family_raw_type_suggestions")
+    return _dedupe_strings(tools)
+
+
 def _lane_to_tool(lane: str) -> str:
     return {
         "sources": "review_sources",
@@ -340,6 +433,7 @@ def _dedupe_conditions(values: list[dict]) -> list[dict]:
 __all__ = [
     "AgentContextNotFoundError",
     "build_change_agent_context",
+    "build_family_agent_context",
     "build_source_agent_context",
     "build_workspace_agent_context",
 ]

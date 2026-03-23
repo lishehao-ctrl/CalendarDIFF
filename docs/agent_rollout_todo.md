@@ -72,7 +72,7 @@ Backend tasks:
   - [ ] `GET /agent/context/workspace`
   - [ ] `GET /agent/context/changes/{change_id}`
   - [ ] `GET /agent/context/sources/{source_id}`
-  - [ ] `GET /agent/context/families/{family_id}`
+  - [x] `GET /agent/context/families/{family_id}`
 - [ ] normalize these context payloads:
   - current posture
   - why action is needed

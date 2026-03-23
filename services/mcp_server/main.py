@@ -30,6 +30,7 @@ from app.modules.agents.proposal_service import (
 )
 from app.modules.agents.schemas import (
     AgentChangeContextResponse,
+    AgentFamilyContextResponse,
     AgentProposalResponse,
     AgentSourceContextResponse,
     AgentWorkspaceContextResponse,
@@ -40,6 +41,7 @@ from app.modules.agents.schemas import (
 from app.modules.agents.service import (
     AgentContextNotFoundError,
     build_change_agent_context,
+    build_family_agent_context,
     build_source_agent_context,
     build_workspace_agent_context,
 )
@@ -292,6 +294,14 @@ def get_source_context_impl(*, source_id: int, notify_email: str | None = None, 
     )
 
 
+def get_family_context_impl(*, family_id: int, notify_email: str | None = None, ctx: Context | None = None) -> dict:
+    return _run_with_user(
+        notify_email,
+        lambda db, user: build_family_agent_context(db=db, user_id=user.id, family_id=family_id),
+        ctx=ctx,
+    )
+
+
 def create_change_decision_proposal_impl(*, change_id: int, notify_email: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user(
         notify_email,
@@ -391,6 +401,11 @@ def get_change_context_tool(change_id: int, notify_email: str | None = None, ctx
 @mcp.tool(name="get_source_context", description="Get agent context for a specific source.", structured_output=True)
 def get_source_context_tool(source_id: int, notify_email: str | None = None, ctx: Context | None = None) -> AgentSourceContextResponse:
     return AgentSourceContextResponse.model_validate(get_source_context_impl(source_id=source_id, notify_email=notify_email, ctx=ctx))
+
+
+@mcp.tool(name="get_family_context", description="Get agent context for a specific family.", structured_output=True)
+def get_family_context_tool(family_id: int, notify_email: str | None = None, ctx: Context | None = None) -> AgentFamilyContextResponse:
+    return AgentFamilyContextResponse.model_validate(get_family_context_impl(family_id=family_id, notify_email=notify_email, ctx=ctx))
 
 
 @mcp.tool(name="create_change_decision_proposal", description="Create a persisted change-decision proposal.", structured_output=True)

@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.modules.agents.schemas import (
     AgentChangeDecisionProposalRequest,
     AgentChangeContextResponse,
+    AgentFamilyContextResponse,
     AgentProposalResponse,
     AgentRecentActivityResponse,
     AgentSourceRecoveryProposalRequest,
@@ -37,6 +38,7 @@ from app.modules.agents.approval_service import (
 from app.modules.agents.service import (
     AgentContextNotFoundError,
     build_change_agent_context,
+    build_family_agent_context,
     build_source_agent_context,
     build_workspace_agent_context,
 )
@@ -85,6 +87,19 @@ def get_agent_source_context(
     except AgentContextNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.detail) from exc
     return AgentSourceContextResponse.model_validate(payload)
+
+
+@router.get("/context/families/{family_id}", response_model=AgentFamilyContextResponse)
+def get_agent_family_context(
+    family_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> AgentFamilyContextResponse:
+    try:
+        payload = build_family_agent_context(db=db, user_id=user.id, family_id=family_id)
+    except AgentContextNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.detail) from exc
+    return AgentFamilyContextResponse.model_validate(payload)
 
 
 @router.post("/proposals/change-decision", response_model=AgentProposalResponse, status_code=status.HTTP_201_CREATED)

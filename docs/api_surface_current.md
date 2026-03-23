@@ -22,6 +22,7 @@ Current Phase 1 agent surface is read-only context only:
 - `GET /agent/context/workspace`
 - `GET /agent/context/changes/{change_id}`
 - `GET /agent/context/sources/{source_id}`
+- `GET /agent/context/families/{family_id}`
 
 ## Agent proposal endpoints
 
@@ -68,6 +69,7 @@ Users can now create per-account MCP access tokens through Settings:
 - `GET /agent/context/workspace`
 - `GET /agent/context/changes/{change_id}`
 - `GET /agent/context/sources/{source_id}`
+- `GET /agent/context/families/{family_id}`
 - `GET /agent/proposals`
 - `POST /agent/proposals/change-decision`
 - `POST /agent/proposals/source-recovery`

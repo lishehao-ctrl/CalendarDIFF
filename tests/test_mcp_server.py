@@ -13,6 +13,7 @@ from app.modules.sources.sources_service import create_input_source
 from services.mcp_server.main import (
     create_approval_ticket_impl,
     create_change_decision_proposal_impl,
+    get_family_context_impl,
     get_workspace_context_impl,
     get_change_context_impl,
     get_source_context_impl,
@@ -179,6 +180,7 @@ def test_mcp_impl_round_trip_uses_existing_agent_layers(db_session) -> None:
     workspace = get_workspace_context_impl(notify_email=user.notify_email)
     change_context = get_change_context_impl(change_id=change.id, notify_email=user.notify_email)
     source_context = get_source_context_impl(source_id=source.id, notify_email=user.notify_email)
+    family_context = get_family_context_impl(family_id=family.id, notify_email=user.notify_email)
     proposal = create_change_decision_proposal_impl(change_id=change.id, notify_email=user.notify_email)
     fetched_proposal = get_proposal_impl(proposal_id=proposal["proposal_id"], notify_email=user.notify_email)
     ticket = create_approval_ticket_impl(proposal_id=proposal["proposal_id"], notify_email=user.notify_email)
@@ -186,6 +188,7 @@ def test_mcp_impl_round_trip_uses_existing_agent_layers(db_session) -> None:
     assert workspace["summary"]["changes_pending"] == 1
     assert change_context["change"]["id"] == change.id
     assert source_context["source"]["source_id"] == source.id
+    assert family_context["family"]["id"] == family.id
     assert proposal["target_id"] == str(change.id)
     assert fetched_proposal["proposal_id"] == proposal["proposal_id"]
     assert ticket["proposal_id"] == proposal["proposal_id"]

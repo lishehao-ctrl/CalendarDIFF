@@ -6,6 +6,11 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.modules.changes.schemas import ChangeItemResponse, ChangesWorkbenchSummaryResponse
+from app.modules.families.schemas import (
+    CourseRawTypeResponse,
+    CourseWorkItemFamilyResponse,
+    RawTypeSuggestionItemResponse,
+)
 from app.modules.sources.schemas import InputSourceResponse, SourceObservabilityResponse, SyncRequestStatusResponse
 
 AgentRiskLevelLiteral = Literal["low", "medium", "high"]
@@ -54,6 +59,16 @@ class AgentSourceContextResponse(BaseModel):
     source: InputSourceResponse
     observability: SourceObservabilityResponse
     active_sync_request: SyncRequestStatusResponse | None = None
+    recommended_next_action: AgentRecommendedActionResponse
+    blocking_conditions: list[AgentBlockingConditionResponse] = Field(default_factory=list)
+    available_next_tools: list[str] = Field(default_factory=list)
+
+
+class AgentFamilyContextResponse(BaseModel):
+    generated_at: datetime
+    family: CourseWorkItemFamilyResponse
+    raw_types: list[CourseRawTypeResponse] = Field(default_factory=list)
+    pending_raw_type_suggestions: list[RawTypeSuggestionItemResponse] = Field(default_factory=list)
     recommended_next_action: AgentRecommendedActionResponse
     blocking_conditions: list[AgentBlockingConditionResponse] = Field(default_factory=list)
     available_next_tools: list[str] = Field(default_factory=list)
@@ -204,6 +219,7 @@ __all__ = [
     "AgentBlockingConditionResponse",
     "AgentChangeDecisionProposalRequest",
     "AgentChangeContextResponse",
+    "AgentFamilyContextResponse",
     "AgentProposalResponse",
     "AgentRecommendedActionResponse",
     "AgentSourceRecoveryProposalRequest",
