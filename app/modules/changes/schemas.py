@@ -145,6 +145,8 @@ class ChangesWorkbenchSourcesResponse(BaseModel):
     severity: SourceOperatorSeverityLiteral
     reason_code: str
     message: str
+    message_code: str
+    message_params: dict = Field(default_factory=dict)
     related_request_id: str | None = None
     progress_age_seconds: int | None = None
 
@@ -180,6 +182,8 @@ class WorkspacePostureNextActionResponse(BaseModel):
     lane: WorkspaceLaneLiteral
     label: str
     reason: str
+    reason_code: str
+    reason_params: dict = Field(default_factory=dict)
 
 
 class WorkspacePostureResponse(BaseModel):
@@ -195,6 +199,8 @@ class ChangesWorkbenchSummaryResponse(BaseModel):
     recommended_lane: WorkbenchLaneLiteral | None = None
     recommended_lane_reason_code: str
     recommended_action_reason: str
+    recommended_action_reason_code: str
+    recommended_action_reason_params: dict = Field(default_factory=dict)
     workspace_posture: WorkspacePostureResponse
     sources: ChangesWorkbenchSourcesResponse
     families: ChangesWorkbenchFamiliesResponse

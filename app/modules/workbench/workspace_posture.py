@@ -23,6 +23,8 @@ def build_workspace_posture(
             "lane": "sources",
             "label": "Open Sources",
             "reason": str(sources_summary.get("message") or "Source attention is required before relying on live monitoring."),
+            "reason_code": "workspace_posture.next_action.sources_attention_required",
+            "reason_params": {},
         }
     elif "importing_baseline" in source_product_phases:
         phase = "baseline_import"
@@ -30,6 +32,8 @@ def build_workspace_posture(
             "lane": "sources",
             "label": "Open Sources",
             "reason": "At least one source is still building its baseline import.",
+            "reason_code": "workspace_posture.next_action.baseline_import_running",
+            "reason_params": {},
         }
     elif baseline_review_pending > 0 or "needs_initial_review" in source_product_phases:
         phase = "initial_review"
@@ -37,6 +41,8 @@ def build_workspace_posture(
             "lane": "initial_review",
             "label": "Open Initial Review",
             "reason": f"{baseline_review_pending} baseline items still need review before monitoring is fully live.",
+            "reason_code": "workspace_posture.next_action.initial_review_pending",
+            "reason_params": {"pending_count": baseline_review_pending},
         }
     else:
         phase = "monitoring_live"
@@ -45,24 +51,32 @@ def build_workspace_posture(
                 "lane": "changes",
                 "label": "Open Replay Review",
                 "reason": f"{changes_pending} replay changes are waiting for review decisions.",
+                "reason_code": "workspace_posture.next_action.replay_changes_pending",
+                "reason_params": {"pending_count": changes_pending},
             }
         elif families_attention_count > 0:
             next_action = {
                 "lane": "families",
                 "label": "Open Families",
                 "reason": "Naming governance still needs attention.",
+                "reason_code": "workspace_posture.next_action.families_attention_required",
+                "reason_params": {"attention_count": families_attention_count},
             }
         elif manual_active_count > 0:
             next_action = {
                 "lane": "manual",
                 "label": "Open Manual",
                 "reason": "Fallback manual repairs are still active.",
+                "reason_code": "workspace_posture.next_action.manual_repairs_active",
+                "reason_params": {"active_event_count": manual_active_count},
             }
         else:
             next_action = {
                 "lane": "changes",
                 "label": "Open Replay Review",
                 "reason": "Monitoring is live. Replay Review is the main daily workspace.",
+                "reason_code": "workspace_posture.next_action.monitoring_live_default",
+                "reason_params": {},
             }
 
     completion_percent = 100 if baseline_review_total == 0 else int(round((baseline_review_reviewed / baseline_review_total) * 100))

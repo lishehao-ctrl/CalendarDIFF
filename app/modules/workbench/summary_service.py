@@ -104,7 +104,13 @@ def get_changes_workbench_summary(
         or 0
     )
     sources_summary, source_observability_rows = _build_sources_workbench_summary(db=db, user_id=user_id)
-    recommended_lane, recommended_lane_reason_code, recommended_action_reason = _recommend_workbench_lane(
+    (
+        recommended_lane,
+        recommended_lane_reason_code,
+        recommended_action_reason,
+        recommended_action_reason_code,
+        recommended_action_reason_params,
+    ) = _recommend_workbench_lane(
         baseline_review_pending=baseline_review_pending,
         changes_pending=changes_pending,
         families_attention_count=families_attention_count,
@@ -139,6 +145,8 @@ def get_changes_workbench_summary(
         "recommended_lane": recommended_lane,
         "recommended_lane_reason_code": recommended_lane_reason_code,
         "recommended_action_reason": recommended_action_reason,
+        "recommended_action_reason_code": recommended_action_reason_code,
+        "recommended_action_reason_params": recommended_action_reason_params,
         "workspace_posture": workspace_posture,
         "sources": sources_summary,
         "families": {
@@ -170,6 +178,8 @@ def _build_sources_workbench_summary(db: Session, *, user_id: int) -> tuple[dict
                 "severity": "info",
                 "reason_code": "sources_missing",
                 "message": "No active sources are connected yet.",
+                "message_code": "workbench.sources_summary.sources_missing",
+                "message_params": {},
                 "related_request_id": None,
                 "progress_age_seconds": None,
             },
@@ -208,6 +218,8 @@ def _build_sources_workbench_summary(db: Session, *, user_id: int) -> tuple[dict
         "severity": "info",
         "reason_code": "source_idle",
         "message": "No active sync is running. Continue reviewing changes.",
+        "message_code": "sources.operator_guidance.source_idle",
+        "message_params": {},
         "related_request_id": None,
         "progress_age_seconds": None,
     }
@@ -222,6 +234,8 @@ def _build_sources_workbench_summary(db: Session, *, user_id: int) -> tuple[dict
             "severity": aggregate["severity"],
             "reason_code": aggregate["reason_code"],
             "message": aggregate["message"],
+            "message_code": aggregate.get("message_code") or aggregate["reason_code"],
+            "message_params": aggregate.get("message_params") or {},
             "related_request_id": aggregate.get("related_request_id"),
             "progress_age_seconds": aggregate.get("progress_age_seconds"),
         },
@@ -258,6 +272,8 @@ def _build_source_guidance_payload(db: Session, *, source: InputSource) -> dict:
         "severity": "info",
         "reason_code": "source_idle",
         "message": "No active sync is running. Continue reviewing changes.",
+        "message_code": "sources.operator_guidance.source_idle",
+        "message_params": {},
         "related_request_id": None,
         "progress_age_seconds": None,
     }
@@ -269,32 +285,40 @@ def _recommend_workbench_lane(
     changes_pending: int,
     families_attention_count: int,
     sources_summary: dict,
-) -> tuple[str | None, str, str]:
+) -> tuple[str | None, str, str, str, dict]:
     if int(sources_summary.get("blocking_count") or 0) > 0:
         return (
             "sources",
             "runtime_attention_required",
             "Source runtime needs attention before relying on lane state to be current.",
+            "workbench.summary.runtime_attention_required",
+            {},
         )
     if baseline_review_pending > 0:
         return (
             "initial_review",
             "baseline_review_pending",
             f"{baseline_review_pending} baseline import items still need initial review before daily replay becomes the default workflow.",
+            "workbench.summary.baseline_review_pending",
+            {"pending_count": baseline_review_pending},
         )
     if changes_pending > 0:
         return (
             "changes",
             "changes_pending",
             f"{changes_pending} pending change proposals are waiting for review decisions.",
+            "workbench.summary.changes_pending",
+            {"pending_count": changes_pending},
         )
     if families_attention_count > 0:
         return (
             "families",
             "family_governance_pending",
             "Family or raw-type governance items need attention.",
+            "workbench.summary.family_governance_pending",
+            {"attention_count": families_attention_count},
         )
-    return (None, "all_clear", "No immediate lane action is required.")
+    return (None, "all_clear", "No immediate lane action is required.", "workbench.summary.all_clear", {})
 
 
 def _guidance_rank(guidance: dict | None) -> tuple[int, int]:
