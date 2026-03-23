@@ -7,6 +7,7 @@ from app.core.security import require_public_api_key
 from app.db.models.shared import User
 from app.db.session import get_db
 from app.modules.auth.deps import get_authenticated_user_or_401
+from app.modules.common.api_errors import api_error_detail
 from app.modules.manual.schemas import ManualEventMutationResponse, ManualEventResponse, ManualEventWriteRequest
 from app.modules.manual.service import (
     ManualEventNotFoundError,
@@ -39,9 +40,23 @@ def post_manual_event(
     try:
         result = create_manual_event(db, user_id=user.id, payload=payload)
     except ManualEventNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=api_error_detail(
+                code="manual.family_not_found",
+                message=str(exc),
+                message_code="manual.family_not_found",
+            ),
+        ) from exc
     except ManualEventValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=api_error_detail(
+                code="manual.create.validation_error",
+                message=str(exc),
+                message_code="manual.create.validation_error",
+            ),
+        ) from exc
     return ManualEventMutationResponse(**result)
 
 
@@ -55,9 +70,23 @@ def patch_manual_event(
     try:
         result = update_manual_event(db, user_id=user.id, entity_uid=entity_uid, payload=payload)
     except ManualEventNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=api_error_detail(
+                code="manual.event_or_family_not_found",
+                message=str(exc),
+                message_code="manual.event_or_family_not_found",
+            ),
+        ) from exc
     except ManualEventValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=api_error_detail(
+                code="manual.update.validation_error",
+                message=str(exc),
+                message_code="manual.update.validation_error",
+            ),
+        ) from exc
     return ManualEventMutationResponse(**result)
 
 
@@ -71,9 +100,23 @@ def remove_manual_event(
     try:
         result = delete_manual_event(db, user_id=user.id, entity_uid=entity_uid, reason=reason)
     except ManualEventNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=api_error_detail(
+                code="manual.event_not_found",
+                message=str(exc),
+                message_code="manual.event_not_found",
+            ),
+        ) from exc
     except ManualEventValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=api_error_detail(
+                code="manual.delete.validation_error",
+                message=str(exc),
+                message_code="manual.delete.validation_error",
+            ),
+        ) from exc
     return ManualEventMutationResponse(**result)
 
 

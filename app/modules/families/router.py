@@ -7,6 +7,7 @@ from app.core.security import require_public_api_key
 from app.db.models.shared import User
 from app.db.session import get_db
 from app.modules.auth.deps import get_authenticated_user_or_401
+from app.modules.common.api_errors import api_error_detail
 from app.modules.families.application_service import (
     FamilyApplicationNotFoundError,
     FamilyApplicationValidationError,
@@ -102,10 +103,24 @@ def post_course_raw_type_relink(
 ) -> CourseRawTypeMoveResponse:
     raw_type = get_course_raw_type(db, user_id=user.id, raw_type_id=payload.raw_type_id)
     if raw_type is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course raw type not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=api_error_detail(
+                code="families.raw_type_not_found",
+                message="course raw type not found",
+                message_code="families.raw_type_not_found",
+            ),
+        )
     family = get_course_work_item_family(db, user_id=user.id, family_id=payload.family_id)
     if family is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course work item family not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=api_error_detail(
+                code="families.family_not_found",
+                message="course work item family not found",
+                message_code="families.family_not_found",
+            ),
+        )
     try:
         moved_raw_type, previous_family_id = relink_raw_type_and_rebuild(
             db,
@@ -114,7 +129,14 @@ def post_course_raw_type_relink(
             family=family,
         )
     except FamilyApplicationValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=api_error_detail(
+                code="families.relink.validation_error",
+                message=str(exc),
+                message_code="families.relink.validation_error",
+            ),
+        ) from exc
     return CourseRawTypeMoveResponse(
         raw_type_id=moved_raw_type.id,
         family_id=moved_raw_type.family_id,
@@ -169,7 +191,14 @@ def post_course_family(
             raw_types=payload.raw_types,
         )
     except FamilyApplicationValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=api_error_detail(
+                code="families.create.validation_error",
+                message=str(exc),
+                message_code="families.create.validation_error",
+            ),
+        ) from exc
     return to_course_family_response(row)
 
 
@@ -182,7 +211,14 @@ def patch_course_family(
 ) -> CourseWorkItemFamilyResponse:
     family = get_course_work_item_family(db, user_id=user.id, family_id=family_id)
     if family is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course work item family not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=api_error_detail(
+                code="families.family_not_found",
+                message="course work item family not found",
+                message_code="families.family_not_found",
+            ),
+        )
     try:
         row = update_family_and_rebuild(
             db,
@@ -192,7 +228,14 @@ def patch_course_family(
             raw_types=payload.raw_types,
         )
     except FamilyApplicationValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=api_error_detail(
+                code="families.update.validation_error",
+                message=str(exc),
+                message_code="families.update.validation_error",
+            ),
+        ) from exc
     return to_course_family_response(row)
 
 
@@ -253,9 +296,23 @@ def post_raw_type_suggestion_decision(
             note=payload.note,
         )
     except FamilyApplicationNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=api_error_detail(
+                code="families.raw_type_suggestion_not_found",
+                message=str(exc),
+                message_code="families.raw_type_suggestion_not_found",
+            ),
+        ) from exc
     except FamilyApplicationValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=api_error_detail(
+                code="families.raw_type_suggestion.validation_error",
+                message=str(exc),
+                message_code="families.raw_type_suggestion.validation_error",
+            ),
+        ) from exc
     return RawTypeSuggestionDecisionResponse(**result)
 
 
