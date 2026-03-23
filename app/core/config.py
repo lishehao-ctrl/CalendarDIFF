@@ -76,6 +76,16 @@ class Settings(BaseSettings):
     ingestion_llm_timeout_seconds: float | None = None
     ingestion_llm_max_retries: int | None = None
     ingestion_llm_max_input_chars: int | None = None
+    agent_llm_base_url: str | None = None
+    agent_llm_chat_base_url: str | None = None
+    agent_llm_responses_base_url: str | None = None
+    agent_llm_api_key: str | None = None
+    agent_llm_model: str = "qwen3.5-plus"
+    agent_llm_api_mode: str = "chat_completions"
+    agent_llm_extra_body_json: str | None = None
+    agent_llm_timeout_seconds: float | None = None
+    agent_llm_max_retries: int | None = None
+    agent_llm_max_input_chars: int | None = None
     llm_request_window_seconds: int = 60
     llm_max_requests_per_window: int = 480
 

@@ -7,8 +7,10 @@ from app.modules.llm_gateway.contracts import (
 from app.modules.llm_gateway.gateway import invoke_llm_json
 from app.modules.llm_gateway.registry import (
     llm_runtime_overrides,
+    resolve_agent_llm_profile,
     resolve_llm_profile,
     set_llm_runtime_defaults,
+    validate_agent_llm_config,
     validate_ingestion_llm_config,
 )
 from app.modules.llm_gateway.retry_policy import (
@@ -23,7 +25,9 @@ __all__ = [
     "LlmInvokeResult",
     "ResolvedLlmProfile",
     "invoke_llm_json",
+    "resolve_agent_llm_profile",
     "resolve_llm_profile",
+    "validate_agent_llm_config",
     "validate_ingestion_llm_config",
     "set_llm_runtime_defaults",
     "llm_runtime_overrides",
