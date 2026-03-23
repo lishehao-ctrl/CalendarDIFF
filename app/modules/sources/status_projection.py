@@ -101,6 +101,8 @@ def build_source_observability_payload(db: Session, *, source_id: int) -> dict:
             "severity": "info",
             "reason_code": "source_idle",
             "message": "No active sync is running. Continue reviewing changes.",
+            "message_code": "sources.operator_guidance.source_idle",
+            "message_params": {},
             "related_request_id": None,
             "progress_age_seconds": None,
         }
@@ -735,6 +737,8 @@ def build_source_operator_guidance_payload(
                 "severity": "info",
                 "reason_code": "sync_queued",
                 "message": "Source sync is queued. Continue reviewing current changes; more changes may appear later.",
+                "message_code": "sources.operator_guidance.sync_queued",
+                "message_params": {},
                 "related_request_id": request_id,
                 "progress_age_seconds": age_seconds,
             }
@@ -745,6 +749,8 @@ def build_source_operator_guidance_payload(
                     "severity": "blocking",
                     "reason_code": "sync_progress_stale",
                     "message": "This source has not reported fresh progress recently. Wait for runtime recovery before making lane-changing decisions.",
+                    "message_code": "sources.operator_guidance.sync_progress_stale",
+                    "message_params": {},
                     "related_request_id": request_id,
                     "progress_age_seconds": age_seconds,
                 }
@@ -753,6 +759,8 @@ def build_source_operator_guidance_payload(
                 "severity": "warning",
                 "reason_code": "sync_running",
                 "message": "This source is still processing. You can review current changes, but new changes may still arrive.",
+                "message_code": "sources.operator_guidance.sync_running",
+                "message_params": {},
                 "related_request_id": request_id,
                 "progress_age_seconds": age_seconds,
             }
@@ -762,6 +770,8 @@ def build_source_operator_guidance_payload(
                 "severity": "blocking",
                 "reason_code": "active_sync_failed",
                 "message": "The active source sync failed. Investigate runtime health before trusting this lane to be current.",
+                "message_code": "sources.operator_guidance.active_sync_failed",
+                "message_params": {},
                 "related_request_id": request_id,
                 "progress_age_seconds": age_seconds,
             }
@@ -776,6 +786,8 @@ def build_source_operator_guidance_payload(
             "severity": "blocking",
             "reason_code": "latest_sync_failed",
             "message": "The latest source sync failed. Investigate source/runtime health before trusting this lane to be current.",
+            "message_code": "sources.operator_guidance.latest_sync_failed",
+            "message_params": {},
             "related_request_id": str(payload.get("request_id") or "") or None,
             "progress_age_seconds": None,
         }
@@ -785,6 +797,8 @@ def build_source_operator_guidance_payload(
         "severity": "info",
         "reason_code": "source_idle",
         "message": "No active sync is running. Continue reviewing changes.",
+        "message_code": "sources.operator_guidance.source_idle",
+        "message_params": {},
         "related_request_id": None,
         "progress_age_seconds": None,
     }

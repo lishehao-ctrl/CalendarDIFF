@@ -10,6 +10,7 @@ from app.db.models.input import IngestTriggerType
 from app.db.models.shared import User
 from app.db.session import get_db
 from app.modules.auth.deps import get_authenticated_user_or_401
+from app.modules.common.api_errors import api_error_detail
 from app.modules.common.source_monitoring_window import parse_source_monitoring_window, source_timezone_name
 from app.modules.sources.router_common import require_owned_source_or_404
 from app.modules.sources.schemas import (
@@ -36,19 +37,31 @@ def create_sync_request(
     if has_pending_monitoring_window_update(source):
         raise HTTPException(
             status_code=409,
-            detail={"code": "source_monitoring_window_update_pending", "message": "source monitoring window update is pending"},
+            detail=api_error_detail(
+                code="source_monitoring_window_update_pending",
+                message="source monitoring window update is pending",
+                message_code="sources.sync.monitoring_window_update_pending",
+            ),
         )
     term_window = parse_source_monitoring_window(source, required=False)
     now = datetime.now(timezone.utc)
     if term_window is not None and not term_window.has_started(now=now, timezone_name=source_timezone_name(source)):
         raise HTTPException(
             status_code=409,
-            detail={"code": "source_monitoring_not_started", "message": "source monitoring has not started yet"},
+            detail=api_error_detail(
+                code="source_monitoring_not_started",
+                message="source monitoring has not started yet",
+                message_code="sources.sync.monitoring_not_started",
+            ),
         )
     if not source.is_active:
         raise HTTPException(
             status_code=409,
-            detail={"code": "source_inactive", "message": "source is inactive and cannot be synced"},
+            detail=api_error_detail(
+                code="source_inactive",
+                message="source is inactive and cannot be synced",
+                message_code="sources.sync.source_inactive",
+            ),
         )
     applied_idempotency_key = idempotency_key or f"manual:{source_id}:{uuid4().hex}"
     row = enqueue_sync_request_idempotent(
@@ -77,7 +90,14 @@ def get_sync_request(
 ) -> SyncRequestStatusResponse:
     row = get_sync_request_status(db, request_id=request_id)
     if row is None or row.source.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Sync request not found")
+        raise HTTPException(
+            status_code=404,
+            detail=api_error_detail(
+                code="sync_request_not_found",
+                message="Sync request not found",
+                message_code="sources.sync.request_not_found",
+            ),
+        )
     return SyncRequestStatusResponse.model_validate(build_sync_request_status_payload(db, sync_request=row))
 
 

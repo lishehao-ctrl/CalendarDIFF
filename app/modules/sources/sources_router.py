@@ -7,6 +7,7 @@ from app.core.logging import sanitize_log_message
 from app.db.models.shared import User
 from app.db.session import get_db
 from app.modules.auth.deps import get_authenticated_user_or_401
+from app.modules.common.api_errors import api_error_detail
 from app.modules.sources.router_common import require_owned_source_or_404
 from app.modules.sources.schemas import (
     InputSourceCreateRequest,
@@ -46,23 +47,32 @@ def create_source(
     except GmailSourceAlreadyExistsError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "gmail_source_exists",
-                "message": "gmail source already exists for this user",
-                "existing_source_id": exc.source_id,
-            },
+            detail=api_error_detail(
+                code="gmail_source_exists",
+                message="gmail source already exists for this user",
+                message_code="sources.create.gmail_source_exists",
+                existing_source_id=exc.source_id,
+            ),
         ) from exc
     except IcsSourceAlreadyExistsError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "ics_source_exists",
-                "message": "ics source already exists for this user",
-                "existing_source_id": exc.source_id,
-            },
+            detail=api_error_detail(
+                code="ics_source_exists",
+                message="ics source already exists for this user",
+                message_code="sources.create.ics_source_exists",
+                existing_source_id=exc.source_id,
+            ),
         ) from exc
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=sanitize_log_message(str(exc))) from exc
+        raise HTTPException(
+            status_code=422,
+            detail=api_error_detail(
+                code="sources_invalid_input",
+                message=sanitize_log_message(str(exc)),
+                message_code="sources.validation_error",
+            ),
+        ) from exc
     return InputSourceResponse.model_validate(
         serialize_source(source, runtime_state=derive_source_runtime_state(db, source=source))
     )
@@ -76,7 +86,14 @@ def list_sources(
 ) -> list[InputSourceResponse]:
     normalized_status = status_filter.strip().lower() if isinstance(status_filter, str) else "active"
     if normalized_status not in {"active", "archived", "all"}:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="status must be one of: active, archived, all")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=api_error_detail(
+                code="sources_invalid_status_filter",
+                message="status must be one of: active, archived, all",
+                message_code="sources.invalid_status_filter",
+            ),
+        )
     rows = list_input_sources(db, user_id=user.id, status=normalized_status)
     projections = derive_source_runtime_states(db, sources=rows)
     payloads: list[InputSourceResponse] = []
@@ -115,7 +132,14 @@ def patch_source(
     try:
         updated = update_input_source(db, source=source, payload=payload)
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=sanitize_log_message(str(exc))) from exc
+        raise HTTPException(
+            status_code=422,
+            detail=api_error_detail(
+                code="sources_invalid_patch",
+                message=sanitize_log_message(str(exc)),
+                message_code="sources.patch.validation_error",
+            ),
+        ) from exc
     return InputSourceResponse.model_validate(
         serialize_source(updated, runtime_state=derive_source_runtime_state(db, source=updated))
     )

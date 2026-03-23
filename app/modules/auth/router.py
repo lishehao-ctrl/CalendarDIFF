@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import require_public_api_key
 from app.db.session import get_db
+from app.modules.common.api_errors import api_error_detail
 from app.modules.auth.deps import attach_session_cookie, clear_session_cookie, get_authenticated_user_or_401
 from app.modules.auth.schemas import AuthLoginRequest, AuthLogoutResponse, AuthRegisterRequest, AuthSessionResponse, AuthSessionUserResponse
 from app.modules.auth.service import AuthEmailExistsError, InvalidCredentialsError, login_user, register_user
@@ -29,9 +30,23 @@ def register_auth(
             language_code=payload.language_code,
         )
     except AuthEmailExistsError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=api_error_detail(
+                code="notify_email_exists",
+                message=str(exc),
+                message_code="auth.notify_email_exists",
+            ),
+        ) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=api_error_detail(
+                code="auth_invalid_input",
+                message=str(exc),
+                message_code="auth.validation_error",
+            ),
+        ) from exc
 
     attach_session_cookie(response, user=user, db=db)
     return AuthSessionResponse(user=_to_auth_session_user(db, user=user))
@@ -52,9 +67,23 @@ def login_auth(
             language_code=payload.language_code,
         )
     except InvalidCredentialsError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=api_error_detail(
+                code="invalid_credentials",
+                message=str(exc),
+                message_code="auth.invalid_credentials",
+            ),
+        ) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=api_error_detail(
+                code="auth_invalid_input",
+                message=str(exc),
+                message_code="auth.validation_error",
+            ),
+        ) from exc
 
     attach_session_cookie(response, user=user, db=db)
     return AuthSessionResponse(user=_to_auth_session_user(db, user=user))

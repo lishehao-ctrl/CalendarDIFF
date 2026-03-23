@@ -210,6 +210,7 @@ def test_source_observability_exposes_idle_operator_guidance(input_client, db_se
     payload = response.json()
     assert payload["operator_guidance"]["recommended_action"] == "continue_review"
     assert payload["operator_guidance"]["reason_code"] == "source_idle"
+    assert payload["operator_guidance"]["message_code"] == "sources.operator_guidance.source_idle"
 
 
 def test_source_observability_exposes_stale_running_operator_guidance(input_client, db_session, authenticate_client) -> None:
@@ -244,6 +245,7 @@ def test_source_observability_exposes_stale_running_operator_guidance(input_clie
     payload = response.json()
     assert payload["operator_guidance"]["recommended_action"] == "wait_for_runtime"
     assert payload["operator_guidance"]["severity"] == "blocking"
+    assert payload["operator_guidance"]["message_code"] == "sources.operator_guidance.sync_progress_stale"
 
 
 def test_source_observability_exposes_bootstrap_summary(input_client, db_session, authenticate_client) -> None:

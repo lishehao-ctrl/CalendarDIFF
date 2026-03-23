@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.shared import User
 from app.db.session import get_db
+from app.modules.common.api_errors import api_error_detail
 from app.modules.auth.service import (
     AUTH_SESSION_COOKIE_NAME,
     AuthenticationRequiredError,
@@ -20,7 +21,14 @@ def get_authenticated_user_or_401(request: Request, db: Session = Depends(get_db
     try:
         return get_authenticated_user_from_request(db, request=request)
     except AuthenticationRequiredError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required") from exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=api_error_detail(
+                code="authentication_required",
+                message="Authentication required",
+                message_code="auth.authentication_required",
+            ),
+        ) from exc
 
 
 def get_onboarded_authenticated_user_or_409(
@@ -33,7 +41,11 @@ def get_onboarded_authenticated_user_or_409(
     if status_payload.stage != "ready":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "user_onboarding_incomplete", "message": status_payload.message},
+            detail=api_error_detail(
+                code="user_onboarding_incomplete",
+                message=status_payload.message,
+                message_code="auth.user_onboarding_incomplete",
+            ),
         )
     return user
 

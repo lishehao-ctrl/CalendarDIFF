@@ -38,6 +38,8 @@ class SourceOperatorGuidanceResponse(BaseModel):
     severity: SourceOperatorSeverityLiteral
     reason_code: str
     message: str
+    message_code: str
+    message_params: dict = Field(default_factory=dict)
     related_request_id: str | None = None
     progress_age_seconds: int | None = None
 

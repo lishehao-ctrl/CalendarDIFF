@@ -7,6 +7,7 @@ from app.core.security import require_public_api_key
 from app.db.models.shared import User
 from app.db.session import get_db
 from app.modules.auth.deps import get_authenticated_user_or_401
+from app.modules.common.api_errors import api_error_detail
 from app.modules.settings.schemas import UserResponse, UserUpdateRequest
 from app.modules.settings.serializers import to_user_response
 from app.modules.settings.service import update_current_user
@@ -26,7 +27,14 @@ def patch_profile(
     user: User = Depends(get_authenticated_user_or_401),
 ) -> UserResponse:
     if "notify_email" in payload.model_fields_set and payload.notify_email is None:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="notify_email cannot be cleared")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=api_error_detail(
+                code="notify_email_cannot_be_cleared",
+                message="notify_email cannot be cleared",
+                message_code="settings.notify_email_cannot_be_cleared",
+            ),
+        )
     try:
         updated = update_current_user(
             db,
@@ -39,7 +47,14 @@ def patch_profile(
             calendar_delay_seconds=payload.calendar_delay_seconds,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=api_error_detail(
+                code="settings_invalid_input",
+                message=str(exc),
+                message_code="settings.validation_error",
+            ),
+        ) from exc
     return to_user_response(updated)
 
 
