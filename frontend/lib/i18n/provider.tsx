@@ -20,11 +20,8 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const preferred = resolvePreferredLocale();
-    if (preferred !== locale) {
-      setLocale(preferred);
-      return;
-    }
-  }, [locale]);
+    setLocale((current) => (current === preferred ? current : preferred));
+  }, []);
 
   useEffect(() => {
     if (typeof document !== "undefined") {
