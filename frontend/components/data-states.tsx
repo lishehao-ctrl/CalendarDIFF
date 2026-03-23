@@ -1,8 +1,13 @@
+"use client";
+
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n/use-locale";
+import { translateLoadingLabel } from "@/lib/i18n/runtime";
 
 export function LoadingState({ label }: { label: string }) {
+  const t = useT();
   return (
     <Card className="p-6">
       <div className="space-y-4 animate-pulse">
@@ -13,7 +18,7 @@ export function LoadingState({ label }: { label: string }) {
           <div className="h-24 rounded-[1.2rem] bg-[rgba(20,32,44,0.08)]" />
         </div>
       </div>
-      <p className="mt-4 text-sm text-[#596270]">Loading {label}...</p>
+      <p className="mt-4 text-sm text-[#596270]">{t("common.labels.loading", { label: translateLoadingLabel(label).toLowerCase() })}</p>
     </Card>
   );
 }
@@ -27,9 +32,10 @@ export function ErrorState({
   actionLabel?: string;
   actionHref?: string;
 }) {
+  const t = useT();
   return (
     <Card className="border-[#e9b9ab] bg-[#fff3ef] p-6">
-      <p className="text-xs uppercase tracking-[0.18em] text-ember">Request error</p>
+      <p className="text-xs uppercase tracking-[0.18em] text-ember">{t("common.labels.requestError")}</p>
       <p className="mt-3 text-sm text-[#7f3d2a]">{message}</p>
       {actionLabel && actionHref ? (
         <div className="mt-4">

@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
+import { useT } from "@/lib/i18n/use-locale";
 
 type LegalSection = {
   title: string;
@@ -19,6 +22,8 @@ export function LegalPage({
   updatedAt: string;
   sections: readonly LegalSection[];
 }) {
+  const t = useT();
+
   return (
     <div className="min-h-screen bg-transparent px-4 py-8 md:px-8">
       <div className="mx-auto flex min-h-[80vh] max-w-6xl items-center justify-center">
@@ -27,25 +32,25 @@ export function LegalPage({
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.16),transparent_42%),radial-gradient(circle_at_80%_20%,rgba(215,90,45,0.12),transparent_30%)]" />
             <div className="relative space-y-6">
               <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-[#6d7885]">CalendarDIFF</p>
+                <p className="text-xs uppercase tracking-[0.24em] text-[#6d7885]">{t("legal.brand")}</p>
                 <h1 className="mt-4 text-4xl font-semibold leading-tight text-ink">{title}</h1>
                 <p className="mt-5 max-w-xl text-sm leading-7 text-[#596270]">{summary}</p>
               </div>
               <div className="rounded-[1.15rem] border border-line/80 bg-white/55 p-4 text-sm text-[#314051]">
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">What this covers</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{t("legal.whatThisCovers")}</p>
                 <ul className="mt-3 space-y-2 leading-6">
-                  <li>How CalendarDIFF handles account, source, and Gmail-linked data.</li>
-                  <li>What users can expect when connecting external sources such as Gmail and Canvas ICS.</li>
-                  <li>What operational rules apply when using the workspace console.</li>
+                  {(["0", "1", "2"] as const).map((index) => (
+                    <li key={index}>{t(`legal.coverItems.${index}`)}</li>
+                  ))}
                 </ul>
               </div>
               <div className="flex flex-wrap gap-3 text-sm text-[#596270]">
                 <Link className="font-medium text-cobalt" href="/login">
-                  Back to sign in
+                  {t("legal.backToSignIn")}
                 </Link>
                 <span aria-hidden="true">•</span>
                 <Link className="font-medium text-cobalt" href="/register">
-                  Create account
+                  {t("legal.createAccount")}
                 </Link>
               </div>
             </div>
@@ -57,7 +62,7 @@ export function LegalPage({
                 <h2 className="mt-3 text-3xl font-semibold text-ink">{title}</h2>
               </div>
               <div className="rounded-full border border-line/80 bg-white/65 px-4 py-2 text-xs uppercase tracking-[0.18em] text-[#6d7885]">
-                Updated {updatedAt}
+                {t("legal.updated", { date: updatedAt })}
               </div>
             </div>
             <div className="mt-6 space-y-6 text-sm leading-7 text-[#314051]">

@@ -639,6 +639,20 @@ export type UserProfile = {
   created_at?: string;
 };
 
+export type McpAccessToken = {
+  token_id: string;
+  label: string;
+  scopes: string[];
+  last_used_at: string | null;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+};
+
+export type McpAccessTokenCreateResponse = McpAccessToken & {
+  token: string;
+};
+
 
 export type LabelLearningFamilyOption = {
   id: number;

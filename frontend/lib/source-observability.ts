@@ -1,4 +1,4 @@
-import { formatDateTime } from "@/lib/presenters";
+import { formatCount, formatDateTime } from "@/lib/presenters";
 import type { IntakePostureView, SourceObservabilityView, SourceRow, SyncStatus, SyncUsageSummary } from "@/lib/types";
 
 const PREVIEW_USAGE = {
@@ -282,7 +282,7 @@ export function formatUsageSummary(summary: SyncUsageSummary | null) {
   const cacheHit = summary.cache_hit_ratio === null ? "No cache" : `${Math.round(summary.cache_hit_ratio * 100)}% cache`;
   const latency = summary.avg_latency_ms === null ? "No latency sample" : `${Math.round(summary.avg_latency_ms)} ms avg`;
   return {
-    headline: `${summary.total_tokens.toLocaleString()} tokens`,
+    headline: `${formatCount(summary.total_tokens)} tokens`,
     detail: `${cacheHit} · ${latency}`,
   };
 }

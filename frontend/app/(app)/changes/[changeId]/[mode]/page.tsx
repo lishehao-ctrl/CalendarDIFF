@@ -1,19 +1,8 @@
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/page-header";
+import { LocalizedPageHeader } from "@/components/localized-page-header";
 import { ChangeItemEditPageClient } from "@/components/review-change-edit-page-client";
 import { requireReadyServerSession } from "@/lib/server-auth";
 import type { ChangeEditMode } from "@/lib/types";
-
-const EDIT_MODE_COPY: Record<ChangeEditMode, { title: string; description: string }> = {
-  canonical: {
-    title: "Direct Edit",
-    description: "Update the current approved event before returning to Changes.",
-  },
-  proposal: {
-    title: "Proposal Edit",
-    description: "Adjust a pending proposal before approving it into canonical state.",
-  },
-};
 
 function parseMode(rawMode: string): ChangeEditMode | null {
   if (rawMode === "canonical" || rawMode === "proposal") {
@@ -36,7 +25,11 @@ export default async function ChangeEditModePage({
 
   return (
     <div className="space-y-5">
-      <PageHeader eyebrow="Changes" title={EDIT_MODE_COPY[mode].title} description={EDIT_MODE_COPY[mode].description} />
+      <LocalizedPageHeader
+        eyebrowKey="pageHeader.changes"
+        titleKey={mode === "canonical" ? "changeEdit.directEdit" : "changeEdit.proposalEdit"}
+        descriptionKey={mode === "canonical" ? "changeEdit.directEditSummary" : "changeEdit.proposalEditSummary"}
+      />
       <ChangeItemEditPageClient mode={mode} changeId={changeId} />
     </div>
   );

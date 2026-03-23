@@ -1,4 +1,4 @@
-import { PageHeader } from "@/components/page-header";
+import { LocalizedPageHeader } from "@/components/localized-page-header";
 import { CanvasIcsSetupPanel } from "@/components/canvas-ics-setup-panel";
 import { requireReadyServerSession } from "@/lib/server-auth";
 
@@ -7,10 +7,10 @@ export default async function CanvasIcsConnectPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        eyebrow="Sources"
-        title="Canvas ICS"
-        description="Connect the calendar feed, inspect bootstrap vs replay posture, and keep Canvas intake steady."
+      <LocalizedPageHeader
+        eyebrowKey="pageHeader.sources"
+        titleKey="sourceConnect.canvasTitle"
+        descriptionKey="sourceConnect.canvasSummary"
       />
       <CanvasIcsSetupPanel />
     </div>

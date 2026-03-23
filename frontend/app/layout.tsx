@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LocaleProvider } from "@/lib/i18n/provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -9,7 +10,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="font-[var(--font-body)] text-ink">{children}</body>
+      <body className="font-[var(--font-body)] text-ink">
+        <LocaleProvider>{children}</LocaleProvider>
+      </body>
     </html>
   );
 }

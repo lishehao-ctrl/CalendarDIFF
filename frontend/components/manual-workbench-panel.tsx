@@ -15,8 +15,9 @@ import {
   updateManualEvent,
 } from "@/lib/api/manual";
 import { listFamilies } from "@/lib/api/families";
+import { translate } from "@/lib/i18n/runtime";
 import { useApiResource } from "@/lib/use-api-resource";
-import { formatDateTime, formatSemanticDue } from "@/lib/presenters";
+import { formatDateTime, formatSemanticDue, formatStatusLabel } from "@/lib/presenters";
 import type { CourseWorkItemFamily, ManualEvent } from "@/lib/types";
 
 type Banner = {
@@ -213,18 +214,18 @@ export function ManualWorkbenchPanel() {
     if (!expandedEventUid) return;
     const payload = normalizeEventForm(editEventForm);
     if (!payload) {
-      setBanner({ tone: "error", text: "Family, event name, and due date are required." });
+      setBanner({ tone: "error", text: translate("manual.validation") });
       return;
     }
     setBusyEvent("save");
     setBanner(null);
     try {
       await updateManualEvent(expandedEventUid, payload);
-      setBanner({ tone: "info", text: "Event updated." });
+      setBanner({ tone: "info", text: translate("manual.eventUpdated") });
       await manualEvents.refresh();
       clearExpandedEvent();
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to save event" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("manual.saveFailed") });
     } finally {
       setBusyEvent(null);
     }
@@ -233,41 +234,41 @@ export function ManualWorkbenchPanel() {
   async function submitNewEvent() {
     const payload = normalizeEventForm(addEventForm);
     if (!payload) {
-      setBanner({ tone: "error", text: "Family, event name, and due date are required." });
+      setBanner({ tone: "error", text: translate("manual.validation") });
       return;
     }
     setBusyEvent("create");
     setBanner(null);
     try {
       await createManualEvent(payload);
-      setBanner({ tone: "info", text: "Event added." });
+      setBanner({ tone: "info", text: translate("manual.eventAdded") });
       await manualEvents.refresh();
       setAddOpen(false);
       setSelectedCourseKey(addCourseKey);
       setSelectedFamilyId(String(payload.family_id));
       setAddEventForm((prev) => emptyEventForm(prev.familyId || String(payload.family_id)));
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to add event" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("manual.addFailed") });
     } finally {
       setBusyEvent(null);
     }
   }
 
   async function removeEvent(event: ManualEvent) {
-    if (typeof window !== "undefined" && !window.confirm(`Delete ${eventSummaryLabel(event)}?`)) {
+    if (typeof window !== "undefined" && !window.confirm(translate("manual.deleteConfirm", { label: eventSummaryLabel(event) }))) {
       return;
     }
     setBusyEvent("delete");
     setBanner(null);
     try {
       await deleteManualEvent(event.entity_uid, "manual cleanup");
-      setBanner({ tone: "info", text: "Event deleted." });
+      setBanner({ tone: "info", text: translate("manual.eventDeleted") });
       await manualEvents.refresh();
       if (expandedEventUid === event.entity_uid) {
         clearExpandedEvent();
       }
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to delete event" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("manual.deleteFailed") });
     } finally {
       setBusyEvent(null);
     }
@@ -291,7 +292,7 @@ export function ManualWorkbenchPanel() {
         </p>
         <Button size="sm" variant={addOpen ? "secondary" : "ghost"} onClick={() => setAddOpen((current) => !current)}>
           <Plus className="mr-2 h-4 w-4" />
-          {addOpen ? "Hide add form" : "Add event"}
+          {addOpen ? translate("common.actions.hideAddForm") : translate("manual.addButton")}
         </Button>
       </div>
 
@@ -299,20 +300,20 @@ export function ManualWorkbenchPanel() {
         <SheetContent side="bottom" className="overflow-y-auto">
           <SheetHeader>
             <div>
-              <SheetTitle>Add fallback event</SheetTitle>
-              <SheetDescription>Create a manual event only when the system cannot safely express canonical state.</SheetDescription>
+              <SheetTitle>{translate("manual.addSheetTitle")}</SheetTitle>
+              <SheetDescription>{translate("manual.addSheetSummary")}</SheetDescription>
             </div>
             <SheetDismissButton />
           </SheetHeader>
           <div className="mt-6 space-y-4">
             {!familyRows.length ? (
-              <EmptyState title="No families yet" description="Create a family from Families before adding a fallback event." />
+              <EmptyState title={translate("manual.noFamiliesTitle")} description={translate("manual.noFamiliesDescription")} />
             ) : (
               <>
                 <Card className="p-5">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <FieldLabel htmlFor="manual-add-course">Course</FieldLabel>
+                      <FieldLabel htmlFor="manual-add-course">{translate("manual.course")}</FieldLabel>
                       <select
                         id="manual-add-course"
                         value={addCourseKey}
@@ -327,14 +328,14 @@ export function ManualWorkbenchPanel() {
                       </select>
                     </div>
                     <div>
-                      <FieldLabel htmlFor="manual-add-family">Family</FieldLabel>
+                      <FieldLabel htmlFor="manual-add-family">{translate("manual.family")}</FieldLabel>
                       <select
                         id="manual-add-family"
                         value={addEventForm.familyId}
                         onChange={(event) => setAddEventForm((prev) => ({ ...prev, familyId: event.target.value }))}
                         className={selectClassName}
                       >
-                        <option value="">Select a family</option>
+                        <option value="">{translate("manual.selectFamily")}</option>
                         {addFormFamilies.map((family) => (
                           <option key={family.id} value={family.id}>
                             {family.canonical_label}
@@ -348,48 +349,48 @@ export function ManualWorkbenchPanel() {
                 <Card className="p-5">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <FieldLabel htmlFor="manual-add-name">Event name</FieldLabel>
+                      <FieldLabel htmlFor="manual-add-name">{translate("manual.eventName")}</FieldLabel>
                       <Input id="manual-add-name" value={addEventForm.eventName} onChange={(event) => setAddEventForm((prev) => ({ ...prev, eventName: event.target.value }))} placeholder="Homework 5" />
                     </div>
                     <div>
-                      <FieldLabel htmlFor="manual-add-raw-type">Raw type</FieldLabel>
+                      <FieldLabel htmlFor="manual-add-raw-type">{translate("manual.rawType")}</FieldLabel>
                       <Input id="manual-add-raw-type" value={addEventForm.rawType} onChange={(event) => setAddEventForm((prev) => ({ ...prev, rawType: event.target.value }))} placeholder="hw" />
                     </div>
                     <div>
-                      <FieldLabel htmlFor="manual-add-ordinal">Number</FieldLabel>
+                      <FieldLabel htmlFor="manual-add-ordinal">{translate("manual.number")}</FieldLabel>
                       <Input id="manual-add-ordinal" value={addEventForm.ordinal} onChange={(event) => setAddEventForm((prev) => ({ ...prev, ordinal: event.target.value }))} placeholder="5" />
                     </div>
                     <div>
-                      <FieldLabel htmlFor="manual-add-date">Due date</FieldLabel>
+                      <FieldLabel htmlFor="manual-add-date">{translate("manual.dueDate")}</FieldLabel>
                       <Input id="manual-add-date" type="date" value={addEventForm.dueDate} onChange={(event) => setAddEventForm((prev) => ({ ...prev, dueDate: event.target.value }))} />
                     </div>
                     <div>
-                      <FieldLabel htmlFor="manual-add-precision">Time mode</FieldLabel>
+                      <FieldLabel htmlFor="manual-add-precision">{translate("manual.timeMode")}</FieldLabel>
                       <select
                         id="manual-add-precision"
                         value={addEventForm.timePrecision}
                         onChange={(event) => setAddEventForm((prev) => ({ ...prev, timePrecision: event.target.value as "date_only" | "datetime" }))}
                         className={selectClassName}
                       >
-                        <option value="date_only">Date only</option>
-                        <option value="datetime">Date and time</option>
+                        <option value="date_only">{formatStatusLabel("date_only")}</option>
+                        <option value="datetime">{formatStatusLabel("datetime")}</option>
                       </select>
                     </div>
                     {addEventForm.timePrecision === "datetime" ? (
                       <div>
-                        <FieldLabel htmlFor="manual-add-time">Due time</FieldLabel>
+                        <FieldLabel htmlFor="manual-add-time">{translate("manual.dueTime")}</FieldLabel>
                         <Input id="manual-add-time" type="time" value={addEventForm.dueTime} onChange={(event) => setAddEventForm((prev) => ({ ...prev, dueTime: event.target.value }))} />
                       </div>
                     ) : null}
                   </div>
                   <div className="mt-4">
-                    <FieldLabel htmlFor="manual-add-reason">Reason</FieldLabel>
-                    <Textarea id="manual-add-reason" value={addEventForm.reason} onChange={(event) => setAddEventForm((prev) => ({ ...prev, reason: event.target.value }))} placeholder="Optional note for the audit trail" className="min-h-[92px]" />
+                    <FieldLabel htmlFor="manual-add-reason">{translate("manual.reason")}</FieldLabel>
+                    <Textarea id="manual-add-reason" value={addEventForm.reason} onChange={(event) => setAddEventForm((prev) => ({ ...prev, reason: event.target.value }))} placeholder={translate("manual.reasonPlaceholder")} className="min-h-[92px]" />
                   </div>
                   <div className="mt-4 flex justify-end">
                     <Button onClick={() => void submitNewEvent()} disabled={busyEvent === "create" || !addFormFamilies.length}>
                       <Plus className="mr-2 h-4 w-4" />
-                      {busyEvent === "create" ? "Adding..." : "Add event"}
+                      {busyEvent === "create" ? translate("manual.addButtonBusy") : translate("manual.addButton")}
                     </Button>
                   </div>
                 </Card>
@@ -403,7 +404,7 @@ export function ManualWorkbenchPanel() {
         <Card className="p-5">
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
             <div>
-              <FieldLabel htmlFor="manual-events-course">Course</FieldLabel>
+              <FieldLabel htmlFor="manual-events-course">{translate("manual.course")}</FieldLabel>
               <select
                 id="manual-events-course"
                 value={selectedCourseKey}
@@ -418,14 +419,14 @@ export function ManualWorkbenchPanel() {
               </select>
             </div>
             <div>
-              <FieldLabel htmlFor="manual-events-family">Family</FieldLabel>
+              <FieldLabel htmlFor="manual-events-family">{translate("manual.family")}</FieldLabel>
               <select
                 id="manual-events-family"
                 value={selectedFamilyId}
                 onChange={(event) => setSelectedFamilyId(event.target.value)}
                 className={selectClassName}
               >
-                <option value="all">All families</option>
+                <option value="all">{translate("manual.allFamilies")}</option>
                 {eventFilterFamilies.map((family) => (
                   <option key={family.id} value={family.id}>
                     {family.canonical_label}
@@ -438,7 +439,7 @@ export function ManualWorkbenchPanel() {
         </Card>
 
         {filteredEventRows.length === 0 ? (
-          <EmptyState title="No events in this view" description="Pick another course or family, or add a manual event when fallback work is needed." />
+          <EmptyState title={translate("manual.noEventsTitle")} description={translate("manual.listEmpty")} />
         ) : (
           <Card className="p-4">
             <div className="space-y-3">
@@ -451,7 +452,7 @@ export function ManualWorkbenchPanel() {
                         <p className="truncate text-sm font-medium text-ink">{eventSummaryLabel(event)}</p>
                       </div>
                       <Button size="sm" variant="ghost" onClick={() => (expanded ? clearExpandedEvent() : openEvent(event))}>
-                        {expanded ? "Close" : "Open"}
+                        {expanded ? translate("manual.close") : translate("manual.open")}
                         {expanded ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
                       </Button>
                     </div>
@@ -460,17 +461,17 @@ export function ManualWorkbenchPanel() {
                       <div className="mt-4 border-t border-line/70 pt-4">
                         <div className="grid gap-4 lg:grid-cols-2">
                           <div className="rounded-[1rem] border border-line/70 bg-white/70 p-4">
-                            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Identity</p>
+                            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("manual.identity")}</p>
                             <div className="mt-4 space-y-4">
                               <div>
-                                <FieldLabel htmlFor={`event-family-${event.entity_uid}`}>Family</FieldLabel>
+                                <FieldLabel htmlFor={`event-family-${event.entity_uid}`}>{translate("manual.family")}</FieldLabel>
                                 <select
                                   id={`event-family-${event.entity_uid}`}
                                   value={editEventForm.familyId}
                                   onChange={(nextEvent) => setEditEventForm((prev) => ({ ...prev, familyId: nextEvent.target.value }))}
                                   className={selectClassName}
                                 >
-                                  <option value="">Select a family</option>
+                                  <option value="">{translate("manual.selectFamily")}</option>
                                   {familyRows.map((family) => (
                                     <option key={family.id} value={family.id}>
                                       {family.course_display} - {family.canonical_label}
@@ -479,7 +480,7 @@ export function ManualWorkbenchPanel() {
                                 </select>
                               </div>
                               <div>
-                                <FieldLabel htmlFor={`event-name-${event.entity_uid}`}>Event name</FieldLabel>
+                                <FieldLabel htmlFor={`event-name-${event.entity_uid}`}>{translate("manual.eventName")}</FieldLabel>
                                 <Input
                                   id={`event-name-${event.entity_uid}`}
                                   value={editEventForm.eventName}
@@ -487,7 +488,7 @@ export function ManualWorkbenchPanel() {
                                 />
                               </div>
                               <div>
-                                <FieldLabel htmlFor={`event-raw-type-${event.entity_uid}`}>Raw type</FieldLabel>
+                                <FieldLabel htmlFor={`event-raw-type-${event.entity_uid}`}>{translate("manual.rawType")}</FieldLabel>
                                 <Input
                                   id={`event-raw-type-${event.entity_uid}`}
                                   value={editEventForm.rawType}
@@ -495,7 +496,7 @@ export function ManualWorkbenchPanel() {
                                 />
                               </div>
                               <div>
-                                <FieldLabel htmlFor={`event-ordinal-${event.entity_uid}`}>Number</FieldLabel>
+                                <FieldLabel htmlFor={`event-ordinal-${event.entity_uid}`}>{translate("manual.number")}</FieldLabel>
                                 <Input
                                   id={`event-ordinal-${event.entity_uid}`}
                                   value={editEventForm.ordinal}
@@ -507,10 +508,10 @@ export function ManualWorkbenchPanel() {
                           </div>
 
                           <div className="rounded-[1rem] border border-line/70 bg-white/70 p-4">
-                            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Timing</p>
+                            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("manual.timing")}</p>
                             <div className="mt-4 space-y-4">
                               <div>
-                                <FieldLabel htmlFor={`event-date-${event.entity_uid}`}>Due date</FieldLabel>
+                                <FieldLabel htmlFor={`event-date-${event.entity_uid}`}>{translate("manual.dueDate")}</FieldLabel>
                                 <Input
                                   id={`event-date-${event.entity_uid}`}
                                   type="date"
@@ -519,7 +520,7 @@ export function ManualWorkbenchPanel() {
                                 />
                               </div>
                               <div>
-                                <FieldLabel htmlFor={`event-precision-${event.entity_uid}`}>Time mode</FieldLabel>
+                                <FieldLabel htmlFor={`event-precision-${event.entity_uid}`}>{translate("manual.timeMode")}</FieldLabel>
                                 <select
                                   id={`event-precision-${event.entity_uid}`}
                                   value={editEventForm.timePrecision}
@@ -528,13 +529,13 @@ export function ManualWorkbenchPanel() {
                                   }
                                   className={selectClassName}
                                 >
-                                  <option value="date_only">Date only</option>
-                                  <option value="datetime">Date and time</option>
+                                  <option value="date_only">{formatStatusLabel("date_only")}</option>
+                                  <option value="datetime">{formatStatusLabel("datetime")}</option>
                                 </select>
                               </div>
                               {editEventForm.timePrecision === "datetime" ? (
                                 <div>
-                                  <FieldLabel htmlFor={`event-time-${event.entity_uid}`}>Due time</FieldLabel>
+                                  <FieldLabel htmlFor={`event-time-${event.entity_uid}`}>{translate("manual.dueTime")}</FieldLabel>
                                   <Input
                                     id={`event-time-${event.entity_uid}`}
                                     type="time"
@@ -547,14 +548,14 @@ export function ManualWorkbenchPanel() {
                           </div>
 
                           <div className="rounded-[1rem] border border-line/70 bg-white/70 p-4 lg:col-span-2">
-                            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Audit note</p>
+                            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("manual.auditNote")}</p>
                             <div className="mt-4">
-                              <FieldLabel htmlFor={`event-reason-${event.entity_uid}`}>Reason</FieldLabel>
+                              <FieldLabel htmlFor={`event-reason-${event.entity_uid}`}>{translate("manual.reason")}</FieldLabel>
                               <Textarea
                                 id={`event-reason-${event.entity_uid}`}
                                 value={editEventForm.reason}
                                 onChange={(nextEvent) => setEditEventForm((prev) => ({ ...prev, reason: nextEvent.target.value }))}
-                                placeholder="Optional note for the audit trail"
+                                placeholder={translate("manual.reasonPlaceholder")}
                                 className="min-h-[92px]"
                               />
                             </div>
@@ -570,7 +571,7 @@ export function ManualWorkbenchPanel() {
                               Delete
                             </Button>
                             <Button size="sm" onClick={() => void submitEditedEvent()} disabled={busyEvent === "save"}>
-                              {busyEvent === "save" ? "Saving..." : "Save"}
+                              {busyEvent === "save" ? `${translate("common.actions.save")}...` : translate("common.actions.save")}
                             </Button>
                           </div>
                         </div>

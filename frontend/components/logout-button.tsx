@@ -7,6 +7,7 @@ import { logout } from "@/lib/api/auth";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { withBasePath } from "@/lib/demo-mode";
+import { useT } from "@/lib/i18n/use-locale";
 
 export function LogoutButton({
   collapsed = false,
@@ -18,6 +19,7 @@ export function LogoutButton({
   redirectTo?: string;
 } = {}) {
   const router = useRouter();
+  const t = useT();
   const [submitting, setSubmitting] = useState(false);
 
   async function runLogout() {
@@ -41,8 +43,8 @@ export function LogoutButton({
         "transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
         className
       )}
-      aria-label={submitting ? "Signing out" : "Logout"}
-      title={submitting ? "Signing out" : "Logout"}
+      aria-label={submitting ? t("shell.logout.ariaBusy") : t("shell.logout.label")}
+      title={submitting ? t("shell.logout.ariaBusy") : t("shell.logout.label")}
       disabled={submitting}
       onClick={() => void runLogout()}
     >
@@ -53,7 +55,7 @@ export function LogoutButton({
           collapsed ? "max-w-0 translate-x-2 opacity-0" : "max-w-[120px] translate-x-0 opacity-100"
         )}
       >
-        {submitting ? "Signing out..." : "Logout"}
+        {submitting ? t("shell.logout.signingOut") : t("shell.logout.label")}
       </span>
     </Button>
   );

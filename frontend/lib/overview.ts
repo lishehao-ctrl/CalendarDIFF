@@ -1,4 +1,5 @@
 import type { ChangeItem, ChangesWorkbenchSummary, OnboardingStatus } from "@/lib/types";
+import { translate } from "@/lib/i18n/runtime";
 import { formatDateTime, sourceDescriptor, summarizeChange } from "@/lib/presenters";
 
 export type OverviewCardVM = {
@@ -55,60 +56,69 @@ function buildHero(summary: ChangesWorkbenchSummary): OverviewHeroVM {
   switch (posture.phase) {
     case "baseline_import":
       return {
-        eyebrow: "Workspace posture",
-        title: "Building your baseline",
-        summary: "CalendarDIFF is still assembling the first import. Use Sources to confirm what landed and whether any source needs attention before review begins.",
+        eyebrow: translate("overview.heroEyebrow"),
+        title: translate("overview.phase.baselineImportTitle"),
+        summary: translate("overview.phase.baselineImportSummary"),
         ctaLabel: posture.next_action.label,
         ctaHref: nextActionHref,
         ctaReason: posture.next_action.reason,
         meta: [
-          `${summary.sources.active_count} active source${summary.sources.active_count === 1 ? "" : "s"}`,
-          initialReview.total_count > 0 ? `${initialReview.total_count} baseline item${initialReview.total_count === 1 ? "" : "s"} prepared` : "Review opens after import finishes",
+          translate("overview.phase.activeSources", { count: summary.sources.active_count }),
+          initialReview.total_count > 0
+            ? translate("overview.phase.baselinePrepared", { count: initialReview.total_count })
+            : translate("overview.phase.reviewOpensAfterImport"),
         ],
       };
     case "initial_review":
       return {
-        eyebrow: "Workspace posture",
-        title: "Initial Review in progress",
+        eyebrow: translate("overview.heroEyebrow"),
+        title: translate("overview.phase.initialReviewTitle"),
         summary:
           initialReview.pending_count === 1
-            ? "1 baseline item still needs a decision before monitoring is fully live."
-            : `${initialReview.pending_count} baseline items still need decisions before monitoring is fully live.`,
+            ? translate("overview.phase.initialReviewSummaryOne")
+            : translate("overview.phase.initialReviewSummaryMany", { count: initialReview.pending_count }),
         ctaLabel: posture.next_action.label,
         ctaHref: nextActionHref,
         ctaReason: posture.next_action.reason,
-        progressLabel: `${initialReview.reviewed_count} reviewed / ${initialReview.total_count} total`,
+        progressLabel: translate("overview.phase.reviewedOfTotal", {
+          reviewed: initialReview.reviewed_count,
+          total: initialReview.total_count,
+        }),
         progressPercent: initialReview.completion_percent,
         meta: [
-          `${initialReview.pending_count} pending`,
-          initialReview.completed_at ? `Completed ${formatDateTime(initialReview.completed_at)}` : "Monitoring starts after this review closes",
+          translate("overview.phase.pending", { count: initialReview.pending_count }),
+          initialReview.completed_at
+            ? translate("overview.phase.completedAt", { time: formatDateTime(initialReview.completed_at) })
+            : translate("overview.phase.monitoringStartsAfterReview"),
         ],
       };
     case "monitoring_live":
       return {
-        eyebrow: "Workspace posture",
-        title: "Monitoring is live",
-        summary: "The initial baseline is complete. CalendarDIFF is now watching your connected sources for new changes that need replay review.",
+        eyebrow: translate("overview.heroEyebrow"),
+        title: translate("overview.phase.monitoringLiveTitle"),
+        summary: translate("overview.phase.monitoringLiveSummary"),
         ctaLabel: posture.next_action.label,
         ctaHref: nextActionHref,
         ctaReason: posture.next_action.reason,
         meta: [
-          monitoring.live_since ? `Live since ${formatDateTime(monitoring.live_since)}` : "Live monitoring is active",
-          `${monitoring.active_source_count} active source${monitoring.active_source_count === 1 ? "" : "s"}`,
+          monitoring.live_since
+            ? translate("overview.phase.liveSince", { time: formatDateTime(monitoring.live_since) })
+            : translate("overview.phase.liveMonitoringActive"),
+          translate("overview.phase.activeSources", { count: monitoring.active_source_count }),
         ],
       };
     case "attention_required":
     default:
       return {
-        eyebrow: "Workspace posture",
-        title: "Attention required",
-        summary: "A source or review lane needs attention before the workspace is fully trustworthy. Start with the recommended lane below.",
+        eyebrow: translate("overview.heroEyebrow"),
+        title: translate("overview.phase.attentionRequiredTitle"),
+        summary: translate("overview.phase.attentionRequiredSummary"),
         ctaLabel: posture.next_action.label,
         ctaHref: nextActionHref,
         ctaReason: posture.next_action.reason,
         meta: [
-          `${summary.sources.attention_count} source${summary.sources.attention_count === 1 ? "" : "s"} need attention`,
-          `${summary.changes_pending} replay change${summary.changes_pending === 1 ? "" : "s"} waiting`,
+          translate("overview.phase.attentionSources", { count: summary.sources.attention_count }),
+          translate("overview.phase.replayChanges", { count: summary.changes_pending }),
         ],
       };
   }
@@ -124,55 +134,58 @@ export function buildOverviewSurface(params: {
   const initialReview = posture.initial_review;
 
   const replayReviewSummary = topPendingChange
-    ? `${summarizeChange(topPendingChange).title} is waiting from ${topPendingChange.primary_source ? sourceDescriptor(topPendingChange.primary_source) : "attached evidence"}.`
+    ? translate("overview.cards.changes.topPending", {
+        title: summarizeChange(topPendingChange).title,
+        source: topPendingChange.primary_source ? sourceDescriptor(topPendingChange.primary_source) : "attached evidence",
+      })
     : summary.changes_pending > 0
-      ? `${summary.changes_pending} replay change${summary.changes_pending === 1 ? "" : "s"} are waiting for review.`
-      : "No replay changes are waiting right now.";
+      ? translate("overview.cards.changes.replayWaiting", { count: summary.changes_pending })
+      : translate("overview.cards.changes.noReplayWaiting");
 
   const needsReviewCard: OverviewCardVM =
     initialReview.pending_count > 0
       ? {
           key: "needs-review",
-          eyebrow: "Changes",
-          title: "Changes queue",
+          eyebrow: translate("overview.cards.changes.eyebrow"),
+          title: translate("overview.cards.changes.queueTitle"),
           metric: `${summary.changes_pending}`,
           summary:
             summary.changes_pending > 0
-              ? `${summary.changes_pending} replay change${summary.changes_pending === 1 ? "" : "s"} are waiting in Changes.`
-              : "Changes is quiet right now.",
-          ctaLabel: "Open Changes",
+              ? translate("overview.cards.changes.replayWaiting", { count: summary.changes_pending })
+              : translate("overview.cards.changes.quiet"),
+          ctaLabel: translate("overview.cards.changes.open"),
           ctaHref: "/changes",
           tone: summary.changes_pending > 0 ? "pending" : "info",
         }
       : {
           key: "needs-review",
-          eyebrow: "Changes",
-          title: "Review live changes",
+          eyebrow: translate("overview.cards.changes.eyebrow"),
+          title: translate("overview.cards.changes.reviewTitle"),
           metric: `${summary.changes_pending}`,
           summary: replayReviewSummary,
-          ctaLabel: "Open Changes",
+          ctaLabel: translate("overview.cards.changes.open"),
           ctaHref: "/changes",
           tone: summary.changes_pending > 0 ? "pending" : "approved",
         };
 
   const sourceSummary =
     onboarding.stage !== "ready"
-      ? onboarding.message || "Complete source setup before trusting intake."
+      ? onboarding.message || translate("overview.cards.sources.setupFirst")
       : summary.sources.attention_count > 0
         ? summary.sources.message
         : posture.phase === "baseline_import"
-          ? "Sources are still building the first baseline."
-          : "Connected sources are in steady-state monitoring.";
+          ? translate("overview.cards.sources.baselineRunning")
+          : translate("overview.cards.sources.steadyState");
 
   const namingSummary = summary.families.pending_raw_type_suggestions > 0
-    ? `${summary.families.pending_raw_type_suggestions} suggestion${summary.families.pending_raw_type_suggestions === 1 ? "" : "s"} are waiting in Families.`
+    ? translate("overview.cards.families.waiting", { count: summary.families.pending_raw_type_suggestions })
     : summary.families.last_error
-      ? `Families needs attention. ${summary.families.last_error}`
-      : "No naming drift is waiting right now.";
+      ? translate("overview.cards.families.needsAttention", { error: summary.families.last_error })
+      : translate("overview.cards.families.quiet");
 
   const fallbackSummary = summary.manual.active_event_count > 0
-    ? `${summary.manual.active_event_count} manual fallback${summary.manual.active_event_count === 1 ? "" : "s"} are active.`
-    : "No manual fallback work is open.";
+    ? translate("overview.cards.manual.active", { count: summary.manual.active_event_count })
+    : translate("overview.cards.manual.quiet");
 
   return {
     hero: buildHero(summary),
@@ -180,31 +193,31 @@ export function buildOverviewSurface(params: {
       needsReviewCard,
       {
         key: "source-posture",
-        eyebrow: "Source Posture",
-        title: "Check source trust",
+        eyebrow: translate("overview.cards.sources.eyebrow"),
+        title: translate("overview.cards.sources.title"),
         metric: `${summary.sources.attention_count}`,
         summary: sourceSummary,
-        ctaLabel: "Open Sources",
+        ctaLabel: translate("overview.cards.sources.open"),
         ctaHref: "/sources",
         tone: summary.sources.attention_count > 0 || onboarding.stage !== "ready" ? "pending" : "approved",
       },
       {
         key: "naming-drift",
-        eyebrow: "Families",
-        title: "Resolve naming drift",
+        eyebrow: translate("overview.cards.families.eyebrow"),
+        title: translate("overview.cards.families.title"),
         metric: `${summary.families.pending_raw_type_suggestions}`,
         summary: namingSummary,
-        ctaLabel: "Open Families",
+        ctaLabel: translate("overview.cards.families.open"),
         ctaHref: "/families",
         tone: summary.families.pending_raw_type_suggestions > 0 ? "pending" : "info",
       },
       {
         key: "fallbacks",
-        eyebrow: "Manual",
-        title: "Clear fallback work",
+        eyebrow: translate("overview.cards.manual.eyebrow"),
+        title: translate("overview.cards.manual.title"),
         metric: `${summary.manual.active_event_count}`,
         summary: fallbackSummary,
-        ctaLabel: "Open Manual",
+        ctaLabel: translate("overview.cards.manual.open"),
         ctaHref: "/manual",
         tone: summary.manual.active_event_count > 0 ? "info" : "approved",
       },

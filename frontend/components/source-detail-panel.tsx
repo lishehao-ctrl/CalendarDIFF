@@ -21,7 +21,8 @@ import {
   updateSource,
 } from "@/lib/api/sources";
 import { withBasePath } from "@/lib/demo-mode";
-import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
+import { translate } from "@/lib/i18n/runtime";
+import { formatCount, formatDateTime, formatStatusLabel } from "@/lib/presenters";
 import { invalidateSourceCaches } from "@/lib/source-cache";
 import { formatElapsedMs } from "@/lib/source-observability";
 import type { SourceObservabilitySync, SourceRecovery, SourceRow, SourceSyncHistoryResponse } from "@/lib/types";
@@ -36,9 +37,9 @@ function sourceTitle(source: SourceRow) {
 
 function sourceSubtitle(source: SourceRow) {
   if (source.provider === "ics") {
-    return "Student calendar feed";
+    return translate("sources.detail.studentCalendarFeed");
   }
-  return source.oauth_account_email || "Mailbox connection";
+  return source.oauth_account_email || translate("sources.detail.mailboxConnection");
 }
 
 function connectHref(basePath: string, provider: string) {
@@ -48,30 +49,30 @@ function connectHref(basePath: string, provider: string) {
 function productPhaseLabel(phase: SourceRow["source_product_phase"] | null | undefined) {
   switch (phase) {
     case "importing_baseline":
-      return "Baseline import";
+      return formatStatusLabel("baseline_import");
     case "needs_initial_review":
-      return "Initial Review";
+      return formatStatusLabel("initial_review");
     case "monitoring_live":
-      return "Monitoring live";
+      return formatStatusLabel("monitoring_live");
     case "needs_attention":
-      return "Attention required";
+      return formatStatusLabel("attention_required");
     default:
-      return "Phase unavailable";
+      return translate("sources.detail.phaseUnavailable");
   }
 }
 
 function trustStateLabel(trustState: SourceRecovery["trust_state"] | null | undefined) {
   switch (trustState) {
     case "trusted":
-      return "Trusted";
+      return formatStatusLabel("trusted");
     case "stale":
-      return "Stale";
+      return formatStatusLabel("stale");
     case "partial":
-      return "Partially trusted";
+      return formatStatusLabel("partial");
     case "blocked":
-      return "Blocked";
+      return formatStatusLabel("blocked");
     default:
-      return "Trust unavailable";
+      return translate("sources.detail.trustUnavailable");
   }
 }
 
@@ -104,9 +105,9 @@ function usageSummary(sync: SourceObservabilitySync | null) {
     return null;
   }
   const usage = sync.llm_usage as Record<string, unknown>;
-  const totalTokens = typeof usage.total_tokens === "number" ? usage.total_tokens.toLocaleString() : "No sample";
-  const cachedTokens = typeof usage.cached_input_tokens === "number" ? usage.cached_input_tokens.toLocaleString() : "0";
-  const latencyMs = typeof usage.latency_ms_total === "number" ? `${Math.round(usage.latency_ms_total)} ms` : "No sample";
+  const totalTokens = typeof usage.total_tokens === "number" ? formatCount(usage.total_tokens) : translate("common.labels.notAvailable");
+  const cachedTokens = typeof usage.cached_input_tokens === "number" ? formatCount(usage.cached_input_tokens) : "0";
+  const latencyMs = typeof usage.latency_ms_total === "number" ? `${Math.round(usage.latency_ms_total)} ms` : translate("common.labels.notAvailable");
   return { totalTokens, cachedTokens, latencyMs };
 }
 
@@ -123,29 +124,29 @@ function SyncRunCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{title}</p>
-          <p className="mt-2 text-sm font-medium text-ink">{sync ? formatStatusLabel(sync.status) : "No run yet"}</p>
+          <p className="mt-2 text-sm font-medium text-ink">{sync ? formatStatusLabel(sync.status) : translate("sources.detail.noRunYet")}</p>
         </div>
         {sync ? <Badge tone={sync.status === "FAILED" ? "error" : sync.status === "RUNNING" ? "pending" : "approved"}>{formatStatusLabel(sync.status)}</Badge> : null}
       </div>
       {sync ? (
         <>
           <div className="mt-4 grid gap-3 md:grid-cols-3">
-            {usageFact("Elapsed", formatElapsedMs(sync.elapsed_ms || null))}
-            {usageFact("Stage", formatStatusLabel(sync.substage || sync.stage, "Not sampled"))}
-            {usageFact("Updated", formatDateTime(sync.updated_at))}
+            {usageFact(translate("sources.observability.elapsed"), formatElapsedMs(sync.elapsed_ms || null))}
+            {usageFact(translate("sources.observability.stage"), formatStatusLabel(sync.substage || sync.stage, translate("sources.detail.noStageSample")))}
+            {usageFact(translate("sources.observability.updated"), formatDateTime(sync.updated_at))}
           </div>
           {sync.progress ? <SourceSyncProgress className="mt-4" progress={sync.progress} /> : null}
           {usage ? (
             <div className="mt-4 grid gap-3 md:grid-cols-3">
-              {usageFact("Tokens", usage.totalTokens)}
-              {usageFact("Cached input", usage.cachedTokens)}
-              {usageFact("Latency", usage.latencyMs)}
+              {usageFact(translate("sources.observability.tokens"), usage.totalTokens)}
+              {usageFact(translate("sources.observability.cachedInput"), usage.cachedTokens)}
+              {usageFact(translate("sources.observability.latency"), usage.latencyMs)}
             </div>
           ) : null}
           {sync.error_message ? <p className="mt-4 text-sm leading-6 text-[#7f3d2a]">{sync.error_message}</p> : null}
         </>
       ) : (
-        <p className="mt-4 text-sm text-[#596270]">No sampled run is available yet.</p>
+        <p className="mt-4 text-sm text-[#596270]">{translate("sources.detail.noSampledRun")}</p>
       )}
     </div>
   );
@@ -204,10 +205,10 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
     try {
       await createSyncRequest(sourceId, { metadata: { kind: "ui_source_detail_sync" } });
       invalidateSourceCaches(sourceId);
-      setBanner({ tone: "info", text: "Sync request queued." });
+      setBanner({ tone: "info", text: translate("sources.detail.syncQueued") });
       await refreshAll({ force: true });
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to run sync." });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("sources.detail.runSyncFailed") });
     } finally {
       setBusySync(false);
     }
@@ -219,10 +220,10 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
     try {
       await deleteSource(sourceId);
       invalidateSourceCaches(sourceId);
-      setBanner({ tone: "info", text: "Source archived." });
+      setBanner({ tone: "info", text: translate("sources.detail.archiveSuccess") });
       await refreshAll({ force: true });
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to archive source." });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("sources.detail.archiveFailed") });
     } finally {
       setBusyArchive(false);
     }
@@ -234,10 +235,10 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
     try {
       await updateSource(sourceId, { is_active: true });
       invalidateSourceCaches(sourceId);
-      setBanner({ tone: "info", text: "Source reactivated." });
+      setBanner({ tone: "info", text: translate("sources.detail.reactivateSuccess") });
       await refreshAll({ force: true });
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to reactivate source." });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("sources.detail.reactivateFailed") });
     } finally {
       setBusyReactivate(false);
     }
@@ -251,19 +252,19 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
       const session = await createOAuthSession(source.source_id, { provider: source.provider });
       window.location.assign(session.authorization_url);
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to reconnect source." });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("sources.detail.reconnectFailed") });
       setBusyReconnect(false);
     }
   }
 
   if (sources.loading || observability.loading || history.loading) {
-    return <LoadingState label="source detail" />;
+    return <LoadingState label={translate("common.loadingLabels.sourceDetail")} />;
   }
-  if (sources.error) return <ErrorState message={`Source detail failed to load. ${sources.error}`} />;
-  if (observability.error) return <ErrorState message={`Source posture failed to load. ${observability.error}`} />;
-  if (history.error) return <ErrorState message={`Source history failed to load. ${history.error}`} />;
+  if (sources.error) return <ErrorState message={`${translate("sources.detail.sourceLoadFailed")} ${sources.error}`} />;
+  if (observability.error) return <ErrorState message={`${translate("sources.detail.postureLoadFailed")} ${observability.error}`} />;
+  if (history.error) return <ErrorState message={`${translate("sources.detail.historyLoadFailed")} ${history.error}`} />;
   if (!source) {
-    return <EmptyState title="Source not found" description="This source is unavailable in the current workspace." />;
+    return <EmptyState title={translate("sources.detail.sourceNotFoundTitle")} description={translate("sources.detail.sourceNotFoundDescription")} />;
   }
 
   const bootstrap = observability.data?.bootstrap || null;
@@ -284,70 +285,70 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.13),transparent_36%),radial-gradient(circle_at_84%_20%,rgba(215,90,45,0.11),transparent_24%)]" />
         <div className="relative flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
-            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Source detail</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.detail.pageEyebrow")}</p>
             <h2 className="mt-3 text-3xl font-semibold text-ink">{sourceTitle(source)}</h2>
             <p className="mt-3 text-sm leading-7 text-[#596270]">{sourceRecovery?.impact_summary || sourceSubtitle(source)}</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <Badge tone="info">{formatStatusLabel(source.provider)}</Badge>
-              <Badge tone={source.is_active ? "approved" : "info"}>{source.is_active ? "Active" : "Archived"}</Badge>
+              <Badge tone={source.is_active ? "approved" : "info"}>{source.is_active ? translate("sources.detail.active") : translate("sources.detail.archived")}</Badge>
               <Badge tone="info">{productPhaseLabel(sourceProductPhase)}</Badge>
               <Badge tone={trustStateTone(sourceRecovery?.trust_state)}>{trustStateLabel(sourceRecovery?.trust_state)}</Badge>
             </div>
             {sourceRecovery?.next_action_label ? (
-              <p className="mt-4 text-sm text-[#314051]">Next step: {sourceRecovery.next_action_label}</p>
+              <p className="mt-4 text-sm text-[#314051]">{translate("sources.detail.nextStep", { label: sourceRecovery.next_action_label })}</p>
             ) : null}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-start gap-2 xl:max-w-[420px] xl:justify-end">
             {sourceProductPhase === "needs_initial_review" ? (
-              <Button asChild>
-                <Link href={withBasePath(basePath, "/initial-review")}>Open Initial Review</Link>
+              <Button asChild size="sm">
+                <Link href={withBasePath(basePath, "/initial-review")}>{translate("sources.detail.openInitialReview")}</Link>
               </Button>
             ) : sourceRecovery?.next_action === "reconnect_gmail" && source.provider === "gmail" ? (
-              <Button onClick={() => void reconnectSource()} disabled={busyReconnect}>
+              <Button size="sm" onClick={() => void reconnectSource()} disabled={busyReconnect}>
                 <ExternalLink className="mr-2 h-4 w-4" />
-                {busyReconnect ? "Redirecting..." : sourceRecovery.next_action_label}
+                {busyReconnect ? translate("sources.detail.redirecting") : sourceRecovery.next_action_label}
               </Button>
             ) : sourceRecovery?.next_action === "update_ics" && source.provider === "ics" ? (
-              <Button asChild>
+              <Button asChild size="sm">
                 <Link href={connectHref(basePath, source.provider)}>{sourceRecovery.next_action_label}</Link>
               </Button>
             ) : (
-              <Button onClick={() => void runSync()} disabled={busySync || !source.is_active}>
+              <Button size="sm" onClick={() => void runSync()} disabled={busySync || !source.is_active}>
                 <RefreshCw className="mr-2 h-4 w-4" />
-                {busySync ? "Running..." : sourceRecovery?.next_action === "retry_sync" ? sourceRecovery.next_action_label : "Run sync"}
+                {busySync ? translate("sources.detail.running") : sourceRecovery?.next_action === "retry_sync" ? sourceRecovery.next_action_label : translate("sources.detail.runSync")}
               </Button>
             )}
             {source.provider === "gmail" ? (
               sourceRecovery?.next_action === "reconnect_gmail" ? (
-                <Button asChild variant="ghost">
-                  <Link href={withBasePath(basePath, `/sources/${sourceId}`)}>Open details</Link>
+                <Button asChild size="sm" variant="soft">
+                  <Link href={withBasePath(basePath, `/sources/${sourceId}`)}>{translate("sources.openDetails")}</Link>
                 </Button>
               ) : (
-                <Button variant="ghost" onClick={() => void reconnectSource()} disabled={busyReconnect}>
+                <Button size="sm" variant="soft" onClick={() => void reconnectSource()} disabled={busyReconnect}>
                   <ExternalLink className="mr-2 h-4 w-4" />
-                  {busyReconnect ? "Redirecting..." : needsReconnect ? sourceRecovery?.next_action_label || "Reconnect Gmail" : "Open Gmail connection"}
+                  {busyReconnect ? translate("sources.detail.redirecting") : needsReconnect ? sourceRecovery?.next_action_label || translate("sources.reconnectGmail") : translate("sources.detail.openGmailConnection")}
                 </Button>
               )
             ) : (
               sourceRecovery?.next_action === "update_ics" ? (
-                <Button asChild variant="ghost">
-                  <Link href={withBasePath(basePath, `/sources/${sourceId}`)}>Open details</Link>
+                <Button asChild size="sm" variant="soft">
+                  <Link href={withBasePath(basePath, `/sources/${sourceId}`)}>{translate("sources.openDetails")}</Link>
                 </Button>
               ) : (
-                <Button asChild variant="ghost">
-                  <Link href={connectHref(basePath, source.provider)}>Open connection flow</Link>
+                <Button asChild size="sm" variant="soft">
+                  <Link href={connectHref(basePath, source.provider)}>{translate("sources.detail.openConnectionFlow")}</Link>
                 </Button>
               )
             )}
             {source.is_active ? (
-              <Button variant="ghost" onClick={() => void archiveSource()} disabled={busyArchive}>
+              <Button size="sm" variant="ghost" className="border border-line/80 bg-white/70" onClick={() => void archiveSource()} disabled={busyArchive}>
                 <Trash2 className="mr-2 h-4 w-4" />
-                {busyArchive ? "Archiving..." : "Archive"}
+                {busyArchive ? translate("sources.archiving") : translate("sources.archive")}
               </Button>
             ) : (
-              <Button variant="ghost" onClick={() => void reactivateSource()} disabled={busyReactivate}>
+              <Button size="sm" variant="ghost" className="border border-line/80 bg-white/70" onClick={() => void reactivateSource()} disabled={busyReactivate}>
                 <ArchiveRestore className="mr-2 h-4 w-4" />
-                {busyReactivate ? "Reactivating..." : "Reactivate"}
+                {busyReactivate ? translate("sources.reactivating") : translate("sources.reactivate")}
               </Button>
             )}
           </div>
@@ -362,37 +363,37 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Card className="animate-surface-enter p-5">
-          <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Connection</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.detail.connection")}</p>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {usageFact("Provider", formatStatusLabel(source.provider))}
-            {usageFact("Display name", source.display_name || sourceTitle(source))}
-            {usageFact("Account", source.oauth_account_email || "Not applicable")}
-            {usageFact("Lifecycle", formatStatusLabel(source.lifecycle_state || (source.is_active ? "active" : "archived")))}
-            {usageFact("Last polled", formatDateTime(source.last_polled_at, "Never"))}
-            {usageFact("Next poll", formatDateTime(source.next_poll_at, "Not scheduled"))}
+            {usageFact(translate("sources.detail.provider"), formatStatusLabel(source.provider))}
+            {usageFact(translate("sources.detail.displayName"), source.display_name || sourceTitle(source))}
+            {usageFact(translate("sources.detail.account"), source.oauth_account_email || translate("sources.detail.notApplicable"))}
+            {usageFact(translate("sources.detail.lifecycle"), formatStatusLabel(source.lifecycle_state || (source.is_active ? "active" : "archived")))}
+            {usageFact(translate("sources.detail.lastPolled"), formatDateTime(source.last_polled_at, translate("sources.detail.never")))}
+            {usageFact(translate("sources.detail.nextPoll"), formatDateTime(source.next_poll_at, translate("sources.detail.notScheduled")))}
           </div>
         </Card>
 
         <Card className="animate-surface-enter p-5">
-          <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Current Posture</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.detail.currentPosture")}</p>
           <div className="mt-4 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-medium text-ink">{sourceRecovery?.impact_summary || "Recovery posture is not available yet."}</p>
+                <p className="text-sm font-medium text-ink">{sourceRecovery?.impact_summary || translate("sources.detail.recoveryUnavailable")}</p>
                 <p className="mt-2 text-sm text-[#596270]">{productPhaseLabel(sourceProductPhase)} · {trustStateLabel(sourceRecovery?.trust_state)}</p>
               </div>
               <Badge tone={trustStateTone(sourceRecovery?.trust_state)}>{trustStateLabel(sourceRecovery?.trust_state)}</Badge>
             </div>
             {sourceRecovery ? (
               <div className="mt-4 grid gap-3 md:grid-cols-3">
-                {usageFact("Next action", sourceRecovery.next_action_label)}
-                {usageFact("Last good sync", formatDateTime(sourceRecovery.last_good_sync_at, "Not recorded"))}
-                {usageFact("Degraded since", formatDateTime(sourceRecovery.degraded_since, "Not degraded"))}
+                {usageFact(translate("sources.detail.nextAction"), sourceRecovery.next_action_label)}
+                {usageFact(translate("sources.detail.lastGoodSync"), formatDateTime(sourceRecovery.last_good_sync_at, translate("sources.detail.notRecorded")))}
+                {usageFact(translate("sources.detail.degradedSince"), formatDateTime(sourceRecovery.degraded_since, translate("sources.detail.notDegraded")))}
               </div>
             ) : null}
             {sourceRecovery?.recovery_steps?.length ? (
               <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/75 p-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Recovery steps</p>
+                <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("sources.detail.recoverySteps")}</p>
                 <div className="mt-3 space-y-2 text-sm text-[#314051]">
                   {sourceRecovery.recovery_steps.map((step) => (
                     <p key={step}>{step}</p>
@@ -403,9 +404,9 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
             {activeSync ? (
               <>
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  {usageFact("Current run", formatStatusLabel(activeSync.status))}
-                  {usageFact("Stage", formatStatusLabel(activeSync.substage || activeSync.stage, "Not sampled"))}
-                  {usageFact("Updated", formatDateTime(activeSync.updated_at))}
+                  {usageFact(translate("sources.detail.currentRun"), formatStatusLabel(activeSync.status))}
+                  {usageFact(translate("sources.observability.stage"), formatStatusLabel(activeSync.substage || activeSync.stage, translate("sources.detail.noStageSample")))}
+                  {usageFact(translate("sources.observability.updated"), formatDateTime(activeSync.updated_at))}
                 </div>
                 {activeSync.progress ? <SourceSyncProgress className="mt-4" progress={activeSync.progress} /> : null}
               </>
@@ -416,38 +417,38 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
         </Card>
 
         <Card className="animate-surface-enter p-5">
-          <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Bootstrap</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.detail.bootstrap")}</p>
           <div className="mt-4">
-            <SyncRunCard title="Bootstrap run" sync={bootstrap} />
+            <SyncRunCard title={translate("sources.detail.bootstrapRun")} sync={bootstrap} />
           </div>
           <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/75 p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">Import summary</p>
+            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("sources.detail.importSummary")}</p>
             <div className="mt-4 grid gap-3 md:grid-cols-3">
-              {usageFact("Imported", String(bootstrapSummary?.imported_count || 0))}
-              {usageFact("Needs review", String(bootstrapSummary?.review_required_count || 0))}
-              {usageFact("Ignored", String(bootstrapSummary?.ignored_count || 0))}
-              {usageFact("Conflicts", String(bootstrapSummary?.conflict_count || 0))}
-              {usageFact("Records scanned", bootstrapRecordsCount !== null ? String(bootstrapRecordsCount) : "—")}
-              {usageFact("Bootstrap state", formatStatusLabel(bootstrapSummary?.state, "Unknown"))}
+              {usageFact(translate("sources.detail.imported"), String(bootstrapSummary?.imported_count || 0))}
+              {usageFact(translate("sources.detail.needsReview"), String(bootstrapSummary?.review_required_count || 0))}
+              {usageFact(translate("sources.detail.ignored"), String(bootstrapSummary?.ignored_count || 0))}
+              {usageFact(translate("sources.detail.conflicts"), String(bootstrapSummary?.conflict_count || 0))}
+              {usageFact(translate("sources.detail.recordsScanned"), bootstrapRecordsCount !== null ? String(bootstrapRecordsCount) : "—")}
+              {usageFact(translate("sources.detail.bootstrapState"), formatStatusLabel(bootstrapSummary?.state, translate("common.labels.unknown")))}
             </div>
             {bootstrapSummary?.review_required_count ? (
               <p className="mt-4 text-xs leading-5 text-[#6d7885]">
-                Baseline import still has items waiting in Initial Review. Clear them before treating this source as fully steady-state replay.
+                {translate("sources.detail.baselineReviewWaiting")}
               </p>
             ) : null}
           </div>
         </Card>
 
         <Card className="animate-surface-enter p-5">
-          <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Replay History</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.detail.replayHistory")}</p>
           <div className="mt-4 space-y-3">
-            <SyncRunCard title="Latest replay" sync={latestReplay} />
+            <SyncRunCard title={translate("sources.detail.latestReplay")} sync={latestReplay} />
             {(history.data?.items || []).slice(0, 6).map((item) => (
               <div key={item.request_id} className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium text-ink">{formatStatusLabel(item.status)} replay</p>
-                    <p className="mt-1 text-sm text-[#596270]">{formatDateTime(item.updated_at)} · {formatStatusLabel(item.substage || item.stage, "No stage sample")}</p>
+                    <p className="mt-1 text-sm text-[#596270]">{formatDateTime(item.updated_at)} · {formatStatusLabel(item.substage || item.stage, translate("sources.detail.noStageSample"))}</p>
                   </div>
                   <Badge tone={item.status === "FAILED" ? "error" : item.status === "RUNNING" ? "pending" : "approved"}>
                     {formatElapsedMs(item.elapsed_ms || null)}

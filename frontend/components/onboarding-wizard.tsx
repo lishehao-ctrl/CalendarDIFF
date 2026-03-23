@@ -16,6 +16,7 @@ import {
   skipOnboardingGmail,
   startOnboardingGmailOAuth,
 } from "@/lib/api/onboarding";
+import { translate } from "@/lib/i18n/runtime";
 import { useApiResource } from "@/lib/use-api-resource";
 import type { OnboardingStage, OnboardingStatus } from "@/lib/types";
 
@@ -24,9 +25,9 @@ const stepOrder: Array<{
   title: string;
   description: string;
 }> = [
-  { id: "canvas", title: "Canvas ICS", description: "Required intake source" },
-  { id: "gmail", title: "Gmail", description: "Optional email lane" },
-  { id: "monitoring", title: "Monitoring", description: "How far back to include" },
+  { id: "canvas", title: "onboarding.canvasStepTitle", description: "onboarding.canvasStepDescription" },
+  { id: "gmail", title: "onboarding.gmailStepTitle", description: "onboarding.gmailStepDescription" },
+  { id: "monitoring", title: "onboarding.monitoringStepTitle", description: "onboarding.monitoringStepDescription" },
 ];
 
 function currentStepIndex(stage: OnboardingStage) {
@@ -36,7 +37,7 @@ function currentStepIndex(stage: OnboardingStage) {
 }
 
 function stageTitle() {
-  return "Connect sources once, then enter the workspace with the right scope.";
+  return translate("onboarding.heroTitle");
 }
 
 function defaultMonitoringStart() {
@@ -78,8 +79,8 @@ export function OnboardingWizard() {
     let cancelled = false;
     const nextBanner =
       oauthStatus === "success"
-        ? { tone: "info" as const, text: oauthMessage || "Gmail connected. Finish the next setup step to continue." }
-        : { tone: "error" as const, text: oauthMessage || "OAuth did not complete." };
+        ? { tone: "info" as const, text: oauthMessage || translate("onboarding.oauthConnected") }
+        : { tone: "error" as const, text: oauthMessage || translate("onboarding.oauthFailed") };
     setBanner(nextBanner);
     void refresh().finally(() => {
       if (cancelled) return;
@@ -107,7 +108,7 @@ export function OnboardingWizard() {
       }
       await refresh();
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to save Canvas ICS." });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("onboarding.saveCanvasError") });
     } finally {
       setSavingCanvas(false);
     }
@@ -121,7 +122,7 @@ export function OnboardingWizard() {
       window.location.assign(session.authorization_url);
     } catch (err) {
       setStartingGmail(false);
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to start Gmail OAuth." });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("onboarding.startGmailError") });
     }
   }
 
@@ -138,7 +139,7 @@ export function OnboardingWizard() {
       }
       await refresh();
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to skip Gmail for now." });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("onboarding.skipGmailError") });
     } finally {
       setSkippingGmail(false);
     }
@@ -162,20 +163,20 @@ export function OnboardingWizard() {
       }
       await refresh();
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to save the monitoring window." });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("onboarding.saveMonitoringError") });
     } finally {
       setSavingMonitoring(false);
     }
   }
 
   if (loading) {
-    return <LoadingState label="onboarding" />;
+    return <LoadingState label={translate("common.loadingLabels.onboarding")} />;
   }
   if (error) {
     return <ErrorState message={error} />;
   }
   if (!data) {
-    return <ErrorState message="Onboarding status is unavailable." />;
+    return <ErrorState message={translate("onboarding.statusUnavailable")} />;
   }
 
   const stepIndex = currentStepIndex(data.stage);
@@ -189,12 +190,12 @@ export function OnboardingWizard() {
             <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">Onboarding</p>
             <h1 className="mt-3 text-3xl font-semibold text-ink md:text-4xl">{stageTitle()}</h1>
             <p className="mt-4 text-sm leading-7 text-[#596270]">
-              Connect the required sources, decide whether Gmail joins, and choose how far back CalendarDIFF should start monitoring this workspace.
+              {translate("onboarding.heroSummary")}
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Badge tone="pending">Onboarding required</Badge>
+              <Badge tone="pending">{translate("onboarding.onboardingRequired")}</Badge>
               {data.monitoring_window ? (
-                <Badge tone="default">Monitoring from {data.monitoring_window.monitor_since}</Badge>
+                <Badge tone="default">{translate("onboarding.monitoringFrom", { date: data.monitoring_window.monitor_since })}</Badge>
               ) : null}
             </div>
           </div>
@@ -213,8 +214,8 @@ export function OnboardingWizard() {
                       {complete ? <CheckCircle2 className="h-4 w-4" /> : <span className="text-xs font-semibold">{index + 1}</span>}
                     </div>
                     <div>
-                      <p className="font-medium text-ink">{step.title}</p>
-                      <p className="mt-1 text-sm text-[#596270]">{step.description}</p>
+                      <p className="font-medium text-ink">{translate(step.title)}</p>
+                      <p className="mt-1 text-sm text-[#596270]">{translate(step.description)}</p>
                     </div>
                   </div>
                 );
@@ -237,33 +238,33 @@ export function OnboardingWizard() {
               <CalendarDays className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Required</p>
-              <h2 className="mt-2 text-2xl font-semibold">Connect your Canvas ICS link</h2>
+              <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">{translate("onboarding.required")}</p>
+              <h2 className="mt-2 text-2xl font-semibold">{translate("onboarding.canvasTitle")}</h2>
               <p className="mt-2 text-sm leading-6 text-[#596270]">
-                This is the required intake source for every workspace. Grab your personal calendar feed from Canvas and paste the full ICS URL here.
+                {translate("onboarding.canvasSummary")}
               </p>
             </div>
           </div>
           <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_320px]">
             <div className="space-y-3">
               <label className="block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="onboarding-canvas-ics">
-                Canvas ICS URL
+                {translate("onboarding.canvasUrl")}
               </label>
               <Input
                 id="onboarding-canvas-ics"
-                placeholder="https://canvas.ucsd.edu/feeds/calendars/user_12345.ics"
+                placeholder={translate("onboarding.canvasPlaceholder")}
                 value={canvasIcsUrl}
                 onChange={(event) => setCanvasIcsUrl(event.target.value)}
               />
               <p className="text-xs leading-5 text-[#6d7885]">
-                You can find this on the Canvas Calendar page. Once this is saved, Gmail becomes optional and the monitoring step unlocks after that.
+                {translate("onboarding.canvasHelp")}
               </p>
               <Button className="w-full md:w-auto" disabled={savingCanvas || !canvasIcsUrl.trim()} onClick={() => void submitCanvasIcs()}>
-                {savingCanvas ? "Saving Canvas ICS..." : "Save Canvas ICS"}
+                {savingCanvas ? translate("onboarding.saveCanvasBusy") : translate("onboarding.saveCanvas")}
               </Button>
             </div>
             <Card className="bg-white/60 p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Need the link?</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("onboarding.canvasUrl")}</p>
               <p className="mt-3 text-base font-medium text-ink">Open Canvas Calendar in a new tab.</p>
               <p className="mt-2 text-sm leading-6 text-[#596270]">
                 Canvas exposes your personal ICS feed from the Calendar page. Copy the URL there, then come back and paste it here.
@@ -290,16 +291,16 @@ export function OnboardingWizard() {
               <Mailbox className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Optional</p>
-              <h2 className="mt-2 text-2xl font-semibold">Decide whether Gmail joins this workspace</h2>
+              <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">{translate("onboarding.optional")}</p>
+              <h2 className="mt-2 text-2xl font-semibold">{translate("onboarding.gmailTitle")}</h2>
               <p className="mt-2 text-sm leading-6 text-[#596270]">
-                Gmail adds email-only deadline changes and directive-style notices. You can connect it now or skip it and continue with Canvas only.
+                {translate("onboarding.gmailSummary")}
               </p>
             </div>
           </div>
           <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_320px]">
             <Card className="bg-white/60 p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Gmail</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("onboarding.gmailStepTitle")}</p>
               <p className="mt-3 text-base font-medium text-ink">
                 {data.gmail_source?.connected && data.gmail_source.oauth_account_email
                   ? `Connected as ${data.gmail_source.oauth_account_email}`
@@ -310,15 +311,15 @@ export function OnboardingWizard() {
               </p>
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button disabled={startingGmail} onClick={() => void connectGmail()}>
-                  {startingGmail ? "Redirecting to Google..." : "Connect Gmail"}
+                  {startingGmail ? translate("onboarding.startGmailBusy") : translate("onboarding.connectGmail")}
                 </Button>
                 <Button variant="ghost" disabled={skippingGmail} onClick={() => void skipGmailStep()}>
-                  {skippingGmail ? "Skipping..." : "Skip for now"}
+                  {skippingGmail ? translate("onboarding.skipGmailBusy") : translate("onboarding.skipGmail")}
                 </Button>
               </div>
             </Card>
             <Card className="bg-white/60 p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">What happens if you skip?</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("onboarding.optional")}</p>
               <p className="mt-3 text-sm leading-6 text-[#596270]">
                 You can still enter the workspace with Canvas only. Later, if you decide to add Gmail from Sources, it will inherit the same monitoring start automatically.
               </p>
@@ -334,10 +335,10 @@ export function OnboardingWizard() {
               <RefreshCw className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Required</p>
-              <h2 className="mt-2 text-2xl font-semibold">Choose how far back to monitor</h2>
+              <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">{translate("onboarding.required")}</p>
+              <h2 className="mt-2 text-2xl font-semibold">{translate("onboarding.monitoringTitle")}</h2>
               <p className="mt-2 text-sm leading-6 text-[#596270]">
-                CalendarDIFF defaults to the last 90 days. Move this earlier if you want older assignments, exams, or project changes included on first sync.
+                {translate("onboarding.monitoringSummary")}
               </p>
               <p className="mt-2 text-sm leading-6 text-[#596270]">
                 Nothing starts syncing until you save this step.
@@ -348,7 +349,7 @@ export function OnboardingWizard() {
             <div className="grid gap-4">
               <div>
                 <label className="block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="monitor-since">
-                  Start monitoring from
+                  {translate("onboarding.monitorSince")}
                 </label>
                 <Input id="monitor-since" type="date" value={monitorSince} onChange={(event) => setMonitorSince(event.target.value)} />
                 <p className="mt-2 text-xs leading-5 text-[#6d7885]">
@@ -358,26 +359,24 @@ export function OnboardingWizard() {
               <div className="flex flex-wrap gap-3">
                 <Button className="w-full md:w-auto" disabled={savingMonitoring || !monitorSince} onClick={() => void submitMonitoringWindow()}>
                   {savingMonitoring
-                    ? "Saving monitoring window..."
-                    : monitorSince === defaultStart
-                      ? "Use last 90 days and continue"
-                      : "Save custom start date and continue"}
+                    ? translate("onboarding.saveMonitoringBusy")
+                    : translate("onboarding.saveMonitoring")}
                 </Button>
                 {monitorSince !== defaultStart ? (
                   <Button variant="ghost" disabled={savingMonitoring} onClick={() => setMonitorSince(defaultStart)}>
-                    Reset to last 90 days
+                    {translate("onboarding.monitoringStepTitle")}
                   </Button>
                 ) : null}
               </div>
             </div>
             <Card className="bg-white/60 p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">What this controls</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("onboarding.monitoringStepTitle")}</p>
               <div className="mt-4 space-y-3 text-sm text-[#314051]">
                 <p>Default setup starts 90 days back.</p>
                 <p>Choose an earlier date if you need older coursework or prior changes pulled into the workspace.</p>
                 <p>This is a monitoring scope, not a semester label. Future updates still appear normally.</p>
               </div>
-              <p className="mt-5 text-xs uppercase tracking-[0.18em] text-[#6d7885]">Connected sources</p>
+              <p className="mt-5 text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.listEyebrow")}</p>
               <div className="mt-3 space-y-3 text-sm text-[#314051]">
                 <div className="rounded-[1rem] border border-line/80 bg-white/70 p-4">
                   <p className="font-medium text-ink">Canvas ICS</p>
@@ -402,7 +401,7 @@ export function OnboardingWizard() {
       ) : null}
 
       <Card className="p-5 text-sm text-[#596270]">
-        Need to manage sources after onboarding? You can do that later from <Link href="/sources" className="font-medium text-cobalt">Sources</Link>, but the main workspace only opens once the required onboarding step finishes.
+        Need to manage sources after onboarding? You can do that later from <Link href="/sources" className="font-medium text-cobalt">{translate("shell.nav.sources.label")}</Link>, but the main workspace only opens once the required onboarding step finishes.
       </Card>
     </div>
   );

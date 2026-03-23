@@ -23,6 +23,7 @@ import { LogoutButton } from "@/components/logout-button";
 import { updateSettingsProfile } from "@/lib/api/settings";
 import { getBrowserTimeZone } from "@/lib/browser-timezone";
 import { withBasePath } from "@/lib/demo-mode";
+import { translate } from "@/lib/i18n/runtime";
 import type { OnboardingStage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { preloadWorkspaceLane } from "@/lib/workspace-preload";
@@ -37,13 +38,13 @@ type SessionUser = {
   first_source_id: number | null;
 };
 
-const items: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; description: string }> = [
-  { href: "/", label: "Overview", icon: LayoutDashboard, description: "Workspace posture" },
-  { href: "/sources", label: "Sources", icon: BellDot, description: "Trust and recovery" },
-  { href: "/changes", label: "Changes", icon: GitCompareArrows, description: "Replay review" },
-  { href: "/families", label: "Families", icon: Link2, description: "Naming governance" },
-  { href: "/manual", label: "Manual", icon: Pencil, description: "Fallback lane" },
-  { href: "/settings", label: "Settings", icon: Settings2, description: "Account and timezone" }
+const items: ReadonlyArray<{ href: string; labelKey: string; icon: LucideIcon; descriptionKey: string }> = [
+  { href: "/", labelKey: "shell.nav.overview.label", icon: LayoutDashboard, descriptionKey: "shell.nav.overview.description" },
+  { href: "/sources", labelKey: "shell.nav.sources.label", icon: BellDot, descriptionKey: "shell.nav.sources.description" },
+  { href: "/changes", labelKey: "shell.nav.changes.label", icon: GitCompareArrows, descriptionKey: "shell.nav.changes.description" },
+  { href: "/families", labelKey: "shell.nav.families.label", icon: Link2, descriptionKey: "shell.nav.families.description" },
+  { href: "/manual", labelKey: "shell.nav.manual.label", icon: Pencil, descriptionKey: "shell.nav.manual.description" },
+  { href: "/settings", labelKey: "shell.nav.settings.label", icon: Settings2, descriptionKey: "shell.nav.settings.description" }
 ] as const;
 
 const DESKTOP_NAV_COLLAPSED_KEY = "calendardiff.desktop-nav-collapsed";
@@ -64,7 +65,7 @@ function NavContentWithItems({
   logoutRedirectTo = "/login",
 }: {
   pathname: string;
-  items: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; description: string }>;
+  items: ReadonlyArray<{ href: string; labelKey: string; icon: LucideIcon; descriptionKey: string }>;
   collapsed: boolean;
   onToggleCollapse?: () => void;
   onPrimeRoute?: (href: string) => void;
@@ -84,15 +85,15 @@ function NavContentWithItems({
               <Sparkles className="h-5 w-5" />
             </div>
             <div className={animatedTextBlock(collapsed, "max-w-[220px]")}>
-              <p className="text-xs uppercase tracking-[0.24em] text-[#425061]">CalendarDIFF</p>
-              <h1 className="mt-1 text-2xl font-semibold">Deadline Ops Console</h1>
+              <p className="text-xs uppercase tracking-[0.24em] text-[#425061]">{translate("shell.brand")}</p>
+              <h1 className="mt-1 text-2xl font-semibold">{translate("shell.title")}</h1>
             </div>
           </div>
           {onToggleCollapse ? (
             <button
               type="button"
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label={collapsed ? translate("shell.expandSidebar") : translate("shell.collapseSidebar")}
+              title={collapsed ? translate("shell.expandSidebar") : translate("shell.collapseSidebar")}
               onClick={onToggleCollapse}
               className={cn(
                 "z-10 hidden items-center justify-center border border-line/80 bg-white/90 text-ink shadow-[0_10px_24px_rgba(20,32,44,0.08)] transition-all duration-300 hover:bg-white xl:flex",
@@ -107,7 +108,9 @@ function NavContentWithItems({
         </div>
       </div>
       <nav className={cn("flex flex-1 flex-col", collapsed ? "gap-3" : "gap-2")}>
-        {items.map(({ href, label, icon: Icon, description }) => {
+        {items.map(({ href, labelKey, icon: Icon, descriptionKey }) => {
+          const label = translate(labelKey);
+          const description = translate(descriptionKey);
           const active = href === "/" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link
@@ -271,25 +274,25 @@ export function AppShell({
       <div className="flex min-w-0 flex-1 flex-col gap-6">
         <div className="flex items-center justify-between rounded-[1.45rem] border border-line/70 bg-card px-4 py-3 shadow-[var(--shadow-panel)] xl:hidden">
           <div>
-            <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">CalendarDIFF</p>
-            <p className="mt-1 text-lg font-semibold">Deadline Ops</p>
+            <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">{translate("shell.brand")}</p>
+            <p className="mt-1 text-lg font-semibold">{translate("shell.title")}</p>
           </div>
           <div className="flex items-center gap-2">
             <LogoutButton redirectTo={basePath ? withBasePath(basePath, "/") : "/login"} />
             <Dialog.Root open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
               <Dialog.Trigger asChild>
-                <button aria-label="Open navigation" className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ink text-paper">
+                <button aria-label={translate("shell.openNavigation")} className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ink text-paper">
                   <Menu className="h-5 w-5" />
                 </button>
               </Dialog.Trigger>
               <Dialog.Portal>
                 <Dialog.Overlay className="fixed inset-0 z-40 bg-[rgba(20,32,44,0.38)] backdrop-blur-sm" />
                 <Dialog.Content className="fixed inset-y-0 left-0 z-50 w-[88vw] max-w-sm border-r border-line bg-card p-5 shadow-[var(--shadow-panel)]">
-                  <Dialog.Title className="sr-only">Navigation menu</Dialog.Title>
-                  <Dialog.Description className="sr-only">Navigate between Overview, Sources, Changes, Families, Manual, and Settings.</Dialog.Description>
+                  <Dialog.Title className="sr-only">{translate("shell.openNavigation")}</Dialog.Title>
+                  <Dialog.Description className="sr-only">{translate("shell.navigateDescription")}</Dialog.Description>
                   <div className="mb-4 flex items-center justify-end">
                     <Dialog.Close asChild>
-                      <button aria-label="Close navigation" className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(20,32,44,0.06)] text-ink">
+                      <button aria-label={translate("shell.closeNavigation")} className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(20,32,44,0.06)] text-ink">
                         <X className="h-4 w-4" />
                       </button>
                     </Dialog.Close>
@@ -308,7 +311,7 @@ export function AppShell({
         </div>
         <div className="animate-surface-enter flex flex-col gap-3 rounded-[1.45rem] border border-line/70 bg-card px-4 py-4 shadow-[var(--shadow-panel)] md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">Workspace status</p>
+            <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">{translate("shell.workspaceStatus")}</p>
           </div>
           <div className="flex flex-wrap gap-2 text-sm text-[#314051]">
             <span className="rounded-full border border-line/80 bg-white/80 px-3 py-1.5">{sessionUser.notify_email}</span>
@@ -318,7 +321,7 @@ export function AppShell({
               onboardingReady ? "border-[rgba(77,124,15,0.18)] bg-[rgba(77,124,15,0.08)] text-[#3f5f12]" : "border-[rgba(215,90,45,0.18)] bg-[rgba(215,90,45,0.08)] text-[#8a472d]",
             )}>
               <CircleAlert className="h-4 w-4" />
-              {onboardingReady ? "System ready" : "Onboarding required"}
+              {onboardingReady ? translate("shell.systemReady") : translate("onboarding.onboardingRequired")}
             </span>
           </div>
         </div>

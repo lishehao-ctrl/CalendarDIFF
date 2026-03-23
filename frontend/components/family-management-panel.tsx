@@ -21,6 +21,7 @@ import {
   updateFamily,
 } from "@/lib/api/families";
 import { listManualEvents } from "@/lib/api/manual";
+import { translate } from "@/lib/i18n/runtime";
 import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime, formatSemanticDue } from "@/lib/presenters";
 import type {
@@ -156,7 +157,7 @@ function paginateRows<T>(rows: T[], page: number, pageSize: number) {
 }
 
 function familyEventTitle(event: ManualEvent) {
-  return event.event?.event_display.display_label || event.event_name || event.raw_type || "Untitled event";
+  return event.event?.event_display.display_label || event.event_name || event.raw_type || translate("common.labels.unknown");
 }
 
 function compareManualEvents(left: ManualEvent, right: ManualEvent) {
@@ -186,10 +187,10 @@ function PaginationControls({
       <span>Page {page} of {totalPages}</span>
       <div className="flex gap-2">
         <Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
-          Previous
+          {translate("common.actions.previous")}
         </Button>
         <Button size="sm" variant="ghost" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
-          Next
+          {translate("common.actions.next")}
         </Button>
       </div>
     </div>
@@ -225,6 +226,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
   const [newCanonicalLabel, setNewCanonicalLabel] = useState("");
   const [newRawTypesInput, setNewRawTypesInput] = useState("");
   const [rawTypeTargets, setRawTypeTargets] = useState<Record<number, string>>({});
+  const [relinkPreview, setRelinkPreview] = useState<{ rawTypeId: number; targetFamilyId: number } | null>(null);
 
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
   const familyRows = useMemo(() => [...(families.data || [])].sort(compareFamilies), [families.data]);
@@ -299,6 +301,50 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
         : [],
     [manualEvents.data, selectedFamily],
   );
+  const eventCountByFamilyId = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const event of manualEvents.data || []) {
+      if (event.family_id == null) continue;
+      counts.set(event.family_id, (counts.get(event.family_id) || 0) + 1);
+    }
+    return counts;
+  }, [manualEvents.data]);
+  const suggestionCountByFamilyId = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const suggestion of suggestions.data || []) {
+      if (suggestion.source_family_id != null) {
+        counts.set(suggestion.source_family_id, (counts.get(suggestion.source_family_id) || 0) + 1);
+      }
+      if (suggestion.suggested_family_id != null) {
+        counts.set(suggestion.suggested_family_id, (counts.get(suggestion.suggested_family_id) || 0) + 1);
+      }
+    }
+    return counts;
+  }, [suggestions.data]);
+  const eventRowsByObservedLabel = useMemo(() => {
+    const rows = new Map<string, ManualEvent[]>();
+    for (const event of manualEvents.data || []) {
+      if (!event.raw_type) continue;
+      const key = `${event.course_display}::${event.raw_type}`;
+      if (!rows.has(key)) rows.set(key, []);
+      rows.get(key)!.push(event);
+    }
+    return rows;
+  }, [manualEvents.data]);
+  const suggestionCountByObservedLabel = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const suggestion of suggestions.data || []) {
+      const pairs = [
+        suggestion.source_raw_type ? `${suggestion.course_display}::${suggestion.source_raw_type}` : null,
+        suggestion.suggested_raw_type ? `${suggestion.course_display}::${suggestion.suggested_raw_type}` : null,
+      ];
+      for (const key of pairs) {
+        if (!key) continue;
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
+    }
+    return counts;
+  }, [suggestions.data]);
 
   useEffect(() => {
     if (!selectedFamily) {
@@ -339,6 +385,28 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
   const pagedSuggestions = paginateRows(visibleSuggestions, suggestionPage, PAGE_SIZE.suggestions);
   const pagedEvents = paginateRows(selectedFamilyEvents, eventPage, PAGE_SIZE.events);
   const newRawTypes = useMemo(() => parseRawTypeKeywords(newRawTypesInput), [newRawTypesInput]);
+  const relinkPreviewRawType = useMemo(
+    () => (relinkPreview ? (rawTypes.data || []).find((row) => row.id === relinkPreview.rawTypeId) || null : null),
+    [rawTypes.data, relinkPreview],
+  );
+  const relinkPreviewCurrentFamily = useMemo(
+    () => (relinkPreviewRawType ? familyRows.find((family) => family.id === relinkPreviewRawType.family_id) || null : null),
+    [familyRows, relinkPreviewRawType],
+  );
+  const relinkPreviewTargetFamily = useMemo(
+    () => (relinkPreview ? familyRows.find((family) => family.id === relinkPreview.targetFamilyId) || null : null),
+    [familyRows, relinkPreview],
+  );
+  const relinkPreviewEvents = useMemo(() => {
+    if (!relinkPreviewRawType) return [];
+    const key = `${relinkPreviewRawType.course_display}::${relinkPreviewRawType.raw_type}`;
+    return [...(eventRowsByObservedLabel.get(key) || [])].sort(compareManualEvents).slice(0, 4);
+  }, [eventRowsByObservedLabel, relinkPreviewRawType]);
+  const relinkPreviewSuggestionCount = useMemo(() => {
+    if (!relinkPreviewRawType) return 0;
+    const key = `${relinkPreviewRawType.course_display}::${relinkPreviewRawType.raw_type}`;
+    return suggestionCountByObservedLabel.get(key) || 0;
+  }, [relinkPreviewRawType, suggestionCountByObservedLabel]);
 
   async function refreshAll() {
     await Promise.all([families.refresh(), status.refresh(), courses.refresh(), rawTypes.refresh(), suggestions.refresh(), manualEvents.refresh()]);
@@ -348,7 +416,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
     if (!selectedFamily) return;
     const canonicalLabel = draftLabel.trim();
     if (!canonicalLabel) {
-      setBanner({ tone: "error", text: "Family label is required." });
+      setBanner({ tone: "error", text: translate("families.banners.familyLabelRequired") });
       return;
     }
 
@@ -359,10 +427,10 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
         canonical_label: canonicalLabel,
         raw_types: selectedFamilyRawTypes.map((rawType) => rawType.raw_type),
       });
-      setBanner({ tone: "info", text: `Updated ${canonicalLabel}.` });
+      setBanner({ tone: "info", text: translate("families.banners.updated", { label: canonicalLabel }) });
       await refreshAll();
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to update family." });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("families.banners.updateFailed") });
     } finally {
       setBusyFamilyId(null);
     }
@@ -372,7 +440,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
     const identity = normalizeCourseIdentityForm(newCourseIdentity);
     const canonicalLabel = newCanonicalLabel.trim();
     if (!identity || !canonicalLabel) {
-      setBanner({ tone: "error", text: "New family needs course identity and canonical label." });
+      setBanner({ tone: "error", text: translate("families.create.validation") });
       return;
     }
 
@@ -387,29 +455,36 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
       setNewCanonicalLabel("");
       setNewRawTypesInput("");
       setCreateOpen(false);
-      setBanner({ tone: "info", text: `Created ${canonicalLabel}.` });
+      setBanner({ tone: "info", text: translate("families.create.created", { label: canonicalLabel }) });
       await refreshAll();
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to create family." });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("families.create.failed") });
     } finally {
       setBusyCreate(false);
     }
   }
 
-  async function moveRawType(rawType: CourseWorkItemRawType) {
+  function previewMoveRawType(rawType: CourseWorkItemRawType) {
     const familyId = Number(rawTypeTargets[rawType.id] || rawType.family_id);
     if (!Number.isFinite(familyId) || familyId === rawType.family_id) {
       return;
     }
+    setRelinkPreview({ rawTypeId: rawType.id, targetFamilyId: familyId });
+  }
 
-    setBusyRawTypeId(rawType.id);
+  async function confirmMoveRawType() {
+    if (!relinkPreviewRawType || !relinkPreviewTargetFamily) {
+      return;
+    }
+    setBusyRawTypeId(relinkPreviewRawType.id);
     setBanner(null);
     try {
-      await relinkFamilyRawType({ raw_type_id: rawType.id, family_id: familyId, note: "ui_family_governance" });
-      setBanner({ tone: "info", text: `Moved ${rawType.raw_type} into its new family.` });
+      await relinkFamilyRawType({ raw_type_id: relinkPreviewRawType.id, family_id: relinkPreviewTargetFamily.id, note: "ui_family_governance" });
+      setBanner({ tone: "info", text: translate("families.observed.moved", { label: relinkPreviewRawType.raw_type }) });
+      setRelinkPreview(null);
       await refreshAll();
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to move raw type." });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("families.observed.moveFailed") });
     } finally {
       setBusyRawTypeId(null);
     }
@@ -424,26 +499,26 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
         tone: "info",
         text:
           decision === "approve"
-            ? "Suggestion approved."
+            ? translate("families.suggestions.approved")
             : decision === "reject"
-              ? "Suggestion rejected."
-              : "Suggestion dismissed.",
+              ? translate("families.suggestions.rejected")
+              : translate("families.suggestions.dismissed"),
       });
       await refreshAll();
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to update suggestion." });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("families.suggestions.failed") });
     } finally {
       setBusySuggestionId(null);
     }
   }
 
   if (families.loading || status.loading || courses.loading || rawTypes.loading || suggestions.loading) {
-    return <LoadingState label="families" />;
+    return <LoadingState label={translate("common.loadingLabels.families")} />;
   }
   if (families.error) return <ErrorState message={`Families failed to load. ${families.error}`} />;
   if (status.error) return <ErrorState message={`Families status failed to load. ${status.error}`} />;
   if (courses.error) return <ErrorState message={`Course scope failed to load. ${courses.error}`} />;
-  if (rawTypes.error) return <ErrorState message={`Raw types failed to load. ${rawTypes.error}`} />;
+  if (rawTypes.error) return <ErrorState message={`Observed labels failed to load. ${rawTypes.error}`} />;
   if (suggestions.error) return <ErrorState message={`Suggestions failed to load. ${suggestions.error}`} />;
 
   return (
@@ -453,14 +528,14 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
         <div className="relative space-y-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Families</p>
-              <h2 className="mt-3 text-3xl font-semibold text-ink">Govern naming and relink raw labels.</h2>
-              <p className="mt-3 text-sm text-[#596270]">Pick a course. Then work one subarea.</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.heroEyebrow")}</p>
+              <h2 className="mt-3 text-3xl font-semibold text-ink">{translate("families.heroTitle")}</h2>
+              <p className="mt-3 text-sm text-[#596270]">{translate("families.heroSummary")}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Badge tone="info">{familyRows.length} families</Badge>
-              <Badge tone="info">{(rawTypes.data || []).length} raw types</Badge>
-              <Badge tone={visibleSuggestions.length > 0 ? "pending" : "approved"}>{visibleSuggestions.length} suggestions</Badge>
+              <Badge tone="info">{translate("families.counts.families", { count: familyRows.length })}</Badge>
+              <Badge tone="info">{translate("families.counts.observedLabels", { count: (rawTypes.data || []).length })}</Badge>
+              <Badge tone={visibleSuggestions.length > 0 ? "pending" : "approved"}>{translate("families.counts.suggestions", { count: visibleSuggestions.length })}</Badge>
             </div>
           </div>
 
@@ -471,16 +546,16 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                 className="pl-11"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search families, raw types, or suggestions"
+                placeholder={translate("families.searchPlaceholder")}
               />
             </div>
             <select
-              aria-label="Filter families by course"
+              aria-label={translate("changes.course")}
               className="h-11 rounded-2xl border border-line bg-white/80 px-4 text-sm text-ink outline-none transition focus:border-cobalt focus:bg-white"
               value={selectedCourse}
               onChange={(event) => setSelectedCourse(event.target.value)}
             >
-              <option value="all">All courses</option>
+              <option value="all">{translate("families.allCourses")}</option>
               {courseOptions.map((course) => (
                 <option key={course.course_display} value={course.course_display}>
                   {course.course_display}
@@ -491,15 +566,15 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
 
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant={workspaceArea === "families" ? "secondary" : "ghost"} onClick={() => setWorkspaceArea("families")}>
-              Families
+              {translate("families.areas.families")}
             </Button>
             <Button size="sm" variant={workspaceArea === "raw-types" ? "secondary" : "ghost"} onClick={() => setWorkspaceArea("raw-types")}>
-              Raw Types
+              {translate("families.areas.observedLabels")}
             </Button>
             <Button size="sm" variant={workspaceArea === "suggestions" ? "secondary" : "ghost"} onClick={() => setWorkspaceArea("suggestions")}>
-              Suggestions
+              {translate("families.areas.suggestions")}
             </Button>
-            <Badge tone="info">Last rebuild {formatDateTime(status.data?.last_rebuilt_at, "Never")}</Badge>
+            <Badge tone="info">{translate("families.lastRebuild", { time: formatDateTime(status.data?.last_rebuilt_at, translate("sources.detail.never")) })}</Badge>
           </div>
         </div>
       </Card>
@@ -515,32 +590,32 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
           <Card className="order-2 animate-surface-enter p-5 xl:order-1">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Families</p>
-                <h3 className="mt-1 text-lg font-semibold text-ink">Canonical family list</h3>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.areas.families")}</p>
+                <h3 className="mt-1 text-lg font-semibold text-ink">{translate("families.list.title")}</h3>
               </div>
               <Button size="sm" variant={createOpen ? "secondary" : "ghost"} onClick={() => setCreateOpen((current) => !current)}>
                 <Plus className="mr-2 h-4 w-4" />
-                Add family
+                {translate("families.list.addFamily")}
               </Button>
             </div>
 
             {createOpen ? (
               <div className="mt-4 rounded-[1.15rem] border border-line/80 bg-white/70 p-4">
-                <p className="text-sm font-medium text-ink">Create family</p>
+                <p className="text-sm font-medium text-ink">{translate("families.create.title")}</p>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  <Input value={newCanonicalLabel} onChange={(event) => setNewCanonicalLabel(event.target.value)} placeholder="Canonical label" />
-                  <Input value={newCourseIdentity.course_dept} onChange={(event) => setNewCourseIdentity((current) => ({ ...current, course_dept: event.target.value }))} placeholder="Dept" />
-                  <Input value={newCourseIdentity.course_number} onChange={(event) => setNewCourseIdentity((current) => ({ ...current, course_number: event.target.value }))} placeholder="Number" />
-                  <Input value={newCourseIdentity.course_suffix} onChange={(event) => setNewCourseIdentity((current) => ({ ...current, course_suffix: event.target.value }))} placeholder="Suffix" />
-                  <Input value={newCourseIdentity.course_quarter} onChange={(event) => setNewCourseIdentity((current) => ({ ...current, course_quarter: event.target.value }))} placeholder="Quarter" />
-                  <Input value={newCourseIdentity.course_year2} onChange={(event) => setNewCourseIdentity((current) => ({ ...current, course_year2: event.target.value }))} placeholder="Year2" />
+                  <Input value={newCanonicalLabel} onChange={(event) => setNewCanonicalLabel(event.target.value)} placeholder={translate("families.create.canonicalLabel")} />
+                  <Input value={newCourseIdentity.course_dept} onChange={(event) => setNewCourseIdentity((current) => ({ ...current, course_dept: event.target.value }))} placeholder={translate("families.create.dept")} />
+                  <Input value={newCourseIdentity.course_number} onChange={(event) => setNewCourseIdentity((current) => ({ ...current, course_number: event.target.value }))} placeholder={translate("families.create.number")} />
+                  <Input value={newCourseIdentity.course_suffix} onChange={(event) => setNewCourseIdentity((current) => ({ ...current, course_suffix: event.target.value }))} placeholder={translate("families.create.suffix")} />
+                  <Input value={newCourseIdentity.course_quarter} onChange={(event) => setNewCourseIdentity((current) => ({ ...current, course_quarter: event.target.value }))} placeholder={translate("families.create.quarter")} />
+                  <Input value={newCourseIdentity.course_year2} onChange={(event) => setNewCourseIdentity((current) => ({ ...current, course_year2: event.target.value }))} placeholder={translate("families.create.year2")} />
                 </div>
                 <div className="mt-4">
                   <Textarea
                     className="min-h-[96px]"
                     value={newRawTypesInput}
                     onChange={(event) => setNewRawTypesInput(event.target.value)}
-                    placeholder={"Raw labels to attach\nhomework\nproblem set"}
+                    placeholder={translate("families.create.observedLabelsPlaceholder")}
                   />
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -552,7 +627,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                 </div>
                 <div className="mt-4">
                   <Button onClick={() => void createNewFamily()} disabled={busyCreate}>
-                    {busyCreate ? "Creating..." : "Create family"}
+                    {busyCreate ? translate("families.create.creating") : translate("families.create.create")}
                   </Button>
                 </div>
               </div>
@@ -560,7 +635,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
 
             <div className="mt-4 space-y-3">
               {pagedFamilies.rows.length === 0 ? (
-                <EmptyState title="No families in this slice" description="Switch course scope or search terms to find a family." />
+                <EmptyState title={translate("families.list.noFamilies")} description={translate("families.list.noFamiliesDescription")} />
               ) : (
                 pagedFamilies.rows.map((family) => (
                   <button
@@ -577,9 +652,17 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                       <div>
                         <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{family.course_display}</p>
                         <p className="mt-2 font-medium text-ink">{family.canonical_label}</p>
-                        <p className="mt-2 text-sm text-[#596270]">Updated {formatDateTime(family.updated_at)}</p>
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-[#596270]">
+                          <span>{translate("families.labels.observedLabel")}: {family.raw_types.length}</span>
+                          <span>•</span>
+                          <span>{translate("families.labels.activeEvents")}: {eventCountByFamilyId.get(family.id) || 0}</span>
+                          <span>•</span>
+                          <span>{translate("families.labels.pendingChanges")}: {translate("families.labels.unavailable")}</span>
+                        </div>
                       </div>
-                      <Badge tone="info">{family.raw_types.length} raw</Badge>
+                      <Badge tone={suggestionCountByFamilyId.get(family.id) ? "pending" : "info"}>
+                        {suggestionCountByFamilyId.get(family.id) || 0}
+                      </Badge>
                     </div>
                   </button>
                 ))
@@ -594,33 +677,33 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
               <div>
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Selected family</p>
+                    <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.list.selectedFamily")}</p>
                     <h3 className="mt-1 text-lg font-semibold text-ink">{selectedFamily.canonical_label}</h3>
                     <p className="mt-2 text-sm text-[#596270]">{selectedFamily.course_display}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button size="sm" variant="ghost" className="xl:hidden" onClick={() => setFamilyChooserOpen(true)}>
-                      Choose family
+                      {translate("families.chooseFamily")}
                     </Button>
-                    <Badge tone={selectedFamilyRawTypes.length >= 3 ? "pending" : "info"}>{selectedFamilyRawTypes.length} raw labels</Badge>
-                    <Badge tone="info">{selectedFamilyEvents.length} events</Badge>
+                    <Badge tone={selectedFamilyRawTypes.length >= 3 ? "pending" : "info"}>{translate("families.labels.observedLabel")}: {selectedFamilyRawTypes.length}</Badge>
+                    <Badge tone="info">{translate("families.labels.activeEvents")}: {selectedFamilyEvents.length}</Badge>
                   </div>
                 </div>
 
                 <div className="mt-5 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Canonical rename</p>
+                      <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.list.canonicalRename")}</p>
                     </div>
                     <Button size="sm" onClick={() => void saveSelectedFamily()} disabled={busyFamilyId === selectedFamily.id}>
-                      {busyFamilyId === selectedFamily.id ? "Saving..." : "Save family"}
+                      {busyFamilyId === selectedFamily.id ? translate("families.list.savingFamily") : translate("families.list.saveFamily")}
                     </Button>
                   </div>
-                  <Input className="mt-4" value={draftLabel} onChange={(event) => setDraftLabel(event.target.value)} placeholder="Canonical label" />
+                  <Input className="mt-4" value={draftLabel} onChange={(event) => setDraftLabel(event.target.value)} placeholder={translate("families.list.canonicalLabelPlaceholder")} />
                 </div>
 
                 <div className="mt-4 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Observed raw labels</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.list.observedLabels")}</p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     {selectedFamilyRawTypes.length > 0 ? (
                       selectedFamilyRawTypes.map((rawType) => (
@@ -629,18 +712,21 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                         </Badge>
                       ))
                     ) : (
-                      <p className="text-sm text-[#596270]">No raw labels attached yet.</p>
+                      <p className="text-sm text-[#596270]">{translate("families.list.noObservedLabels")}</p>
                     )}
                   </div>
+                  <p className="mt-4 text-xs leading-5 text-[#6d7885]">
+                    {translate("families.labels.pendingChanges")}: {translate("families.labels.unavailable")}
+                  </p>
                 </div>
 
                 <div className="mt-4 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Event preview</p>
-                  <p className="mt-2 text-sm text-[#596270]">Read-only preview of the live events currently assigned to this family.</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.list.eventPreview")}</p>
+                  <p className="mt-2 text-sm text-[#596270]">{translate("families.list.eventPreviewSummary")}</p>
                   <div className="mt-4 space-y-3">
                     {manualEvents.loading && !manualEvents.data ? (
                       <div className="rounded-[1rem] border border-dashed border-line/80 bg-white/65 p-4 text-sm text-[#596270]">
-                        Loading current live events…
+                        {translate("common.labels.loading", { label: translate("families.list.activeEvents") })}
                       </div>
                     ) : manualEvents.error ? (
                       <div className="rounded-[1rem] border border-[#efc4b5] bg-[#fff3ef] p-4 text-sm text-[#7f3d2a]">
@@ -648,7 +734,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                       </div>
                     ) : pagedEvents.rows.length === 0 ? (
                       <div className="rounded-[1rem] border border-dashed border-line/80 bg-white/65 p-4 text-sm text-[#596270]">
-                        No current live events are assigned to this family.
+                        {translate("families.list.noEvents")}
                       </div>
                     ) : (
                       pagedEvents.rows.map((event) => (
@@ -659,7 +745,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                               <p className="mt-1 text-sm text-[#596270]">
                                 {formatSemanticDue(
                                   event.event as unknown as Record<string, unknown>,
-                                  formatSemanticDue(event as unknown as Record<string, unknown>, "No due time"),
+                                  formatSemanticDue(event as unknown as Record<string, unknown>, translate("common.labels.notAvailable")),
                                 )}
                               </p>
                             </div>
@@ -667,7 +753,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                           </div>
                           <div className="mt-3 flex flex-wrap gap-2 text-xs text-[#6d7885]">
                             {event.raw_type ? <span>{event.raw_type}</span> : null}
-                            <span>Updated {formatDateTime(event.updated_at)}</span>
+                            <span>{translate("sources.observability.updated")} {formatDateTime(event.updated_at)}</span>
                           </div>
                         </div>
                       ))
@@ -679,7 +765,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                 </div>
               </div>
             ) : (
-              <EmptyState title="No family selected" description="Pick a family from the list to edit its canonical label." />
+              <EmptyState title={translate("families.list.noFamilySelected")} description={translate("families.list.noFamilySelectedDescription")} />
             )}
           </Card>
         </div>
@@ -689,8 +775,8 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
         <SheetContent side="bottom" className="overflow-y-auto xl:hidden">
           <SheetHeader>
             <div>
-              <SheetTitle>Choose family</SheetTitle>
-              <SheetDescription>Pick a family to review its naming detail.</SheetDescription>
+              <SheetTitle>{translate("families.chooseFamily")}</SheetTitle>
+              <SheetDescription>{translate("families.list.chooseFamilySummary")}</SheetDescription>
             </div>
             <SheetDismissButton />
           </SheetHeader>
@@ -714,7 +800,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                     <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{family.course_display}</p>
                     <p className="mt-2 font-medium text-ink">{family.canonical_label}</p>
                   </div>
-                  <Badge tone="info">{family.raw_types.length} raw</Badge>
+                  <Badge tone="info">{translate("families.labels.observedLabel")}: {family.raw_types.length}</Badge>
                 </div>
               </button>
             ))}
@@ -726,30 +812,42 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
         <Card className="animate-surface-enter p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Raw Types</p>
-              <h3 className="mt-1 text-lg font-semibold text-ink">Relink observed labels</h3>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.areas.observedLabels")}</p>
+              <h3 className="mt-1 text-lg font-semibold text-ink">{translate("families.observed.title")}</h3>
+              <p className="mt-2 text-sm text-[#596270]">{translate("families.observed.summary")}</p>
             </div>
-            <Badge tone="info">{visibleRawTypes.length}</Badge>
+            <Badge tone="info">{translate("families.counts.observedLabels", { count: visibleRawTypes.length })}</Badge>
           </div>
 
           <div className="mt-4 space-y-3">
             {pagedRawTypes.rows.length === 0 ? (
-              <EmptyState title="No raw types in this slice" description="Change the course scope or search terms to expose raw labels." />
+              <EmptyState title={translate("families.observed.noRows")} description={translate("families.observed.noRowsDescription")} />
             ) : (
               pagedRawTypes.rows.map((rawType) => {
                 const targetFamilies = familyRows.filter((family) => family.course_display === rawType.course_display);
                 const currentTarget = rawTypeTargets[rawType.id] || String(rawType.family_id);
+                const eventKey = `${rawType.course_display}::${rawType.raw_type}`;
+                const activeEvents = eventRowsByObservedLabel.get(eventKey) || [];
+                const relatedSuggestions = suggestionCountByObservedLabel.get(eventKey) || 0;
                 return (
                   <div key={rawType.id} className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-ink">{rawType.raw_type}</p>
                         <p className="mt-1 text-sm text-[#596270]">{rawType.course_display}</p>
-                        <p className="mt-2 text-sm text-[#314051]">Current family: {familyLabelById[rawType.family_id] || `Family #${rawType.family_id}`}</p>
+                        <p className="mt-2 text-sm text-[#314051]">
+                          {translate("families.observed.currentFamily", { label: familyLabelById[rawType.family_id] || translate("families.labels.unavailable") })}
+                        </p>
+                        <p className="mt-2 text-xs text-[#6d7885]">
+                          {translate("families.observed.impactSummary", {
+                            events: activeEvents.length,
+                            suggestions: relatedSuggestions,
+                          })}
+                        </p>
                       </div>
                       <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
                         <select
-                          aria-label={`Select target family for ${rawType.raw_type}`}
+                          aria-label={translate("families.list.canonicalRename")}
                           className="h-11 min-w-[220px] rounded-2xl border border-line bg-white/85 px-4 text-sm text-ink outline-none transition focus:border-cobalt focus:bg-white"
                           value={currentTarget}
                           onChange={(event) => setRawTypeTargets((current) => ({ ...current, [rawType.id]: event.target.value }))}
@@ -760,8 +858,8 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                             </option>
                           ))}
                         </select>
-                        <Button size="sm" disabled={busyRawTypeId === rawType.id || currentTarget === String(rawType.family_id)} onClick={() => void moveRawType(rawType)}>
-                          {busyRawTypeId === rawType.id ? "Moving..." : "Move"}
+                        <Button size="sm" disabled={busyRawTypeId === rawType.id || currentTarget === String(rawType.family_id)} onClick={() => previewMoveRawType(rawType)}>
+                          {busyRawTypeId === rawType.id ? translate("families.observed.previewing") : translate("families.observed.previewMove")}
                         </Button>
                       </div>
                     </div>
@@ -779,15 +877,16 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
         <Card className="animate-surface-enter p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Suggestions</p>
-              <h3 className="mt-1 text-lg font-semibold text-ink">Review likely duplicates</h3>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.suggestions.title")}</p>
+              <h3 className="mt-1 text-lg font-semibold text-ink">{translate("families.areas.suggestions")}</h3>
+              <p className="mt-2 text-sm text-[#596270]">{translate("families.suggestions.summary")}</p>
             </div>
             <Badge tone={visibleSuggestions.length > 0 ? "pending" : "approved"}>{visibleSuggestions.length}</Badge>
           </div>
 
           <div className="mt-4 space-y-3">
             {pagedSuggestions.rows.length === 0 ? (
-              <EmptyState title="No suggestions in this slice" description="No duplicate clue is waiting for a decision here." />
+              <EmptyState title={translate("families.suggestions.noRows")} description={translate("families.suggestions.noRowsDescription")} />
             ) : (
               pagedSuggestions.rows.map((suggestion) => (
                 <div key={suggestion.id} className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
@@ -796,22 +895,22 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                       <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{suggestion.course_display}</p>
                       <div className="mt-2 flex items-center gap-2 text-sm font-medium text-ink">
                         <Sparkles className="h-4 w-4 text-cobalt" />
-                        {suggestion.source_family_name || "Unknown family"} → {suggestion.suggested_family_name || "Suggested family"}
+                        {suggestion.source_family_name || translate("families.suggestions.unknownFamily")} → {suggestion.suggested_family_name || translate("families.suggestions.suggestedFamily")}
                       </div>
-                      <p className="mt-2 text-sm text-[#596270]">{suggestion.source_raw_type || "Unknown"} → {suggestion.suggested_raw_type || "Suggested"}</p>
+                      <p className="mt-2 text-sm text-[#596270]">{suggestion.source_raw_type || translate("families.suggestions.unknownObservedLabel")} → {suggestion.suggested_raw_type || translate("families.suggestions.suggestedObservedLabel")}</p>
                     </div>
                     <Badge tone="info">{Math.round(suggestion.confidence * 100)}%</Badge>
                   </div>
                   {suggestion.evidence ? <p className="mt-4 text-sm leading-6 text-[#596270]">{suggestion.evidence}</p> : null}
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Button size="sm" disabled={busySuggestionId === suggestion.id} onClick={() => void decideSuggestion(suggestion.id, "approve")}>
-                      {busySuggestionId === suggestion.id ? "Applying..." : "Approve"}
+                      {busySuggestionId === suggestion.id ? translate("families.suggestions.applying") : translate("families.suggestions.approve")}
                     </Button>
                     <Button size="sm" variant="ghost" disabled={busySuggestionId === suggestion.id} onClick={() => void decideSuggestion(suggestion.id, "reject")}>
-                      Reject
+                      {translate("families.suggestions.reject")}
                     </Button>
                     <Button size="sm" variant="ghost" disabled={busySuggestionId === suggestion.id} onClick={() => void decideSuggestion(suggestion.id, "dismiss")}>
-                      Dismiss
+                      {translate("families.suggestions.dismiss")}
                     </Button>
                   </div>
                 </div>
@@ -822,6 +921,79 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
           <PaginationControls page={pagedSuggestions.page} totalPages={pagedSuggestions.totalPages} onPageChange={setSuggestionPage} />
         </Card>
       ) : null}
+
+      <Sheet open={Boolean(relinkPreviewRawType && relinkPreviewTargetFamily)} onOpenChange={(open) => (!open ? setRelinkPreview(null) : undefined)}>
+        <SheetContent side="bottom" className="overflow-y-auto">
+          <SheetHeader>
+            <div>
+              <SheetTitle>
+                {relinkPreviewRawType && relinkPreviewTargetFamily
+                  ? translate("families.observed.confirmMove", { label: relinkPreviewTargetFamily.canonical_label })
+                  : translate("families.observed.reviewImpact")}
+              </SheetTitle>
+              <SheetDescription>{translate("families.observed.summary")}</SheetDescription>
+            </div>
+            <SheetDismissButton />
+          </SheetHeader>
+          {relinkPreviewRawType && relinkPreviewTargetFamily ? (
+            <div className="mt-6 space-y-4">
+              <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.labels.observedLabel")}</p>
+                <p className="mt-2 text-base font-semibold text-ink">{relinkPreviewRawType.raw_type}</p>
+                <p className="mt-3 text-sm text-[#314051]">
+                  {translate("families.observed.currentFamily", { label: relinkPreviewCurrentFamily?.canonical_label || translate("families.labels.unavailable") })}
+                </p>
+                <p className="mt-2 text-sm text-[#314051]">
+                  {translate("families.labels.canonicalFamily")}: {relinkPreviewTargetFamily.canonical_label}
+                </p>
+              </div>
+
+              <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.observed.reviewImpact")}</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[1rem] border border-line/80 bg-white/80 p-3 text-sm text-[#314051]">
+                    <p className="font-medium text-ink">{translate("families.labels.activeEvents")}</p>
+                    <p className="mt-2">{relinkPreviewEvents.length}</p>
+                  </div>
+                  <div className="rounded-[1rem] border border-line/80 bg-white/80 p-3 text-sm text-[#314051]">
+                    <p className="font-medium text-ink">{translate("families.areas.suggestions")}</p>
+                    <p className="mt-2">{relinkPreviewSuggestionCount}</p>
+                  </div>
+                </div>
+                <p className="mt-4 text-sm leading-6 text-[#596270]">{translate("families.observed.pendingChangesGap")}</p>
+                <p className="mt-2 text-sm leading-6 text-[#596270]">{translate("families.observed.futureImports")}</p>
+              </div>
+
+              <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.observed.sampleEvents")}</p>
+                <div className="mt-4 space-y-3">
+                  {relinkPreviewEvents.length === 0 ? (
+                    <p className="text-sm text-[#596270]">{translate("families.observed.noSampleEvents")}</p>
+                  ) : (
+                    relinkPreviewEvents.map((event) => (
+                      <div key={event.entity_uid} className="rounded-[1rem] border border-line/80 bg-white/80 p-4">
+                        <p className="font-medium text-ink">{familyEventTitle(event)}</p>
+                        <p className="mt-1 text-sm text-[#596270]">
+                          {formatSemanticDue(event as unknown as Record<string, unknown>, translate("common.labels.notAvailable"))}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Button disabled={busyRawTypeId === relinkPreviewRawType.id} onClick={() => void confirmMoveRawType()}>
+                  {busyRawTypeId === relinkPreviewRawType.id ? translate("families.observed.previewing") : translate("families.observed.confirmMove", { label: relinkPreviewTargetFamily.canonical_label })}
+                </Button>
+                <Button variant="ghost" onClick={() => setRelinkPreview(null)}>
+                  {translate("families.observed.keepInFamily", { label: relinkPreviewCurrentFamily?.canonical_label || translate("families.labels.canonicalFamily") })}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

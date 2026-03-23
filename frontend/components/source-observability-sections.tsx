@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { translate } from "@/lib/i18n/runtime";
 import { cn } from "@/lib/utils";
 import { formatElapsedMs, formatUsageSummary } from "@/lib/source-observability";
 import { formatStatusLabel } from "@/lib/presenters";
@@ -45,32 +46,32 @@ export function SourceObservabilitySections({
 }) {
   const bootstrapUsage = formatUsageSummary(observability.bootstrap_usage);
   const replayUsage = formatUsageSummary(observability.replay_usage);
-  const latestSyncHeadline = observability.latest_sync_label || "No live sync";
-  const latestSyncDetail = observability.latest_sync_detail || "Run a sync to sample intake posture.";
+  const latestSyncHeadline = observability.latest_sync_label || translate("sources.observability.noLiveSync");
+  const latestSyncDetail = observability.latest_sync_detail || translate("sources.observability.runToSample");
 
   return (
     <div className={cn("grid gap-3 sm:grid-cols-2", className)}>
       <MetricBlock
-        label="Connection"
+        label={translate("sources.observability.connection")}
         tone={observability.connection_status === "healthy" ? "approved" : observability.connection_status === "attention" ? "pending" : "info"}
         headline={observability.connection_label}
         detail={observability.connection_detail}
       />
       <MetricBlock
-        label="Bootstrap"
+        label={translate("sources.observability.bootstrap")}
         tone={observabilityTone(observability.bootstrap_status)}
         headline={formatStatusLabel(observability.bootstrap_status)}
         detail={formatElapsedMs(observability.latest_bootstrap_elapsed_ms)}
       />
       <MetricBlock
-        label="Replay"
+        label={translate("sources.observability.replay")}
         tone={observabilityTone(observability.replay_status)}
         headline={formatStatusLabel(observability.replay_status)}
         detail={formatElapsedMs(observability.latest_replay_elapsed_ms)}
       />
-      <MetricBlock label="Latest sync" headline={latestSyncHeadline} detail={latestSyncDetail} />
+      <MetricBlock label={translate("sources.observability.latestSync")} headline={latestSyncHeadline} detail={latestSyncDetail} />
       <MetricBlock
-        label="LLM cost"
+        label={translate("sources.observability.llmCost")}
         headline={replayUsage.headline === "Unavailable" ? bootstrapUsage.headline : replayUsage.headline}
         detail={replayUsage.headline === "Unavailable" ? bootstrapUsage.detail : replayUsage.detail}
       />

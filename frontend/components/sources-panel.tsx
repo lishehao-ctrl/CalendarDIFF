@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader,
 import { startOnboardingGmailOAuth } from "@/lib/api/onboarding";
 import { createOAuthSession, createSyncRequest, deleteSource as deleteSourceRequest, getSyncRequest, listSources, sourceListCacheKey, updateSource } from "@/lib/api/sources";
 import { withBasePath } from "@/lib/demo-mode";
+import { translate } from "@/lib/i18n/runtime";
 import { invalidateSourceCaches } from "@/lib/source-cache";
 import { useApiResource } from "@/lib/use-api-resource";
 import { useSourceObservabilityMap } from "@/lib/use-source-observability-map";
@@ -56,20 +57,20 @@ function syncTone(value: string | undefined) {
 function buildSourceInsight(source: SourceRow) {
   if (sourceNeedsAttention(source)) {
     return {
-      title: source.provider === "gmail" ? "Reconnect Gmail" : "Repair this source",
+      title: source.provider === "gmail" ? translate("sources.reconnectGmail") : translate("sources.toolsSection"),
       detail: "New changes from this source are not trustworthy yet.",
     };
   }
 
   if (source.sync_progress) {
     return {
-      title: source.sync_progress.label || "Sync is in progress",
+      title: source.sync_progress.label || translate("common.status.running"),
       detail: null,
     };
   }
 
   return {
-    title: "No action needed",
+    title: translate("common.status.ok"),
     detail: null,
   };
 }
@@ -81,7 +82,7 @@ function formatSourceTitle(source: SourceRow) {
 
 function formatSourceSubtitle(source: SourceRow) {
   if (source.provider === "ics") {
-    return "Student calendar feed";
+    return translate("sources.detail.studentCalendarFeed");
   }
   return source.oauth_account_email || `${formatStatusLabel(source.source_kind, "Email")} · ${source.source_key}`;
 }
@@ -89,30 +90,30 @@ function formatSourceSubtitle(source: SourceRow) {
 function productPhaseLabel(phase: SourceRow["source_product_phase"] | SourceObservabilityResponse["source_product_phase"]) {
   switch (phase) {
     case "importing_baseline":
-      return "Baseline import";
+      return formatStatusLabel("baseline_import");
     case "needs_initial_review":
-      return "Initial Review";
+      return formatStatusLabel("initial_review");
     case "monitoring_live":
-      return "Monitoring live";
+      return formatStatusLabel("monitoring_live");
     case "needs_attention":
-      return "Attention required";
+      return formatStatusLabel("attention_required");
     default:
-      return "Phase unavailable";
+      return translate("sources.detail.phaseUnavailable");
   }
 }
 
 function trustStateLabel(trustState: SourceRecovery["trust_state"] | null | undefined) {
   switch (trustState) {
     case "trusted":
-      return "Trusted";
+      return formatStatusLabel("trusted");
     case "stale":
-      return "Stale";
+      return formatStatusLabel("stale");
     case "partial":
-      return "Partially trusted";
+      return formatStatusLabel("partial");
     case "blocked":
-      return "Blocked";
+      return formatStatusLabel("blocked");
     default:
-      return "Trust unavailable";
+      return translate("sources.detail.trustUnavailable");
   }
 }
 
@@ -176,13 +177,13 @@ function ConnectSourceCard({
           </div>
         </div>
         <Badge tone={attention ? "pending" : connected ? "approved" : "info"}>
-          {attention ? "Attention" : connected ? "Connected" : "Not connected"}
+          {attention ? formatStatusLabel("attention") : connected ? translate("sources.connectCard.connected") : translate("sources.connectCard.notConnected")}
         </Badge>
       </div>
       <div className="mt-3">
         <Button asChild size="sm" variant={connected ? "ghost" : "secondary"}>
           <Link href={href}>
-            {connected ? "Manage" : "Connect"}
+            {connected ? translate("sources.connectCard.manage") : translate("common.actions.connect")}
             <ChevronRight className="ml-2 h-4 w-4" />
           </Link>
         </Button>
@@ -217,24 +218,24 @@ function ConnectedSourceCard({
   const primaryAction =
     recovery?.next_action === "reconnect_gmail" ? (
       <Button asChild className="w-full justify-center">
-        <Link href={sourceSetupHref(basePath, source.provider)}>Reconnect Gmail</Link>
+        <Link href={sourceSetupHref(basePath, source.provider)}>{translate("sources.reconnectGmail")}</Link>
       </Button>
     ) : recovery?.next_action === "update_ics" ? (
       <Button asChild className="w-full justify-center">
-        <Link href={sourceSetupHref(basePath, source.provider)}>Update Canvas ICS</Link>
+        <Link href={sourceSetupHref(basePath, source.provider)}>{translate("sources.updateCanvas")}</Link>
       </Button>
     ) : recovery?.next_action === "retry_sync" ? (
       <Button onClick={() => onSync(source.source_id)} className="w-full justify-center">
         <RefreshCw className="mr-2 h-4 w-4" />
-        {recovery.next_action_label || "Retry sync"}
+        {recovery.next_action_label || translate("sources.retrySync")}
       </Button>
     ) : productPhase === "needs_initial_review" ? (
       <Button asChild className="w-full justify-center">
-        <Link href={withBasePath(basePath, "/initial-review")}>Open Initial Review</Link>
+        <Link href={withBasePath(basePath, "/initial-review")}>{translate("sources.openInitialReview")}</Link>
       </Button>
     ) : (
       <Button asChild className="w-full justify-center">
-        <Link href={detailHref}>Open details</Link>
+        <Link href={detailHref}>{translate("sources.openDetails")}</Link>
       </Button>
     );
 
@@ -254,12 +255,12 @@ function ConnectedSourceCard({
             <div className="grid w-full shrink-0 gap-2 sm:grid-cols-2 lg:w-[340px]">
               {primaryAction}
               <Button asChild variant="ghost" className="w-full justify-center">
-                <Link href={detailHref}>Open details</Link>
+                <Link href={detailHref}>{translate("sources.openDetails")}</Link>
               </Button>
               <div className="hidden sm:block" />
               <Button variant="ghost" className="w-full justify-center" onClick={() => onDelete(source.source_id, source.provider)} disabled={busyDelete === source.source_id}>
                 <Trash2 className="mr-2 h-4 w-4" />
-                {busyDelete === source.source_id ? "Archiving..." : "Archive"}
+                {busyDelete === source.source_id ? translate("sources.archiving") : translate("sources.archive")}
               </Button>
             </div>
           </div>
@@ -299,10 +300,10 @@ function ArchivedSourceCard({
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => onReactivate(source.source_id)} disabled={busyReactivate === source.source_id}>
             <ArchiveRestore className="mr-2 h-4 w-4" />
-            {busyReactivate === source.source_id ? "Reactivating..." : "Reactivate"}
+            {busyReactivate === source.source_id ? translate("sources.reactivating") : translate("sources.reactivate")}
           </Button>
           <Button asChild variant="ghost">
-            <Link href={withBasePath(basePath, `/sources/${source.source_id}`)}>Open details</Link>
+            <Link href={withBasePath(basePath, `/sources/${source.source_id}`)}>{translate("sources.openDetails")}</Link>
           </Button>
         </div>
       </div>
@@ -465,7 +466,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
         const normalized = status.status.toLowerCase();
         setSyncState((prev) => ({ ...prev, [sourceId]: normalized }));
         if (status.status === "SUCCEEDED" || status.status === "FAILED") {
-          if (status.status === "SUCCEEDED") {
+        if (status.status === "SUCCEEDED") {
             setBanner({ tone: "info", text: options?.successMessage || `Source #${sourceId} sync succeeded.` });
           } else {
             const failure = status.error_message || status.connector_result?.error_message || options?.failurePrefix || `Source #${sourceId} sync failed.`;
@@ -530,10 +531,10 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
   async function archiveSource(sourceId: number, provider: string) {
     const confirmed = window.confirm(
       provider === "gmail"
-        ? "Disconnect this Gmail mailbox and move it to Archived Sources?"
+        ? translate("sources.archiveConfirmGmail")
         : provider === "ics"
-          ? "Archive this Canvas ICS link?"
-          : "Archive this source?",
+          ? translate("sources.archiveConfirmCanvas")
+          : translate("sources.archiveConfirmGeneric"),
     );
     if (!confirmed) return;
 
@@ -544,7 +545,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
       invalidateSourceCaches(sourceId);
       setBanner({
         tone: "info",
-        text: provider === "gmail" ? "Mailbox disconnected and archived." : provider === "ics" ? "Canvas ICS link archived." : "Source archived.",
+        text: provider === "gmail" ? translate("sources.archivedMailbox") : provider === "ics" ? translate("sources.archivedCanvas") : translate("sources.archivedSource"),
       });
       await refreshAll({ background: true, force: true, refreshObservability: true });
     } catch (err) {
@@ -560,7 +561,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
     try {
       await updateSource(sourceId, { is_active: true });
       invalidateSourceCaches(sourceId);
-      setBanner({ tone: "info", text: `Source #${sourceId} reactivated.` });
+      setBanner({ tone: "info", text: translate("sources.reactivateSource", { sourceId }) });
       await refreshAll({ background: true, force: true, refreshObservability: true });
     } catch (err) {
       setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to reactivate source" });
@@ -578,11 +579,11 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
         : await startOnboardingGmailOAuth({ label_id: "INBOX", return_to: "sources" });
       window.location.assign(session.authorization_url);
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to start Gmail OAuth" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("sources.connectGmailFailed") });
     }
   }
 
-  if ((active.loading && !active.data) || (archived.loading && !archived.data)) return <LoadingState label="sources" />;
+  if ((active.loading && !active.data) || (archived.loading && !archived.data)) return <LoadingState label={translate("common.loadingLabels.sources")} />;
   if (active.error) return <ErrorState message={active.error} />;
   if (archived.error) return <ErrorState message={archived.error} />;
   if (observabilityMap.error) return <ErrorState message={observabilityMap.error} />;
@@ -594,14 +595,14 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
         <div className="relative space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Sources</p>
-              <h2 className="mt-3 text-3xl font-semibold text-ink">Keep intake trustworthy.</h2>
-              <p className="mt-3 text-sm text-[#596270]">Fix attention first.</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.heroEyebrow")}</p>
+              <h2 className="mt-3 text-3xl font-semibold text-ink">{translate("sources.heroTitle")}</h2>
+              <p className="mt-3 text-sm text-[#596270]">{translate("sources.heroSummary")}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Badge tone={attentionSources.length > 0 ? "pending" : "approved"}>{attentionSources.length} attention</Badge>
-              <Badge tone="info">{activeSources.length} connected</Badge>
-              <Badge tone="info">{archivedSources.length} archived</Badge>
+              <Badge tone={attentionSources.length > 0 ? "pending" : "approved"}>{translate("sources.counts.attention", { count: attentionSources.length })}</Badge>
+              <Badge tone="info">{translate("sources.counts.connected", { count: activeSources.length })}</Badge>
+              <Badge tone="info">{translate("sources.counts.archived", { count: archivedSources.length })}</Badge>
             </div>
           </div>
         </div>
@@ -617,13 +618,15 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
         <Card className="animate-surface-enter border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Initial Review</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.introEyebrow")}</p>
               <p className="mt-1 text-sm font-medium text-ink">
-                {initialReviewReady.length === 1 ? "A source finished its first baseline import." : `${initialReviewReady.length} sources finished their first baseline import.`}
+                {initialReviewReady.length === 1
+                  ? translate("sources.initialReviewReadyOne")
+                  : translate("sources.initialReviewReadyMany", { count: initialReviewReady.length })}
               </p>
             </div>
             <Button asChild size="sm">
-              <Link href={withBasePath(basePath, "/initial-review")}>Open Initial Review</Link>
+              <Link href={withBasePath(basePath, "/initial-review")}>{translate("sources.introOpen")}</Link>
             </Button>
           </div>
         </Card>
@@ -631,9 +634,11 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
 
       {initialReviewReady.length === 0 && baselineRunning.length > 0 ? (
         <Card className="animate-surface-enter border border-line/80 bg-white/80 p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Baseline import</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.baselineEyebrow")}</p>
           <p className="mt-1 text-sm font-medium text-ink">
-            {baselineRunning.length === 1 ? "A source is still building its first baseline." : `${baselineRunning.length} sources are still building their first baseline.`}
+            {baselineRunning.length === 1
+              ? translate("sources.baselineRunningOne")
+              : translate("sources.baselineRunningMany", { count: baselineRunning.length })}
           </p>
         </Card>
       ) : null}
@@ -642,21 +647,21 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
         <Card className="animate-surface-enter animate-surface-delay-1 p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Connected sources</p>
-              <h3 className="mt-1 text-lg font-semibold text-ink">Current intake</h3>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.listEyebrow")}</p>
+              <h3 className="mt-1 text-lg font-semibold text-ink">{translate("sources.listTitle")}</h3>
             </div>
             <Badge tone="info">{activeSources.length}</Badge>
           </div>
 
           <div className="mt-4 space-y-3">
             {activeSources.length === 0 ? (
-              <EmptyState title="No connected sources" description="Connect Canvas ICS or Gmail to start intake." />
+              <EmptyState title={translate("sources.emptyTitle")} description={translate("sources.emptyDescription")} />
             ) : (
               <>
                 {attentionSources.length > 0 ? (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs uppercase tracking-[0.18em] text-ember">Needs attention</p>
+                      <p className="text-xs uppercase tracking-[0.18em] text-ember">{translate("sources.needsAttention")}</p>
                       <Badge tone="pending">{attentionSources.length}</Badge>
                     </div>
                     {attentionSources.map((source) => (
@@ -681,7 +686,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
                 {healthySources.length > 0 ? (
                   <div className={`${attentionSources.length > 0 ? "border-t border-line/80 pt-4" : ""} space-y-3`}>
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Healthy</p>
+                      <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.healthy")}</p>
                       <Badge tone="approved">{healthySources.length}</Badge>
                     </div>
                     {healthySources.map((source) => (
@@ -709,7 +714,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
           {(archivedSources.length > 0 || activeProviders.size < 2) ? (
             <div className="mt-4 text-xs text-[#6d7885]">
               <button type="button" className="font-medium text-cobalt transition hover:text-[#1f4fd6]" onClick={() => setToolsOpen(true)}>
-                Open source tools
+                {translate("sources.openSourceTools")}
               </button>
             </div>
           ) : null}
@@ -720,8 +725,8 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
         <SheetContent side={toolsSheetSide} className="overflow-y-auto">
           <SheetHeader>
             <div>
-              <SheetTitle>Source tools</SheetTitle>
-              <SheetDescription>Connect a new source, repair an existing one, or recover an archived connection.</SheetDescription>
+              <SheetTitle>{translate("sources.toolsTitle")}</SheetTitle>
+              <SheetDescription>{translate("sources.toolsSummary")}</SheetDescription>
             </div>
             <SheetDismissButton />
           </SheetHeader>
@@ -729,13 +734,13 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
           <div className="mt-6 space-y-6">
             <div className="space-y-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Connect or repair</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.toolsSection")}</p>
               </div>
               <div className="grid gap-3">
                 <ConnectSourceCard
                   provider="Canvas ICS"
-                  title="Student calendar feed"
-                  detail="Connect or update the calendar feed."
+                  title={translate("sources.connectCanvas")}
+                  detail={translate("sources.connectCanvasDetail")}
                   connected={activeProviders.has("ics")}
                   attention={activeSources.some((source) => source.provider === "ics" && sourceNeedsAttention(source))}
                   href={withBasePath(basePath, "/sources/connect/canvas-ics")}
@@ -744,8 +749,8 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
                 />
                 <ConnectSourceCard
                   provider="Gmail"
-                  title="OAuth mailbox"
-                  detail="Connect Gmail if email changes should count."
+                  title={translate("sources.connectGmail")}
+                  detail={translate("sources.connectGmailDetail")}
                   connected={activeProviders.has("gmail")}
                   attention={activeSources.some((source) => source.provider === "gmail" && sourceNeedsAttention(source))}
                   href={withBasePath(basePath, "/sources/connect/gmail")}
@@ -757,7 +762,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
               {!activeProviders.has("gmail") ? (
                 <div className="pt-1">
                   <Button variant="ghost" onClick={() => void startGmailConnect()}>
-                    Connect Gmail now
+                    {translate("sources.connectGmailNow")}
                   </Button>
                 </div>
               ) : null}
@@ -766,14 +771,14 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
             <div className="space-y-3">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Archived</p>
-                  <h3 className="mt-1 text-lg font-semibold text-ink">Recover previous connections</h3>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.archivedEyebrow")}</p>
+                  <h3 className="mt-1 text-lg font-semibold text-ink">{translate("sources.archivedTitle")}</h3>
                 </div>
                 <Badge tone="info">{archivedSources.length}</Badge>
               </div>
 
               {archivedSources.length === 0 ? (
-                <div className="rounded-[1.1rem] border border-dashed border-line/80 bg-white/40 p-5 text-sm text-[#596270]">No archived sources.</div>
+                <div className="rounded-[1.1rem] border border-dashed border-line/80 bg-white/40 p-5 text-sm text-[#596270]">{translate("sources.noArchived")}</div>
               ) : (
                 archivedSources.map((source) => (
                   <ArchivedSourceCard

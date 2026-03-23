@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { applyChangeEdit, getChangeEditContext, previewChangeEdit } from "@/lib/api/changes";
 import { withBasePath } from "@/lib/demo-mode";
+import { translate } from "@/lib/i18n/runtime";
 import { formatCourseDisplay, formatSemanticDue, formatStatusLabel } from "@/lib/presenters";
 import type { ChangeEditContext, ChangeEditMode, ChangeEditPreviewResponse, ChangeEditRequest } from "@/lib/types";
 import { useApiResource } from "@/lib/use-api-resource";
@@ -29,9 +30,9 @@ function ReviewEditEventCard({
       <p className="mt-2 font-medium text-ink">{event.event_display.display_label}</p>
       <p className="mt-1 text-xs text-[#6d7885]">{event.event_display.course_display}</p>
       <div className="mt-4 space-y-1.5">
-        <p>Family: {event.event_display.family_name}</p>
-        <p>Ordinal: {event.event_display.ordinal ?? "N/A"}</p>
-        <p>Due: {formatSemanticDue(event as unknown as Record<string, unknown>, "N/A")}</p>
+        <p>{translate("manual.family")}: {event.event_display.family_name}</p>
+        <p>{translate("changeEdit.ordinal")}: {event.event_display.ordinal ?? "N/A"}</p>
+        <p>{translate("changeEdit.due")}: {formatSemanticDue(event as unknown as Record<string, unknown>, "N/A")}</p>
       </div>
     </div>
   );
@@ -76,7 +77,7 @@ export function ChangeItemEditPageClient({ mode, changeId, basePath = "" }: { mo
   }, [data]);
 
   const pageTitle = useMemo(() => {
-    return data?.editable_event.family_name || data?.entity_uid || "Change";
+    return data?.editable_event.family_name || data?.entity_uid || translate("changeEdit.unknownChange");
   }, [data]);
 
   function buildEditRequest(): ChangeEditRequest | null {
@@ -116,7 +117,7 @@ export function ChangeItemEditPageClient({ mode, changeId, basePath = "" }: { mo
       const payload = await previewChangeEdit(request);
       setPreview(payload);
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Preview failed" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("changeEdit.previewFailed") });
     } finally {
       setBusy(null);
     }
@@ -133,27 +134,27 @@ export function ChangeItemEditPageClient({ mode, changeId, basePath = "" }: { mo
       const payload = await applyChangeEdit(request);
       setBanner({
         tone: "info",
-        text: payload.mode === "proposal" ? "Proposal updated. Returning to Changes..." : "Current event updated. Returning to Changes..."
+        text: payload.mode === "proposal" ? translate("changeEdit.proposalUpdated") : translate("changeEdit.directUpdated")
       });
       setTimeout(() => {
         router.push(withBasePath(basePath, "/changes"));
         router.refresh();
       }, 300);
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Apply failed" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("changeEdit.applyFailed") });
     } finally {
       setBusy(null);
     }
   }
 
   if (loading) {
-    return <LoadingState label={mode === "proposal" ? "proposal edit" : "direct edit"} />;
+    return <LoadingState label={mode === "proposal" ? translate("common.loadingLabels.proposalEdit") : translate("common.loadingLabels.directEdit")} />;
   }
   if (error) {
     return <ErrorState message={error} />;
   }
   if (!data) {
-    return <EmptyState title="Change not found" description="This review change is unavailable or you do not have access to it." />;
+    return <EmptyState title={translate("changeEdit.notFoundTitle")} description={translate("changeEdit.notFoundDescription")} />;
   }
 
   return (
@@ -161,12 +162,12 @@ export function ChangeItemEditPageClient({ mode, changeId, basePath = "" }: { mo
       <Card className="p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Edit workspace</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">{translate("changeEdit.workspace")}</p>
             <h3 className="mt-3 text-2xl font-semibold text-ink">{pageTitle}</h3>
             <p className="mt-2 text-sm leading-6 text-[#596270]">
               {mode === "proposal"
-                ? "Adjust the pending proposal before it is approved."
-                : "Apply a direct correction to the current approved event."}
+                ? translate("changeEdit.pendingProposalSummary")
+                : translate("changeEdit.directCorrectionSummary")}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -174,7 +175,7 @@ export function ChangeItemEditPageClient({ mode, changeId, basePath = "" }: { mo
             <Button asChild size="sm" variant="ghost">
               <Link href={withBasePath(basePath, "/changes")}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to inbox
+                {translate("changeEdit.backToInbox")}
               </Link>
             </Button>
           </div>
@@ -188,83 +189,83 @@ export function ChangeItemEditPageClient({ mode, changeId, basePath = "" }: { mo
 
         <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_0.95fr]">
           <Card className="bg-white/60 p-5">
-            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Edit fields</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changeEdit.editFields")}</p>
             <div className="mt-4 space-y-4">
               <div>
                 <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="review-edit-due-at">
-                  Due date
+                  {translate("changeEdit.dueDate")}
                 </label>
                 <Input id="review-edit-due-at" type="date" value={form.due_date} onChange={(event) => setForm((prev) => ({ ...prev, due_date: event.target.value }))} />
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="review-edit-due-time">
-                    Due time
+                    {translate("changeEdit.dueTime")}
                   </label>
                   <Input id="review-edit-due-time" type="time" value={form.due_time} disabled={form.time_precision === "date_only"} onChange={(event) => setForm((prev) => ({ ...prev, due_time: event.target.value }))} />
                 </div>
                 <div>
                   <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="review-edit-time-precision">
-                    Time precision
+                    {translate("changeEdit.timePrecision")}
                   </label>
                   <select id="review-edit-time-precision" value={form.time_precision} onChange={(event) => setForm((prev) => ({ ...prev, time_precision: event.target.value as "date_only" | "datetime" }))} className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm">
-                    <option value="datetime">Datetime</option>
-                    <option value="date_only">Date only</option>
+                    <option value="datetime">{formatStatusLabel("datetime")}</option>
+                    <option value="date_only">{formatStatusLabel("date_only")}</option>
                   </select>
                 </div>
               </div>
               <div>
                 <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="review-edit-event-name">
-                  Event name
+                  {translate("changeEdit.eventName")}
                 </label>
                 <Input id="review-edit-event-name" value={form.event_name} onChange={(event) => setForm((prev) => ({ ...prev, event_name: event.target.value }))} />
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="review-edit-course-dept">
-                    Course dept
+                    {translate("changeEdit.courseDept")}
                   </label>
                   <Input id="review-edit-course-dept" value={form.course_dept} onChange={(event) => setForm((prev) => ({ ...prev, course_dept: event.target.value }))} />
                 </div>
                 <div>
                   <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="review-edit-course-number">
-                    Course number
+                    {translate("changeEdit.courseNumber")}
                   </label>
                   <Input id="review-edit-course-number" value={form.course_number} onChange={(event) => setForm((prev) => ({ ...prev, course_number: event.target.value }))} />
                 </div>
                 <div>
                   <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="review-edit-course-suffix">
-                    Course suffix
+                    {translate("changeEdit.courseSuffix")}
                   </label>
                   <Input id="review-edit-course-suffix" value={form.course_suffix} onChange={(event) => setForm((prev) => ({ ...prev, course_suffix: event.target.value }))} />
                 </div>
                 <div>
                   <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="review-edit-course-quarter">
-                    Quarter
+                    {translate("changeEdit.quarter")}
                   </label>
                   <Input id="review-edit-course-quarter" value={form.course_quarter} onChange={(event) => setForm((prev) => ({ ...prev, course_quarter: event.target.value.toUpperCase() }))} placeholder="WI" />
                 </div>
                 <div>
                   <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="review-edit-course-year2">
-                    Year2
+                    {translate("changeEdit.year2")}
                   </label>
                   <Input id="review-edit-course-year2" value={form.course_year2} onChange={(event) => setForm((prev) => ({ ...prev, course_year2: event.target.value }))} placeholder="26" />
                 </div>
               </div>
               <div>
                 <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="review-edit-reason">
-                  Reason
+                  {translate("changeEdit.reason")}
                 </label>
-                <Textarea id="review-edit-reason" value={form.reason} onChange={(event) => setForm((prev) => ({ ...prev, reason: event.target.value }))} placeholder="Why are you editing this change?" />
+                <Textarea id="review-edit-reason" value={form.reason} onChange={(event) => setForm((prev) => ({ ...prev, reason: event.target.value }))} placeholder={translate("changeEdit.reasonPlaceholder")} />
               </div>
               <div className="flex flex-wrap gap-3">
                 <Button onClick={() => void runPreview()} disabled={busy !== null || !form.due_date}>
                   <Eye className="mr-2 h-4 w-4" />
-                  {busy === "preview" ? "Previewing..." : "Preview changes"}
+                  {busy === "preview" ? translate("changeEdit.previewing") : translate("changeEdit.previewChanges")}
                 </Button>
                 <Button variant="secondary" onClick={() => void applyEdit()} disabled={busy !== null || !form.due_date}>
                   <Save className="mr-2 h-4 w-4" />
-                  {busy === "apply" ? "Applying..." : mode === "proposal" ? "Apply proposal edit" : "Apply direct edit"}
+                  {busy === "apply" ? translate("changeEdit.applying") : mode === "proposal" ? translate("changeEdit.applyProposalEdit") : translate("changeEdit.applyDirectEdit")}
                 </Button>
               </div>
             </div>
@@ -272,11 +273,11 @@ export function ChangeItemEditPageClient({ mode, changeId, basePath = "" }: { mo
 
           <div className="space-y-5">
             <Card className="bg-white/60 p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Current item</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changeEdit.currentItem")}</p>
               <div className="mt-4 space-y-2 text-sm text-[#314051]">
                 <p>Entity UID: {data.entity_uid}</p>
-                <p>Family: {data.editable_event.family_name}</p>
-                <p>Course: {formatCourseDisplay(data.editable_event as unknown as Record<string, unknown>)}</p>
+                <p>{translate("manual.family")}: {data.editable_event.family_name}</p>
+                <p>{translate("changes.course")}: {formatCourseDisplay(data.editable_event as unknown as Record<string, unknown>)}</p>
               </div>
             </Card>
 
@@ -284,22 +285,22 @@ export function ChangeItemEditPageClient({ mode, changeId, basePath = "" }: { mo
               <Card className="bg-white/60 p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Preview result</p>
-                    <p className="mt-2 text-sm text-[#596270]">{preview.idempotent ? "No visible difference would be introduced." : "Review the edited payload before applying it."}</p>
+                    <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changeEdit.previewResult")}</p>
+                    <p className="mt-2 text-sm text-[#596270]">{preview.idempotent ? translate("changeEdit.noVisibleDifference") : translate("changeEdit.reviewEditedPayload")}</p>
                   </div>
                   <Badge tone="info">{formatStatusLabel(preview.mode)}</Badge>
                 </div>
                 <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                  <ReviewEditEventCard title="Base" event={preview.base} />
-                  <ReviewEditEventCard title="Candidate After" event={preview.candidate_after} />
+                  <ReviewEditEventCard title={translate("changeEdit.base")} event={preview.base} />
+                  <ReviewEditEventCard title={translate("changeEdit.candidateAfter")} event={preview.candidate_after} />
                 </div>
                 <div className="mt-4 space-y-1.5 text-sm text-[#314051]">
-                  <p>Delta seconds: {preview.delta_seconds ?? "N/A"}</p>
+                  <p>{translate("changeEdit.deltaSeconds", { value: preview.delta_seconds ?? "N/A" })}</p>
                   {preview.will_reject_pending_change_ids.length > 0 ? <p>Will reject pending IDs: {preview.will_reject_pending_change_ids.join(", ")}</p> : null}
                 </div>
               </Card>
             ) : (
-              <EmptyState title="No preview yet" description="Preview the edit to inspect the resulting payload before applying it." />
+              <EmptyState title={translate("changeEdit.noPreviewYetTitle")} description={translate("changeEdit.noPreviewYetDescription")} />
             )}
           </div>
         </div>

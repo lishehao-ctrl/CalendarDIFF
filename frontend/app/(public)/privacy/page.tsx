@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { LegalPage } from "@/components/legal-page";
+import { LocalizedLegalPage } from "@/components/localized-legal-page";
 
 export const metadata: Metadata = {
   title: "Privacy Policy | CalendarDIFF",
@@ -54,12 +54,6 @@ const sections = [
 
 export default function PrivacyPage() {
   return (
-    <LegalPage
-      eyebrow="Privacy"
-      title="Privacy Policy"
-      summary="How CalendarDIFF processes account data, connected sources, and Gmail-linked signals for deadline operations."
-      updatedAt="March 11, 2026"
-      sections={[...sections]}
-    />
+    <LocalizedLegalPage kind="privacy" sections={[...sections]} />
   );
 }

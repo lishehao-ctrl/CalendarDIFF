@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { LegalPage } from "@/components/legal-page";
+import { LocalizedLegalPage } from "@/components/localized-legal-page";
 
 export const metadata: Metadata = {
   title: "Terms of Service | CalendarDIFF",
@@ -53,12 +53,6 @@ const sections = [
 
 export default function TermsPage() {
   return (
-    <LegalPage
-      eyebrow="Legal"
-      title="Terms of Service"
-      summary="The operating rules, user responsibilities, and service boundaries for using CalendarDIFF."
-      updatedAt="March 11, 2026"
-      sections={[...sections]}
-    />
+    <LocalizedLegalPage kind="terms" sections={[...sections]} />
   );
 }

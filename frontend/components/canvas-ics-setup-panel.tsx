@@ -11,6 +11,7 @@ import { SourceObservabilitySections } from "@/components/source-observability-s
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { SourceSyncProgress } from "@/components/source-sync-progress";
 import { withBasePath } from "@/lib/demo-mode";
+import { translate } from "@/lib/i18n/runtime";
 import { buildSourceObservabilityViews } from "@/lib/source-observability";
 import { invalidateSourceCaches } from "@/lib/source-cache";
 import { deleteSource, getSyncRequest, listSources, sourceListCacheKey, updateSource } from "@/lib/api/sources";
@@ -80,7 +81,7 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
     if (!source) {
       setBanner({
         tone: "error",
-        text: "Canvas ICS is created during required setup. Go back to onboarding if this workspace no longer has its Canvas source.",
+        text: translate("sourceConnect.canvasPanel.connectMissing"),
       });
       return;
     }
@@ -89,11 +90,11 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
     try {
       await updateSource(source.source_id, { is_active: true, secrets: { url: normalizedUrl } });
       invalidateSourceCaches(source.source_id);
-      setBanner({ tone: "info", text: source.is_active ? "Canvas ICS link updated." : "Canvas ICS link reactivated and updated." });
+      setBanner({ tone: "info", text: source.is_active ? translate("sourceConnect.canvasPanel.saveSuccess") : translate("sourceConnect.canvasPanel.saveReactivatedSuccess") });
       setCanvasIcsUrl("");
       await refresh({ force: true });
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to save Canvas ICS link" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("sourceConnect.canvasPanel.saveFailed") });
     } finally {
       setSubmitting(false);
     }
@@ -101,17 +102,17 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
 
   async function archive() {
     if (!source) return;
-    const confirmed = window.confirm("Archive this Canvas ICS link?");
+    const confirmed = window.confirm(translate("sourceConnect.canvasPanel.archiveConfirm"));
     if (!confirmed) return;
     setBusyArchive(true);
     setBanner(null);
     try {
       await deleteSource(source.source_id);
       invalidateSourceCaches(source.source_id);
-      setBanner({ tone: "info", text: "Canvas ICS link archived." });
+      setBanner({ tone: "info", text: translate("sourceConnect.canvasPanel.archiveSuccess") });
       await refresh({ force: true });
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to archive Canvas ICS link" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("sourceConnect.canvasPanel.archiveFailed") });
     } finally {
       setBusyArchive(false);
     }
@@ -119,23 +120,23 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
 
   if (loading) return <LoadingState label="canvas ics setup" />;
   if (error) return <ErrorState message={error} />;
-  if (!data) return <EmptyState title="Source state unavailable" description="Unable to load the current Canvas ICS configuration." />;
+  if (!data) return <EmptyState title={translate("sourceConnect.canvasPanel.stateUnavailableTitle")} description={translate("sourceConnect.canvasPanel.stateUnavailableDescription")} />;
 
   return (
     <div className="space-y-5">
       <Card className="p-6 md:p-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Canvas ICS setup</p>
-            <h3 className="mt-3 text-2xl font-semibold">Manage your Canvas calendar feed</h3>
+            <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">{translate("sourceConnect.canvasPanel.setupEyebrow")}</p>
+            <h3 className="mt-3 text-2xl font-semibold">{translate("sourceConnect.canvasPanel.title")}</h3>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-[#596270]">
-              Connect or update the single Canvas ICS subscription used by this workspace.
+              {translate("sourceConnect.canvasPanel.summary")}
             </p>
           </div>
           <Button asChild size="sm" variant="ghost">
             <Link href={withBasePath(basePath, "/sources")}>
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Sources
+              {translate("sourceConnect.backToSources")}
             </Link>
           </Button>
         </div>
@@ -150,10 +151,10 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
           <Card className="mt-6 bg-white/60 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Source posture</p>
-                <h4 className="mt-2 text-lg font-semibold text-ink">Bootstrap vs replay</h4>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sourceConnect.postureTitle")}</p>
+                <h4 className="mt-2 text-lg font-semibold text-ink">{translate("sourceConnect.postureSummary")}</h4>
               </div>
-              <Badge tone={source?.is_active ? "approved" : "info"}>{source?.is_active ? "Connected" : "Archived"}</Badge>
+              <Badge tone={source?.is_active ? "approved" : "info"}>{source?.is_active ? translate("sourceConnect.gmailPanel.connected") : translate("sourceConnect.gmailPanel.archived")}</Badge>
             </div>
             <SourceObservabilitySections observability={observability} className="mt-4" />
           </Card>
@@ -166,21 +167,21 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
                 <CalendarSync className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Current connection</p>
-                <h4 className="mt-2 text-lg font-semibold text-ink">{source ? "Canvas ICS configured" : "No Canvas ICS yet"}</h4>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sourceConnect.canvasPanel.currentConnection")}</p>
+                <h4 className="mt-2 text-lg font-semibold text-ink">{source ? translate("sourceConnect.canvasPanel.configured") : translate("sourceConnect.canvasPanel.missing")}</h4>
               </div>
             </div>
             <div className="mt-5 rounded-[1.15rem] border border-line/80 bg-white/70 p-4 text-sm text-[#314051]">
-              <p>Status: {source ? (source.is_active ? "Connected" : "Archived") : "Not connected"}</p>
-              <p className="mt-2">Source: {source ? `#${source.source_id}` : "Will be created on first save"}</p>
-              <p className="mt-2">Last polled: {formatDateTime(source?.last_polled_at, "Never")}</p>
+              <p>{translate("sourceConnect.canvasPanel.status")}: {source ? (source.is_active ? translate("sourceConnect.gmailPanel.connected") : translate("sourceConnect.gmailPanel.archived")) : translate("sourceConnect.gmailPanel.notConnected")}</p>
+              <p className="mt-2">{translate("sourceConnect.canvasPanel.source")}: {source ? `#${source.source_id}` : translate("sourceConnect.canvasPanel.sourceWillBeCreated")}</p>
+              <p className="mt-2">{translate("sourceConnect.canvasPanel.lastPolled")}: {formatDateTime(source?.last_polled_at, translate("sources.detail.never"))}</p>
             </div>
             <SourceSyncProgress className="mt-4" progress={source?.sync_progress} stableLabel="Syncing Canvas source" />
             {source ? (
               <div className="mt-5">
                 <Button variant="ghost" onClick={() => void archive()} disabled={busyArchive}>
                   <Trash2 className="mr-2 h-4 w-4" />
-                  {busyArchive ? "Archiving..." : "Archive link"}
+                  {busyArchive ? translate("sourceConnect.canvasPanel.archiving") : translate("sourceConnect.canvasPanel.archiveLink")}
                 </Button>
               </div>
             ) : null}
@@ -190,41 +191,37 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
             <Card className="bg-white/60 p-5">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone="approved">UCSD Canvas</Badge>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Get your ICS link</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sourceConnect.canvasPanel.getLinkEyebrow")}</p>
               </div>
-              <p className="mt-3 text-base font-medium text-ink">Grab your personal calendar feed, then paste it here.</p>
+              <p className="mt-3 text-base font-medium text-ink">{translate("sourceConnect.canvasPanel.getLinkTitle")}</p>
               <p className="mt-2 leading-6 text-[#596270]">
-                This workspace only needs one Canvas ICS subscription link. Canvas gives you that link from the Calendar page.
+                {translate("sourceConnect.canvasPanel.getLinkSummary")}
               </p>
               <div className="mt-4 grid gap-3 md:grid-cols-3">
-                <div className="rounded-[1rem] border border-line/70 bg-white/75 p-3"><p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Step 1</p><p className="mt-2 font-medium text-ink">Open Canvas Calendar</p><p className="mt-1 text-sm leading-6 text-[#596270]">Go to your UCSD Canvas Calendar page in a new tab.</p></div>
-                <div className="rounded-[1rem] border border-line/70 bg-white/75 p-3"><p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Step 2</p><p className="mt-2 font-medium text-ink">Copy the feed URL</p><p className="mt-1 text-sm leading-6 text-[#596270]">Copy your personal calendar feed / ICS subscription link from Canvas.</p></div>
-                <div className="rounded-[1rem] border border-line/70 bg-white/75 p-3"><p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Step 3</p><p className="mt-2 font-medium text-ink">Paste and connect</p><p className="mt-1 text-sm leading-6 text-[#596270]">Paste that full URL below and save it to update this workspace.</p></div>
+                <div className="rounded-[1rem] border border-line/70 bg-white/75 p-3"><p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Step 1</p><p className="mt-2 font-medium text-ink">{translate("sourceConnect.canvasPanel.step1")}</p><p className="mt-1 text-sm leading-6 text-[#596270]">{translate("sourceConnect.canvasPanel.step1Summary")}</p></div>
+                <div className="rounded-[1rem] border border-line/70 bg-white/75 p-3"><p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Step 2</p><p className="mt-2 font-medium text-ink">{translate("sourceConnect.canvasPanel.step2")}</p><p className="mt-1 text-sm leading-6 text-[#596270]">{translate("sourceConnect.canvasPanel.step2Summary")}</p></div>
+                <div className="rounded-[1rem] border border-line/70 bg-white/75 p-3"><p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Step 3</p><p className="mt-2 font-medium text-ink">{translate("sourceConnect.canvasPanel.step3")}</p><p className="mt-1 text-sm leading-6 text-[#596270]">{translate("sourceConnect.canvasPanel.step3Summary")}</p></div>
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <a href="https://canvas.ucsd.edu/calendar" target="_blank" rel="noreferrer noopener" className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-cobalt-soft px-4 text-sm font-medium text-cobalt transition-all duration-200 hover:bg-[rgba(31,94,255,0.16)]">
-                  <span>Open Canvas Calendar</span>
+                  <span>{translate("sourceConnect.canvasPanel.openCanvas")}</span>
                   <ExternalLink className="h-4 w-4" />
                 </a>
-                <p className="text-xs text-[#6d7885]">Opens `canvas.ucsd.edu/calendar` in a new tab so you can come back and paste the link.</p>
+                <p className="text-xs text-[#6d7885]">{translate("sourceConnect.canvasPanel.openCanvasHint")}</p>
               </div>
             </Card>
             <Card className="bg-white/60 p-5">
-              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="canvas-ics-url">Canvas ICS URL</label>
+              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="canvas-ics-url">{translate("sourceConnect.canvasPanel.urlLabel")}</label>
               <Input id="canvas-ics-url" placeholder="https://canvas.example.edu/feeds/calendars/user_12345.ics" value={canvasIcsUrl} onChange={(event) => setCanvasIcsUrl(event.target.value)} />
-              <p className="mt-2 text-xs leading-5 text-[#6d7885]">Paste the full calendar subscription URL from Canvas here. Saving a new URL replaces the current Canvas ICS link for this workspace.</p>
+              <p className="mt-2 text-xs leading-5 text-[#6d7885]">{translate("sourceConnect.canvasPanel.urlHint")}</p>
               {!source ? (
                 <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/70 px-4 py-3 text-sm text-[#314051]">
-                  This workspace does not currently have a Canvas source record. Re-run setup from{" "}
-                  <Link href={withBasePath(basePath, "/onboarding")} className="font-medium text-cobalt underline-offset-4 hover:underline">
-                    onboarding
-                  </Link>{" "}
-                  if you need to reconnect the required calendar intake.
+                  {translate("sourceConnect.canvasPanel.missingSource")}
                 </div>
               ) : null}
               <div className="mt-5">
                 <Button className="w-full" disabled={submitting || !canvasIcsUrl.trim() || !source} onClick={() => void save()}>
-                  {submitting ? "Saving Canvas ICS..." : "Update Canvas ICS link"}
+                  {submitting ? translate("sourceConnect.canvasPanel.saving") : translate("sourceConnect.canvasPanel.updateLink")}
                 </Button>
               </div>
             </Card>

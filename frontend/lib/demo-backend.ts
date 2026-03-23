@@ -10,6 +10,8 @@ import type {
   EvidencePreviewResponse,
   LabelLearningApplyResponse,
   LabelLearningPreview,
+  McpAccessToken,
+  McpAccessTokenCreateResponse,
   ManualEvent,
   ManualEventMutationResponse,
   OnboardingStatus,
@@ -40,6 +42,7 @@ type DemoState = {
   rawTypeSuggestions: RawTypeSuggestionItem[];
   familyStatus: CourseWorkItemFamilyStatus;
   manualEvents: ManualEvent[];
+  mcpTokens: McpAccessToken[];
 };
 
 const nowIso = "2026-03-18T05:20:00.000Z";
@@ -310,6 +313,26 @@ function createInitialDemoState(): DemoState {
       manualRow("man-1", families[0], "Homework 1", 1, "2026-03-15", "23:59:00"),
       manualRow("man-2", families[2], "Project Milestone 1", 1, "2026-03-12", "17:00:00"),
       manualRow("man-3", families[4], "Lab Report 1", 1, "2026-03-14", "23:59:00"),
+    ],
+    mcpTokens: [
+      {
+        token_id: "mcp_tok_active_1",
+        label: "QClaw laptop",
+        scopes: ["calendar.read", "changes.write"],
+        last_used_at: "2026-03-17T21:35:00.000Z",
+        expires_at: "2026-06-16T00:00:00.000Z",
+        revoked_at: null,
+        created_at: "2026-03-10T08:00:00.000Z",
+      },
+      {
+        token_id: "mcp_tok_revoked_1",
+        label: "OpenClaw trial",
+        scopes: ["calendar.read"],
+        last_used_at: "2026-03-12T19:00:00.000Z",
+        expires_at: "2026-04-15T00:00:00.000Z",
+        revoked_at: "2026-03-16T02:10:00.000Z",
+        created_at: "2026-03-11T09:30:00.000Z",
+      },
     ],
   };
 }
@@ -1295,6 +1318,40 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   if (pathname === "/settings/profile" && method === "PATCH") {
     demoState.user = { ...demoState.user, ...(body || {}) };
     return clone(demoState.user) as T;
+  }
+  if (pathname === "/settings/mcp-tokens" && method === "GET") {
+    return clone(demoState.mcpTokens) as T;
+  }
+  if (pathname === "/settings/mcp-tokens" && method === "POST") {
+    const tokenId = `mcp_tok_${Date.now()}`;
+    const expiresInDays =
+      typeof body?.expires_in_days === "number" && Number.isFinite(body.expires_in_days)
+        ? body.expires_in_days
+        : 30;
+    const createdAt = nowIso;
+    const expiresAt = new Date(new Date(createdAt).getTime() + expiresInDays * 24 * 60 * 60 * 1000).toISOString();
+    const row: McpAccessToken = {
+      token_id: tokenId,
+      label: typeof body?.label === "string" && body.label.trim() ? body.label.trim() : "MCP token",
+      scopes: ["calendar.read", "changes.write", "manual.write"],
+      last_used_at: null,
+      expires_at: expiresAt,
+      revoked_at: null,
+      created_at: createdAt,
+    };
+    demoState.mcpTokens.unshift(row);
+    const response: McpAccessTokenCreateResponse = {
+      ...row,
+      token: `cdiff_mcp_demo_${Date.now().toString(36)}`,
+    };
+    return clone(response) as T;
+  }
+  if (/^\/settings\/mcp-tokens\/[^/]+$/.test(pathname) && method === "DELETE") {
+    const tokenId = decodeURIComponent(pathname.split("/").pop() || "");
+    const token = demoState.mcpTokens.find((item) => item.token_id === tokenId);
+    if (!token) throw new Error("MCP token not found");
+    token.revoked_at = nowIso;
+    return clone(token) as T;
   }
   if (pathname === "/manual/events" && method === "GET") {
     const includeRemoved = url.searchParams.get("include_removed") === "true";

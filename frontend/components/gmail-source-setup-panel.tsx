@@ -11,6 +11,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { SourceSyncProgress } from "@/components/source-sync-progress";
 import { withBasePath } from "@/lib/demo-mode";
 import { startOnboardingGmailOAuth } from "@/lib/api/onboarding";
+import { translate } from "@/lib/i18n/runtime";
 import { buildSourceObservabilityViews } from "@/lib/source-observability";
 import { invalidateSourceCaches } from "@/lib/source-cache";
 import { createOAuthSession, deleteSource, getSyncRequest, listSources, sourceListCacheKey } from "@/lib/api/sources";
@@ -69,15 +70,15 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
       (source.oauth_connection_status === "not_connected" || source.source_recovery?.next_action === "reconnect_gmail"),
   );
   const connectionBadgeTone = !source ? "info" : !source.is_active ? "info" : needsReconnect ? "error" : "approved";
-  const connectionBadgeLabel = !source ? "Not connected" : !source.is_active ? "Archived" : needsReconnect ? "Reconnect required" : "Connected";
-  const currentMailboxStatus = !source ? "Not connected" : !source.is_active ? "Archived" : needsReconnect ? "Reconnect required" : "Connected";
+  const connectionBadgeLabel = !source ? translate("sourceConnect.gmailPanel.notConnected") : !source.is_active ? translate("sourceConnect.gmailPanel.archived") : needsReconnect ? translate("sourceConnect.gmailPanel.reconnectRequired") : translate("sourceConnect.gmailPanel.connected");
+  const currentMailboxStatus = !source ? translate("sourceConnect.gmailPanel.notConnected") : !source.is_active ? translate("sourceConnect.gmailPanel.archived") : needsReconnect ? translate("sourceConnect.gmailPanel.reconnectRequired") : translate("sourceConnect.gmailPanel.connected");
   const connectionSummary = !source
-    ? "No Gmail mailbox is connected yet."
+    ? translate("sourceConnect.gmailPanel.noMailbox")
     : !source.is_active
-      ? "Reconnect this archived mailbox before trusting Gmail intake."
+      ? translate("sourceConnect.gmailPanel.archivedSummary")
       : needsReconnect
-        ? "Mailbox access is disconnected until Gmail is reconnected."
-        : "Mailbox is connected.";
+        ? translate("sourceConnect.gmailPanel.reconnectSummary")
+        : translate("sourceConnect.gmailPanel.connectedSummary");
 
   async function connect() {
     setConnecting(true);
@@ -89,23 +90,23 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
       window.location.assign(session.authorization_url);
     } catch (err) {
       setConnecting(false);
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to start Gmail OAuth" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("sourceConnect.gmailPanel.oauthFailed") });
     }
   }
 
   async function archive() {
     if (!source) return;
-    const confirmed = window.confirm("Disconnect this Gmail mailbox and move it to Archived Sources?");
+    const confirmed = window.confirm(translate("sourceConnect.gmailPanel.archiveConfirm"));
     if (!confirmed) return;
     setDisconnecting(true);
     setBanner(null);
     try {
       await deleteSource(source.source_id);
       invalidateSourceCaches(source.source_id);
-      setBanner({ tone: "info", text: "Mailbox disconnected and archived." });
+      setBanner({ tone: "info", text: translate("sourceConnect.gmailPanel.disconnectSuccess") });
       await refresh({ force: true });
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to disconnect Gmail" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("sourceConnect.gmailPanel.disconnectFailed") });
     } finally {
       setDisconnecting(false);
     }
@@ -113,21 +114,21 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
 
   if (loading) return <LoadingState label="gmail setup" />;
   if (error) return <ErrorState message={error} />;
-  if (!data) return <EmptyState title="Source state unavailable" description="Unable to load the current Gmail configuration." />;
+  if (!data) return <EmptyState title={translate("sourceConnect.gmailPanel.stateUnavailableTitle")} description={translate("sourceConnect.gmailPanel.stateUnavailableDescription")} />;
 
   return (
     <div className="space-y-5">
       <Card className="p-6 md:p-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">Gmail setup</p>
-            <h3 className="mt-3 text-2xl font-semibold">Manage your Gmail mailbox</h3>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-[#596270]">Connect, reconnect, or disconnect the single Gmail mailbox used by this workspace.</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">{translate("sourceConnect.gmailPanel.setupEyebrow")}</p>
+            <h3 className="mt-3 text-2xl font-semibold">{translate("sourceConnect.gmailPanel.title")}</h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[#596270]">{translate("sourceConnect.gmailPanel.summary")}</p>
           </div>
           <Button asChild size="sm" variant="ghost">
             <Link href={withBasePath(basePath, "/sources")}>
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Sources
+              {translate("sourceConnect.backToSources")}
             </Link>
           </Button>
         </div>
@@ -142,8 +143,8 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
           <Card className="mt-6 bg-white/60 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Source posture</p>
-                <h4 className="mt-2 text-lg font-semibold text-ink">Bootstrap vs replay</h4>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sourceConnect.postureTitle")}</p>
+                <h4 className="mt-2 text-lg font-semibold text-ink">{translate("sourceConnect.postureSummary")}</h4>
               </div>
               <Badge tone={connectionBadgeTone}>{connectionBadgeLabel}</Badge>
             </div>
@@ -158,15 +159,15 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
                 <Mailbox className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Current mailbox</p>
-                <h4 className="mt-2 text-lg font-semibold text-ink">{source ? "Gmail configured" : "No Gmail mailbox yet"}</h4>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sourceConnect.gmailPanel.currentMailbox")}</p>
+                <h4 className="mt-2 text-lg font-semibold text-ink">{source ? translate("sourceConnect.gmailPanel.configured") : translate("sourceConnect.gmailPanel.missing")}</h4>
               </div>
             </div>
             <div className="mt-5 rounded-[1.15rem] border border-line/80 bg-white/70 p-4 text-sm text-[#314051]">
-              <p>Status: {currentMailboxStatus}</p>
-              <p className="mt-2">Source: {source ? `#${source.source_id}` : "Will be created on first connect"}</p>
-              <p className="mt-2">Label: INBOX</p>
-              {source?.oauth_account_email ? <p className="mt-2">Account: {source.oauth_account_email}</p> : null}
+              <p>{translate("sourceConnect.gmailPanel.status")}: {currentMailboxStatus}</p>
+              <p className="mt-2">{translate("sourceConnect.gmailPanel.source")}: {source ? `#${source.source_id}` : translate("sourceConnect.gmailPanel.sourceWillBeCreated")}</p>
+              <p className="mt-2">{translate("sourceConnect.gmailPanel.label")}: INBOX</p>
+              {source?.oauth_account_email ? <p className="mt-2">{translate("sourceConnect.gmailPanel.account")}: {source.oauth_account_email}</p> : null}
             </div>
             <SourceSyncProgress className="mt-4" progress={source?.sync_progress} stableLabel="Syncing Gmail source" />
             <p className="mt-4 text-sm leading-6 text-[#596270]">{connectionSummary}</p>
@@ -174,18 +175,18 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button variant="ghost" onClick={() => void archive()} disabled={disconnecting}>
                   <Trash2 className="mr-2 h-4 w-4" />
-                  {disconnecting ? "Disconnecting..." : "Disconnect mailbox"}
+                  {disconnecting ? translate("sourceConnect.gmailPanel.disconnecting") : translate("sourceConnect.gmailPanel.disconnectMailbox")}
                 </Button>
               </div>
             ) : null}
           </Card>
           <Card className="bg-white/60 p-5">
-            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Connection flow</p>
-            <h4 className="mt-3 text-lg font-semibold text-ink">Use browser-based Google OAuth</h4>
-            <p className="mt-2 text-sm leading-6 text-[#596270]">Start the OAuth flow to connect or reconnect the single Gmail mailbox for this workspace.</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sourceConnect.gmailPanel.connectionFlow")}</p>
+            <h4 className="mt-3 text-lg font-semibold text-ink">{translate("sourceConnect.gmailPanel.connectionFlowTitle")}</h4>
+            <p className="mt-2 text-sm leading-6 text-[#596270]">{translate("sourceConnect.gmailPanel.connectionFlowSummary")}</p>
             <div className="mt-5 flex flex-wrap gap-3">
               <Button onClick={() => void connect()} disabled={connecting}>
-                {connecting ? "Redirecting to Google..." : source && source.is_active ? "Reconnect Gmail" : "Connect Gmail"}
+                {connecting ? translate("sourceConnect.gmailPanel.redirecting") : source && source.is_active ? translate("sourceConnect.gmailPanel.reconnect") : translate("sourceConnect.gmailPanel.connect")}
               </Button>
             </div>
           </Card>

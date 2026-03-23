@@ -1,30 +1,26 @@
 import type { ChangeItem } from "@/lib/types";
-
-const shortFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit"
-});
+import { formatNumber, intlDateLocale, translateFallback, translateStatusLabel } from "@/lib/i18n/runtime";
 
 export function formatDateTime(value: string | null | undefined, fallback = "Not available") {
   if (!value) {
-    return fallback;
+    return translateFallback(fallback);
   }
 
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return fallback;
+    return translateFallback(fallback);
   }
 
-  return shortFormatter.format(date);
+  return new Intl.DateTimeFormat(intlDateLocale(), {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 }
 
 export function formatStatusLabel(value: string | null | undefined, fallback = "Unknown") {
-  if (!value) {
-    return fallback;
-  }
-  return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  return translateStatusLabel(value, fallback);
 }
 
 export function formatSemanticDue(payload: Record<string, unknown> | null | undefined, fallback = "Not available") {
@@ -145,4 +141,8 @@ export function sourceKindDescriptor(value: string | null | undefined) {
     return null;
   }
   return `${formatStatusLabel(value)} source`;
+}
+
+export function formatCount(value: number) {
+  return formatNumber(value);
 }
