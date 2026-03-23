@@ -58,11 +58,9 @@ This file is the current top-level map for CalendarDIFF.
 - `docs/`
   - stable current repo truth
 - `docs/archive/`
-  - dated notes and superseded docs
+  - only recent retained smoke/operational artifacts
 - `specs/`
   - current active handoff bundles only
-- `specs/archive/`
-  - completed or historical handoffs, rollout specs, and execution outputs
 
 ## No Longer Part Of The Active Structure
 
@@ -81,4 +79,4 @@ When adding new product work:
 
 1. replace or delete the old path instead of keeping a parallel legacy shell
 2. keep current truth in stable filenames under `docs/`
-3. move dated notes, one-off rollout docs, and acceptance logs into `docs/archive/` or `specs/`
+3. delete finished handoff/output docs once they are no longer actively needed

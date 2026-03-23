@@ -4,25 +4,12 @@ This directory keeps implementation handoffs, not durable repo truth.
 
 ## Active spec surface
 
-Only currently active handoff bundles should stay directly under:
+Only currently active or next-up handoff bundles should stay directly under:
 
 - `specs/backend/`
 - `specs/frontend/`
 
-At the moment, those are the current `2026-03-22-*` bundles still being used for front/backend coordination.
-
-## Historical spec surface
-
-Older or completed bundles belong under:
-
-- `specs/archive/`
-
-That includes:
-
-- finished rollout plans
-- replay/acceptance execution bundles
-- old UI foundation or exploratory handoffs
-- optional BERT/secondary-filter experiment specs
+Completed spec bundles should be deleted instead of piling up.
 
 ## Rule
 

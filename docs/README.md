@@ -32,12 +32,10 @@ This directory now separates stable repo truth from dated execution records.
 ## Historical Material
 
 - `docs/archive/`
-  - dated memos, rollout checklists, release notes, audits, and superseded guidance
+  - only keep recent smoke notes or operational records that still matter
 - `specs/`
   - active implementation handoffs only
-- `specs/archive/`
-  - completed or historical implementation handoffs and execution artifacts
 
 ## Rule
 
-If a document is date-stamped and describes one execution pass, rollout, or audit, it belongs in `docs/archive/` or `specs/`, not in the root of `docs/`.
+If a document is date-stamped and only records an already-finished handoff, rollout, or audit, delete it once its value is exhausted instead of accumulating archive debt.
