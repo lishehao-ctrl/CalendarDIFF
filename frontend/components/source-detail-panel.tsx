@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { SourceRecoveryAgentCard } from "@/components/source-recovery-agent-card";
 import { ArchiveRestore, ExternalLink, RefreshCw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -157,19 +158,29 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
   const sources = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), [], null, {
     cacheKey: sourceListCacheKey("all"),
   });
-  const observability = useApiResource(() => getSourceObservability(sourceId), [sourceId], null, {
+  const source = useMemo(() => (sources.data || []).find((row) => row.source_id === sourceId) || null, [sourceId, sources.data]);
+  const canLoadSourceDetail = Boolean(source);
+  const observability = useApiResource(
+    () => (canLoadSourceDetail ? getSourceObservability(sourceId) : Promise.resolve(null)),
+    [sourceId, canLoadSourceDetail],
+    null,
+    {
     cacheKey: sourceObservabilityCacheKey(sourceId),
-  });
-  const history = useApiResource<SourceSyncHistoryResponse>(() => getSourceSyncHistory(sourceId, { limit: 8 }), [sourceId], null, {
+    },
+  );
+  const history = useApiResource<SourceSyncHistoryResponse | null>(
+    () => (canLoadSourceDetail ? getSourceSyncHistory(sourceId, { limit: 8 }) : Promise.resolve(null)),
+    [sourceId, canLoadSourceDetail],
+    null,
+    {
     cacheKey: sourceSyncHistoryCacheKey(sourceId, 8),
-  });
+    },
+  );
   const [banner, setBanner] = useState<{ tone: "info" | "error"; text: string } | null>(null);
   const [busySync, setBusySync] = useState(false);
   const [busyArchive, setBusyArchive] = useState(false);
   const [busyReactivate, setBusyReactivate] = useState(false);
   const [busyReconnect, setBusyReconnect] = useState(false);
-
-  const source = useMemo(() => (sources.data || []).find((row) => row.source_id === sourceId) || null, [sourceId, sources.data]);
   const activeSync = observability.data?.active || null;
 
   const shouldPollActiveSync = Boolean(
@@ -182,12 +193,15 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
   );
 
   const refreshAll = useCallback(async (options?: { background?: boolean; force?: boolean }) => {
+    await sources.refresh({ background: options?.background, force: options?.force });
+    if (!canLoadSourceDetail) {
+      return;
+    }
     await Promise.all([
-      sources.refresh({ background: options?.background, force: options?.force }),
       observability.refresh({ background: options?.background, force: options?.force }),
       history.refresh({ background: options?.background, force: options?.force }),
     ]);
-  }, [history, observability, sources]);
+  }, [canLoadSourceDetail, history, observability, sources]);
 
   useEffect(() => {
     if (!shouldPollActiveSync) {
@@ -358,6 +372,8 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
           <p className="text-sm text-[#314051]">{banner.text}</p>
         </Card>
       ) : null}
+
+      <SourceRecoveryAgentCard sourceId={sourceId} basePath={basePath} />
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Card className="animate-surface-enter p-5">

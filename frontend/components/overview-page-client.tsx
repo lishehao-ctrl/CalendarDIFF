@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight, BellDot, GitCompareArrows, Link2, PencilLine } from "lucide-react";
+import { AgentBriefCard } from "@/components/agent-brief-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -91,6 +92,8 @@ export default function OverviewPage({ basePath = "" }: { basePath?: string }) {
           </div>
         </div>
       </Card>
+
+      <AgentBriefCard basePath={basePath} />
 
       <div className="grid gap-4 xl:grid-cols-2">
         {surface.cards.map((card, index) => {

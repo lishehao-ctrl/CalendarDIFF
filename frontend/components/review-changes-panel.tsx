@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarRange, CheckCheck, ChevronDown, ChevronUp, Eye, FileSearch, PencilLine, Sparkles, SquarePen, XCircle } from "lucide-react";
+import { ChangeAgentCard } from "@/components/change-agent-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -658,6 +659,8 @@ function DecisionWorkspace({
         </Card>
       ) : null}
 
+      <ChangeAgentCard changeId={selected.id} basePath={basePath} />
+
       {labelLearning ? (
         <Card className="p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -960,6 +963,7 @@ export function ChangeItemsPanel({
   const [learningOpen, setLearningOpen] = useState(false);
   const [newFamilyLabel, setNewFamilyLabel] = useState("");
   const [banner, setBanner] = useState<Banner>(null);
+  const [requestedFocusId, setRequestedFocusId] = useState<number | null>(null);
   const [editContext, setEditContext] = useState<ChangeEditContext | null>(null);
   const [editContextBusy, setEditContextBusy] = useState(false);
   const [editContextError, setEditContextError] = useState<string | null>(null);
@@ -994,6 +998,14 @@ export function ChangeItemsPanel({
   const allVisibleSelected = rows.length > 0 && rows.every((row) => selectedIdsSet.has(row.id));
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const raw = new URLSearchParams(window.location.search).get("focus");
+    setRequestedFocusId(raw ? Number(raw) : null);
+  }, []);
+
+  useEffect(() => {
     if (rows.length === 0) {
       setSelectedChangeId(null);
       setSelectedIds([]);
@@ -1004,15 +1016,20 @@ export function ChangeItemsPanel({
 
     setSelectedIds((prev) => prev.filter((id) => rows.some((row) => row.id === id)));
 
+    const preferredRow =
+      requestedFocusId && rows.some((row) => row.id === requestedFocusId)
+        ? rows.find((row) => row.id === requestedFocusId) || rows[0]
+        : rows[0];
+
     if (!selectedChangeId || !rows.some((row) => row.id === selectedChangeId)) {
-      setSelectedChangeId(rows[0].id);
-      setCurrentEvidenceSide(defaultEvidenceSide(rows[0]));
+      setSelectedChangeId(preferredRow.id);
+      setCurrentEvidenceSide(defaultEvidenceSide(preferredRow));
       setEvidence(null);
       if (statusFilter !== "pending") {
         setLearningOpen(false);
       }
     }
-  }, [rows, selectedChangeId, statusFilter]);
+  }, [requestedFocusId, rows, selectedChangeId, statusFilter]);
 
   const markViewed = useCallback(
     async (change: ChangeItem) => {

@@ -1,5 +1,6 @@
 "use client";
 
+import { agentWorkspaceContextCacheKey, getAgentWorkspaceContext } from "@/lib/api/agents";
 import { changesListCacheKey, changesSummaryCacheKey, getChangesSummary, listChanges } from "@/lib/api/changes";
 import {
   familiesCoursesCacheKey,
@@ -50,6 +51,12 @@ function preloadOverviewLane() {
   void preloadResource({
     key: changesSummaryCacheKey(),
     loader: getChangesSummary,
+    staleMs: NAV_STALE_MS,
+  }).catch(() => undefined);
+
+  void preloadResource({
+    key: agentWorkspaceContextCacheKey(),
+    loader: getAgentWorkspaceContext,
     staleMs: NAV_STALE_MS,
   }).catch(() => undefined);
 

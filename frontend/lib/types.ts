@@ -181,16 +181,27 @@ export type SourceRow = {
 export type SyncStatus = {
   request_id: string;
   source_id: number;
+  trigger_type?: string;
   status: string;
+  idempotency_key?: string | null;
+  trace_id?: string | null;
   applied: boolean;
+  created_at?: string;
+  updated_at?: string;
   error_code: string | null;
   error_message: string | null;
+  stage?: string | null;
+  substage?: string | null;
+  stage_updated_at?: string | null;
   connector_result: {
     status?: string;
     error_code?: string | null;
     error_message?: string | null;
   } | null;
+  llm_usage?: Record<string, unknown> | null;
   metadata?: Record<string, unknown>;
+  elapsed_ms?: number | null;
+  applied_at?: string | null;
   progress?: SyncProgress | null;
 };
 
@@ -651,6 +662,101 @@ export type McpAccessToken = {
 
 export type McpAccessTokenCreateResponse = McpAccessToken & {
   token: string;
+};
+
+export type AgentRiskLevel = "low" | "medium" | "high";
+export type AgentConditionSeverity = "info" | "warning" | "blocking";
+export type AgentProposalType = "change_decision" | "source_recovery";
+export type AgentProposalStatus = "open" | "accepted" | "rejected" | "expired" | "superseded";
+export type ApprovalTicketStatus = "open" | "executed" | "canceled" | "expired" | "failed";
+
+export type AgentBlockingCondition = {
+  code: string;
+  message: string;
+  severity: AgentConditionSeverity;
+};
+
+export type AgentRecommendedAction = {
+  lane: "sources" | "initial_review" | "changes" | "families" | "manual";
+  label: string;
+  reason: string;
+  reason_code: string;
+  reason_params: Record<string, unknown>;
+  risk_level: AgentRiskLevel;
+  recommended_tool: string;
+};
+
+export type AgentWorkspaceContext = {
+  generated_at: string;
+  summary: ChangesWorkbenchSummary;
+  top_pending_changes: ChangeItem[];
+  recommended_next_action: AgentRecommendedAction;
+  blocking_conditions: AgentBlockingCondition[];
+  available_next_tools: string[];
+};
+
+export type AgentChangeContext = {
+  generated_at: string;
+  change: ChangeItem;
+  recommended_next_action: AgentRecommendedAction;
+  blocking_conditions: AgentBlockingCondition[];
+  available_next_tools: string[];
+};
+
+export type AgentSourceContextSource = SourceRow & {
+  user_id: number;
+};
+
+export type AgentSourceContext = {
+  generated_at: string;
+  source: AgentSourceContextSource;
+  observability: SourceObservabilityResponse;
+  active_sync_request: SyncStatus | null;
+  recommended_next_action: AgentRecommendedAction;
+  blocking_conditions: AgentBlockingCondition[];
+  available_next_tools: string[];
+};
+
+export type AgentProposal = {
+  proposal_id: number;
+  proposal_type: AgentProposalType;
+  status: AgentProposalStatus;
+  target_kind: string;
+  target_id: string;
+  summary: string;
+  summary_code: string;
+  reason: string;
+  reason_code: string;
+  risk_level: AgentRiskLevel;
+  confidence: number;
+  suggested_action: string;
+  suggested_payload: Record<string, unknown>;
+  context: Record<string, unknown>;
+  target_snapshot: Record<string, unknown>;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApprovalTicket = {
+  ticket_id: string;
+  proposal_id: number;
+  channel: string;
+  action_type: string;
+  target_kind: string;
+  target_id: string;
+  payload: Record<string, unknown>;
+  payload_hash: string;
+  target_snapshot: Record<string, unknown>;
+  risk_level: AgentRiskLevel;
+  status: ApprovalTicketStatus;
+  executed_result: Record<string, unknown>;
+  expires_at: string | null;
+  confirmed_at: string | null;
+  canceled_at: string | null;
+  executed_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 

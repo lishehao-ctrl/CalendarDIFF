@@ -1,6 +1,13 @@
 "use client";
 
 import type {
+  AgentBlockingCondition,
+  AgentChangeContext,
+  AgentProposal,
+  AgentRecommendedAction,
+  AgentSourceContext,
+  AgentWorkspaceContext,
+  ApprovalTicket,
   ChangesWorkbenchSummary,
   ChangeDecisionSupport,
   CourseIdentity,
@@ -43,6 +50,8 @@ type DemoState = {
   familyStatus: CourseWorkItemFamilyStatus;
   manualEvents: ManualEvent[];
   mcpTokens: McpAccessToken[];
+  agentProposals: AgentProposal[];
+  approvalTickets: ApprovalTicket[];
 };
 
 const nowIso = "2026-03-18T05:20:00.000Z";
@@ -334,6 +343,8 @@ function createInitialDemoState(): DemoState {
         created_at: "2026-03-11T09:30:00.000Z",
       },
     ],
+    agentProposals: [],
+    approvalTickets: [],
   };
 }
 
@@ -784,6 +795,423 @@ function buildDemoSourceSyncHistory(sourceId: number): SourceSyncHistoryResponse
   };
 }
 
+function laneToTool(lane: AgentRecommendedAction["lane"]) {
+  return {
+    sources: "review_sources",
+    initial_review: "review_initial_review_changes",
+    changes: "review_replay_changes",
+    families: "review_families",
+    manual: "review_manual",
+  }[lane];
+}
+
+function buildWorkspaceBlockingConditions(summary: ChangesWorkbenchSummary): AgentBlockingCondition[] {
+  const items: AgentBlockingCondition[] = [];
+  if ((summary.sources.blocking_count || 0) > 0) {
+    items.push({
+      code: summary.sources.reason_code || "sources_attention_required",
+      message: summary.sources.message,
+      severity: "blocking",
+    });
+  }
+  if ((summary.baseline_review_pending || 0) > 0) {
+    items.push({
+      code: "baseline_review_pending",
+      message: "Baseline import review is not finished yet.",
+      severity: "warning",
+    });
+  }
+  return items;
+}
+
+function buildDemoWorkspaceAgentContext(): AgentWorkspaceContext {
+  const workbench = clone(getDemoWorkspaceSummary());
+  const nextAction = workbench.workspace_posture.next_action;
+  return {
+    generated_at: nowIso,
+    summary: workbench,
+    top_pending_changes: clone(
+      demoState.changes
+        .filter((row) => row.review_status === "pending")
+        .slice(0, 3),
+    ),
+    recommended_next_action: {
+      lane: nextAction.lane,
+      label: nextAction.label,
+      reason: nextAction.reason,
+      reason_code: "demo.agent.workspace.next_action",
+      reason_params: {},
+      risk_level: workbench.workspace_posture.phase === "attention_required" ? "high" : workbench.workspace_posture.phase === "monitoring_live" ? "low" : "medium",
+      recommended_tool: laneToTool(nextAction.lane),
+    },
+    blocking_conditions: buildWorkspaceBlockingConditions(workbench),
+    available_next_tools: [
+      laneToTool(nextAction.lane),
+      "review_change_context",
+      "review_source_context",
+    ],
+  };
+}
+
+function getDemoWorkspaceSummary(): ChangesWorkbenchSummary {
+  const pending = demoState.changes.filter((row) => row.review_status === "pending" && row.review_bucket === "changes").length;
+  const baselinePending = demoState.changes.filter((row) => row.review_status === "pending" && row.review_bucket === "initial_review").length;
+  const baselineReviewed = demoState.changes.filter((row) => row.review_status !== "pending" && row.review_bucket === "initial_review").length;
+  const baselineTotal = demoState.changes.filter((row) => row.review_bucket === "initial_review").length;
+  const activeSources = demoState.sources.filter((row) => row.is_active);
+  const attentionSources = activeSources.filter(
+    (row) =>
+      Boolean(row.last_error_message) ||
+      row.operator_guidance?.severity === "warning" ||
+      row.operator_guidance?.severity === "blocking" ||
+      row.runtime_state === "rebind_pending",
+  );
+  const blockingSources = attentionSources.filter((row) => row.operator_guidance?.severity === "blocking");
+  const pendingSuggestions = demoState.rawTypeSuggestions.filter((row) => row.status === "pending").length;
+  const manualActiveCount = demoState.manualEvents.filter((row) => row.lifecycle !== "removed").length;
+  const baselineImporting = activeSources.some((row) => row.source_product_phase === "importing_baseline");
+  const workspacePhase =
+    baselineImporting
+      ? "baseline_import"
+      : baselinePending > 0
+        ? "initial_review"
+        : attentionSources.length > 0
+          ? "attention_required"
+          : "monitoring_live";
+  return {
+    changes_pending: pending,
+    baseline_review_pending: baselinePending,
+    recommended_lane: baselinePending > 0 ? "initial_review" : pending > 0 ? "changes" : pendingSuggestions > 0 ? "families" : null,
+    recommended_lane_reason_code:
+      baselinePending > 0 ? "baseline_review_pending" : pending > 0 ? "changes_pending" : pendingSuggestions > 0 ? "family_governance_pending" : "all_clear",
+    recommended_action_reason:
+      baselinePending > 0
+        ? `${baselinePending} baseline import items are waiting in Initial Review.`
+        : pending > 0
+          ? `${pending} pending change proposals are waiting for review decisions.`
+          : pendingSuggestions > 0
+            ? "Family or raw-type governance items need attention."
+            : "No immediate lane action is required.",
+    workspace_posture: {
+      phase: workspacePhase,
+      initial_review: {
+        pending_count: baselinePending,
+        reviewed_count: baselineReviewed,
+        total_count: baselineTotal,
+        completion_percent: baselineTotal > 0 ? Math.round((baselineReviewed / baselineTotal) * 100) : 100,
+        completed_at: baselinePending === 0 && baselineTotal > 0 ? nowIso : null,
+      },
+      monitoring: {
+        live_since: baselinePending === 0 ? "2026-03-18T05:05:00.000Z" : null,
+        replay_active: pending > 0,
+        active_source_count: activeSources.length,
+      },
+      next_action:
+        workspacePhase === "baseline_import"
+          ? {
+              lane: "sources",
+              label: "Open Sources",
+              reason: "Baseline import is still running on at least one source.",
+            }
+          : workspacePhase === "initial_review"
+            ? {
+                lane: "initial_review",
+                label: "Open Initial Review",
+                reason: baselinePending === 1 ? "1 baseline item still needs review." : `${baselinePending} baseline items still need review.`,
+              }
+            : workspacePhase === "attention_required"
+              ? {
+                  lane: "sources",
+                  label: "Open Sources",
+                  reason: "A source needs attention before the workspace is fully trustworthy.",
+                }
+              : pending > 0
+                ? {
+                    lane: "changes",
+                    label: "Open Changes",
+                    reason: pending === 1 ? "1 replay change is waiting." : `${pending} replay changes are waiting.`,
+                  }
+                : pendingSuggestions > 0
+                  ? {
+                      lane: "families",
+                      label: "Open Families",
+                      reason: "Naming drift is waiting in Families.",
+                    }
+                  : {
+                      lane: "manual",
+                      label: "Open Manual",
+                      reason: manualActiveCount > 0 ? "Manual fallback work is still open." : "No immediate action is required.",
+                    },
+    },
+    sources: {
+      active_count: activeSources.length,
+      running_count: activeSources.filter((row) => row.sync_state === "running").length,
+      queued_count: activeSources.filter((row) => row.sync_state === "queued").length,
+      attention_count: attentionSources.length,
+      blocking_count: blockingSources.length,
+      recommended_action: blockingSources.length > 0 ? "investigate_runtime" : attentionSources.length > 0 ? "continue_review_with_caution" : "continue_review",
+      severity: blockingSources.length > 0 ? "blocking" : attentionSources.length > 0 ? "warning" : "info",
+      reason_code: blockingSources.length > 0 ? "latest_sync_failed" : attentionSources.length > 0 ? "sync_running" : "source_idle",
+      message:
+        blockingSources.length > 0
+          ? "A source needs runtime attention before lane state is fully trustworthy."
+          : attentionSources.length > 0
+            ? "Some sources still need attention while you continue review."
+            : "No active sync is running. Continue reviewing changes.",
+      related_request_id: attentionSources[0]?.active_request_id || null,
+      progress_age_seconds: null,
+    },
+    families: {
+      attention_count: pendingSuggestions,
+      pending_raw_type_suggestions: pendingSuggestions,
+      mappings_state: demoState.familyStatus.state,
+      last_rebuilt_at: demoState.familyStatus.last_rebuilt_at,
+      last_error: demoState.familyStatus.last_error,
+    },
+    manual: {
+      active_event_count: manualActiveCount,
+      lane_role: "fallback",
+    },
+    generated_at: nowIso,
+  };
+}
+
+function buildDemoChangeAgentContext(changeId: number): AgentChangeContext {
+  const change = demoState.changes.find((row) => row.id === changeId);
+  if (!change) {
+    throw new Error("Change not found");
+  }
+  const decisionSupport = change.decision_support;
+  const suggestedAction = decisionSupport?.suggested_action || "review_carefully";
+  return {
+    generated_at: nowIso,
+    change: clone(change),
+    recommended_next_action: {
+      lane: change.review_bucket,
+      label:
+        suggestedAction === "approve"
+          ? "Approve change"
+          : suggestedAction === "reject"
+            ? "Reject change"
+            : suggestedAction === "edit"
+              ? "Edit before approval"
+              : "Review carefully",
+      reason: decisionSupport?.suggested_action_reason || "",
+      reason_code: "demo.agent.change.next_action",
+      reason_params: {},
+      risk_level: (decisionSupport?.risk_level || "medium") as AgentRecommendedAction["risk_level"],
+      recommended_tool:
+        suggestedAction === "approve" || suggestedAction === "reject"
+          ? "submit_change_decision"
+          : suggestedAction === "edit"
+            ? "preview_change_edit"
+            : "view_change",
+    },
+    blocking_conditions: [
+      ...(change.review_status !== "pending"
+        ? [{ code: "change_already_reviewed", message: "This change has already been reviewed.", severity: "blocking" as const }]
+        : []),
+      ...((decisionSupport?.risk_level || "") === "high"
+        ? [{ code: "high_risk_change", message: decisionSupport?.risk_summary || "This change should be reviewed carefully before confirmation.", severity: "warning" as const }]
+        : []),
+    ],
+    available_next_tools: ["view_change", "view_before_evidence", "view_after_evidence", "submit_change_decision", "preview_change_edit", "preview_label_learning", "review_families"],
+  };
+}
+
+function buildDemoSourceAgentContext(sourceId: number): AgentSourceContext {
+  const source = demoState.sources.find((row) => row.source_id === sourceId);
+  if (!source) throw new Error("Source not found");
+  const observability = buildDemoSourceObservability(sourceId);
+  const nextAction = observability.source_recovery?.next_action || "wait";
+  return {
+    generated_at: nowIso,
+    source: clone({ ...source, user_id: demoState.user.id }),
+    observability: clone(observability),
+    active_sync_request:
+      sourceId === 2
+        ? {
+            request_id: "demo-replay-2",
+            source_id: 2,
+            trigger_type: "scheduler",
+            status: "RUNNING",
+            idempotency_key: "demo-replay-2",
+            trace_id: "demo-replay-2",
+            error_code: null,
+            error_message: null,
+            metadata: {},
+            created_at: nowIso,
+            updated_at: nowIso,
+            stage: "llm_parse",
+            substage: "provider_reduce",
+            stage_updated_at: nowIso,
+            connector_result: null,
+            llm_usage: null,
+            elapsed_ms: 3290,
+            applied: false,
+            applied_at: null,
+            progress: source.sync_progress || null,
+          }
+        : null,
+    recommended_next_action: {
+      lane: "sources",
+      label:
+        nextAction === "retry_sync"
+          ? "Run another sync"
+          : nextAction === "reconnect_gmail"
+            ? "Reconnect source"
+            : nextAction === "update_ics"
+              ? "Open connection flow"
+              : "Wait for runtime",
+      reason: observability.operator_guidance?.message || observability.source_recovery?.impact_summary || "",
+      reason_code: "demo.agent.source.next_action",
+      reason_params: {},
+      risk_level:
+        observability.source_recovery?.trust_state === "blocked"
+          ? "high"
+          : observability.source_recovery?.trust_state === "partial" || observability.source_recovery?.trust_state === "stale"
+            ? "medium"
+            : "low",
+      recommended_tool:
+        nextAction === "retry_sync"
+          ? "run_source_sync"
+          : nextAction === "reconnect_gmail"
+            ? "reconnect_source"
+            : "review_source_observability",
+    },
+    blocking_conditions: [
+      ...(observability.operator_guidance?.severity === "blocking"
+        ? [{ code: observability.operator_guidance.reason_code, message: observability.operator_guidance.message, severity: "blocking" as const }]
+        : []),
+      ...(observability.source_recovery?.trust_state === "blocked" || observability.source_recovery?.trust_state === "partial" || observability.source_recovery?.trust_state === "stale"
+        ? [{ code: "source_recovery_attention", message: observability.source_recovery?.impact_summary || "Source trust is degraded.", severity: observability.source_recovery?.trust_state === "blocked" ? "blocking" as const : "warning" as const }]
+        : []),
+    ],
+    available_next_tools: ["review_source_observability", "view_sync_history", "run_source_sync", "start_oauth_session"],
+  };
+}
+
+function nextProposalId() {
+  return Math.max(0, ...demoState.agentProposals.map((item) => item.proposal_id)) + 1;
+}
+
+function createDemoChangeProposal(changeId: number): AgentProposal {
+  const context = buildDemoChangeAgentContext(changeId);
+  const action = context.change.decision_support?.suggested_action || "review_carefully";
+  const payload =
+    action === "approve" || action === "reject"
+      ? { kind: "change_decision", change_id: changeId, decision: action }
+      : action === "edit"
+        ? { kind: "web_only_change_edit_required", change_id: changeId }
+        : { kind: "web_only_high_risk_change_review", change_id: changeId };
+  const proposal: AgentProposal = {
+    proposal_id: nextProposalId(),
+    proposal_type: "change_decision",
+    status: "open",
+    target_kind: "change",
+    target_id: String(changeId),
+    summary:
+      action === "approve"
+        ? "Approve this change."
+        : action === "reject"
+          ? "Reject this change."
+          : action === "edit"
+            ? "Open web edit flow before approving this change."
+            : "Review this high-risk change carefully.",
+    summary_code: `demo.agent.change.${action}.summary`,
+    reason: context.recommended_next_action.reason,
+    reason_code: context.recommended_next_action.reason_code,
+    risk_level: context.recommended_next_action.risk_level,
+    confidence: action === "review_carefully" ? 0.56 : action === "edit" ? 0.78 : 0.92,
+    suggested_action: action,
+    suggested_payload: payload,
+    context: { recommended_next_action: context.recommended_next_action, blocking_conditions: context.blocking_conditions },
+    target_snapshot: {
+      change_id: changeId,
+      review_status: context.change.review_status,
+      review_bucket: context.change.review_bucket,
+      intake_phase: context.change.intake_phase,
+      detected_at: context.change.detected_at,
+    },
+    expires_at: "2026-03-19T05:20:00.000Z",
+    created_at: nowIso,
+    updated_at: nowIso,
+  };
+  demoState.agentProposals.unshift(proposal);
+  return proposal;
+}
+
+function createDemoSourceProposal(sourceId: number): AgentProposal {
+  const context = buildDemoSourceAgentContext(sourceId);
+  const action = context.observability.source_recovery?.next_action || "wait";
+  const payload =
+    action === "retry_sync"
+      ? { kind: "run_source_sync", source_id: sourceId }
+      : action === "reconnect_gmail"
+        ? { kind: "reconnect_source", source_id: sourceId, provider: context.source.provider }
+        : action === "update_ics"
+          ? { kind: "update_source_settings", source_id: sourceId, provider: context.source.provider }
+          : { kind: "wait_for_runtime", source_id: sourceId };
+  const proposal: AgentProposal = {
+    proposal_id: nextProposalId(),
+    proposal_type: "source_recovery",
+    status: "open",
+    target_kind: "source",
+    target_id: String(sourceId),
+    summary:
+      action === "retry_sync"
+        ? "Run another sync for this source."
+        : action === "reconnect_gmail"
+          ? "Reconnect this source before trusting it again."
+          : action === "update_ics"
+            ? "Update source settings before the next sync."
+            : "Wait for runtime progress before taking further action.",
+    summary_code: `demo.agent.source.${action}.summary`,
+    reason: context.recommended_next_action.reason,
+    reason_code: context.recommended_next_action.reason_code,
+    risk_level: context.recommended_next_action.risk_level,
+    confidence: action === "retry_sync" ? 0.82 : action === "wait" ? 0.62 : 0.74,
+    suggested_action: action,
+    suggested_payload: payload,
+    context: { recommended_next_action: context.recommended_next_action, blocking_conditions: context.blocking_conditions },
+    target_snapshot: {
+      source_id: sourceId,
+      active_request_id: context.source.active_request_id,
+      runtime_state: context.source.runtime_state,
+      source_product_phase: context.source.source_product_phase,
+      trust_state: context.observability.source_recovery?.trust_state || null,
+    },
+    expires_at: "2026-03-18T17:20:00.000Z",
+    created_at: nowIso,
+    updated_at: nowIso,
+  };
+  demoState.agentProposals.unshift(proposal);
+  return proposal;
+}
+
+function nextApprovalTicket(proposal: AgentProposal): ApprovalTicket {
+  return {
+    ticket_id: `demo-ticket-${Date.now()}`,
+    proposal_id: proposal.proposal_id,
+    channel: "web",
+    action_type: String(proposal.suggested_payload.kind || proposal.suggested_action),
+    target_kind: proposal.target_kind,
+    target_id: proposal.target_id,
+    payload: proposal.suggested_payload,
+    payload_hash: `demo-hash-${proposal.proposal_id}`,
+    target_snapshot: proposal.target_snapshot,
+    risk_level: proposal.risk_level,
+    status: "open",
+    executed_result: {},
+    expires_at: proposal.expires_at,
+    confirmed_at: null,
+    canceled_at: null,
+    executed_at: null,
+    created_at: nowIso,
+    updated_at: nowIso,
+  };
+}
+
 function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -860,128 +1288,100 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   if (pathname === "/onboarding/term-binding") {
     return clone(demoState.onboarding) as T;
   }
+  if (pathname === "/agent/context/workspace" && method === "GET") {
+    return clone(buildDemoWorkspaceAgentContext()) as T;
+  }
+  if (/^\/agent\/context\/changes\/\d+$/.test(pathname) && method === "GET") {
+    const changeId = Number(pathname.split("/").pop());
+    return clone(buildDemoChangeAgentContext(changeId)) as T;
+  }
+  if (/^\/agent\/context\/sources\/\d+$/.test(pathname) && method === "GET") {
+    const sourceId = Number(pathname.split("/").pop());
+    return clone(buildDemoSourceAgentContext(sourceId)) as T;
+  }
+  if (pathname === "/agent/proposals/change-decision" && method === "POST") {
+    return clone(createDemoChangeProposal(Number(body?.change_id))) as T;
+  }
+  if (pathname === "/agent/proposals/source-recovery" && method === "POST") {
+    return clone(createDemoSourceProposal(Number(body?.source_id))) as T;
+  }
+  if (/^\/agent\/proposals\/\d+$/.test(pathname) && method === "GET") {
+    const proposalId = Number(pathname.split("/").pop());
+    const proposal = demoState.agentProposals.find((item) => item.proposal_id === proposalId);
+    if (!proposal) throw new Error("Agent proposal not found");
+    return clone(proposal) as T;
+  }
+  if (pathname === "/agent/approval-tickets" && method === "POST") {
+    const proposalId = Number(body?.proposal_id);
+    const proposal = demoState.agentProposals.find((item) => item.proposal_id === proposalId);
+    if (!proposal) throw new Error("Agent proposal not found");
+    const kind = String(proposal.suggested_payload.kind || "");
+    if (!["change_decision", "run_source_sync"].includes(kind)) {
+      throw new Error("This proposal is not directly executable and must stay in the web workflow.");
+    }
+    const ticket = nextApprovalTicket(proposal);
+    demoState.approvalTickets.unshift(ticket);
+    return clone(ticket) as T;
+  }
+  if (/^\/agent\/approval-tickets\/[^/]+$/.test(pathname) && method === "GET") {
+    const ticketId = decodeURIComponent(pathname.split("/").pop() || "");
+    const ticket = demoState.approvalTickets.find((item) => item.ticket_id === ticketId);
+    if (!ticket) throw new Error("Approval ticket not found");
+    return clone(ticket) as T;
+  }
+  if (/^\/agent\/approval-tickets\/[^/]+\/confirm$/.test(pathname) && method === "POST") {
+    const ticketId = pathname.split("/")[3];
+    const ticket = demoState.approvalTickets.find((item) => item.ticket_id === ticketId);
+    if (!ticket) throw new Error("Approval ticket not found");
+    const kind = String(ticket.payload.kind || "");
+    if (kind === "change_decision") {
+      const row = demoState.changes.find((item) => item.id === Number(ticket.payload.change_id));
+      if (row) {
+        row.review_status = ticket.payload.decision === "reject" ? "rejected" : "approved";
+        row.reviewed_at = nowIso;
+      }
+      ticket.executed_result = {
+        kind,
+        change_id: Number(ticket.payload.change_id),
+        decision: String(ticket.payload.decision || "approve"),
+        review_status: row?.review_status || "approved",
+      };
+    }
+    if (kind === "run_source_sync") {
+      const source = demoState.sources.find((item) => item.source_id === Number(ticket.payload.source_id));
+      if (source) {
+        source.sync_state = "running";
+        source.runtime_state = "running";
+        source.active_request_id = `agent-sync-${source.source_id}`;
+      }
+      ticket.executed_result = {
+        kind,
+        source_id: Number(ticket.payload.source_id),
+        request_id: `agent-sync-${ticket.payload.source_id}`,
+        status: "QUEUED",
+      };
+    }
+    ticket.status = "executed";
+    ticket.confirmed_at = nowIso;
+    ticket.executed_at = nowIso;
+    ticket.updated_at = nowIso;
+    const proposal = demoState.agentProposals.find((item) => item.proposal_id === ticket.proposal_id);
+    if (proposal) proposal.status = "accepted";
+    return clone(ticket) as T;
+  }
+  if (/^\/agent\/approval-tickets\/[^/]+\/cancel$/.test(pathname) && method === "POST") {
+    const ticketId = pathname.split("/")[3];
+    const ticket = demoState.approvalTickets.find((item) => item.ticket_id === ticketId);
+    if (!ticket) throw new Error("Approval ticket not found");
+    ticket.status = "canceled";
+    ticket.canceled_at = nowIso;
+    ticket.updated_at = nowIso;
+    const proposal = demoState.agentProposals.find((item) => item.proposal_id === ticket.proposal_id);
+    if (proposal) proposal.status = "rejected";
+    return clone(ticket) as T;
+  }
   if (pathname === "/changes/summary") {
-    const pending = demoState.changes.filter((row) => row.review_status === "pending" && row.review_bucket === "changes").length;
-    const baselinePending = demoState.changes.filter((row) => row.review_status === "pending" && row.review_bucket === "initial_review").length;
-    const baselineReviewed = demoState.changes.filter((row) => row.review_status !== "pending" && row.review_bucket === "initial_review").length;
-    const baselineTotal = demoState.changes.filter((row) => row.review_bucket === "initial_review").length;
-    const activeSources = demoState.sources.filter((row) => row.is_active);
-    const attentionSources = activeSources.filter(
-      (row) =>
-        Boolean(row.last_error_message) ||
-        row.operator_guidance?.severity === "warning" ||
-        row.operator_guidance?.severity === "blocking" ||
-        row.runtime_state === "rebind_pending",
-    );
-    const blockingSources = attentionSources.filter((row) => row.operator_guidance?.severity === "blocking");
-    const pendingSuggestions = demoState.rawTypeSuggestions.filter((row) => row.status === "pending").length;
-    const manualActiveCount = demoState.manualEvents.filter((row) => row.lifecycle !== "removed").length;
-    const baselineImporting = activeSources.some((row) => row.source_product_phase === "importing_baseline");
-    const workspacePhase =
-      baselineImporting
-        ? "baseline_import"
-        : baselinePending > 0
-          ? "initial_review"
-          : attentionSources.length > 0
-            ? "attention_required"
-            : "monitoring_live";
-    const summary: ChangesWorkbenchSummary = {
-      changes_pending: pending,
-      baseline_review_pending: baselinePending,
-      recommended_lane: baselinePending > 0 ? "initial_review" : pending > 0 ? "changes" : pendingSuggestions > 0 ? "families" : null,
-      recommended_lane_reason_code:
-        baselinePending > 0 ? "baseline_review_pending" : pending > 0 ? "changes_pending" : pendingSuggestions > 0 ? "family_governance_pending" : "all_clear",
-      recommended_action_reason:
-        baselinePending > 0
-          ? `${baselinePending} baseline import items are waiting in Initial Review.`
-          : pending > 0
-          ? `${pending} pending change proposals are waiting for review decisions.`
-          : pendingSuggestions > 0
-            ? "Family or raw-type governance items need attention."
-            : "No immediate lane action is required.",
-      workspace_posture: {
-        phase: workspacePhase,
-        initial_review: {
-          pending_count: baselinePending,
-          reviewed_count: baselineReviewed,
-          total_count: baselineTotal,
-          completion_percent: baselineTotal > 0 ? Math.round((baselineReviewed / baselineTotal) * 100) : 100,
-          completed_at: baselinePending === 0 && baselineTotal > 0 ? nowIso : null,
-        },
-        monitoring: {
-          live_since: baselinePending === 0 ? "2026-03-18T05:05:00.000Z" : null,
-          replay_active: pending > 0,
-          active_source_count: activeSources.length,
-        },
-        next_action:
-          workspacePhase === "baseline_import"
-            ? {
-                lane: "sources",
-                label: "Open Sources",
-                reason: "Baseline import is still running on at least one source.",
-              }
-            : workspacePhase === "initial_review"
-              ? {
-                  lane: "initial_review",
-                  label: "Open Initial Review",
-                  reason: baselinePending === 1 ? "1 baseline item still needs review." : `${baselinePending} baseline items still need review.`,
-                }
-              : workspacePhase === "attention_required"
-                ? {
-                    lane: "sources",
-                    label: "Open Sources",
-                    reason: "A source needs attention before the workspace is fully trustworthy.",
-                  }
-                : pending > 0
-                  ? {
-                      lane: "changes",
-                      label: "Open Changes",
-                      reason: pending === 1 ? "1 replay change is waiting." : `${pending} replay changes are waiting.`,
-                    }
-                  : pendingSuggestions > 0
-                    ? {
-                        lane: "families",
-                        label: "Open Families",
-                        reason: "Naming drift is waiting in Families.",
-                      }
-                    : {
-                        lane: "manual",
-                        label: "Open Manual",
-                        reason: manualActiveCount > 0 ? "Manual fallback work is still open." : "No immediate action is required.",
-                      },
-      },
-      sources: {
-        active_count: activeSources.length,
-        running_count: activeSources.filter((row) => row.sync_state === "running").length,
-        queued_count: activeSources.filter((row) => row.sync_state === "queued").length,
-        attention_count: attentionSources.length,
-        blocking_count: blockingSources.length,
-        recommended_action: blockingSources.length > 0 ? "investigate_runtime" : attentionSources.length > 0 ? "continue_review_with_caution" : "continue_review",
-        severity: blockingSources.length > 0 ? "blocking" : attentionSources.length > 0 ? "warning" : "info",
-        reason_code: blockingSources.length > 0 ? "latest_sync_failed" : attentionSources.length > 0 ? "sync_running" : "source_idle",
-        message:
-          blockingSources.length > 0
-            ? "A source needs runtime attention before lane state is fully trustworthy."
-            : attentionSources.length > 0
-              ? "Some sources still need attention while you continue review."
-              : "No active sync is running. Continue reviewing changes.",
-        related_request_id: attentionSources[0]?.active_request_id || null,
-        progress_age_seconds: null,
-      },
-      families: {
-        attention_count: pendingSuggestions,
-        pending_raw_type_suggestions: pendingSuggestions,
-        mappings_state: demoState.familyStatus.state,
-        last_rebuilt_at: demoState.familyStatus.last_rebuilt_at,
-        last_error: demoState.familyStatus.last_error,
-      },
-      manual: {
-        active_event_count: manualActiveCount,
-        lane_role: "fallback",
-      },
-      generated_at: nowIso,
-    };
-    return summary as T;
+    return clone(getDemoWorkspaceSummary()) as T;
   }
   if (pathname === "/changes" && method === "GET") {
     const reviewStatus = (url.searchParams.get("review_status") || "pending").toLowerCase();
