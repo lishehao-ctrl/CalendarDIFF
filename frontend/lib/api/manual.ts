@@ -1,6 +1,10 @@
 import { apiDelete, apiGet, apiPatch, apiPost, buildQuery } from "@/lib/api/client";
 import type { ManualEvent, ManualEventMutationResponse } from "@/lib/types";
 
+export function manualEventsCacheKey(params?: { include_removed?: boolean }) {
+  return `manual:events${buildQuery(params || {})}`;
+}
+
 export async function listManualEvents(params?: { include_removed?: boolean }) {
   return apiGet<ManualEvent[]>(`/manual/events${buildQuery(params || {})}`);
 }

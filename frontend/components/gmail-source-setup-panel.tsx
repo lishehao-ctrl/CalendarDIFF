@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Mailbox, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { SourceObservabilitySections } from "@/components/source-observability-sections";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
+import { PanelLoadingPlaceholder } from "@/components/panel-loading-placeholder";
 import { SourceSyncProgress } from "@/components/source-sync-progress";
 import { withBasePath } from "@/lib/demo-mode";
 import { startOnboardingGmailOAuth } from "@/lib/api/onboarding";
@@ -18,10 +19,16 @@ import { createOAuthSession, deleteSource, getSyncRequest, listSources, sourceLi
 import { useApiResource } from "@/lib/use-api-resource";
 import type { SourceRow, SyncStatus } from "@/lib/types";
 
+const DeferredSourceObservabilitySections = dynamic(
+  () => import("@/components/source-observability-sections").then((mod) => mod.SourceObservabilitySections),
+  {
+    loading: () => <PanelLoadingPlaceholder rows={2} className="mt-4 p-4" />,
+  },
+);
+
 export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) {
   const { data, loading, error, refresh } = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), [], null, {
     cacheKey: sourceListCacheKey("all"),
-    readCachedSnapshot: false,
   });
   const [syncDetail, setSyncDetail] = useState<SyncStatus | null>(null);
   const [banner, setBanner] = useState<{ tone: "info" | "error"; text: string } | null>(null);
@@ -148,7 +155,7 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
               </div>
               <Badge tone={connectionBadgeTone}>{connectionBadgeLabel}</Badge>
             </div>
-            <SourceObservabilitySections observability={observability} className="mt-4" />
+            <DeferredSourceObservabilitySections observability={observability} className="mt-4" />
           </Card>
         ) : null}
 

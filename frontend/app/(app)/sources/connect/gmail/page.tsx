@@ -1,6 +1,14 @@
+import dynamic from "next/dynamic";
 import { LocalizedPageHeader } from "@/components/localized-page-header";
-import { GmailSourceSetupPanel } from "@/components/gmail-source-setup-panel";
+import { PanelLoadingPlaceholder } from "@/components/panel-loading-placeholder";
 import { requireReadyServerSession } from "@/lib/server-auth";
+
+const DeferredGmailSourceSetupPanel = dynamic(
+  () => import("@/components/gmail-source-setup-panel").then((mod) => mod.GmailSourceSetupPanel),
+  {
+    loading: () => <PanelLoadingPlaceholder rows={2} />,
+  },
+);
 
 export default async function GmailConnectPage() {
   await requireReadyServerSession();
@@ -12,7 +20,7 @@ export default async function GmailConnectPage() {
         titleKey="sourceConnect.gmailTitle"
         descriptionKey="sourceConnect.gmailSummary"
       />
-      <GmailSourceSetupPanel />
+      <DeferredGmailSourceSetupPanel />
     </div>
   );
 }

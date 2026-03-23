@@ -12,9 +12,10 @@ import {
   createManualEvent,
   deleteManualEvent,
   listManualEvents,
+  manualEventsCacheKey,
   updateManualEvent,
 } from "@/lib/api/manual";
-import { listFamilies } from "@/lib/api/families";
+import { familiesListCacheKey, listFamilies } from "@/lib/api/families";
 import { translate } from "@/lib/i18n/runtime";
 import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime, formatSemanticDue, formatStatusLabel } from "@/lib/presenters";
@@ -101,8 +102,12 @@ function FieldLabel({ htmlFor, children }: { htmlFor?: string; children: React.R
 }
 
 export function ManualWorkbenchPanel() {
-  const families = useApiResource<CourseWorkItemFamily[]>(() => listFamilies(), []);
-  const manualEvents = useApiResource<ManualEvent[]>(() => listManualEvents(), []);
+  const families = useApiResource<CourseWorkItemFamily[]>(() => listFamilies(), [], [], {
+    cacheKey: familiesListCacheKey(),
+  });
+  const manualEvents = useApiResource<ManualEvent[]>(() => listManualEvents(), [], [], {
+    cacheKey: manualEventsCacheKey(),
+  });
 
   const [banner, setBanner] = useState<Banner>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -274,7 +279,7 @@ export function ManualWorkbenchPanel() {
     }
   }
 
-  if (families.loading || manualEvents.loading) return <LoadingState label="manual workspace" />;
+  if (families.loading || manualEvents.loading) return <LoadingState label={translate("common.loadingLabels.manualWorkspace")} />;
   if (families.error) return <ErrorState message={families.error} />;
   if (manualEvents.error) return <ErrorState message={manualEvents.error} />;
 

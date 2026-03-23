@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
-import { SettingsMcpAccessCard } from "@/components/settings-mcp-access-card";
+import { PanelLoadingPlaceholder } from "@/components/panel-loading-placeholder";
 import { getSettingsProfile, settingsProfileCacheKey, updateSettingsProfile } from "@/lib/api/settings";
 import { getBrowserTimeZone } from "@/lib/browser-timezone";
 import { useLocale } from "@/lib/i18n/use-locale";
@@ -15,6 +16,20 @@ import { translate } from "@/lib/i18n/runtime";
 import { formatTimeZoneLabel, listCommonTimeZones, listSupportedTimeZones, searchTimeZones } from "@/lib/timezones";
 import { useApiResource } from "@/lib/use-api-resource";
 import type { UserProfile } from "@/lib/types";
+
+const DeferredSettingsMcpAccessCard = dynamic(
+  () => import("@/components/settings-mcp-access-card").then((mod) => mod.SettingsMcpAccessCard),
+  {
+    loading: () => (
+      <PanelLoadingPlaceholder
+        eyebrow={translate("settings.mcp.eyebrow")}
+        title={translate("settings.mcp.title")}
+        summary={translate("settings.mcp.summary")}
+        rows={2}
+      />
+    ),
+  },
+);
 
 export function SettingsPanel() {
   const { locale, setLocale } = useLocale();
@@ -239,7 +254,7 @@ export function SettingsPanel() {
         </Card>
       ) : null}
 
-      <SettingsMcpAccessCard />
+      <DeferredSettingsMcpAccessCard />
 
     </div>
   );

@@ -9,6 +9,48 @@ import type {
   RawTypeSuggestionItem,
 } from "@/lib/types";
 
+export function familiesListCacheKey(params?: {
+  course_dept?: string | null;
+  course_number?: number | null;
+  course_suffix?: string | null;
+  course_quarter?: string | null;
+  course_year2?: number | null;
+}) {
+  return `families:list${buildQuery(params || {})}`;
+}
+
+export function familiesStatusCacheKey() {
+  return "families:status";
+}
+
+export function familiesCoursesCacheKey() {
+  return "families:courses";
+}
+
+export function familiesRawTypesCacheKey(params?: {
+  course_dept?: string | null;
+  course_number?: number | null;
+  course_suffix?: string | null;
+  course_quarter?: string | null;
+  course_year2?: number | null;
+  family_id?: number | null;
+}) {
+  return `families:raw-types${buildQuery(params || {})}`;
+}
+
+export function familiesSuggestionsCacheKey(params?: {
+  status?: "pending" | "approved" | "rejected" | "dismissed" | "all";
+  course_dept?: string | null;
+  course_number?: number | null;
+  course_suffix?: string | null;
+  course_quarter?: string | null;
+  course_year2?: number | null;
+  limit?: number;
+  offset?: number;
+}) {
+  return `families:suggestions${buildQuery({ status: "pending", ...(params || {}) })}`;
+}
+
 export async function listFamilies(params?: {
   course_dept?: string | null;
   course_number?: number | null;

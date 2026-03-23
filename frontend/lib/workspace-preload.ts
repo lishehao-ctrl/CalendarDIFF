@@ -1,7 +1,20 @@
 "use client";
 
 import { changesListCacheKey, changesSummaryCacheKey, getChangesSummary, listChanges } from "@/lib/api/changes";
-import { getSettingsProfile, settingsProfileCacheKey } from "@/lib/api/settings";
+import {
+  familiesCoursesCacheKey,
+  familiesListCacheKey,
+  familiesRawTypesCacheKey,
+  familiesStatusCacheKey,
+  familiesSuggestionsCacheKey,
+  getFamiliesStatus,
+  listFamilies,
+  listFamilyCourses,
+  listFamilyRawTypeSuggestions,
+  listFamilyRawTypes,
+} from "@/lib/api/families";
+import { getMcpTokens, getSettingsProfile, settingsMcpTokensCacheKey, settingsProfileCacheKey } from "@/lib/api/settings";
+import { listManualEvents, manualEventsCacheKey } from "@/lib/api/manual";
 import { getSourceObservability, listSources, sourceListCacheKey, sourceObservabilityCacheKey } from "@/lib/api/sources";
 import { preloadResource } from "@/lib/resource-cache";
 import type { SourceRow } from "@/lib/types";
@@ -63,6 +76,12 @@ function preloadSourcesLane() {
     loader: () => listSources({ status: "archived" }),
     staleMs: NAV_STALE_MS,
   }).catch(() => undefined);
+
+  void preloadResource({
+    key: sourceListCacheKey("all"),
+    loader: () => listSources({ status: "all" }),
+    staleMs: NAV_STALE_MS,
+  }).catch(() => undefined);
 }
 
 function preloadChangesLane() {
@@ -98,6 +117,64 @@ function preloadSettingsLane() {
     loader: getSettingsProfile,
     staleMs: NAV_STALE_MS,
   }).catch(() => undefined);
+
+  void preloadResource({
+    key: settingsMcpTokensCacheKey(),
+    loader: getMcpTokens,
+    staleMs: NAV_STALE_MS,
+  }).catch(() => undefined);
+}
+
+function preloadFamiliesLane() {
+  void preloadResource({
+    key: familiesListCacheKey(),
+    loader: () => listFamilies(),
+    staleMs: NAV_STALE_MS,
+  }).catch(() => undefined);
+
+  void preloadResource({
+    key: familiesStatusCacheKey(),
+    loader: getFamiliesStatus,
+    staleMs: NAV_STALE_MS,
+  }).catch(() => undefined);
+
+  void preloadResource({
+    key: familiesCoursesCacheKey(),
+    loader: listFamilyCourses,
+    staleMs: NAV_STALE_MS,
+  }).catch(() => undefined);
+
+  void preloadResource({
+    key: familiesRawTypesCacheKey(),
+    loader: () => listFamilyRawTypes(),
+    staleMs: NAV_STALE_MS,
+  }).catch(() => undefined);
+
+  void preloadResource({
+    key: familiesSuggestionsCacheKey({ status: "pending", limit: 100 }),
+    loader: () => listFamilyRawTypeSuggestions({ status: "pending", limit: 100 }),
+    staleMs: NAV_STALE_MS,
+  }).catch(() => undefined);
+
+  void preloadResource({
+    key: manualEventsCacheKey(),
+    loader: () => listManualEvents(),
+    staleMs: NAV_STALE_MS,
+  }).catch(() => undefined);
+}
+
+function preloadManualLane() {
+  void preloadResource({
+    key: manualEventsCacheKey(),
+    loader: () => listManualEvents(),
+    staleMs: NAV_STALE_MS,
+  }).catch(() => undefined);
+
+  void preloadResource({
+    key: familiesListCacheKey(),
+    loader: () => listFamilies(),
+    staleMs: NAV_STALE_MS,
+  }).catch(() => undefined);
 }
 
 export function preloadWorkspaceLane(href: string) {
@@ -113,6 +190,14 @@ export function preloadWorkspaceLane(href: string) {
   }
   if (pathname.startsWith("/changes")) {
     preloadChangesLane();
+    return;
+  }
+  if (pathname.startsWith("/families")) {
+    preloadFamiliesLane();
+    return;
+  }
+  if (pathname.startsWith("/manual")) {
+    preloadManualLane();
     return;
   }
   if (pathname.startsWith("/settings")) {

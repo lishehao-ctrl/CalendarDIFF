@@ -6,7 +6,8 @@ import { ArchiveRestore, ExternalLink, RefreshCw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
+import { EmptyState, ErrorState } from "@/components/data-states";
+import { PanelLoadingPlaceholder } from "@/components/panel-loading-placeholder";
 import { SourceSyncProgress } from "@/components/source-sync-progress";
 import {
   createOAuthSession,
@@ -155,7 +156,6 @@ function SyncRunCard({
 export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: number; basePath?: string }) {
   const sources = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), [], null, {
     cacheKey: sourceListCacheKey("all"),
-    readCachedSnapshot: false,
   });
   const observability = useApiResource(() => getSourceObservability(sourceId), [sourceId], null, {
     cacheKey: sourceObservabilityCacheKey(sourceId),
@@ -257,12 +257,10 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
     }
   }
 
-  if (sources.loading || observability.loading || history.loading) {
-    return <LoadingState label={translate("common.loadingLabels.sourceDetail")} />;
+  if (sources.loading && !sources.data) {
+    return <PanelLoadingPlaceholder rows={3} />;
   }
-  if (sources.error) return <ErrorState message={`${translate("sources.detail.sourceLoadFailed")} ${sources.error}`} />;
-  if (observability.error) return <ErrorState message={`${translate("sources.detail.postureLoadFailed")} ${observability.error}`} />;
-  if (history.error) return <ErrorState message={`${translate("sources.detail.historyLoadFailed")} ${history.error}`} />;
+  if (sources.error && !sources.data) return <ErrorState message={`${translate("sources.detail.sourceLoadFailed")} ${sources.error}`} />;
   if (!source) {
     return <EmptyState title={translate("sources.detail.sourceNotFoundTitle")} description={translate("sources.detail.sourceNotFoundDescription")} />;
   }
@@ -376,87 +374,113 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
 
         <Card className="animate-surface-enter p-5">
           <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.detail.currentPosture")}</p>
-          <div className="mt-4 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-ink">{sourceRecovery?.impact_summary || translate("sources.detail.recoveryUnavailable")}</p>
-                <p className="mt-2 text-sm text-[#596270]">{productPhaseLabel(sourceProductPhase)} · {trustStateLabel(sourceRecovery?.trust_state)}</p>
-              </div>
-              <Badge tone={trustStateTone(sourceRecovery?.trust_state)}>{trustStateLabel(sourceRecovery?.trust_state)}</Badge>
+          {observability.loading && !observability.data ? (
+            <PanelLoadingPlaceholder rows={2} className="mt-4 p-4" />
+          ) : observability.error && !observability.data ? (
+            <div className="mt-4 rounded-[1.15rem] border border-[#efc4b5] bg-[#fff3ef] p-4 text-sm text-[#7f3d2a]">
+              {`${translate("sources.detail.postureLoadFailed")} ${observability.error}`}
             </div>
-            {sourceRecovery ? (
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
-                {usageFact(translate("sources.detail.nextAction"), sourceRecovery.next_action_label)}
-                {usageFact(translate("sources.detail.lastGoodSync"), formatDateTime(sourceRecovery.last_good_sync_at, translate("sources.detail.notRecorded")))}
-                {usageFact(translate("sources.detail.degradedSince"), formatDateTime(sourceRecovery.degraded_since, translate("sources.detail.notDegraded")))}
-              </div>
-            ) : null}
-            {sourceRecovery?.recovery_steps?.length ? (
-              <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/75 p-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("sources.detail.recoverySteps")}</p>
-                <div className="mt-3 space-y-2 text-sm text-[#314051]">
-                  {sourceRecovery.recovery_steps.map((step) => (
-                    <p key={step}>{step}</p>
-                  ))}
+          ) : (
+            <div className="mt-4 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-ink">{sourceRecovery?.impact_summary || translate("sources.detail.recoveryUnavailable")}</p>
+                  <p className="mt-2 text-sm text-[#596270]">{productPhaseLabel(sourceProductPhase)} · {trustStateLabel(sourceRecovery?.trust_state)}</p>
                 </div>
+                <Badge tone={trustStateTone(sourceRecovery?.trust_state)}>{trustStateLabel(sourceRecovery?.trust_state)}</Badge>
               </div>
-            ) : null}
-            {activeSync ? (
-              <>
+              {sourceRecovery ? (
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  {usageFact(translate("sources.detail.currentRun"), formatStatusLabel(activeSync.status))}
-                  {usageFact(translate("sources.observability.stage"), formatStatusLabel(activeSync.substage || activeSync.stage, translate("sources.detail.noStageSample")))}
-                  {usageFact(translate("sources.observability.updated"), formatDateTime(activeSync.updated_at))}
+                  {usageFact(translate("sources.detail.nextAction"), sourceRecovery.next_action_label)}
+                  {usageFact(translate("sources.detail.lastGoodSync"), formatDateTime(sourceRecovery.last_good_sync_at, translate("sources.detail.notRecorded")))}
+                  {usageFact(translate("sources.detail.degradedSince"), formatDateTime(sourceRecovery.degraded_since, translate("sources.detail.notDegraded")))}
                 </div>
-                {activeSync.progress ? <SourceSyncProgress className="mt-4" progress={activeSync.progress} /> : null}
-              </>
-            ) : source.sync_progress ? (
-              <SourceSyncProgress className="mt-4" progress={source.sync_progress} />
-            ) : null}
-          </div>
+              ) : null}
+              {sourceRecovery?.recovery_steps?.length ? (
+                <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/75 p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("sources.detail.recoverySteps")}</p>
+                  <div className="mt-3 space-y-2 text-sm text-[#314051]">
+                    {sourceRecovery.recovery_steps.map((step) => (
+                      <p key={step}>{step}</p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {activeSync ? (
+                <>
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    {usageFact(translate("sources.detail.currentRun"), formatStatusLabel(activeSync.status))}
+                    {usageFact(translate("sources.observability.stage"), formatStatusLabel(activeSync.substage || activeSync.stage, translate("sources.detail.noStageSample")))}
+                    {usageFact(translate("sources.observability.updated"), formatDateTime(activeSync.updated_at))}
+                  </div>
+                  {activeSync.progress ? <SourceSyncProgress className="mt-4" progress={activeSync.progress} /> : null}
+                </>
+              ) : source.sync_progress ? (
+                <SourceSyncProgress className="mt-4" progress={source.sync_progress} />
+              ) : null}
+            </div>
+          )}
         </Card>
 
         <Card className="animate-surface-enter p-5">
           <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.detail.bootstrap")}</p>
-          <div className="mt-4">
-            <SyncRunCard title={translate("sources.detail.bootstrapRun")} sync={bootstrap} />
-          </div>
-          <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/75 p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("sources.detail.importSummary")}</p>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              {usageFact(translate("sources.detail.imported"), String(bootstrapSummary?.imported_count || 0))}
-              {usageFact(translate("sources.detail.needsReview"), String(bootstrapSummary?.review_required_count || 0))}
-              {usageFact(translate("sources.detail.ignored"), String(bootstrapSummary?.ignored_count || 0))}
-              {usageFact(translate("sources.detail.conflicts"), String(bootstrapSummary?.conflict_count || 0))}
-              {usageFact(translate("sources.detail.recordsScanned"), bootstrapRecordsCount !== null ? String(bootstrapRecordsCount) : "—")}
-              {usageFact(translate("sources.detail.bootstrapState"), formatStatusLabel(bootstrapSummary?.state, translate("common.labels.unknown")))}
+          {observability.loading && !observability.data ? (
+            <PanelLoadingPlaceholder rows={2} className="mt-4 p-4" />
+          ) : observability.error && !observability.data ? (
+            <div className="mt-4 rounded-[1.15rem] border border-[#efc4b5] bg-[#fff3ef] p-4 text-sm text-[#7f3d2a]">
+              {`${translate("sources.detail.postureLoadFailed")} ${observability.error}`}
             </div>
-            {bootstrapSummary?.review_required_count ? (
-              <p className="mt-4 text-xs leading-5 text-[#6d7885]">
-                {translate("sources.detail.baselineReviewWaiting")}
-              </p>
-            ) : null}
-          </div>
+          ) : (
+            <>
+              <div className="mt-4">
+                <SyncRunCard title={translate("sources.detail.bootstrapRun")} sync={bootstrap} />
+              </div>
+              <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/75 p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("sources.detail.importSummary")}</p>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {usageFact(translate("sources.detail.imported"), String(bootstrapSummary?.imported_count || 0))}
+                  {usageFact(translate("sources.detail.needsReview"), String(bootstrapSummary?.review_required_count || 0))}
+                  {usageFact(translate("sources.detail.ignored"), String(bootstrapSummary?.ignored_count || 0))}
+                  {usageFact(translate("sources.detail.conflicts"), String(bootstrapSummary?.conflict_count || 0))}
+                  {usageFact(translate("sources.detail.recordsScanned"), bootstrapRecordsCount !== null ? String(bootstrapRecordsCount) : "—")}
+                  {usageFact(translate("sources.detail.bootstrapState"), formatStatusLabel(bootstrapSummary?.state, translate("common.labels.unknown")))}
+                </div>
+                {bootstrapSummary?.review_required_count ? (
+                  <p className="mt-4 text-xs leading-5 text-[#6d7885]">
+                    {translate("sources.detail.baselineReviewWaiting")}
+                  </p>
+                ) : null}
+              </div>
+            </>
+          )}
         </Card>
 
         <Card className="animate-surface-enter p-5">
           <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.detail.replayHistory")}</p>
-          <div className="mt-4 space-y-3">
-            <SyncRunCard title={translate("sources.detail.latestReplay")} sync={latestReplay} />
-            {(history.data?.items || []).slice(0, 6).map((item) => (
-              <div key={item.request_id} className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-ink">{formatStatusLabel(item.status)} replay</p>
-                    <p className="mt-1 text-sm text-[#596270]">{formatDateTime(item.updated_at)} · {formatStatusLabel(item.substage || item.stage, translate("sources.detail.noStageSample"))}</p>
+          {history.loading && !history.data ? (
+            <PanelLoadingPlaceholder rows={2} className="mt-4 p-4" />
+          ) : history.error && !history.data ? (
+            <div className="mt-4 rounded-[1.15rem] border border-[#efc4b5] bg-[#fff3ef] p-4 text-sm text-[#7f3d2a]">
+              {`${translate("sources.detail.historyLoadFailed")} ${history.error}`}
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              <SyncRunCard title={translate("sources.detail.latestReplay")} sync={latestReplay} />
+              {(history.data?.items || []).slice(0, 6).map((item) => (
+                <div key={item.request_id} className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-ink">{formatStatusLabel(item.status)} replay</p>
+                      <p className="mt-1 text-sm text-[#596270]">{formatDateTime(item.updated_at)} · {formatStatusLabel(item.substage || item.stage, translate("sources.detail.noStageSample"))}</p>
+                    </div>
+                    <Badge tone={item.status === "FAILED" ? "error" : item.status === "RUNNING" ? "pending" : "approved"}>
+                      {formatElapsedMs(item.elapsed_ms || null)}
+                    </Badge>
                   </div>
-                  <Badge tone={item.status === "FAILED" ? "error" : item.status === "RUNNING" ? "pending" : "approved"}>
-                    {formatElapsedMs(item.elapsed_ms || null)}
-                  </Badge>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </Card>
       </div>
     </div>

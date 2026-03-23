@@ -8,10 +8,16 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
-import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
+import { EmptyState, ErrorState } from "@/components/data-states";
+import { PanelLoadingPlaceholder } from "@/components/panel-loading-placeholder";
 import {
   createFamily,
   decideFamilyRawTypeSuggestion,
+  familiesCoursesCacheKey,
+  familiesListCacheKey,
+  familiesRawTypesCacheKey,
+  familiesStatusCacheKey,
+  familiesSuggestionsCacheKey,
   getFamiliesStatus,
   listFamilies,
   listFamilyCourses,
@@ -20,7 +26,7 @@ import {
   relinkFamilyRawType,
   updateFamily,
 } from "@/lib/api/families";
-import { listManualEvents } from "@/lib/api/manual";
+import { listManualEvents, manualEventsCacheKey } from "@/lib/api/manual";
 import { translate } from "@/lib/i18n/runtime";
 import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime, formatSemanticDue } from "@/lib/presenters";
@@ -199,12 +205,24 @@ function PaginationControls({
 
 export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) {
   void basePath;
-  const families = useApiResource<CourseWorkItemFamily[]>(() => listFamilies(), []);
-  const status = useApiResource<CourseWorkItemFamilyStatus>(() => getFamiliesStatus(), []);
-  const courses = useApiResource<{ courses: CourseIdentity[] }>(() => listFamilyCourses(), []);
-  const rawTypes = useApiResource<CourseWorkItemRawType[]>(() => listFamilyRawTypes(), []);
-  const suggestions = useApiResource<RawTypeSuggestionItem[]>(() => listFamilyRawTypeSuggestions({ status: "pending", limit: 100 }), []);
-  const manualEvents = useApiResource<ManualEvent[]>(() => listManualEvents(), []);
+  const families = useApiResource<CourseWorkItemFamily[]>(() => listFamilies(), [], [], {
+    cacheKey: familiesListCacheKey(),
+  });
+  const status = useApiResource<CourseWorkItemFamilyStatus>(() => getFamiliesStatus(), [], null, {
+    cacheKey: familiesStatusCacheKey(),
+  });
+  const courses = useApiResource<{ courses: CourseIdentity[] }>(() => listFamilyCourses(), [], { courses: [] }, {
+    cacheKey: familiesCoursesCacheKey(),
+  });
+  const rawTypes = useApiResource<CourseWorkItemRawType[]>(() => listFamilyRawTypes(), [], [], {
+    cacheKey: familiesRawTypesCacheKey(),
+  });
+  const suggestions = useApiResource<RawTypeSuggestionItem[]>(() => listFamilyRawTypeSuggestions({ status: "pending", limit: 100 }), [], [], {
+    cacheKey: familiesSuggestionsCacheKey({ status: "pending", limit: 100 }),
+  });
+  const manualEvents = useApiResource<ManualEvent[]>(() => listManualEvents(), [], [], {
+    cacheKey: manualEventsCacheKey(),
+  });
 
   const [workspaceArea, setWorkspaceArea] = useState<WorkspaceArea>("families");
   const [query, setQuery] = useState("");
@@ -513,7 +531,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
   }
 
   if (families.loading || status.loading || courses.loading || rawTypes.loading || suggestions.loading) {
-    return <LoadingState label={translate("common.loadingLabels.families")} />;
+    return <PanelLoadingPlaceholder rows={3} />;
   }
   if (families.error) return <ErrorState message={`Families failed to load. ${families.error}`} />;
   if (status.error) return <ErrorState message={`Families status failed to load. ${status.error}`} />;

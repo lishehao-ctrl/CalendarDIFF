@@ -1,14 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, CalendarSync, ExternalLink, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { SourceObservabilitySections } from "@/components/source-observability-sections";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
+import { PanelLoadingPlaceholder } from "@/components/panel-loading-placeholder";
 import { SourceSyncProgress } from "@/components/source-sync-progress";
 import { withBasePath } from "@/lib/demo-mode";
 import { translate } from "@/lib/i18n/runtime";
@@ -19,10 +20,16 @@ import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime } from "@/lib/presenters";
 import type { SourceRow, SyncStatus } from "@/lib/types";
 
+const DeferredSourceObservabilitySections = dynamic(
+  () => import("@/components/source-observability-sections").then((mod) => mod.SourceObservabilitySections),
+  {
+    loading: () => <PanelLoadingPlaceholder rows={2} className="mt-4 p-4" />,
+  },
+);
+
 export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
   const { data, loading, error, refresh } = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), [], null, {
     cacheKey: sourceListCacheKey("all"),
-    readCachedSnapshot: false,
   });
   const [syncDetail, setSyncDetail] = useState<SyncStatus | null>(null);
   const [canvasIcsUrl, setCanvasIcsUrl] = useState("");
@@ -156,7 +163,7 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
               </div>
               <Badge tone={source?.is_active ? "approved" : "info"}>{source?.is_active ? translate("sourceConnect.gmailPanel.connected") : translate("sourceConnect.gmailPanel.archived")}</Badge>
             </div>
-            <SourceObservabilitySections observability={observability} className="mt-4" />
+            <DeferredSourceObservabilitySections observability={observability} className="mt-4" />
           </Card>
         ) : null}
 
