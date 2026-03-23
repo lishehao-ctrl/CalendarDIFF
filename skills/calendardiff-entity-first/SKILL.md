@@ -28,7 +28,7 @@ Read these when relevant:
 
 - API surface or route changes: `docs/api_surface_current.md`
 - Runtime/module boundary changes: `docs/architecture.md`
-- Monolith deploy/runtime defaults: `docs/deploy_three_layer_runtime.md`
+- Monolith deploy/runtime defaults: `docs/deployment.md`
 - File locations and test targets: [references/file-map.md](references/file-map.md)
 - Validation commands by change type: [references/validation.md](references/validation.md)
 

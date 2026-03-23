@@ -201,7 +201,7 @@ python scripts/update_openapi_snapshots.py
 改线上前先读：
 
 - `skills/aws-release/SKILL.md`
-- `docs/deploy_three_layer_runtime.md`
+- `docs/deployment.md`
 - `docs/nginx_live_routing_architecture.md`
 
 常规 AWS 同步入口：
@@ -216,9 +216,23 @@ scripts/release_aws_main.sh
 - 重建并重启 `frontend` 和 `public-service`
 - 校验 `health` 与 `login`
 
-这次真实生产发布流程记录在：
+历史发布记录和阶段性 rollout 文档已经统一归到：
 
-- `docs/production_release_runbook_2026_03_21.md`
+- `docs/archive/`
+
+## 文档索引
+
+当前 repo 真相只认少数几份稳定文档：
+
+- `docs/README.md`
+- `docs/project_structure.md`
+- `docs/architecture.md`
+- `docs/api_surface_current.md`
+- `docs/deployment.md`
+- `docs/event_contracts.md`
+- `docs/frontend_backend_contracts.md`
+
+`specs/` 只保留为带日期的实现 handoff，不再作为当前真相文档。
 
 ## 验证基线
 

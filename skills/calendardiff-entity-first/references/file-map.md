@@ -9,7 +9,8 @@ Use this file when you need to locate the main product and runtime surfaces quic
 ## Current repo truth
 - `docs/api_surface_current.md`: active public routes
 - `docs/architecture.md`: current module boundaries and runtime model
-- `docs/deploy_three_layer_runtime.md`: monolith deploy/runtime defaults
+- `docs/deployment.md`: monolith deploy/runtime defaults
+- `docs/project_structure.md`: active repo layout and directory responsibilities
 
 ## Core backend modules
 - `services/app_api/main.py`: monolith backend entrypoint
@@ -32,9 +33,10 @@ Use this file when you need to locate the main product and runtime surfaces quic
 - `tests/test_runtime_entrypoints.py`: monolith runtime entrypoints
 
 ## Frontend surfaces
-- `frontend/lib/api/review.ts`: changes/edit API callers
-- `frontend/lib/api/users.ts`: settings/manual/family/raw-type API callers
+- `frontend/lib/api/changes.ts`: changes/edit API callers
+- `frontend/lib/api/families.ts`: family/raw-type API callers
+- `frontend/lib/api/manual.ts`: manual API callers
+- `frontend/lib/api/settings.ts`: settings API callers
 - `frontend/components/manual-workbench-panel.tsx`: manual events
 - `frontend/components/family-management-panel.tsx`: family editor
-- `frontend/components/add-family-panel.tsx`: family creation
 - `frontend/components/settings-panel.tsx`: profile settings

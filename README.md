@@ -201,7 +201,7 @@ Shared-host rule:
 Read these before host changes:
 
 - `skills/aws-release/SKILL.md`
-- `docs/deploy_three_layer_runtime.md`
+- `docs/deployment.md`
 - `docs/nginx_live_routing_architecture.md`
 
 Normal AWS sync path:
@@ -216,9 +216,23 @@ That script is a full release step, not just a git sync:
 - rebuilds and restarts `frontend` and `public-service`
 - verifies `health` and `login`
 
-The actual launch flow used for the current production cut is recorded in:
+Historical release notes and dated rollout records now live under:
 
-- `docs/production_release_runbook_2026_03_21.md`
+- `docs/archive/`
+
+## Docs map
+
+Current repo truth is split into a small set of stable docs:
+
+- `docs/README.md`
+- `docs/project_structure.md`
+- `docs/architecture.md`
+- `docs/api_surface_current.md`
+- `docs/deployment.md`
+- `docs/event_contracts.md`
+- `docs/frontend_backend_contracts.md`
+
+Use `specs/` only for dated implementation handoffs, not as the current source of truth.
 
 ## Verification baseline
 

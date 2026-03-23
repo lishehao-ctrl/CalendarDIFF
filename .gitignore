@@ -32,3 +32,4 @@ frontend/tsconfig.typecheck.tsbuildinfo
 frontend/.next-dev/
 frontend/.next-prod/
 archive/generated/
+training/gmail_secondary_filter/output/

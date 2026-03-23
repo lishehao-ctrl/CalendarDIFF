@@ -20,7 +20,7 @@ This repo owns the CalendarDIFF app running on:
 Read these first when relevant:
 
 - `docs/nginx_live_routing_architecture.md`
-- `docs/deploy_three_layer_runtime.md`
+- `docs/deployment.md`
 
 ## Default release workflow
 

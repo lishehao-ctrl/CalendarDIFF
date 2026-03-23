@@ -1,5 +1,5 @@
 Read this first:
-- /Users/lishehao/Desktop/Project/CalendarDIFF/specs/backend/2026-03-18-year-timeline-variety-prefilter/SPEC.md
+- /Users/lishehao/Desktop/Project/CalendarDIFF/specs/archive/2026-03/backend/2026-03-18-year-timeline-variety-prefilter/SPEC.md
 
 Implement the dataset/tooling pass described there.
 
@@ -26,7 +26,7 @@ Required outputs:
 - generate or update derived sets
 - add the offline prefilter evaluation path
 - update:
-  - /Users/lishehao/Desktop/Project/CalendarDIFF/specs/backend/2026-03-18-year-timeline-variety-prefilter/OUTPUT.md
+  - /Users/lishehao/Desktop/Project/CalendarDIFF/specs/archive/2026-03/backend/2026-03-18-year-timeline-variety-prefilter/OUTPUT.md
 
 When finished, write into `OUTPUT.md`:
 - changed files
