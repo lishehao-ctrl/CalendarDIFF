@@ -27,6 +27,7 @@ Current Phase 1 agent surface is read-only context only:
 
 Current Phase 2 agent proposal surface is:
 
+- `GET /agent/proposals`
 - `POST /agent/proposals/change-decision`
 - `POST /agent/proposals/source-recovery`
 - `GET /agent/proposals/{proposal_id}`
@@ -35,6 +36,8 @@ Current Phase 2 agent proposal surface is:
 
 Current Phase 3 approval surface is:
 
+- `GET /agent/activity/recent`
+- `GET /agent/approval-tickets`
 - `POST /agent/approval-tickets`
 - `GET /agent/approval-tickets/{ticket_id}`
 - `POST /agent/approval-tickets/{ticket_id}/confirm`
@@ -65,9 +68,12 @@ Users can now create per-account MCP access tokens through Settings:
 - `GET /agent/context/workspace`
 - `GET /agent/context/changes/{change_id}`
 - `GET /agent/context/sources/{source_id}`
+- `GET /agent/proposals`
 - `POST /agent/proposals/change-decision`
 - `POST /agent/proposals/source-recovery`
 - `GET /agent/proposals/{proposal_id}`
+- `GET /agent/activity/recent`
+- `GET /agent/approval-tickets`
 - `POST /agent/approval-tickets`
 - `GET /agent/approval-tickets/{ticket_id}`
 - `POST /agent/approval-tickets/{ticket_id}/confirm`

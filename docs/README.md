@@ -10,6 +10,8 @@ This directory now separates stable repo truth from dated execution records.
   - monolith runtime, module boundaries, sync runtime model
 - `docs/api_surface_current.md`
   - current public backend route families
+- `docs/api_layering_contract.md`
+  - short lane-to-endpoint ownership map for frontend, agent, and MCP callers
 - `docs/deployment.md`
   - current deploy/runtime defaults for local and AWS
 - `docs/event_contracts.md`

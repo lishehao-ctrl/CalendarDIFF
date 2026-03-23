@@ -13,6 +13,7 @@ AgentConditionSeverityLiteral = Literal["info", "warning", "blocking"]
 AgentProposalTypeLiteral = Literal["change_decision", "source_recovery"]
 AgentProposalStatusLiteral = Literal["open", "accepted", "rejected", "expired", "superseded"]
 ApprovalTicketStatusLiteral = Literal["open", "executed", "canceled", "expired", "failed"]
+AgentActivityKindLiteral = Literal["proposal", "ticket"]
 
 
 class AgentBlockingConditionResponse(BaseModel):
@@ -127,6 +128,30 @@ class ApprovalTicketResponse(BaseModel):
     updated_at: datetime
 
 
+class AgentRecentActivityItemResponse(BaseModel):
+    item_kind: AgentActivityKindLiteral
+    activity_id: str
+    occurred_at: datetime
+    proposal_id: int | None = None
+    ticket_id: str | None = None
+    status: str
+    risk_level: AgentRiskLevelLiteral
+    target_kind: str
+    target_id: str
+    summary: str
+    summary_code: str
+    detail: str | None = None
+    detail_code: str | None = None
+    channel: str | None = None
+    suggested_action: str | None = None
+    action_type: str | None = None
+
+
+class AgentRecentActivityResponse(BaseModel):
+    generated_at: datetime
+    items: list[AgentRecentActivityItemResponse] = Field(default_factory=list)
+
+
 def serialize_approval_ticket(row) -> dict:
     return {
         "ticket_id": row.ticket_id,
@@ -174,6 +199,8 @@ def serialize_agent_proposal(row) -> dict:
 
 
 __all__ = [
+    "AgentRecentActivityItemResponse",
+    "AgentRecentActivityResponse",
     "AgentBlockingConditionResponse",
     "AgentChangeDecisionProposalRequest",
     "AgentChangeContextResponse",

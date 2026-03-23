@@ -103,6 +103,7 @@ Worker loops for `runtime.connectors`, `runtime.apply`, notification dispatch, a
 ## Contracts
 - Canonical OpenAPI snapshot: `contracts/openapi/public-service.json`
 - Runtime flow and module ownership docs live in:
+  - `docs/api_layering_contract.md`
   - `docs/api_surface_current.md`
   - `docs/project_structure.md`
   - `docs/deployment.md`

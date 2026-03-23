@@ -9,6 +9,7 @@ from app.modules.agents.schemas import (
     AgentChangeDecisionProposalRequest,
     AgentChangeContextResponse,
     AgentProposalResponse,
+    AgentRecentActivityResponse,
     AgentSourceRecoveryProposalRequest,
     AgentSourceContextResponse,
     AgentWorkspaceContextResponse,
@@ -18,6 +19,13 @@ from app.modules.agents.schemas import (
     ApprovalTicketResponse,
     serialize_approval_ticket,
     serialize_agent_proposal,
+)
+from app.modules.agents.activity_service import (
+    PROPOSAL_STATUS_VALUES,
+    TICKET_STATUS_VALUES,
+    build_recent_agent_activity,
+    list_agent_proposals,
+    list_approval_tickets,
 )
 from app.modules.agents.approval_service import (
     ApprovalTicketError,
@@ -107,6 +115,28 @@ def post_agent_source_recovery_proposal(
     return AgentProposalResponse.model_validate(serialize_agent_proposal(proposal))
 
 
+@router.get("/proposals", response_model=list[AgentProposalResponse])
+def get_agent_proposals_route(
+    status_filter: str = "all",
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> list[AgentProposalResponse]:
+    normalized_status = status_filter.strip().lower() if isinstance(status_filter, str) else "all"
+    if normalized_status not in PROPOSAL_STATUS_VALUES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "agents.proposals.invalid_status_filter",
+                "message": "proposal status must be one of: open, accepted, rejected, expired, superseded, all",
+                "message_code": "agents.proposals.invalid_status_filter",
+                "message_params": {},
+            },
+        )
+    rows = list_agent_proposals(db=db, user_id=user.id, status=normalized_status, limit=max(1, min(int(limit), 100)))
+    return [AgentProposalResponse.model_validate(serialize_agent_proposal(row)) for row in rows]
+
+
 @router.get("/proposals/{proposal_id}", response_model=AgentProposalResponse)
 def get_agent_proposal_route(
     proposal_id: int,
@@ -127,6 +157,28 @@ def get_agent_proposal_route(
     return AgentProposalResponse.model_validate(serialize_agent_proposal(proposal))
 
 
+@router.get("/approval-tickets", response_model=list[ApprovalTicketResponse])
+def get_approval_tickets_route(
+    status_filter: str = "all",
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> list[ApprovalTicketResponse]:
+    normalized_status = status_filter.strip().lower() if isinstance(status_filter, str) else "all"
+    if normalized_status not in TICKET_STATUS_VALUES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "agents.approval.invalid_status_filter",
+                "message": "approval ticket status must be one of: open, executed, canceled, expired, failed, all",
+                "message_code": "agents.approval.invalid_status_filter",
+                "message_params": {},
+            },
+        )
+    rows = list_approval_tickets(db=db, user_id=user.id, status=normalized_status, limit=max(1, min(int(limit), 100)))
+    return [ApprovalTicketResponse.model_validate(serialize_approval_ticket(row)) for row in rows]
+
+
 @router.post("/approval-tickets", response_model=ApprovalTicketResponse, status_code=status.HTTP_201_CREATED)
 def post_approval_ticket(
     payload: ApprovalTicketCreateRequest,
@@ -138,6 +190,16 @@ def post_approval_ticket(
     except ApprovalTicketError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return ApprovalTicketResponse.model_validate(serialize_approval_ticket(ticket))
+
+
+@router.get("/activity/recent", response_model=AgentRecentActivityResponse)
+def get_recent_agent_activity_route(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> AgentRecentActivityResponse:
+    payload = build_recent_agent_activity(db=db, user_id=user.id, limit=max(1, min(int(limit), 100)))
+    return AgentRecentActivityResponse.model_validate(payload)
 
 
 @router.get("/approval-tickets/{ticket_id}", response_model=ApprovalTicketResponse)
