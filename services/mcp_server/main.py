@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from typing import Any
 
 from mcp.server.auth.provider import AccessToken, TokenVerifier
+from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import Context, FastMCP
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -102,6 +103,14 @@ def _server_port() -> int:
         return 8766 if _public_mode_enabled() else 8000
 
 
+def _public_base_url() -> str:
+    return os.getenv("CALENDARDIFF_MCP_PUBLIC_BASE_URL", "https://cal.shehao.app").strip().rstrip("/")
+
+
+def _public_mcp_url() -> str:
+    return os.getenv("CALENDARDIFF_MCP_PUBLIC_URL", f"{_public_base_url()}/mcp").strip().rstrip("/")
+
+
 class CalendarDIFFTokenVerifier(TokenVerifier):
     async def verify_token(self, token: str) -> AccessToken | None:
         with _db_session() as db:
@@ -129,6 +138,11 @@ def _build_mcp_server() -> FastMCP:
     }
     if _public_mode_enabled():
         kwargs["token_verifier"] = CalendarDIFFTokenVerifier()
+        kwargs["auth"] = AuthSettings(
+            issuer_url=_public_base_url(),
+            resource_server_url=_public_mcp_url(),
+            required_scopes=["calendardiff"],
+        )
     return FastMCP(**kwargs)
 
 
