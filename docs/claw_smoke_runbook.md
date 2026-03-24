@@ -115,3 +115,23 @@ The script should:
 - execute the MCP-side workflow
 - fetch Settings-side MCP audit
 - write results under `output/`
+
+## Closeout rule
+
+If the strict closeout eval passes, the Claw contract is considered closed for this phase.
+
+Use:
+
+```bash
+python scripts/run_agent_claw_strict_eval.py
+```
+
+## Closeout rule
+
+If the strict closeout eval passes, the Claw contract is considered closed for this phase.
+
+Use:
+
+```bash
+python scripts/run_agent_claw_strict_eval.py
+```

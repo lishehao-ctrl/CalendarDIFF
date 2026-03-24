@@ -30,6 +30,10 @@ This directory now separates stable repo truth from dated execution records.
   - practical OpenClaw + CalendarDIFF MCP integration notes and workspace skill usage
 - `docs/claw_smoke_runbook.md`
   - exact manual validation flow for the Claw-first MCP path
+- `docs/agent_claw_closeout.md`
+  - frozen Claw-facing MCP contract and closeout acceptance rule
+- `docs/agent_claw_closeout.md`
+  - frozen Claw-facing MCP contract and closeout rules
 - `docs/nginx_live_routing_architecture.md`
   - live shared-host nginx ownership and routing rules
 
