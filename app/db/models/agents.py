@@ -154,7 +154,125 @@ class McpAccessToken(Base):
     user: Mapped["User"] = relationship("User")
 
 
+class ChannelAccountType(str, Enum):
+    TELEGRAM = "telegram"
+    SLACK = "slack"
+    WECHAT = "wechat"
+    WECOM = "wecom"
+
+
+class ChannelAccountStatus(str, Enum):
+    ACTIVE = "active"
+    PAUSED = "paused"
+    REVOKED = "revoked"
+
+
+class ChannelAccountVerificationStatus(str, Enum):
+    PENDING = "pending"
+    VERIFIED = "verified"
+    REVOKED = "revoked"
+
+
+class ChannelDeliveryStatus(str, Enum):
+    PENDING = "pending"
+    SENT = "sent"
+    ACKNOWLEDGED = "acknowledged"
+    FAILED = "failed"
+    CANCELED = "canceled"
+
+
+class ChannelAccount(Base):
+    __tablename__ = "channel_accounts"
+    __table_args__ = (
+        Index("ix_channel_accounts_user_created", "user_id", "created_at"),
+        Index("ix_channel_accounts_user_type_status", "user_id", "channel_type", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    channel_type: Mapped[ChannelAccountType] = mapped_column(
+        SAEnum(ChannelAccountType, name="channel_account_type", native_enum=False),
+        nullable=False,
+    )
+    account_label: Mapped[str] = mapped_column(String(128), nullable=False)
+    external_user_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    external_workspace_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[ChannelAccountStatus] = mapped_column(
+        SAEnum(ChannelAccountStatus, name="channel_account_status", native_enum=False),
+        nullable=False,
+        default=ChannelAccountStatus.ACTIVE,
+        server_default=ChannelAccountStatus.ACTIVE.value,
+    )
+    verification_status: Mapped[ChannelAccountVerificationStatus] = mapped_column(
+        SAEnum(ChannelAccountVerificationStatus, name="channel_account_verification_status", native_enum=False),
+        nullable=False,
+        default=ChannelAccountVerificationStatus.PENDING,
+        server_default=ChannelAccountVerificationStatus.PENDING.value,
+    )
+    metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    user: Mapped["User"] = relationship("User")
+
+
+class ChannelDelivery(Base):
+    __tablename__ = "channel_deliveries"
+    __table_args__ = (
+        Index("ix_channel_deliveries_user_created", "user_id", "created_at"),
+        Index("ix_channel_deliveries_account_status", "channel_account_id", "status"),
+        Index("ix_channel_deliveries_ticket_status", "ticket_id", "status"),
+    )
+
+    delivery_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    channel_account_id: Mapped[int | None] = mapped_column(ForeignKey("channel_accounts.id", ondelete="SET NULL"), nullable=True)
+    proposal_id: Mapped[int | None] = mapped_column(ForeignKey("agent_proposals.id", ondelete="SET NULL"), nullable=True)
+    ticket_id: Mapped[str | None] = mapped_column(ForeignKey("approval_tickets.ticket_id", ondelete="SET NULL"), nullable=True)
+    delivery_kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[ChannelDeliveryStatus] = mapped_column(
+        SAEnum(ChannelDeliveryStatus, name="channel_delivery_status", native_enum=False),
+        nullable=False,
+        default=ChannelDeliveryStatus.PENDING,
+        server_default=ChannelDeliveryStatus.PENDING.value,
+    )
+    summary_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    detail_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    cta_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    origin_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown", server_default="unknown")
+    origin_label: Mapped[str] = mapped_column(String(64), nullable=False, default="unknown", server_default="unknown")
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    user: Mapped["User"] = relationship("User")
+    channel_account: Mapped["ChannelAccount | None"] = relationship("ChannelAccount")
+    proposal: Mapped["AgentProposal | None"] = relationship("AgentProposal")
+    ticket: Mapped["ApprovalTicket | None"] = relationship("ApprovalTicket")
+
+
 __all__ = [
+    "ChannelAccount",
+    "ChannelAccountStatus",
+    "ChannelAccountType",
+    "ChannelAccountVerificationStatus",
+    "ChannelDelivery",
+    "ChannelDeliveryStatus",
     "ApprovalTicket",
     "ApprovalTicketStatus",
     "AgentProposal",

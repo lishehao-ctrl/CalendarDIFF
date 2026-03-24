@@ -14,7 +14,17 @@ from app.modules.settings.mcp_tokens_service import (
     list_mcp_access_tokens,
     revoke_mcp_access_token,
 )
+from app.modules.settings.channel_accounts_service import (
+    ChannelAccountNotFoundError,
+    create_channel_account,
+    list_channel_accounts,
+    list_channel_deliveries,
+    revoke_channel_account,
+)
 from app.modules.settings.schemas import (
+    ChannelAccountCreateRequest,
+    ChannelAccountResponse,
+    ChannelDeliveryResponse,
     McpAccessTokenCreateRequest,
     McpAccessTokenCreateResponse,
     McpAccessTokenResponse,
@@ -140,6 +150,120 @@ def delete_mcp_token(
         revoked_at=row.revoked_at,
         created_at=row.created_at,
     )
+
+
+@router.get("/channel-accounts", response_model=list[ChannelAccountResponse])
+def get_channel_accounts(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
+) -> list[ChannelAccountResponse]:
+    rows = list_channel_accounts(db, user_id=user.id)
+    return [
+        ChannelAccountResponse(
+            id=row.id,
+            channel_type=row.channel_type.value,
+            account_label=row.account_label,
+            external_user_id=row.external_user_id,
+            external_workspace_id=row.external_workspace_id,
+            status=row.status.value,
+            verification_status=row.verification_status.value,
+            last_seen_at=row.last_seen_at,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+        for row in rows
+    ]
+
+
+@router.post("/channel-accounts", response_model=ChannelAccountResponse, status_code=status.HTTP_201_CREATED)
+def post_channel_account(
+    payload: ChannelAccountCreateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
+) -> ChannelAccountResponse:
+    row = create_channel_account(
+        db,
+        user=user,
+        channel_type=payload.channel_type,
+        account_label=payload.account_label,
+        external_user_id=payload.external_user_id,
+        external_workspace_id=payload.external_workspace_id,
+    )
+    return ChannelAccountResponse(
+        id=row.id,
+        channel_type=row.channel_type.value,
+        account_label=row.account_label,
+        external_user_id=row.external_user_id,
+        external_workspace_id=row.external_workspace_id,
+        status=row.status.value,
+        verification_status=row.verification_status.value,
+        last_seen_at=row.last_seen_at,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+@router.delete("/channel-accounts/{account_id}", response_model=ChannelAccountResponse)
+def delete_channel_account(
+    account_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
+) -> ChannelAccountResponse:
+    try:
+        row = revoke_channel_account(db, user_id=user.id, account_id=account_id)
+    except ChannelAccountNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=api_error_detail(
+                code="settings.channel_account_not_found",
+                message=str(exc),
+                message_code="settings.channel_account_not_found",
+            ),
+        ) from exc
+    return ChannelAccountResponse(
+        id=row.id,
+        channel_type=row.channel_type.value,
+        account_label=row.account_label,
+        external_user_id=row.external_user_id,
+        external_workspace_id=row.external_workspace_id,
+        status=row.status.value,
+        verification_status=row.verification_status.value,
+        last_seen_at=row.last_seen_at,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+@router.get("/channel-deliveries", response_model=list[ChannelDeliveryResponse])
+def get_channel_deliveries(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
+) -> list[ChannelDeliveryResponse]:
+    rows = list_channel_deliveries(db, user_id=user.id, limit=max(1, min(int(limit), 100)))
+    return [
+        ChannelDeliveryResponse(
+            delivery_id=row.delivery_id,
+            channel_account_id=row.channel_account_id,
+            proposal_id=row.proposal_id,
+            ticket_id=row.ticket_id,
+            delivery_kind=row.delivery_kind,
+            status=row.status.value,
+            summary_code=row.summary_code,
+            detail_code=row.detail_code,
+            cta_code=row.cta_code,
+            payload=row.payload_json or {},
+            origin_kind=row.origin_kind,
+            origin_label=row.origin_label,
+            sent_at=row.sent_at,
+            acknowledged_at=row.acknowledged_at,
+            failed_at=row.failed_at,
+            error_text=row.error_text,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+        for row in rows
+    ]
 
 
 __all__ = ["router"]

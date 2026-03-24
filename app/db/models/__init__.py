@@ -1,6 +1,19 @@
 """Bounded-context SQLAlchemy model package."""
 
-from app.db.models.agents import ApprovalTicket, ApprovalTicketStatus, AgentProposal, AgentProposalStatus, AgentProposalType, McpAccessToken
+from app.db.models.agents import (
+    ApprovalTicket,
+    ApprovalTicketStatus,
+    AgentProposal,
+    AgentProposalStatus,
+    AgentProposalType,
+    ChannelAccount,
+    ChannelAccountStatus,
+    ChannelAccountType,
+    ChannelAccountVerificationStatus,
+    ChannelDelivery,
+    ChannelDeliveryStatus,
+    McpAccessToken,
+)
 from app.db.models.runtime import (
     CalendarComponentParseCache,
     CalendarComponentParseCacheStatus,
@@ -43,6 +56,12 @@ __all__ = [
     "AgentProposal",
     "AgentProposalStatus",
     "AgentProposalType",
+    "ChannelAccount",
+    "ChannelAccountStatus",
+    "ChannelAccountType",
+    "ChannelAccountVerificationStatus",
+    "ChannelDelivery",
+    "ChannelDeliveryStatus",
     "McpAccessToken",
     "Change",
     "ChangeIntakePhase",

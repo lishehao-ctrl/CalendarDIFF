@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from email.utils import parseaddr
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, field_validator
@@ -88,6 +89,55 @@ class McpAccessTokenCreateResponse(McpAccessTokenResponse):
     token: str
 
 
+ChannelAccountTypeLiteral = Literal["telegram", "slack", "wechat", "wecom"]
+ChannelAccountStatusLiteral = Literal["active", "paused", "revoked"]
+ChannelAccountVerificationStatusLiteral = Literal["pending", "verified", "revoked"]
+ChannelDeliveryStatusLiteral = Literal["pending", "sent", "acknowledged", "failed", "canceled"]
+
+
+class ChannelAccountCreateRequest(BaseModel):
+    channel_type: ChannelAccountTypeLiteral
+    account_label: str = Field(min_length=1, max_length=128)
+    external_user_id: str | None = Field(default=None, max_length=255)
+    external_workspace_id: str | None = Field(default=None, max_length=255)
+
+    model_config = {"extra": "forbid"}
+
+
+class ChannelAccountResponse(BaseModel):
+    id: int
+    channel_type: ChannelAccountTypeLiteral
+    account_label: str
+    external_user_id: str | None = None
+    external_workspace_id: str | None = None
+    status: ChannelAccountStatusLiteral
+    verification_status: ChannelAccountVerificationStatusLiteral
+    last_seen_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ChannelDeliveryResponse(BaseModel):
+    delivery_id: str
+    channel_account_id: int | None = None
+    proposal_id: int | None = None
+    ticket_id: str | None = None
+    delivery_kind: str
+    status: ChannelDeliveryStatusLiteral
+    summary_code: str | None = None
+    detail_code: str | None = None
+    cta_code: str | None = None
+    payload: dict = Field(default_factory=dict)
+    origin_kind: str
+    origin_label: str
+    sent_at: datetime | None = None
+    acknowledged_at: datetime | None = None
+    failed_at: datetime | None = None
+    error_text: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 def _is_valid_email_address(value: str | None) -> bool:
     if value is None:
         return False
@@ -121,6 +171,9 @@ def _normalize_timezone_name(value: str) -> str:
 
 
 __all__ = [
+    "ChannelAccountCreateRequest",
+    "ChannelAccountResponse",
+    "ChannelDeliveryResponse",
     "McpAccessTokenCreateRequest",
     "McpAccessTokenCreateResponse",
     "McpAccessTokenResponse",

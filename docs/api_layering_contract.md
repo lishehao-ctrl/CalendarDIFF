@@ -262,18 +262,29 @@ There is no executable Manual agent surface yet.
 
 - `GET /settings/profile`
 - `GET /settings/mcp-tokens`
+- `GET /settings/channel-accounts`
+- `GET /settings/channel-deliveries`
 
 ### Canonical writes
 
 - `PATCH /settings/profile`
 - `POST /settings/mcp-tokens`
 - `DELETE /settings/mcp-tokens/{token_id}`
+- `POST /settings/channel-accounts`
+- `DELETE /settings/channel-accounts/{account_id}`
 
 ### Current agent/MCP relation
 
 Settings owns MCP token lifecycle.
 Token issuance and revocation must stay here.
 `/mcp` consumes these tokens; it does not replace this management surface.
+
+Settings also owns the user-managed social channel foundation:
+
+- channel account registration / revocation
+- recent outbound channel delivery audit
+
+Future Telegram / Slack / WeChat bindings should plug into this boundary instead of inventing a second integration surface.
 
 ### Do not
 

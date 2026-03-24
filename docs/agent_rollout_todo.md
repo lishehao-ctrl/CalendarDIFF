@@ -185,8 +185,8 @@ Not first:
 - broad multi-channel rollout
 
 Backend tasks:
-- [ ] add `channel_accounts`
-- [ ] add `channel_deliveries`
+- [x] add `channel_accounts`
+- [x] add `channel_deliveries`
 - [ ] add signed callback verification
 - [ ] add deep-link generation back to web
 - [ ] define social-safe actions:

@@ -75,6 +75,49 @@
 - `settings.validation_error`
   - 英文默认：具体 validation message
   - params: `{}`
+- `settings.channel_account_not_found`
+  - 英文默认：`Channel account not found`
+  - params: `{}`
+
+### Channel account fields
+
+Applies to:
+
+- `GET /settings/channel-accounts`
+- `POST /settings/channel-accounts`
+- `DELETE /settings/channel-accounts/{account_id}`
+
+Fields:
+
+- `channel_type`
+- `status`
+- `verification_status`
+
+Frontend guidance:
+
+- treat Settings as the canonical management surface for external social channel bindings
+- do not invent Telegram/WeChat webhook states beyond these fields
+
+### Channel delivery audit fields
+
+Applies to:
+
+- `GET /settings/channel-deliveries`
+
+Fields:
+
+- `delivery_kind`
+- `status`
+- `summary_code`
+- `detail_code`
+- `cta_code`
+- `origin_kind`
+- `origin_label`
+
+Frontend guidance:
+
+- use this endpoint as the canonical recent outbound social delivery audit surface
+- do not derive delivery history from approval tickets alone
 
 ## Sources
 

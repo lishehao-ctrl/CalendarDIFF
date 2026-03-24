@@ -62,6 +62,13 @@ Users can now create per-account MCP access tokens through Settings:
 - `POST /settings/mcp-tokens`
 - `DELETE /settings/mcp-tokens/{token_id}`
 
+Social channel foundation now lives in Settings too:
+
+- `GET /settings/channel-accounts`
+- `POST /settings/channel-accounts`
+- `DELETE /settings/channel-accounts/{account_id}`
+- `GET /settings/channel-deliveries`
+
 ## Public endpoints
 - `POST /auth/register`
 - `POST /auth/login`
@@ -87,6 +94,10 @@ Users can now create per-account MCP access tokens through Settings:
 - `GET /settings/mcp-tokens`
 - `POST /settings/mcp-tokens`
 - `DELETE /settings/mcp-tokens/{token_id}`
+- `GET /settings/channel-accounts`
+- `POST /settings/channel-accounts`
+- `DELETE /settings/channel-accounts/{account_id}`
+- `GET /settings/channel-deliveries`
 - `GET /sources`
 - `GET /sources/{source_id}/observability`
 - `GET /sources/{source_id}/sync-history`
