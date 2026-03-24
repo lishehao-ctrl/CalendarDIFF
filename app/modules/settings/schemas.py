@@ -124,12 +124,14 @@ class ChannelDeliveryResponse(BaseModel):
     ticket_id: str | None = None
     delivery_kind: str
     status: ChannelDeliveryStatusLiteral
+    attempt_count: int
     summary_code: str | None = None
     detail_code: str | None = None
     cta_code: str | None = None
     payload: dict = Field(default_factory=dict)
     origin_kind: str
     origin_label: str
+    external_message_id: str | None = None
     sent_at: datetime | None = None
     acknowledged_at: datetime | None = None
     failed_at: datetime | None = None

@@ -108,17 +108,20 @@ Fields:
 
 - `delivery_kind`
 - `status`
+- `attempt_count`
 - `summary_code`
 - `detail_code`
 - `cta_code`
 - `origin_kind`
 - `origin_label`
+- `external_message_id`
 
 Frontend guidance:
 
 - use this endpoint as the canonical recent outbound social delivery audit surface
 - do not derive delivery history from approval tickets alone
 - approval-ticket transitions now auto-write delivery audit rows even before real Telegram/Slack sending exists
+- delivery rows can now move through `pending -> sent -> acknowledged` or `pending -> failed`
 
 ## Sources
 
