@@ -14,7 +14,10 @@ from services.mcp_server.main import (
     create_approval_ticket_impl,
     create_change_decision_proposal_impl,
     create_family_relink_preview_proposal_impl,
+    get_recent_agent_activity_impl,
     get_family_context_impl,
+    list_approval_tickets_impl,
+    list_proposals_impl,
     get_workspace_context_impl,
     get_change_context_impl,
     get_source_context_impl,
@@ -88,8 +91,12 @@ def test_mcp_server_registers_expected_tools_and_resources() -> None:
     resource_uris = {str(resource.uri) for resource in anyio.run(mcp.list_resources)}
 
     assert "get_workspace_context" in tool_names
+    assert "get_recent_agent_activity" in tool_names
     assert "create_change_decision_proposal" in tool_names
+    assert "create_family_relink_preview_proposal" in tool_names
+    assert "list_proposals" in tool_names
     assert "create_approval_ticket" in tool_names
+    assert "list_approval_tickets" in tool_names
     assert "confirm_approval_ticket" in tool_names
     assert "calendardiff://workspace" in resource_uris
     assert "calendardiff://pending-changes" in resource_uris
@@ -184,7 +191,10 @@ def test_mcp_impl_round_trip_uses_existing_agent_layers(db_session) -> None:
     family_context = get_family_context_impl(family_id=family.id, notify_email=user.notify_email)
     proposal = create_change_decision_proposal_impl(change_id=change.id, notify_email=user.notify_email)
     fetched_proposal = get_proposal_impl(proposal_id=proposal["proposal_id"], notify_email=user.notify_email)
+    proposals = list_proposals_impl(notify_email=user.notify_email)
     ticket = create_approval_ticket_impl(proposal_id=proposal["proposal_id"], notify_email=user.notify_email)
+    tickets = list_approval_tickets_impl(notify_email=user.notify_email)
+    activity = get_recent_agent_activity_impl(notify_email=user.notify_email)
 
     assert workspace["summary"]["changes_pending"] == 1
     assert change_context["change"]["id"] == change.id
@@ -194,9 +204,12 @@ def test_mcp_impl_round_trip_uses_existing_agent_layers(db_session) -> None:
     assert proposal["origin_kind"] == "mcp"
     assert proposal["origin_label"] == "create_change_decision_proposal"
     assert fetched_proposal["proposal_id"] == proposal["proposal_id"]
+    assert proposals[0]["proposal_id"] == proposal["proposal_id"]
     assert ticket["origin_kind"] == "mcp"
     assert ticket["origin_label"] == "create_approval_ticket"
     assert ticket["proposal_id"] == proposal["proposal_id"]
+    assert tickets[0]["ticket_id"] == ticket["ticket_id"]
+    assert activity["items"][0]["item_kind"] in {"proposal", "ticket"}
 
 
 def test_mcp_family_relink_preview_proposal_impl_uses_existing_agent_layers(db_session) -> None:

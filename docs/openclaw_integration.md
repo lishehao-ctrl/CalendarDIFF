@@ -43,19 +43,24 @@ That is local/dev mode only.
 ### Read/context tools
 
 - `get_workspace_context`
+- `get_recent_agent_activity`
 - `list_pending_changes`
 - `list_sources`
 - `get_change_context`
 - `get_source_context`
+- `get_family_context`
 
 ### Proposal tools
 
+- `list_proposals`
 - `create_change_decision_proposal`
 - `create_source_recovery_proposal`
+- `create_family_relink_preview_proposal`
 - `get_proposal`
 
 ### Approval tools
 
+- `list_approval_tickets`
 - `create_approval_ticket`
 - `get_approval_ticket`
 - `confirm_approval_ticket`
@@ -118,6 +123,7 @@ Workspace skill:
 
 This skill assumes the MCP server is already configured and teaches OpenClaw how to:
 
+- inspect recent agent activity when resuming work
 - read CalendarDIFF context first
 - create proposals before action
 - create approval tickets before execution
@@ -127,11 +133,12 @@ This skill assumes the MCP server is already configured and teaches OpenClaw how
 
 Use this exact order:
 
-1. `get_workspace_context`
-2. `get_change_context` or `get_source_context`
-3. `create_*_proposal`
-4. `create_approval_ticket`
-5. `confirm_approval_ticket`
+1. `get_recent_agent_activity`
+2. `get_workspace_context`
+3. `get_change_context` or `get_source_context` or `get_family_context`
+4. `create_*_proposal`
+5. `create_approval_ticket`
+6. `confirm_approval_ticket`
 
 Do not jump directly from context to execution.
 
@@ -155,9 +162,10 @@ Still web-only:
 Once OpenClaw is configured against the MCP server:
 
 1. ask it to summarize the current workspace
-2. ask it to explain one pending change
-3. ask it to create a proposal for that change
-4. ask it to create an approval ticket
-5. ask it to confirm the ticket only if the action is low-risk
+2. ask it to summarize recent agent activity
+3. ask it to explain one pending change
+4. ask it to create a proposal for that change
+5. ask it to create an approval ticket
+6. ask it to confirm the ticket only if the action is low-risk
 
 That validates the full path without widening execution scope.

@@ -85,19 +85,24 @@ Suggested public flow:
 Read tools:
 
 - `get_workspace_context`
+- `get_recent_agent_activity`
 - `list_pending_changes`
 - `list_sources`
 - `get_change_context`
 - `get_source_context`
+- `get_family_context`
 
 Proposal tools:
 
+- `list_proposals`
 - `create_change_decision_proposal`
 - `create_source_recovery_proposal`
+- `create_family_relink_preview_proposal`
 - `get_proposal`
 
 Approval tools:
 
+- `list_approval_tickets`
 - `create_approval_ticket`
 - `get_approval_ticket`
 - `confirm_approval_ticket`
@@ -138,6 +143,7 @@ Recommended pattern:
 2. in local mode, set `CALENDARDIFF_MCP_DEFAULT_NOTIFY_EMAIL`
 3. in public mode, configure an MCP Bearer token instead
 4. use an OpenClaw skill to teach:
+   - inspect recent agent activity when resuming work
    - read workspace first
    - create proposals before action
    - create approval tickets before execution

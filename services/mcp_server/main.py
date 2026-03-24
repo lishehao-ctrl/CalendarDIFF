@@ -36,12 +36,14 @@ from app.modules.agents.schemas import (
     AgentChangeContextResponse,
     AgentFamilyContextResponse,
     AgentProposalResponse,
+    AgentRecentActivityResponse,
     AgentSourceContextResponse,
     AgentWorkspaceContextResponse,
     ApprovalTicketResponse,
     serialize_approval_ticket,
     serialize_agent_proposal,
 )
+from app.modules.agents.activity_service import build_recent_agent_activity, list_agent_proposals, list_approval_tickets
 from app.modules.agents.service import (
     AgentContextNotFoundError,
     build_change_agent_context,
@@ -64,10 +66,12 @@ CalendarDIFF MCP server for operator-grade academic deadline review.
 
 Use read-only tools first:
 - get_workspace_context
+- get_recent_agent_activity
 - list_pending_changes
 - list_sources
 - get_change_context
 - get_source_context
+- get_family_context
 
 Only create proposals or approval tickets when the task clearly requires action.
 Do not assume that every proposal is executable.
@@ -81,6 +85,14 @@ class PendingChangesResult(BaseModel):
 
 class SourcesListResult(BaseModel):
     items: list[InputSourceResponse] = Field(default_factory=list)
+
+
+class ProposalListResult(BaseModel):
+    items: list[AgentProposalResponse] = Field(default_factory=list)
+
+
+class ApprovalTicketListResult(BaseModel):
+    items: list[ApprovalTicketResponse] = Field(default_factory=list)
 
 
 class MCPUserResolutionError(RuntimeError):
@@ -249,6 +261,15 @@ def get_workspace_context_impl(*, notify_email: str | None = None, ctx: Context 
     return _run_with_user(notify_email, lambda db, user: build_workspace_agent_context(db=db, user_id=user.id), ctx=ctx)
 
 
+def get_recent_agent_activity_impl(*, notify_email: str | None = None, limit: int = 10, ctx: Context | None = None) -> dict:
+    safe_limit = max(1, min(limit, 50))
+    return _run_with_user(
+        notify_email,
+        lambda db, user: build_recent_agent_activity(db=db, user_id=user.id, limit=safe_limit),
+        ctx=ctx,
+    )
+
+
 def list_pending_changes_impl(
     *,
     notify_email: str | None = None,
@@ -371,6 +392,15 @@ def get_proposal_impl(*, proposal_id: int, notify_email: str | None = None, ctx:
     return _run_with_user(notify_email, _load, ctx=ctx)
 
 
+def list_proposals_impl(*, notify_email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> list[dict]:
+    safe_limit = max(1, min(limit, 50))
+    return _run_with_user(
+        notify_email,
+        lambda db, user: [serialize_agent_proposal(row) for row in list_agent_proposals(db=db, user_id=user.id, status=status, limit=safe_limit)],
+        ctx=ctx,
+    )
+
+
 def create_approval_ticket_impl(*, proposal_id: int, notify_email: str | None = None, channel: str = "mcp", ctx: Context | None = None) -> dict:
     return _run_with_user(
         notify_email,
@@ -396,6 +426,15 @@ def get_approval_ticket_impl(*, ticket_id: str, notify_email: str | None = None,
         return serialize_approval_ticket(ticket)
 
     return _run_with_user(notify_email, _load, ctx=ctx)
+
+
+def list_approval_tickets_impl(*, notify_email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> list[dict]:
+    safe_limit = max(1, min(limit, 50))
+    return _run_with_user(
+        notify_email,
+        lambda db, user: [serialize_approval_ticket(row) for row in list_approval_tickets(db=db, user_id=user.id, status=status, limit=safe_limit)],
+        ctx=ctx,
+    )
 
 
 def confirm_approval_ticket_impl(*, ticket_id: str, notify_email: str | None = None, ctx: Context | None = None) -> dict:
@@ -433,6 +472,11 @@ def cancel_approval_ticket_impl(*, ticket_id: str, notify_email: str | None = No
 @mcp.tool(name="get_workspace_context", description="Get the aggregated CalendarDIFF workspace context for a user.", structured_output=True)
 def get_workspace_context_tool(notify_email: str | None = None, ctx: Context | None = None) -> AgentWorkspaceContextResponse:
     return AgentWorkspaceContextResponse.model_validate(get_workspace_context_impl(notify_email=notify_email, ctx=ctx))
+
+
+@mcp.tool(name="get_recent_agent_activity", description="Get recent agent proposals, approval tickets, and transitions for a user.", structured_output=True)
+def get_recent_agent_activity_tool(notify_email: str | None = None, limit: int = 10, ctx: Context | None = None) -> AgentRecentActivityResponse:
+    return AgentRecentActivityResponse.model_validate(get_recent_agent_activity_impl(notify_email=notify_email, limit=limit, ctx=ctx))
 
 
 @mcp.tool(name="list_pending_changes", description="List pending changes for a user.", structured_output=True)
@@ -512,6 +556,11 @@ def get_proposal_tool(proposal_id: int, notify_email: str | None = None, ctx: Co
     return AgentProposalResponse.model_validate(get_proposal_impl(proposal_id=proposal_id, notify_email=notify_email, ctx=ctx))
 
 
+@mcp.tool(name="list_proposals", description="List recent persisted agent proposals.", structured_output=True)
+def list_proposals_tool(notify_email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> ProposalListResult:
+    return ProposalListResult.model_validate({"items": list_proposals_impl(notify_email=notify_email, status=status, limit=limit, ctx=ctx)})
+
+
 @mcp.tool(name="create_approval_ticket", description="Create an approval ticket from an executable proposal.", structured_output=True)
 def create_approval_ticket_tool(
     proposal_id: int,
@@ -527,6 +576,11 @@ def create_approval_ticket_tool(
 @mcp.tool(name="get_approval_ticket", description="Fetch an approval ticket.", structured_output=True)
 def get_approval_ticket_tool(ticket_id: str, notify_email: str | None = None, ctx: Context | None = None) -> ApprovalTicketResponse:
     return ApprovalTicketResponse.model_validate(get_approval_ticket_impl(ticket_id=ticket_id, notify_email=notify_email, ctx=ctx))
+
+
+@mcp.tool(name="list_approval_tickets", description="List recent approval tickets.", structured_output=True)
+def list_approval_tickets_tool(notify_email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> ApprovalTicketListResult:
+    return ApprovalTicketListResult.model_validate({"items": list_approval_tickets_impl(notify_email=notify_email, status=status, limit=limit, ctx=ctx)})
 
 
 @mcp.tool(name="confirm_approval_ticket", description="Confirm and execute an approval ticket.", structured_output=True)

@@ -11,9 +11,12 @@ This skill assumes the CalendarDIFF MCP server is already configured as a fixed 
 Use this skill when the task is about:
 
 - understanding the current CalendarDIFF workspace state
+- understanding recent agent proposals and approval tickets
 - understanding a specific change or source
+- understanding a specific family
 - creating a change-decision proposal
 - creating a source-recovery proposal
+- creating a family relink preview proposal
 - creating or confirming a low-risk approval ticket
 
 Do not use this skill to bypass the CalendarDIFF approval workflow.
@@ -23,6 +26,7 @@ Do not use this skill to bypass the CalendarDIFF approval workflow.
 Always follow this order:
 
 1. read context first
+2. check recent agent activity when resuming work
 2. create a proposal if action is needed
 3. create an approval ticket if the proposal is executable
 4. confirm the ticket only when the user clearly wants execution
@@ -32,13 +36,18 @@ Do not skip directly from context to execution.
 ## Primary tools
 
 - `get_workspace_context`
+- `get_recent_agent_activity`
 - `list_pending_changes`
 - `list_sources`
 - `get_change_context`
 - `get_source_context`
+- `get_family_context`
+- `list_proposals`
 - `create_change_decision_proposal`
 - `create_source_recovery_proposal`
+- `create_family_relink_preview_proposal`
 - `get_proposal`
+- `list_approval_tickets`
 - `create_approval_ticket`
 - `get_approval_ticket`
 - `confirm_approval_ticket`
@@ -56,10 +65,12 @@ Do not skip directly from context to execution.
 
 ### To summarize the workspace
 
-1. call `get_workspace_context`
-2. optionally call `list_pending_changes`
+1. call `get_recent_agent_activity`
+2. call `get_workspace_context`
+3. optionally call `list_pending_changes`
 3. explain:
    - what is pending
+   - what the agent recently did
    - what lane should be used next
    - whether anything is blocking
 
@@ -77,6 +88,12 @@ Do not skip directly from context to execution.
 2. if the user wants a recovery recommendation, call `create_source_recovery_proposal`
 3. only proceed to approval if the proposal payload is executable
 
+### To inspect family governance safely
+
+1. call `get_family_context`
+2. if the user wants a structured recommendation, call `create_family_relink_preview_proposal`
+3. stop at preview and explain that family governance remains web-only
+
 ## Current execution limits
 
 Currently executable:
@@ -89,7 +106,7 @@ Not currently executable:
 - reconnect Gmail
 - update source settings
 - edit-then-approve
-- family relink / rename
+- family relink / rename execution
 - manual event create / update / delete
 
 When one of the non-executable paths is suggested, explain that the user must continue in the web app.
