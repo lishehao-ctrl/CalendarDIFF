@@ -146,6 +146,12 @@ For web-side debugging and audit review, pair this with:
 
 - `GET /settings/mcp-invocations`
 
+For a reproducible local backend-side smoke, run:
+
+```bash
+python scripts/run_claw_mcp_smoke.py
+```
+
 ## Current safe execution scope
 
 Currently executable through OpenClaw:

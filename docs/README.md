@@ -28,6 +28,8 @@ This directory now separates stable repo truth from dated execution records.
   - CalendarDIFF MCP server entrypoint, tool/resource surface, and OpenClaw integration shape
 - `docs/openclaw_integration.md`
   - practical OpenClaw + CalendarDIFF MCP integration notes and workspace skill usage
+- `docs/claw_smoke_runbook.md`
+  - exact manual validation flow for the Claw-first MCP path
 - `docs/nginx_live_routing_architecture.md`
   - live shared-host nginx ownership and routing rules
 
