@@ -150,6 +150,10 @@ def test_change_decision_approval_ticket_executes_and_is_idempotent(client, db_s
     assert ticket_payload["status"] == "open"
     assert ticket_payload["lifecycle_code"] == "agents.ticket.lifecycle.open"
     assert ticket_payload["next_step_code"] == "agents.ticket.next_step.confirm_or_cancel"
+    assert ticket_payload["confirm_summary_code"] == "agents.ticket.confirm.change_decision.summary"
+    assert ticket_payload["cancel_summary_code"] == "agents.ticket.cancel.change_decision.summary"
+    assert ticket_payload["transition_message_code"] == "agents.ticket.transition.change_decision.waiting_confirm"
+    assert ticket_payload["social_safe_cta_code"] is None
     assert ticket_payload["can_confirm"] is True
     assert ticket_payload["can_cancel"] is True
     assert ticket_payload["owner_user_id"] == user.id
@@ -168,6 +172,8 @@ def test_change_decision_approval_ticket_executes_and_is_idempotent(client, db_s
     assert confirmed["status"] == "executed"
     assert confirmed["lifecycle_code"] == "agents.ticket.lifecycle.executed"
     assert confirmed["next_step_code"] == "agents.ticket.next_step.completed"
+    assert confirmed["transition_message_code"] == "agents.ticket.transition.change_decision.executed"
+    assert confirmed["social_safe_cta_code"] is None
     assert confirmed["can_confirm"] is False
     assert confirmed["can_cancel"] is False
     assert confirmed["last_transition_kind"] == "web"
@@ -249,6 +255,9 @@ def test_source_retry_sync_approval_ticket_executes_new_sync_request(client, db_
     confirmed = confirm_response.json()
     assert confirmed["status"] == "executed"
     assert confirmed["lifecycle_code"] == "agents.ticket.lifecycle.executed"
+    assert confirmed["confirm_summary_code"] == "agents.ticket.confirm.run_source_sync.summary"
+    assert confirmed["cancel_summary_code"] == "agents.ticket.cancel.run_source_sync.summary"
+    assert confirmed["transition_message_code"] == "agents.ticket.transition.run_source_sync.executed"
     assert confirmed["origin_kind"] == "web"
     assert confirmed["executed_result"]["kind"] == "run_source_sync"
     assert confirmed["executed_result"]["source_id"] == source.id

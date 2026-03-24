@@ -155,6 +155,10 @@ class ApprovalTicketResponse(BaseModel):
     status: ApprovalTicketStatusLiteral
     lifecycle_code: str
     next_step_code: str
+    confirm_summary_code: str
+    cancel_summary_code: str
+    transition_message_code: str
+    social_safe_cta_code: str | None = None
     can_confirm: bool
     can_cancel: bool
     last_transition_kind: str
@@ -190,6 +194,10 @@ class AgentRecentActivityItemResponse(BaseModel):
     channel: str | None = None
     execution_mode: AgentExecutionModeLiteral | None = None
     execution_mode_code: str | None = None
+    confirm_summary_code: str | None = None
+    cancel_summary_code: str | None = None
+    transition_message_code: str | None = None
+    social_safe_cta_code: str | None = None
     can_create_ticket: bool = False
     can_confirm: bool = False
     can_cancel: bool = False
@@ -208,8 +216,12 @@ def serialize_approval_ticket(row) -> dict:
     from app.modules.agents.lifecycle import (
         ticket_can_cancel,
         ticket_can_confirm,
+        ticket_cancel_summary_code,
+        ticket_confirm_summary_code,
         ticket_lifecycle_code,
         ticket_next_step_code,
+        ticket_social_safe_cta_code,
+        ticket_transition_message_code,
     )
 
     return {
@@ -229,6 +241,10 @@ def serialize_approval_ticket(row) -> dict:
         "status": row.status.value,
         "lifecycle_code": ticket_lifecycle_code(row),
         "next_step_code": ticket_next_step_code(row),
+        "confirm_summary_code": ticket_confirm_summary_code(row),
+        "cancel_summary_code": ticket_cancel_summary_code(row),
+        "transition_message_code": ticket_transition_message_code(row),
+        "social_safe_cta_code": ticket_social_safe_cta_code(row),
         "can_confirm": ticket_can_confirm(row),
         "can_cancel": ticket_can_cancel(row),
         "last_transition_kind": row.last_transition_kind,

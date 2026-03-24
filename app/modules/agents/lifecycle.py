@@ -66,6 +66,32 @@ def ticket_can_cancel(row: ApprovalTicket) -> bool:
     return row.status == ApprovalTicketStatus.OPEN
 
 
+def ticket_confirm_summary_code(row: ApprovalTicket) -> str:
+    return f"agents.ticket.confirm.{row.action_type}.summary"
+
+
+def ticket_cancel_summary_code(row: ApprovalTicket) -> str:
+    return f"agents.ticket.cancel.{row.action_type}.summary"
+
+
+def ticket_transition_message_code(row: ApprovalTicket) -> str:
+    if row.status == ApprovalTicketStatus.OPEN:
+        return f"agents.ticket.transition.{row.action_type}.waiting_confirm"
+    if row.status == ApprovalTicketStatus.EXECUTED:
+        return f"agents.ticket.transition.{row.action_type}.executed"
+    if row.status == ApprovalTicketStatus.CANCELED:
+        return f"agents.ticket.transition.{row.action_type}.canceled"
+    if row.status == ApprovalTicketStatus.EXPIRED:
+        return f"agents.ticket.transition.{row.action_type}.expired"
+    return f"agents.ticket.transition.{row.action_type}.failed"
+
+
+def ticket_social_safe_cta_code(row: ApprovalTicket) -> str | None:
+    if row.status == ApprovalTicketStatus.OPEN and str(row.risk_level or "") == "low":
+        return "agents.ticket.cta.confirm"
+    return None
+
+
 __all__ = [
     "proposal_can_create_ticket",
     "proposal_execution_mode",
@@ -74,6 +100,10 @@ __all__ = [
     "proposal_next_step_code",
     "ticket_can_cancel",
     "ticket_can_confirm",
+    "ticket_cancel_summary_code",
+    "ticket_confirm_summary_code",
     "ticket_lifecycle_code",
     "ticket_next_step_code",
+    "ticket_social_safe_cta_code",
+    "ticket_transition_message_code",
 ]

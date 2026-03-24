@@ -64,6 +64,7 @@ def _create_ticket(
     user_id: int,
     status: ApprovalTicketStatus,
     updated_at: datetime,
+    risk_level: str = "medium",
 ) -> ApprovalTicket:
     row = ApprovalTicket(
         ticket_id=ticket_id,
@@ -76,7 +77,7 @@ def _create_ticket(
         payload_json={"kind": "change_decision", "change_id": proposal_id, "decision": "approve"},
         payload_hash=f"hash-{ticket_id}",
         target_snapshot_json={"review_status": "pending"},
-        risk_level="medium",
+        risk_level=risk_level,
         status=status,
         executed_result_json={"kind": "change_decision"} if status == ApprovalTicketStatus.EXECUTED else {},
         expires_at=updated_at + timedelta(hours=2),
@@ -174,8 +175,10 @@ def test_list_approval_tickets_returns_recent_rows_and_status_filter(client, db_
     assert payload[0]["lifecycle_code"] == "agents.ticket.lifecycle.executed"
     assert payload[0]["can_confirm"] is False
     assert payload[0]["origin_label"] == "unknown"
+    assert payload[0]["transition_message_code"] == "agents.ticket.transition.change_decision.executed"
     assert payload[1]["next_step_code"] == "agents.ticket.next_step.confirm_or_cancel"
     assert payload[1]["can_cancel"] is True
+    assert payload[1]["confirm_summary_code"] == "agents.ticket.confirm.change_decision.summary"
 
     filtered = client.get("/agent/approval-tickets?status_filter=open", headers=headers)
     assert filtered.status_code == 200
@@ -224,6 +227,7 @@ def test_recent_agent_activity_merges_proposals_and_tickets_in_time_order(client
     assert payload["items"][1]["lifecycle_code"] == "agents.ticket.lifecycle.executed"
     assert payload["items"][1]["can_confirm"] is False
     assert payload["items"][1]["last_transition_kind"] == "unknown"
+    assert payload["items"][1]["transition_message_code"] == "agents.ticket.transition.change_decision.executed"
     assert payload["items"][2]["item_kind"] == "proposal"
     assert payload["items"][2]["proposal_id"] == 301
     assert payload["items"][2]["execution_mode"] == "approval_ticket_required"
@@ -240,3 +244,30 @@ def test_agent_activity_status_filters_validate(client, db_session, auth_headers
     tickets = client.get("/agent/approval-tickets?status_filter=weird", headers=headers)
     assert tickets.status_code == 422
     assert tickets.json()["detail"]["code"] == "agents.approval.invalid_status_filter"
+
+
+def test_low_risk_open_ticket_exposes_social_safe_cta_code(client, db_session, auth_headers) -> None:
+    user = _create_user(db_session, email="agent-activity-social-safe@example.com")
+    base = datetime.now(timezone.utc)
+    proposal = _create_proposal(
+        db_session,
+        user_id=user.id,
+        proposal_id=401,
+        status=AgentProposalStatus.OPEN,
+        updated_at=base - timedelta(minutes=1),
+        summary="Low risk proposal",
+    )
+    _create_ticket(
+        db_session,
+        ticket_id="ticket-low-risk",
+        proposal_id=proposal.id,
+        user_id=user.id,
+        status=ApprovalTicketStatus.OPEN,
+        updated_at=base,
+        risk_level="low",
+    )
+
+    response = client.get("/agent/approval-tickets", headers=auth_headers(client, user=user))
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["social_safe_cta_code"] == "agents.ticket.cta.confirm"

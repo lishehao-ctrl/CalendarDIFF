@@ -323,6 +323,10 @@ Fields:
 - `origin_label`
 - `lifecycle_code`
 - `next_step_code`
+- `confirm_summary_code`
+- `cancel_summary_code`
+- `transition_message_code`
+- `social_safe_cta_code`
 - `can_confirm`
 - `can_cancel`
 - `last_transition_kind`
@@ -350,6 +354,8 @@ Frontend guidance:
 - do not infer confirm/cancel availability only from `status`
 - use `origin_kind/origin_label` for ticket creation audit
 - use `last_transition_kind/last_transition_label` for latest state transition audit
+- use `transition_message_code` as the canonical status-copy entrypoint for social cards
+- use `social_safe_cta_code` only when rendering low-risk confirm actions outside the web app
 
 ## C. Recent agent activity fields
 
@@ -366,6 +372,10 @@ Fields:
 - `origin_label`
 - `execution_mode`
 - `execution_mode_code`
+- `confirm_summary_code`
+- `cancel_summary_code`
+- `transition_message_code`
+- `social_safe_cta_code`
 - `can_create_ticket`
 - `can_confirm`
 - `can_cancel`
@@ -378,6 +388,7 @@ Frontend guidance:
 - use `summary_code` / `detail_code` / lifecycle fields together
 - do not rebuild recent activity by joining proposals and tickets in the client
 - use `origin_*` and `last_transition_*` fields for audit timeline UI
+- for ticket rows, use transition/cta codes instead of deriving social card copy in the client
 - `changes.created.suggested_action_reason`
 
 ### Current `risk_summary_code` values
