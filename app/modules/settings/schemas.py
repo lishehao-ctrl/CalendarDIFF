@@ -140,6 +140,24 @@ class ChannelDeliveryResponse(BaseModel):
     updated_at: datetime
 
 
+class McpToolInvocationResponse(BaseModel):
+    invocation_id: str
+    transport_request_id: str | None = None
+    tool_name: str
+    transport: str
+    auth_mode: str
+    status: Literal["started", "succeeded", "failed"]
+    proposal_id: int | None = None
+    ticket_id: str | None = None
+    target_kind: str | None = None
+    target_id: str | None = None
+    summary_code: str | None = None
+    output_summary: dict = Field(default_factory=dict)
+    error_text: str | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
 def _is_valid_email_address(value: str | None) -> bool:
     if value is None:
         return False
@@ -176,6 +194,7 @@ __all__ = [
     "ChannelAccountCreateRequest",
     "ChannelAccountResponse",
     "ChannelDeliveryResponse",
+    "McpToolInvocationResponse",
     "McpAccessTokenCreateRequest",
     "McpAccessTokenCreateResponse",
     "McpAccessTokenResponse",

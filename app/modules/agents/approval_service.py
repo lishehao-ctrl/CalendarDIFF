@@ -43,6 +43,7 @@ def create_approval_ticket(
     channel: str,
     origin_kind: str = "web",
     origin_label: str = "embedded_agent",
+    origin_request_id: str | None = None,
 ) -> ApprovalTicket:
     proposal = db.scalar(
         select(AgentProposal)
@@ -86,6 +87,7 @@ def create_approval_ticket(
         risk_level=proposal.risk_level,
         origin_kind=origin_kind.strip()[:32] or "unknown",
         origin_label=origin_label.strip()[:64] or "unknown",
+        origin_request_id=origin_request_id.strip()[:64] if isinstance(origin_request_id, str) and origin_request_id.strip() else None,
         status=ApprovalTicketStatus.OPEN,
         last_transition_kind=origin_kind.strip()[:32] or "unknown",
         last_transition_label=origin_label.strip()[:64] or "unknown",

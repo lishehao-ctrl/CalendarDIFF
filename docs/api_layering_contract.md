@@ -262,6 +262,7 @@ There is no executable Manual agent surface yet.
 
 - `GET /settings/profile`
 - `GET /settings/mcp-tokens`
+- `GET /settings/mcp-invocations`
 - `GET /settings/channel-accounts`
 - `GET /settings/channel-deliveries`
 
@@ -278,6 +279,12 @@ There is no executable Manual agent surface yet.
 Settings owns MCP token lifecycle.
 Token issuance and revocation must stay here.
 `/mcp` consumes these tokens; it does not replace this management surface.
+
+Settings also owns the user-facing audit surface for external agent access:
+
+- recent MCP tool invocations
+- MCP token lifecycle
+- social channel account and delivery audit
 
 Settings also owns the user-managed social channel foundation:
 

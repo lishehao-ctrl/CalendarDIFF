@@ -44,6 +44,13 @@ from app.modules.agents.schemas import (
     serialize_agent_proposal,
 )
 from app.modules.agents.activity_service import build_recent_agent_activity, list_agent_proposals, list_approval_tickets
+from app.modules.agents.mcp_audit_service import (
+    create_mcp_tool_invocation,
+    list_mcp_tool_invocations,
+    mark_mcp_tool_invocation_failed,
+    mark_mcp_tool_invocation_succeeded,
+    summarize_mcp_tool_output,
+)
 from app.modules.agents.service import (
     AgentContextNotFoundError,
     build_change_agent_context,
@@ -248,6 +255,30 @@ def _normalize_error(exc: Exception) -> RuntimeError:
     return RuntimeError(str(exc))
 
 
+def _transport_mode() -> str:
+    return (os.getenv("CALENDARDIFF_MCP_TRANSPORT", "stdio").strip() or "stdio")[:32]
+
+
+def _ctx_request_id(ctx: Context | None) -> str | None:
+    if ctx is None:
+        return None
+    try:
+        request_id = ctx.request_context.request_id
+    except Exception:
+        return None
+    return request_id if isinstance(request_id, str) and request_id.strip() else None
+
+
+def _auth_mode(notify_email: str | None, ctx: Context | None) -> str:
+    if _user_id_from_context(ctx) is not None:
+        return "bearer_token"
+    if isinstance(notify_email, str) and notify_email.strip():
+        return "notify_email"
+    if _default_notify_email():
+        return "default_user"
+    return "unknown"
+
+
 def _run_with_user(notify_email: str | None, fn, *, ctx: Context | None = None):
     try:
         with _db_session() as db:
@@ -257,16 +288,65 @@ def _run_with_user(notify_email: str | None, fn, *, ctx: Context | None = None):
         raise _normalize_error(exc) from exc
 
 
+def _run_with_user_audited(
+    *,
+    tool_name: str,
+    input_payload: dict[str, Any],
+    notify_email: str | None,
+    ctx: Context | None,
+    fn,
+):
+    try:
+        with _db_session() as db:
+            user = _resolve_user(db, notify_email=notify_email, ctx=ctx)
+            invocation = create_mcp_tool_invocation(
+                db,
+                user_id=user.id,
+                tool_name=tool_name,
+                transport=_transport_mode(),
+                auth_mode=_auth_mode(notify_email, ctx),
+                transport_request_id=_ctx_request_id(ctx),
+                input_payload=input_payload,
+            )
+            try:
+                result = fn(db, user)
+            except Exception as exc:
+                db.rollback()
+                mark_mcp_tool_invocation_failed(db, invocation_id=invocation.invocation_id, error_text=str(exc))
+                raise
+            summary = summarize_mcp_tool_output(result if isinstance(result, dict) else {})
+            proposal_id = summary.get("proposal_id") if isinstance(summary.get("proposal_id"), int) else None
+            ticket_id = summary.get("ticket_id") if isinstance(summary.get("ticket_id"), str) else None
+            mark_mcp_tool_invocation_succeeded(
+                db,
+                invocation_id=invocation.invocation_id,
+                output_summary=summary,
+                proposal_id=proposal_id,
+                ticket_id=ticket_id,
+            )
+            return result
+    except Exception as exc:  # pragma: no cover - exercised via tools/resources
+        raise _normalize_error(exc) from exc
+
+
 def get_workspace_context_impl(*, notify_email: str | None = None, ctx: Context | None = None) -> dict:
-    return _run_with_user(notify_email, lambda db, user: build_workspace_agent_context(db=db, user_id=user.id), ctx=ctx)
+    return _run_with_user_audited(
+        tool_name="get_workspace_context",
+        input_payload={},
+        notify_email=notify_email,
+        ctx=ctx,
+        fn=lambda db, user: build_workspace_agent_context(db=db, user_id=user.id),
+    )
 
 
 def get_recent_agent_activity_impl(*, notify_email: str | None = None, limit: int = 10, ctx: Context | None = None) -> dict:
     safe_limit = max(1, min(limit, 50))
-    return _run_with_user(
-        notify_email,
-        lambda db, user: build_recent_agent_activity(db=db, user_id=user.id, limit=safe_limit),
+    return _run_with_user_audited(
+        tool_name="get_recent_agent_activity",
+        input_payload={"limit": safe_limit},
+        notify_email=notify_email,
         ctx=ctx,
+        fn=lambda db, user: build_recent_agent_activity(db=db, user_id=user.id, limit=safe_limit),
     )
 
 
@@ -279,9 +359,12 @@ def list_pending_changes_impl(
     ctx: Context | None = None,
 ) -> list[dict]:
     safe_limit = max(1, min(limit, 50))
-    return _run_with_user(
-        notify_email,
-        lambda db, user: list_changes(
+    return _run_with_user_audited(
+        tool_name="list_pending_changes",
+        input_payload={"limit": safe_limit, "review_bucket": review_bucket, "intake_phase": intake_phase},
+        notify_email=notify_email,
+        ctx=ctx,
+        fn=lambda db, user: list_changes(
             db,
             user_id=user.id,
             review_status="pending",
@@ -291,71 +374,84 @@ def list_pending_changes_impl(
             limit=safe_limit,
             offset=0,
         ),
-        ctx=ctx,
     )
 
 
 def list_sources_impl(*, notify_email: str | None = None, status: str = "active", ctx: Context | None = None) -> list[dict]:
-    return _run_with_user(
-        notify_email,
-        lambda db, user: [build_source_read_payload(db, source=row) for row in list_input_sources(db, user_id=user.id, status=status)],
+    return _run_with_user_audited(
+        tool_name="list_sources",
+        input_payload={"status": status},
+        notify_email=notify_email,
         ctx=ctx,
+        fn=lambda db, user: [build_source_read_payload(db, source=row) for row in list_input_sources(db, user_id=user.id, status=status)],
     )
 
 
 def get_change_context_impl(*, change_id: int, notify_email: str | None = None, ctx: Context | None = None) -> dict:
-    return _run_with_user(
-        notify_email,
-        lambda db, user: build_change_agent_context(db=db, user_id=user.id, change_id=change_id),
+    return _run_with_user_audited(
+        tool_name="get_change_context",
+        input_payload={"change_id": change_id},
+        notify_email=notify_email,
         ctx=ctx,
+        fn=lambda db, user: build_change_agent_context(db=db, user_id=user.id, change_id=change_id),
     )
 
 
 def get_source_context_impl(*, source_id: int, notify_email: str | None = None, ctx: Context | None = None) -> dict:
-    return _run_with_user(
-        notify_email,
-        lambda db, user: build_source_agent_context(db=db, user_id=user.id, source_id=source_id),
+    return _run_with_user_audited(
+        tool_name="get_source_context",
+        input_payload={"source_id": source_id},
+        notify_email=notify_email,
         ctx=ctx,
+        fn=lambda db, user: build_source_agent_context(db=db, user_id=user.id, source_id=source_id),
     )
 
 
 def get_family_context_impl(*, family_id: int, notify_email: str | None = None, ctx: Context | None = None) -> dict:
-    return _run_with_user(
-        notify_email,
-        lambda db, user: build_family_agent_context(db=db, user_id=user.id, family_id=family_id),
+    return _run_with_user_audited(
+        tool_name="get_family_context",
+        input_payload={"family_id": family_id},
+        notify_email=notify_email,
         ctx=ctx,
+        fn=lambda db, user: build_family_agent_context(db=db, user_id=user.id, family_id=family_id),
     )
 
 
 def create_change_decision_proposal_impl(*, change_id: int, notify_email: str | None = None, ctx: Context | None = None) -> dict:
-    return _run_with_user(
-        notify_email,
-        lambda db, user: serialize_agent_proposal(
+    return _run_with_user_audited(
+        tool_name="create_change_decision_proposal",
+        input_payload={"change_id": change_id},
+        notify_email=notify_email,
+        ctx=ctx,
+        fn=lambda db, user: serialize_agent_proposal(
             create_change_decision_proposal_with_origin(
                 db=db,
                 user_id=user.id,
                 change_id=change_id,
                 origin_kind="mcp",
                 origin_label="create_change_decision_proposal",
+                origin_request_id=_ctx_request_id(ctx),
             )
         ),
-        ctx=ctx,
     )
 
 
 def create_source_recovery_proposal_impl(*, source_id: int, notify_email: str | None = None, ctx: Context | None = None) -> dict:
-    return _run_with_user(
-        notify_email,
-        lambda db, user: serialize_agent_proposal(
+    return _run_with_user_audited(
+        tool_name="create_source_recovery_proposal",
+        input_payload={"source_id": source_id},
+        notify_email=notify_email,
+        ctx=ctx,
+        fn=lambda db, user: serialize_agent_proposal(
             create_source_recovery_proposal_with_origin(
                 db=db,
                 user_id=user.id,
                 source_id=source_id,
                 origin_kind="mcp",
                 origin_label="create_source_recovery_proposal",
+                origin_request_id=_ctx_request_id(ctx),
             )
         ),
-        ctx=ctx,
     )
 
 
@@ -366,9 +462,12 @@ def create_family_relink_preview_proposal_impl(
     notify_email: str | None = None,
     ctx: Context | None = None,
 ) -> dict:
-    return _run_with_user(
-        notify_email,
-        lambda db, user: serialize_agent_proposal(
+    return _run_with_user_audited(
+        tool_name="create_family_relink_preview_proposal",
+        input_payload={"raw_type_id": raw_type_id, "family_id": family_id},
+        notify_email=notify_email,
+        ctx=ctx,
+        fn=lambda db, user: serialize_agent_proposal(
             create_family_relink_preview_proposal_with_origin(
                 db=db,
                 user_id=user.id,
@@ -376,9 +475,9 @@ def create_family_relink_preview_proposal_impl(
                 family_id=family_id,
                 origin_kind="mcp",
                 origin_label="create_family_relink_preview_proposal",
+                origin_request_id=_ctx_request_id(ctx),
             )
         ),
-        ctx=ctx,
     )
 
 
@@ -389,22 +488,33 @@ def get_proposal_impl(*, proposal_id: int, notify_email: str | None = None, ctx:
             raise RuntimeError("Agent proposal not found.")
         return serialize_agent_proposal(proposal)
 
-    return _run_with_user(notify_email, _load, ctx=ctx)
+    return _run_with_user_audited(
+        tool_name="get_proposal",
+        input_payload={"proposal_id": proposal_id},
+        notify_email=notify_email,
+        ctx=ctx,
+        fn=_load,
+    )
 
 
 def list_proposals_impl(*, notify_email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> list[dict]:
     safe_limit = max(1, min(limit, 50))
-    return _run_with_user(
-        notify_email,
-        lambda db, user: [serialize_agent_proposal(row) for row in list_agent_proposals(db=db, user_id=user.id, status=status, limit=safe_limit)],
+    return _run_with_user_audited(
+        tool_name="list_proposals",
+        input_payload={"status": status, "limit": safe_limit},
+        notify_email=notify_email,
         ctx=ctx,
+        fn=lambda db, user: [serialize_agent_proposal(row) for row in list_agent_proposals(db=db, user_id=user.id, status=status, limit=safe_limit)],
     )
 
 
 def create_approval_ticket_impl(*, proposal_id: int, notify_email: str | None = None, channel: str = "mcp", ctx: Context | None = None) -> dict:
-    return _run_with_user(
-        notify_email,
-        lambda db, user: serialize_approval_ticket(
+    return _run_with_user_audited(
+        tool_name="create_approval_ticket",
+        input_payload={"proposal_id": proposal_id, "channel": channel},
+        notify_email=notify_email,
+        ctx=ctx,
+        fn=lambda db, user: serialize_approval_ticket(
             create_approval_ticket(
                 db=db,
                 user_id=user.id,
@@ -412,9 +522,9 @@ def create_approval_ticket_impl(*, proposal_id: int, notify_email: str | None = 
                 channel=channel,
                 origin_kind="mcp",
                 origin_label="create_approval_ticket",
+                origin_request_id=_ctx_request_id(ctx),
             )
         ),
-        ctx=ctx,
     )
 
 
@@ -425,22 +535,33 @@ def get_approval_ticket_impl(*, ticket_id: str, notify_email: str | None = None,
             raise RuntimeError("Approval ticket not found.")
         return serialize_approval_ticket(ticket)
 
-    return _run_with_user(notify_email, _load, ctx=ctx)
+    return _run_with_user_audited(
+        tool_name="get_approval_ticket",
+        input_payload={"ticket_id": ticket_id},
+        notify_email=notify_email,
+        ctx=ctx,
+        fn=_load,
+    )
 
 
 def list_approval_tickets_impl(*, notify_email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> list[dict]:
     safe_limit = max(1, min(limit, 50))
-    return _run_with_user(
-        notify_email,
-        lambda db, user: [serialize_approval_ticket(row) for row in list_approval_tickets(db=db, user_id=user.id, status=status, limit=safe_limit)],
+    return _run_with_user_audited(
+        tool_name="list_approval_tickets",
+        input_payload={"status": status, "limit": safe_limit},
+        notify_email=notify_email,
         ctx=ctx,
+        fn=lambda db, user: [serialize_approval_ticket(row) for row in list_approval_tickets(db=db, user_id=user.id, status=status, limit=safe_limit)],
     )
 
 
 def confirm_approval_ticket_impl(*, ticket_id: str, notify_email: str | None = None, ctx: Context | None = None) -> dict:
-    return _run_with_user(
-        notify_email,
-        lambda db, user: serialize_approval_ticket(
+    return _run_with_user_audited(
+        tool_name="confirm_approval_ticket",
+        input_payload={"ticket_id": ticket_id},
+        notify_email=notify_email,
+        ctx=ctx,
+        fn=lambda db, user: serialize_approval_ticket(
             confirm_approval_ticket(
                 db=db,
                 user_id=user.id,
@@ -449,14 +570,16 @@ def confirm_approval_ticket_impl(*, ticket_id: str, notify_email: str | None = N
                 transition_label="confirm_approval_ticket",
             )[0]
         ),
-        ctx=ctx,
     )
 
 
 def cancel_approval_ticket_impl(*, ticket_id: str, notify_email: str | None = None, ctx: Context | None = None) -> dict:
-    return _run_with_user(
-        notify_email,
-        lambda db, user: serialize_approval_ticket(
+    return _run_with_user_audited(
+        tool_name="cancel_approval_ticket",
+        input_payload={"ticket_id": ticket_id},
+        notify_email=notify_email,
+        ctx=ctx,
+        fn=lambda db, user: serialize_approval_ticket(
             cancel_approval_ticket(
                 db=db,
                 user_id=user.id,
@@ -465,7 +588,6 @@ def cancel_approval_ticket_impl(*, ticket_id: str, notify_email: str | None = No
                 transition_label="cancel_approval_ticket",
             )[0]
         ),
-        ctx=ctx,
     )
 
 

@@ -79,6 +79,34 @@
   - 英文默认：`Channel account not found`
   - params: `{}`
 
+### MCP invocation audit fields
+
+Applies to:
+
+- `GET /settings/mcp-invocations`
+
+Fields:
+
+- `invocation_id`
+- `transport_request_id`
+- `tool_name`
+- `transport`
+- `auth_mode`
+- `status`
+- `proposal_id`
+- `ticket_id`
+- `target_kind`
+- `target_id`
+- `summary_code`
+- `output_summary`
+- `error_text`
+
+Frontend guidance:
+
+- use this as the canonical Claw/MCP audit surface in Settings
+- do not reconstruct MCP usage by inferring from proposals/tickets alone
+- `transport_request_id` is the canonical correlation key when present
+
 ### Channel account fields
 
 Applies to:

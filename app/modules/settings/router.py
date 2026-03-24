@@ -21,6 +21,7 @@ from app.modules.channels.service import (
     list_channel_deliveries,
     revoke_channel_account,
 )
+from app.modules.agents.mcp_audit_service import list_mcp_tool_invocations
 from app.modules.settings.schemas import (
     ChannelAccountCreateRequest,
     ChannelAccountResponse,
@@ -28,6 +29,7 @@ from app.modules.settings.schemas import (
     McpAccessTokenCreateRequest,
     McpAccessTokenCreateResponse,
     McpAccessTokenResponse,
+    McpToolInvocationResponse,
     UserResponse,
     UserUpdateRequest,
 )
@@ -263,6 +265,35 @@ def get_channel_deliveries(
             error_text=row.error_text,
             created_at=row.created_at,
             updated_at=row.updated_at,
+        )
+        for row in rows
+    ]
+
+
+@router.get("/mcp-invocations", response_model=list[McpToolInvocationResponse])
+def get_mcp_invocations(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
+) -> list[McpToolInvocationResponse]:
+    rows = list_mcp_tool_invocations(db, user_id=user.id, limit=max(1, min(int(limit), 100)))
+    return [
+        McpToolInvocationResponse(
+            invocation_id=row.invocation_id,
+            transport_request_id=row.transport_request_id,
+            tool_name=row.tool_name,
+            transport=row.transport,
+            auth_mode=row.auth_mode,
+            status=row.status.value,
+            proposal_id=row.proposal_id,
+            ticket_id=row.ticket_id,
+            target_kind=(row.output_summary_json or {}).get("target_kind"),
+            target_id=(row.output_summary_json or {}).get("target_id"),
+            summary_code=(row.output_summary_json or {}).get("summary_code"),
+            output_summary=row.output_summary_json or {},
+            error_text=row.error_text,
+            created_at=row.created_at,
+            completed_at=row.completed_at,
         )
         for row in rows
     ]

@@ -110,6 +110,7 @@ class AgentProposalResponse(BaseModel):
     suggested_action: str
     origin_kind: str
     origin_label: str
+    origin_request_id: str | None = None
     lifecycle_code: str
     execution_mode: AgentExecutionModeLiteral
     execution_mode_code: str
@@ -152,6 +153,7 @@ class ApprovalTicketResponse(BaseModel):
     risk_level: AgentRiskLevelLiteral
     origin_kind: str
     origin_label: str
+    origin_request_id: str | None = None
     status: ApprovalTicketStatusLiteral
     lifecycle_code: str
     next_step_code: str
@@ -191,6 +193,7 @@ class AgentRecentActivityItemResponse(BaseModel):
     detail_code: str | None = None
     origin_kind: str
     origin_label: str
+    origin_request_id: str | None = None
     channel: str | None = None
     execution_mode: AgentExecutionModeLiteral | None = None
     execution_mode_code: str | None = None
@@ -238,6 +241,7 @@ def serialize_approval_ticket(row) -> dict:
         "risk_level": row.risk_level,
         "origin_kind": row.origin_kind,
         "origin_label": row.origin_label,
+        "origin_request_id": row.origin_request_id,
         "status": row.status.value,
         "lifecycle_code": ticket_lifecycle_code(row),
         "next_step_code": ticket_next_step_code(row),
@@ -284,6 +288,7 @@ def serialize_agent_proposal(row) -> dict:
         "suggested_action": row.suggested_action,
         "origin_kind": row.origin_kind,
         "origin_label": row.origin_label,
+        "origin_request_id": row.origin_request_id,
         "lifecycle_code": proposal_lifecycle_code(row),
         "execution_mode": proposal_execution_mode(row),
         "execution_mode_code": proposal_execution_mode_code(row),

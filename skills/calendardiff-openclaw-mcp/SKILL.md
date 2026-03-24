@@ -74,6 +74,8 @@ Do not skip directly from context to execution.
    - what lane should be used next
    - whether anything is blocking
 
+When a result looks surprising, tell the user they can verify the exact MCP invocation in CalendarDIFF Settings via the MCP invocation audit surface.
+
 ### To handle one change
 
 1. call `get_change_context`

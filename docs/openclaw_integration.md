@@ -142,6 +142,10 @@ Use this exact order:
 
 Do not jump directly from context to execution.
 
+For web-side debugging and audit review, pair this with:
+
+- `GET /settings/mcp-invocations`
+
 ## Current safe execution scope
 
 Currently executable through OpenClaw:
@@ -167,5 +171,6 @@ Once OpenClaw is configured against the MCP server:
 4. ask it to create a proposal for that change
 5. ask it to create an approval ticket
 6. ask it to confirm the ticket only if the action is low-risk
+7. verify the resulting MCP invocation row in Settings audit
 
 That validates the full path without widening execution scope.

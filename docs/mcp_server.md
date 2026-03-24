@@ -80,6 +80,10 @@ Suggested public flow:
    - Bearer token
 4. the public MCP server resolves that user from the token
 
+Users can inspect recent MCP tool audit through:
+
+- `GET /settings/mcp-invocations`
+
 ## Current Tool Surface
 
 Read tools:
@@ -144,6 +148,7 @@ Recommended pattern:
 3. in public mode, configure an MCP Bearer token instead
 4. use an OpenClaw skill to teach:
    - inspect recent agent activity when resuming work
+   - inspect recent MCP invocation audit when debugging
    - read workspace first
    - create proposals before action
    - create approval tickets before execution

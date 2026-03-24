@@ -45,6 +45,7 @@ def create_change_decision_proposal_with_origin(
     change_id: int,
     origin_kind: str,
     origin_label: str,
+    origin_request_id: str | None = None,
 ) -> AgentProposal:
     context = build_change_agent_context(db=db, user_id=user_id, change_id=change_id)
     change = context["change"]
@@ -72,6 +73,7 @@ def create_change_decision_proposal_with_origin(
         suggested_action=action_kind,
         origin_kind=(origin_kind.strip()[:32] or "unknown"),
         origin_label=(origin_label.strip()[:64] or "unknown"),
+        origin_request_id=origin_request_id.strip()[:64] if isinstance(origin_request_id, str) and origin_request_id.strip() else None,
         payload_json=_jsonable(_change_payload(change_id=change_id, action_kind=action_kind)),
         context_json=_jsonable(_minimal_change_context_snapshot(context=context)),
         target_snapshot_json=_jsonable(
@@ -108,6 +110,7 @@ def create_source_recovery_proposal_with_origin(
     source_id: int,
     origin_kind: str,
     origin_label: str,
+    origin_request_id: str | None = None,
 ) -> AgentProposal:
     context = build_source_agent_context(db=db, user_id=user_id, source_id=source_id)
     source = context["source"]
@@ -130,6 +133,7 @@ def create_source_recovery_proposal_with_origin(
         suggested_action=suggested_action,
         origin_kind=(origin_kind.strip()[:32] or "unknown"),
         origin_label=(origin_label.strip()[:64] or "unknown"),
+        origin_request_id=origin_request_id.strip()[:64] if isinstance(origin_request_id, str) and origin_request_id.strip() else None,
         payload_json=_jsonable(_source_payload(source_id=source_id, action=suggested_action, provider=str(source.get("provider") or ""))),
         context_json=_jsonable(_minimal_source_context_snapshot(context=context)),
         target_snapshot_json=_jsonable(
@@ -174,6 +178,7 @@ def create_family_relink_preview_proposal_with_origin(
     family_id: int,
     origin_kind: str,
     origin_label: str,
+    origin_request_id: str | None = None,
 ) -> AgentProposal:
     raw_type = get_course_raw_type(db, user_id=user_id, raw_type_id=raw_type_id)
     if raw_type is None:
@@ -227,6 +232,7 @@ def create_family_relink_preview_proposal_with_origin(
         suggested_action="preview_relink",
         origin_kind=(origin_kind.strip()[:32] or "unknown"),
         origin_label=(origin_label.strip()[:64] or "unknown"),
+        origin_request_id=origin_request_id.strip()[:64] if isinstance(origin_request_id, str) and origin_request_id.strip() else None,
         payload_json=_jsonable(
             {
                 "kind": "web_only_family_relink_preview",

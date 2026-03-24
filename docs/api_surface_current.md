@@ -61,6 +61,7 @@ Users can now create per-account MCP access tokens through Settings:
 - `GET /settings/mcp-tokens`
 - `POST /settings/mcp-tokens`
 - `DELETE /settings/mcp-tokens/{token_id}`
+- `GET /settings/mcp-invocations`
 
 Social channel foundation now lives in Settings too:
 
@@ -94,6 +95,7 @@ Social channel foundation now lives in Settings too:
 - `GET /settings/mcp-tokens`
 - `POST /settings/mcp-tokens`
 - `DELETE /settings/mcp-tokens/{token_id}`
+- `GET /settings/mcp-invocations`
 - `GET /settings/channel-accounts`
 - `POST /settings/channel-accounts`
 - `DELETE /settings/channel-accounts/{account_id}`
@@ -101,11 +103,13 @@ Social channel foundation now lives in Settings too:
 - `GET /sources`
 - `GET /sources/{source_id}/observability`
 - `GET /sources/{source_id}/sync-history`
+- `GET /sources/{source_id}/llm-invocations`
 - `POST /sources`
 - `PATCH /sources/{source_id}`
 - `POST /sources/{source_id}/oauth-sessions`
 - `POST /sources/{source_id}/sync-requests`
 - `GET /sync-requests/{request_id}`
+- `GET /sync-requests/{request_id}/llm-invocations`
 - `POST /onboarding/registrations`
 - `GET /onboarding/status`
 - `POST /onboarding/canvas-ics`

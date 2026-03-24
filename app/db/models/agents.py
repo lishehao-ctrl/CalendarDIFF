@@ -35,6 +35,12 @@ class ApprovalTicketStatus(str, Enum):
     FAILED = "failed"
 
 
+class McpToolInvocationStatus(str, Enum):
+    STARTED = "started"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
 class AgentProposal(Base):
     __tablename__ = "agent_proposals"
     __table_args__ = (
@@ -66,6 +72,7 @@ class AgentProposal(Base):
     suggested_action: Mapped[str] = mapped_column(String(64), nullable=False)
     origin_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown", server_default="unknown")
     origin_label: Mapped[str] = mapped_column(String(64), nullable=False, default="unknown", server_default="unknown")
+    origin_request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     context_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     target_snapshot_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
@@ -102,6 +109,7 @@ class ApprovalTicket(Base):
     risk_level: Mapped[str] = mapped_column(String(16), nullable=False)
     origin_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown", server_default="unknown")
     origin_label: Mapped[str] = mapped_column(String(64), nullable=False, default="unknown", server_default="unknown")
+    origin_request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[ApprovalTicketStatus] = mapped_column(
         SAEnum(ApprovalTicketStatus, name="approval_ticket_status", native_enum=False),
         nullable=False,
@@ -152,6 +160,39 @@ class McpAccessToken(Base):
     )
 
     user: Mapped["User"] = relationship("User")
+
+
+class McpToolInvocation(Base):
+    __tablename__ = "mcp_tool_invocations"
+    __table_args__ = (
+        Index("ix_mcp_tool_invocations_user_created", "user_id", "created_at"),
+        Index("ix_mcp_tool_invocations_tool_created", "tool_name", "created_at"),
+        Index("ix_mcp_tool_invocations_status_created", "status", "created_at"),
+    )
+
+    invocation_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    transport_request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    tool_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    transport: Mapped[str] = mapped_column(String(32), nullable=False)
+    auth_mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[McpToolInvocationStatus] = mapped_column(
+        SAEnum(McpToolInvocationStatus, name="mcp_tool_invocation_status", native_enum=False),
+        nullable=False,
+        default=McpToolInvocationStatus.STARTED,
+        server_default=McpToolInvocationStatus.STARTED.value,
+    )
+    input_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    output_summary_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    error_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    proposal_id: Mapped[int | None] = mapped_column(ForeignKey("agent_proposals.id", ondelete="SET NULL"), nullable=True)
+    ticket_id: Mapped[str | None] = mapped_column(ForeignKey("approval_tickets.ticket_id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped["User"] = relationship("User")
+    proposal: Mapped["AgentProposal | None"] = relationship("AgentProposal")
+    ticket: Mapped["ApprovalTicket | None"] = relationship("ApprovalTicket")
 
 
 class ChannelAccountType(str, Enum):
@@ -286,5 +327,7 @@ __all__ = [
     "AgentProposal",
     "AgentProposalStatus",
     "AgentProposalType",
+    "McpToolInvocation",
+    "McpToolInvocationStatus",
     "McpAccessToken",
 ]
