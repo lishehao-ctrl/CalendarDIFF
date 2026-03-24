@@ -118,6 +118,7 @@ Frontend guidance:
 
 - use this endpoint as the canonical recent outbound social delivery audit surface
 - do not derive delivery history from approval tickets alone
+- approval-ticket transitions now auto-write delivery audit rows even before real Telegram/Slack sending exists
 
 ## Sources
 

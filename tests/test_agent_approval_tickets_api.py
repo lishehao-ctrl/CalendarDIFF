@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from app.db.models.agents import ApprovalTicket, ApprovalTicketStatus, AgentProposal, AgentProposalStatus
+from app.db.models.agents import ApprovalTicket, ApprovalTicketStatus, AgentProposal, AgentProposalStatus, ChannelDelivery
 from app.db.models.input import IngestTriggerType, InputSource, SourceKind, SyncRequest, SyncRequestStage, SyncRequestStatus
 from app.db.models.review import Change, ChangeIntakePhase, ChangeOrigin, ChangeReviewBucket, ChangeSourceRef, ChangeType, ReviewStatus
 from app.db.models.shared import CourseWorkItemLabelFamily, User
@@ -185,10 +185,21 @@ def test_change_decision_approval_ticket_executes_and_is_idempotent(client, db_s
     refreshed_change = db_session.scalar(select(Change).where(Change.id == change.id))
     proposal = db_session.scalar(select(AgentProposal).where(AgentProposal.id == proposal_id))
     ticket = db_session.scalar(select(ApprovalTicket).where(ApprovalTicket.ticket_id == ticket_payload["ticket_id"]))
+    deliveries = list(
+        db_session.scalars(
+            select(ChannelDelivery)
+            .where(ChannelDelivery.ticket_id == ticket_payload["ticket_id"])
+            .order_by(ChannelDelivery.created_at.asc(), ChannelDelivery.delivery_id.asc())
+        ).all()
+    )
     assert refreshed_change is not None
     assert refreshed_change.review_status == ReviewStatus.APPROVED
     assert proposal is not None and proposal.status == AgentProposalStatus.ACCEPTED
     assert ticket is not None and ticket.status == ApprovalTicketStatus.EXECUTED
+    assert [row.delivery_kind for row in deliveries] == ["approval_ticket_open", "approval_ticket_executed"]
+    assert deliveries[0].summary_code == "agents.ticket.confirm.change_decision.summary"
+    assert deliveries[0].detail_code == "agents.ticket.transition.change_decision.waiting_confirm"
+    assert deliveries[1].detail_code == "agents.ticket.transition.change_decision.executed"
 
     confirm_again = client.post(
         f"/agent/approval-tickets/{ticket_payload['ticket_id']}/confirm",
@@ -267,9 +278,17 @@ def test_source_retry_sync_approval_ticket_executes_new_sync_request(client, db_
     db_session.expire_all()
     new_sync = db_session.scalar(select(SyncRequest).where(SyncRequest.request_id == new_request_id))
     proposal_row = db_session.scalar(select(AgentProposal).where(AgentProposal.id == proposal["proposal_id"]))
+    deliveries = list(
+        db_session.scalars(
+            select(ChannelDelivery)
+            .where(ChannelDelivery.ticket_id == ticket_id)
+            .order_by(ChannelDelivery.created_at.asc(), ChannelDelivery.delivery_id.asc())
+        ).all()
+    )
     assert new_sync is not None
     assert new_sync.source_id == source.id
     assert proposal_row is not None and proposal_row.status == AgentProposalStatus.ACCEPTED
+    assert [row.delivery_kind for row in deliveries] == ["approval_ticket_open", "approval_ticket_executed"]
 
 
 def test_non_executable_source_recovery_proposal_cannot_create_ticket(client, db_session, auth_headers) -> None:
@@ -307,5 +326,13 @@ def test_cancel_approval_ticket_marks_ticket_and_proposal_rejected(client, db_se
     db_session.expire_all()
     proposal = db_session.scalar(select(AgentProposal).where(AgentProposal.id == proposal_id))
     ticket = db_session.scalar(select(ApprovalTicket).where(ApprovalTicket.ticket_id == ticket_id))
+    deliveries = list(
+        db_session.scalars(
+            select(ChannelDelivery)
+            .where(ChannelDelivery.ticket_id == ticket_id)
+            .order_by(ChannelDelivery.created_at.asc(), ChannelDelivery.delivery_id.asc())
+        ).all()
+    )
     assert proposal is not None and proposal.status == AgentProposalStatus.REJECTED
     assert ticket is not None and ticket.status == ApprovalTicketStatus.CANCELED
+    assert [row.delivery_kind for row in deliveries] == ["approval_ticket_open", "approval_ticket_canceled"]

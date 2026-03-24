@@ -187,6 +187,7 @@ Not first:
 Backend tasks:
 - [x] add `channel_accounts`
 - [x] add `channel_deliveries`
+- [x] start writing local delivery audit rows from approval ticket transitions
 - [ ] add signed callback verification
 - [ ] add deep-link generation back to web
 - [ ] define social-safe actions:

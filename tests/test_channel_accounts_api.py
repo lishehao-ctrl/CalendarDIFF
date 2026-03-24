@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.db.models.shared import User
-from app.modules.settings.channel_accounts_service import create_channel_account, record_channel_delivery
+from app.modules.channels.service import create_channel_account, record_channel_delivery
 
 
 def _create_user(db_session, *, email: str) -> User:

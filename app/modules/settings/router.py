@@ -14,7 +14,7 @@ from app.modules.settings.mcp_tokens_service import (
     list_mcp_access_tokens,
     revoke_mcp_access_token,
 )
-from app.modules.settings.channel_accounts_service import (
+from app.modules.channels.service import (
     ChannelAccountNotFoundError,
     create_channel_account,
     list_channel_accounts,
