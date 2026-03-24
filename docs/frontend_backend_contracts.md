@@ -258,6 +258,109 @@ params currently:
 - `changes.due_changed.suggested_action_reason.approve`
 - `changes.due_changed.suggested_action_reason.edit`
 - `changes.baseline_created.suggested_action_reason`
+
+## Agent
+
+## A. Proposal lifecycle fields
+
+Applies to:
+
+- `GET /agent/proposals`
+- `GET /agent/proposals/{proposal_id}`
+- all proposal-create endpoints
+
+Fields:
+
+- `lifecycle_code`
+- `execution_mode`
+- `execution_mode_code`
+- `next_step_code`
+- `can_create_ticket`
+
+### Current `lifecycle_code` values
+
+- `agents.proposal.lifecycle.open`
+- `agents.proposal.lifecycle.accepted`
+- `agents.proposal.lifecycle.rejected`
+- `agents.proposal.lifecycle.expired`
+- `agents.proposal.lifecycle.superseded`
+
+### Current `execution_mode_code` values
+
+- `agents.proposal.execution_mode.approval_ticket_required`
+- `agents.proposal.execution_mode.web_only`
+
+### Current `next_step_code` values
+
+- `agents.proposal.next_step.create_ticket`
+- `agents.proposal.next_step.open_web_flow`
+- `agents.proposal.next_step.completed`
+- `agents.proposal.next_step.dismissed`
+- `agents.proposal.next_step.expired`
+- `agents.proposal.next_step.superseded`
+
+Frontend guidance:
+
+- use these fields instead of inferring state from `status + suggested_payload.kind`
+- `can_create_ticket` is the canonical execution affordance gate
+
+## B. Approval ticket lifecycle fields
+
+Applies to:
+
+- `GET /agent/approval-tickets`
+- `GET /agent/approval-tickets/{ticket_id}`
+- create / confirm / cancel ticket responses
+
+Fields:
+
+- `lifecycle_code`
+- `next_step_code`
+- `can_confirm`
+- `can_cancel`
+
+### Current `lifecycle_code` values
+
+- `agents.ticket.lifecycle.open`
+- `agents.ticket.lifecycle.executed`
+- `agents.ticket.lifecycle.canceled`
+- `agents.ticket.lifecycle.expired`
+- `agents.ticket.lifecycle.failed`
+
+### Current `next_step_code` values
+
+- `agents.ticket.next_step.confirm_or_cancel`
+- `agents.ticket.next_step.completed`
+- `agents.ticket.next_step.canceled`
+- `agents.ticket.next_step.expired`
+- `agents.ticket.next_step.investigate_failure`
+
+Frontend guidance:
+
+- use `can_confirm` / `can_cancel` as the canonical button gate
+- do not infer confirm/cancel availability only from `status`
+
+## C. Recent agent activity fields
+
+Applies to:
+
+- `GET /agent/activity/recent`
+
+Fields:
+
+- `lifecycle_code`
+- `next_step_code`
+- `execution_mode`
+- `execution_mode_code`
+- `can_create_ticket`
+- `can_confirm`
+- `can_cancel`
+
+Frontend guidance:
+
+- this endpoint is the canonical recent-agent-history surface
+- use `summary_code` / `detail_code` / lifecycle fields together
+- do not rebuild recent activity by joining proposals and tickets in the client
 - `changes.created.suggested_action_reason`
 
 ### Current `risk_summary_code` values

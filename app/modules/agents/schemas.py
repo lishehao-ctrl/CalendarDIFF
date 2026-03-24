@@ -19,6 +19,7 @@ AgentProposalTypeLiteral = Literal["change_decision", "source_recovery", "family
 AgentProposalStatusLiteral = Literal["open", "accepted", "rejected", "expired", "superseded"]
 ApprovalTicketStatusLiteral = Literal["open", "executed", "canceled", "expired", "failed"]
 AgentActivityKindLiteral = Literal["proposal", "ticket"]
+AgentExecutionModeLiteral = Literal["approval_ticket_required", "web_only"]
 
 
 class AgentBlockingConditionResponse(BaseModel):
@@ -106,6 +107,11 @@ class AgentProposalResponse(BaseModel):
     risk_level: AgentRiskLevelLiteral
     confidence: float
     suggested_action: str
+    lifecycle_code: str
+    execution_mode: AgentExecutionModeLiteral
+    execution_mode_code: str
+    next_step_code: str
+    can_create_ticket: bool
     suggested_payload: dict = Field(default_factory=dict)
     context: dict = Field(default_factory=dict)
     target_snapshot: dict = Field(default_factory=dict)
@@ -141,6 +147,10 @@ class ApprovalTicketResponse(BaseModel):
     target_snapshot: dict = Field(default_factory=dict)
     risk_level: AgentRiskLevelLiteral
     status: ApprovalTicketStatusLiteral
+    lifecycle_code: str
+    next_step_code: str
+    can_confirm: bool
+    can_cancel: bool
     executed_result: dict = Field(default_factory=dict)
     expires_at: datetime | None = None
     confirmed_at: datetime | None = None
@@ -157,6 +167,8 @@ class AgentRecentActivityItemResponse(BaseModel):
     proposal_id: int | None = None
     ticket_id: str | None = None
     status: str
+    lifecycle_code: str
+    next_step_code: str
     risk_level: AgentRiskLevelLiteral
     target_kind: str
     target_id: str
@@ -165,6 +177,11 @@ class AgentRecentActivityItemResponse(BaseModel):
     detail: str | None = None
     detail_code: str | None = None
     channel: str | None = None
+    execution_mode: AgentExecutionModeLiteral | None = None
+    execution_mode_code: str | None = None
+    can_create_ticket: bool = False
+    can_confirm: bool = False
+    can_cancel: bool = False
     suggested_action: str | None = None
     action_type: str | None = None
 
@@ -175,6 +192,13 @@ class AgentRecentActivityResponse(BaseModel):
 
 
 def serialize_approval_ticket(row) -> dict:
+    from app.modules.agents.lifecycle import (
+        ticket_can_cancel,
+        ticket_can_confirm,
+        ticket_lifecycle_code,
+        ticket_next_step_code,
+    )
+
     return {
         "ticket_id": row.ticket_id,
         "proposal_id": row.proposal_id,
@@ -187,6 +211,10 @@ def serialize_approval_ticket(row) -> dict:
         "target_snapshot": row.target_snapshot_json or {},
         "risk_level": row.risk_level,
         "status": row.status.value,
+        "lifecycle_code": ticket_lifecycle_code(row),
+        "next_step_code": ticket_next_step_code(row),
+        "can_confirm": ticket_can_confirm(row),
+        "can_cancel": ticket_can_cancel(row),
         "executed_result": row.executed_result_json or {},
         "expires_at": row.expires_at,
         "confirmed_at": row.confirmed_at,
@@ -198,6 +226,14 @@ def serialize_approval_ticket(row) -> dict:
 
 
 def serialize_agent_proposal(row) -> dict:
+    from app.modules.agents.lifecycle import (
+        proposal_can_create_ticket,
+        proposal_execution_mode,
+        proposal_execution_mode_code,
+        proposal_lifecycle_code,
+        proposal_next_step_code,
+    )
+
     return {
         "proposal_id": row.id,
         "proposal_type": row.proposal_type.value,
@@ -211,6 +247,11 @@ def serialize_agent_proposal(row) -> dict:
         "risk_level": row.risk_level,
         "confidence": row.confidence,
         "suggested_action": row.suggested_action,
+        "lifecycle_code": proposal_lifecycle_code(row),
+        "execution_mode": proposal_execution_mode(row),
+        "execution_mode_code": proposal_execution_mode_code(row),
+        "next_step_code": proposal_next_step_code(row),
+        "can_create_ticket": proposal_can_create_ticket(row),
         "suggested_payload": row.payload_json or {},
         "context": row.context_json or {},
         "target_snapshot": row.target_snapshot_json or {},

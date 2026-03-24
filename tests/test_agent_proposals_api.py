@@ -145,6 +145,11 @@ def test_agent_change_decision_proposal_is_persisted_and_fetchable(client, db_se
     assert payload["target_kind"] == "change"
     assert payload["target_id"] == str(change.id)
     assert payload["suggested_action"] == "approve"
+    assert payload["lifecycle_code"] == "agents.proposal.lifecycle.open"
+    assert payload["execution_mode"] == "approval_ticket_required"
+    assert payload["execution_mode_code"] == "agents.proposal.execution_mode.approval_ticket_required"
+    assert payload["next_step_code"] == "agents.proposal.next_step.create_ticket"
+    assert payload["can_create_ticket"] is True
     assert payload["risk_level"] == "medium"
     assert payload["suggested_payload"] == {
         "kind": "change_decision",
@@ -258,6 +263,11 @@ def test_agent_source_recovery_proposal_is_persisted_and_scoped(client, db_sessi
     assert payload["target_kind"] == "source"
     assert payload["target_id"] == str(source.id)
     assert payload["suggested_action"] == "reconnect_gmail"
+    assert payload["lifecycle_code"] == "agents.proposal.lifecycle.open"
+    assert payload["execution_mode"] == "web_only"
+    assert payload["execution_mode_code"] == "agents.proposal.execution_mode.web_only"
+    assert payload["next_step_code"] == "agents.proposal.next_step.open_web_flow"
+    assert payload["can_create_ticket"] is False
     assert payload["risk_level"] == "high"
     assert payload["suggested_payload"]["kind"] == "reconnect_source"
     assert payload["context"]["source_id"] == source.id

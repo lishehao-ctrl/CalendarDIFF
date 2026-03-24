@@ -6,6 +6,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.agents import ApprovalTicket, AgentProposal
+from app.modules.agents.lifecycle import (
+    proposal_can_create_ticket,
+    proposal_execution_mode,
+    proposal_execution_mode_code,
+    proposal_lifecycle_code,
+    proposal_next_step_code,
+    ticket_can_cancel,
+    ticket_can_confirm,
+    ticket_lifecycle_code,
+    ticket_next_step_code,
+)
 
 
 PROPOSAL_STATUS_VALUES = {"open", "accepted", "rejected", "expired", "superseded", "all"}
@@ -67,6 +78,8 @@ def _serialize_proposal_activity(row: AgentProposal) -> dict:
         "proposal_id": row.id,
         "ticket_id": None,
         "status": row.status.value,
+        "lifecycle_code": proposal_lifecycle_code(row),
+        "next_step_code": proposal_next_step_code(row),
         "risk_level": row.risk_level,
         "target_kind": row.target_kind,
         "target_id": row.target_id,
@@ -75,6 +88,11 @@ def _serialize_proposal_activity(row: AgentProposal) -> dict:
         "detail": row.reason,
         "detail_code": row.reason_code,
         "channel": None,
+        "execution_mode": proposal_execution_mode(row),
+        "execution_mode_code": proposal_execution_mode_code(row),
+        "can_create_ticket": proposal_can_create_ticket(row),
+        "can_confirm": False,
+        "can_cancel": False,
         "suggested_action": row.suggested_action,
         "action_type": None,
     }
@@ -88,6 +106,8 @@ def _serialize_ticket_activity(row: ApprovalTicket) -> dict:
         "proposal_id": row.proposal_id,
         "ticket_id": row.ticket_id,
         "status": row.status.value,
+        "lifecycle_code": ticket_lifecycle_code(row),
+        "next_step_code": ticket_next_step_code(row),
         "risk_level": row.risk_level,
         "target_kind": row.target_kind,
         "target_id": row.target_id,
@@ -96,6 +116,11 @@ def _serialize_ticket_activity(row: ApprovalTicket) -> dict:
         "detail": _ticket_detail(row),
         "detail_code": f"agents.activity.ticket.{row.action_type}.{row.status.value}",
         "channel": row.channel,
+        "execution_mode": None,
+        "execution_mode_code": None,
+        "can_create_ticket": False,
+        "can_confirm": ticket_can_confirm(row),
+        "can_cancel": ticket_can_cancel(row),
         "suggested_action": None,
         "action_type": row.action_type,
     }
