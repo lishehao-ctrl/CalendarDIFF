@@ -13,8 +13,15 @@ from app.db.models.agents import ApprovalTicket, ApprovalTicketStatus, AgentProp
 from app.db.models.input import IngestTriggerType, SyncRequestStatus
 from app.db.models.review import Change
 from app.modules.changes.change_decision_service import ChangeNotFoundError, decide_change
+from app.modules.channels.service import record_ticket_transition_delivery
 from app.modules.common.api_errors import api_error_detail
 from app.modules.common.source_monitoring_window import parse_source_monitoring_window, source_timezone_name
+from app.modules.agents.lifecycle import (
+    ticket_cancel_summary_code,
+    ticket_confirm_summary_code,
+    ticket_social_safe_cta_code,
+    ticket_transition_message_code,
+)
 from app.modules.sources.read_service import build_source_read_payload
 from app.modules.sources.source_monitoring_window_rebind import has_pending_monitoring_window_update
 from app.modules.sources.sources_service import get_input_source
@@ -88,6 +95,13 @@ def create_approval_ticket(
     db.add(ticket)
     db.commit()
     db.refresh(ticket)
+    record_ticket_transition_delivery(
+        db,
+        ticket=ticket,
+        summary_code=ticket_confirm_summary_code(ticket),
+        detail_code=ticket_transition_message_code(ticket),
+        cta_code=ticket_social_safe_cta_code(ticket),
+    )
     return ticket
 
 
@@ -134,6 +148,13 @@ def confirm_approval_ticket(
         ticket.last_transition_label = transition_label.strip()[:64] or "unknown"
         db.commit()
         db.refresh(ticket)
+        record_ticket_transition_delivery(
+            db,
+            ticket=ticket,
+            summary_code=ticket_confirm_summary_code(ticket),
+            detail_code=ticket_transition_message_code(ticket),
+            cta_code=ticket_social_safe_cta_code(ticket),
+        )
         raise ApprovalTicketError(
             status_code=409,
             code="agents.approval.ticket_expired",
@@ -162,6 +183,13 @@ def confirm_approval_ticket(
         ticket.executed_result_json = {"error": str(exc)}
         db.commit()
         db.refresh(ticket)
+        record_ticket_transition_delivery(
+            db,
+            ticket=ticket,
+            summary_code=ticket_confirm_summary_code(ticket),
+            detail_code=ticket_transition_message_code(ticket),
+            cta_code=ticket_social_safe_cta_code(ticket),
+        )
         raise
 
     now = datetime.now(timezone.utc)
@@ -174,6 +202,13 @@ def confirm_approval_ticket(
     proposal.status = AgentProposalStatus.ACCEPTED
     db.commit()
     db.refresh(ticket)
+    record_ticket_transition_delivery(
+        db,
+        ticket=ticket,
+        summary_code=ticket_confirm_summary_code(ticket),
+        detail_code=ticket_transition_message_code(ticket),
+        cta_code=ticket_social_safe_cta_code(ticket),
+    )
     return ticket, False
 
 
@@ -216,6 +251,13 @@ def cancel_approval_ticket(
         proposal.status = AgentProposalStatus.REJECTED
     db.commit()
     db.refresh(ticket)
+    record_ticket_transition_delivery(
+        db,
+        ticket=ticket,
+        summary_code=ticket_cancel_summary_code(ticket),
+        detail_code=ticket_transition_message_code(ticket),
+        cta_code=ticket_social_safe_cta_code(ticket),
+    )
     return ticket, False
 
 
