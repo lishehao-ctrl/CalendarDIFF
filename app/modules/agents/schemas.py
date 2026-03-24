@@ -96,6 +96,7 @@ class AgentFamilyRelinkPreviewProposalRequest(BaseModel):
 
 class AgentProposalResponse(BaseModel):
     proposal_id: int
+    owner_user_id: int
     proposal_type: AgentProposalTypeLiteral
     status: AgentProposalStatusLiteral
     target_kind: str
@@ -107,6 +108,8 @@ class AgentProposalResponse(BaseModel):
     risk_level: AgentRiskLevelLiteral
     confidence: float
     suggested_action: str
+    origin_kind: str
+    origin_label: str
     lifecycle_code: str
     execution_mode: AgentExecutionModeLiteral
     execution_mode_code: str
@@ -138,6 +141,7 @@ class ApprovalTicketCancelRequest(BaseModel):
 class ApprovalTicketResponse(BaseModel):
     ticket_id: str
     proposal_id: int
+    owner_user_id: int
     channel: str
     action_type: str
     target_kind: str
@@ -146,11 +150,15 @@ class ApprovalTicketResponse(BaseModel):
     payload_hash: str
     target_snapshot: dict = Field(default_factory=dict)
     risk_level: AgentRiskLevelLiteral
+    origin_kind: str
+    origin_label: str
     status: ApprovalTicketStatusLiteral
     lifecycle_code: str
     next_step_code: str
     can_confirm: bool
     can_cancel: bool
+    last_transition_kind: str
+    last_transition_label: str
     executed_result: dict = Field(default_factory=dict)
     expires_at: datetime | None = None
     confirmed_at: datetime | None = None
@@ -164,6 +172,7 @@ class AgentRecentActivityItemResponse(BaseModel):
     item_kind: AgentActivityKindLiteral
     activity_id: str
     occurred_at: datetime
+    owner_user_id: int
     proposal_id: int | None = None
     ticket_id: str | None = None
     status: str
@@ -176,12 +185,16 @@ class AgentRecentActivityItemResponse(BaseModel):
     summary_code: str
     detail: str | None = None
     detail_code: str | None = None
+    origin_kind: str
+    origin_label: str
     channel: str | None = None
     execution_mode: AgentExecutionModeLiteral | None = None
     execution_mode_code: str | None = None
     can_create_ticket: bool = False
     can_confirm: bool = False
     can_cancel: bool = False
+    last_transition_kind: str | None = None
+    last_transition_label: str | None = None
     suggested_action: str | None = None
     action_type: str | None = None
 
@@ -202,6 +215,7 @@ def serialize_approval_ticket(row) -> dict:
     return {
         "ticket_id": row.ticket_id,
         "proposal_id": row.proposal_id,
+        "owner_user_id": row.user_id,
         "channel": row.channel,
         "action_type": row.action_type,
         "target_kind": row.target_kind,
@@ -210,11 +224,15 @@ def serialize_approval_ticket(row) -> dict:
         "payload_hash": row.payload_hash,
         "target_snapshot": row.target_snapshot_json or {},
         "risk_level": row.risk_level,
+        "origin_kind": row.origin_kind,
+        "origin_label": row.origin_label,
         "status": row.status.value,
         "lifecycle_code": ticket_lifecycle_code(row),
         "next_step_code": ticket_next_step_code(row),
         "can_confirm": ticket_can_confirm(row),
         "can_cancel": ticket_can_cancel(row),
+        "last_transition_kind": row.last_transition_kind,
+        "last_transition_label": row.last_transition_label,
         "executed_result": row.executed_result_json or {},
         "expires_at": row.expires_at,
         "confirmed_at": row.confirmed_at,
@@ -236,6 +254,7 @@ def serialize_agent_proposal(row) -> dict:
 
     return {
         "proposal_id": row.id,
+        "owner_user_id": row.user_id,
         "proposal_type": row.proposal_type.value,
         "status": row.status.value,
         "target_kind": row.target_kind,
@@ -247,6 +266,8 @@ def serialize_agent_proposal(row) -> dict:
         "risk_level": row.risk_level,
         "confidence": row.confidence,
         "suggested_action": row.suggested_action,
+        "origin_kind": row.origin_kind,
+        "origin_label": row.origin_label,
         "lifecycle_code": proposal_lifecycle_code(row),
         "execution_mode": proposal_execution_mode(row),
         "execution_mode_code": proposal_execution_mode_code(row),

@@ -271,6 +271,9 @@ Applies to:
 
 Fields:
 
+- `owner_user_id`
+- `origin_kind`
+- `origin_label`
 - `lifecycle_code`
 - `execution_mode`
 - `execution_mode_code`
@@ -303,6 +306,7 @@ Frontend guidance:
 
 - use these fields instead of inferring state from `status + suggested_payload.kind`
 - `can_create_ticket` is the canonical execution affordance gate
+- `origin_kind/origin_label` is the canonical audit source for where the proposal came from
 
 ## B. Approval ticket lifecycle fields
 
@@ -314,10 +318,15 @@ Applies to:
 
 Fields:
 
+- `owner_user_id`
+- `origin_kind`
+- `origin_label`
 - `lifecycle_code`
 - `next_step_code`
 - `can_confirm`
 - `can_cancel`
+- `last_transition_kind`
+- `last_transition_label`
 
 ### Current `lifecycle_code` values
 
@@ -339,6 +348,8 @@ Frontend guidance:
 
 - use `can_confirm` / `can_cancel` as the canonical button gate
 - do not infer confirm/cancel availability only from `status`
+- use `origin_kind/origin_label` for ticket creation audit
+- use `last_transition_kind/last_transition_label` for latest state transition audit
 
 ## C. Recent agent activity fields
 
@@ -348,19 +359,25 @@ Applies to:
 
 Fields:
 
+- `owner_user_id`
 - `lifecycle_code`
 - `next_step_code`
+- `origin_kind`
+- `origin_label`
 - `execution_mode`
 - `execution_mode_code`
 - `can_create_ticket`
 - `can_confirm`
 - `can_cancel`
+- `last_transition_kind`
+- `last_transition_label`
 
 Frontend guidance:
 
 - this endpoint is the canonical recent-agent-history surface
 - use `summary_code` / `detail_code` / lifecycle fields together
 - do not rebuild recent activity by joining proposals and tickets in the client
+- use `origin_*` and `last_transition_*` fields for audit timeline UI
 - `changes.created.suggested_action_reason`
 
 ### Current `risk_summary_code` values

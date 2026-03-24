@@ -29,6 +29,23 @@ class AgentProposalInvalidStateError(RuntimeError):
 
 
 def create_change_decision_proposal(db: Session, *, user_id: int, change_id: int) -> AgentProposal:
+    return create_change_decision_proposal_with_origin(
+        db=db,
+        user_id=user_id,
+        change_id=change_id,
+        origin_kind="web",
+        origin_label="embedded_agent",
+    )
+
+
+def create_change_decision_proposal_with_origin(
+    db: Session,
+    *,
+    user_id: int,
+    change_id: int,
+    origin_kind: str,
+    origin_label: str,
+) -> AgentProposal:
     context = build_change_agent_context(db=db, user_id=user_id, change_id=change_id)
     change = context["change"]
     if str(change.get("review_status") or "") != "pending":
@@ -53,6 +70,8 @@ def create_change_decision_proposal(db: Session, *, user_id: int, change_id: int
         risk_level=str(support.get("risk_level") or "medium"),
         confidence=_confidence_for_risk_level(str(support.get("risk_level") or "medium")),
         suggested_action=action_kind,
+        origin_kind=(origin_kind.strip()[:32] or "unknown"),
+        origin_label=(origin_label.strip()[:64] or "unknown"),
         payload_json=_jsonable(_change_payload(change_id=change_id, action_kind=action_kind)),
         context_json=_jsonable(_minimal_change_context_snapshot(context=context)),
         target_snapshot_json=_jsonable(
@@ -73,6 +92,23 @@ def create_change_decision_proposal(db: Session, *, user_id: int, change_id: int
 
 
 def create_source_recovery_proposal(db: Session, *, user_id: int, source_id: int) -> AgentProposal:
+    return create_source_recovery_proposal_with_origin(
+        db=db,
+        user_id=user_id,
+        source_id=source_id,
+        origin_kind="web",
+        origin_label="embedded_agent",
+    )
+
+
+def create_source_recovery_proposal_with_origin(
+    db: Session,
+    *,
+    user_id: int,
+    source_id: int,
+    origin_kind: str,
+    origin_label: str,
+) -> AgentProposal:
     context = build_source_agent_context(db=db, user_id=user_id, source_id=source_id)
     source = context["source"]
     observability = context["observability"]
@@ -92,6 +128,8 @@ def create_source_recovery_proposal(db: Session, *, user_id: int, source_id: int
         risk_level=str((context.get("recommended_next_action") or {}).get("risk_level") or "medium"),
         confidence=_confidence_for_risk_level(str((context.get("recommended_next_action") or {}).get("risk_level") or "medium")),
         suggested_action=suggested_action,
+        origin_kind=(origin_kind.strip()[:32] or "unknown"),
+        origin_label=(origin_label.strip()[:64] or "unknown"),
         payload_json=_jsonable(_source_payload(source_id=source_id, action=suggested_action, provider=str(source.get("provider") or ""))),
         context_json=_jsonable(_minimal_source_context_snapshot(context=context)),
         target_snapshot_json=_jsonable(
@@ -117,6 +155,25 @@ def create_family_relink_preview_proposal(
     user_id: int,
     raw_type_id: int,
     family_id: int,
+) -> AgentProposal:
+    return create_family_relink_preview_proposal_with_origin(
+        db=db,
+        user_id=user_id,
+        raw_type_id=raw_type_id,
+        family_id=family_id,
+        origin_kind="web",
+        origin_label="embedded_agent",
+    )
+
+
+def create_family_relink_preview_proposal_with_origin(
+    db: Session,
+    *,
+    user_id: int,
+    raw_type_id: int,
+    family_id: int,
+    origin_kind: str,
+    origin_label: str,
 ) -> AgentProposal:
     raw_type = get_course_raw_type(db, user_id=user_id, raw_type_id=raw_type_id)
     if raw_type is None:
@@ -168,6 +225,8 @@ def create_family_relink_preview_proposal(
         risk_level=risk_level,
         confidence=_confidence_for_risk_level(risk_level),
         suggested_action="preview_relink",
+        origin_kind=(origin_kind.strip()[:32] or "unknown"),
+        origin_label=(origin_label.strip()[:64] or "unknown"),
         payload_json=_jsonable(
             {
                 "kind": "web_only_family_relink_preview",
@@ -328,7 +387,10 @@ def _minimal_source_context_snapshot(*, context: dict) -> dict:
 __all__ = [
     "AgentProposalInvalidStateError",
     "create_change_decision_proposal",
+    "create_change_decision_proposal_with_origin",
     "create_family_relink_preview_proposal",
+    "create_family_relink_preview_proposal_with_origin",
     "create_source_recovery_proposal",
+    "create_source_recovery_proposal_with_origin",
     "get_agent_proposal",
 ]

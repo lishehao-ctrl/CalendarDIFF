@@ -64,6 +64,8 @@ class AgentProposal(Base):
     risk_level: Mapped[str] = mapped_column(String(16), nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0")
     suggested_action: Mapped[str] = mapped_column(String(64), nullable=False)
+    origin_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown", server_default="unknown")
+    origin_label: Mapped[str] = mapped_column(String(64), nullable=False, default="unknown", server_default="unknown")
     payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     context_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     target_snapshot_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
@@ -98,12 +100,16 @@ class ApprovalTicket(Base):
     payload_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     target_snapshot_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     risk_level: Mapped[str] = mapped_column(String(16), nullable=False)
+    origin_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown", server_default="unknown")
+    origin_label: Mapped[str] = mapped_column(String(64), nullable=False, default="unknown", server_default="unknown")
     status: Mapped[ApprovalTicketStatus] = mapped_column(
         SAEnum(ApprovalTicketStatus, name="approval_ticket_status", native_enum=False),
         nullable=False,
         default=ApprovalTicketStatus.OPEN,
         server_default=ApprovalTicketStatus.OPEN.value,
     )
+    last_transition_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown", server_default="unknown")
+    last_transition_label: Mapped[str] = mapped_column(String(64), nullable=False, default="unknown", server_default="unknown")
     executed_result_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

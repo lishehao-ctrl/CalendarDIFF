@@ -120,6 +120,8 @@ def test_list_agent_proposals_returns_recent_rows_and_status_filter(client, db_s
     assert payload[0]["lifecycle_code"] == "agents.proposal.lifecycle.accepted"
     assert payload[0]["next_step_code"] == "agents.proposal.next_step.completed"
     assert payload[0]["can_create_ticket"] is False
+    assert payload[0]["owner_user_id"] == user.id
+    assert payload[0]["origin_kind"] == "unknown"
     assert payload[1]["execution_mode"] == "approval_ticket_required"
 
     filtered = client.get("/agent/proposals?status_filter=open", headers=headers)
@@ -171,6 +173,7 @@ def test_list_approval_tickets_returns_recent_rows_and_status_filter(client, db_
     assert [row["ticket_id"] for row in payload] == ["ticket-executed", "ticket-open"]
     assert payload[0]["lifecycle_code"] == "agents.ticket.lifecycle.executed"
     assert payload[0]["can_confirm"] is False
+    assert payload[0]["origin_label"] == "unknown"
     assert payload[1]["next_step_code"] == "agents.ticket.next_step.confirm_or_cancel"
     assert payload[1]["can_cancel"] is True
 
@@ -215,10 +218,12 @@ def test_recent_agent_activity_merges_proposals_and_tickets_in_time_order(client
     assert payload["items"][0]["proposal_id"] == 302
     assert payload["items"][0]["lifecycle_code"] == "agents.proposal.lifecycle.accepted"
     assert payload["items"][0]["next_step_code"] == "agents.proposal.next_step.completed"
+    assert payload["items"][0]["origin_kind"] == "unknown"
     assert payload["items"][1]["item_kind"] == "ticket"
     assert payload["items"][1]["ticket_id"] == "ticket-recent"
     assert payload["items"][1]["lifecycle_code"] == "agents.ticket.lifecycle.executed"
     assert payload["items"][1]["can_confirm"] is False
+    assert payload["items"][1]["last_transition_kind"] == "unknown"
     assert payload["items"][2]["item_kind"] == "proposal"
     assert payload["items"][2]["proposal_id"] == 301
     assert payload["items"][2]["execution_mode"] == "approval_ticket_required"

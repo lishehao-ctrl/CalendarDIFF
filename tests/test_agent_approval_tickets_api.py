@@ -152,6 +152,11 @@ def test_change_decision_approval_ticket_executes_and_is_idempotent(client, db_s
     assert ticket_payload["next_step_code"] == "agents.ticket.next_step.confirm_or_cancel"
     assert ticket_payload["can_confirm"] is True
     assert ticket_payload["can_cancel"] is True
+    assert ticket_payload["owner_user_id"] == user.id
+    assert ticket_payload["origin_kind"] == "web"
+    assert ticket_payload["origin_label"] == "embedded_agent"
+    assert ticket_payload["last_transition_kind"] == "web"
+    assert ticket_payload["last_transition_label"] == "embedded_agent"
 
     confirm_response = client.post(
         f"/agent/approval-tickets/{ticket_payload['ticket_id']}/confirm",
@@ -165,6 +170,8 @@ def test_change_decision_approval_ticket_executes_and_is_idempotent(client, db_s
     assert confirmed["next_step_code"] == "agents.ticket.next_step.completed"
     assert confirmed["can_confirm"] is False
     assert confirmed["can_cancel"] is False
+    assert confirmed["last_transition_kind"] == "web"
+    assert confirmed["last_transition_label"] == "embedded_agent"
     assert confirmed["executed_result"]["kind"] == "change_decision"
     assert confirmed["executed_result"]["review_status"] == "approved"
 
@@ -242,6 +249,7 @@ def test_source_retry_sync_approval_ticket_executes_new_sync_request(client, db_
     confirmed = confirm_response.json()
     assert confirmed["status"] == "executed"
     assert confirmed["lifecycle_code"] == "agents.ticket.lifecycle.executed"
+    assert confirmed["origin_kind"] == "web"
     assert confirmed["executed_result"]["kind"] == "run_source_sync"
     assert confirmed["executed_result"]["source_id"] == source.id
     assert confirmed["executed_result"]["status"] == "PENDING"

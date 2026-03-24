@@ -28,7 +28,15 @@ class ApprovalTicketError(RuntimeError):
         self.detail = api_error_detail(code=code, message=message, message_code=message_code)
 
 
-def create_approval_ticket(db: Session, *, user_id: int, proposal_id: int, channel: str) -> ApprovalTicket:
+def create_approval_ticket(
+    db: Session,
+    *,
+    user_id: int,
+    proposal_id: int,
+    channel: str,
+    origin_kind: str = "web",
+    origin_label: str = "embedded_agent",
+) -> ApprovalTicket:
     proposal = db.scalar(
         select(AgentProposal)
         .where(AgentProposal.id == proposal_id, AgentProposal.user_id == user_id)
@@ -69,7 +77,11 @@ def create_approval_ticket(db: Session, *, user_id: int, proposal_id: int, chann
         payload_hash=_payload_hash(payload),
         target_snapshot_json=proposal.target_snapshot_json or {},
         risk_level=proposal.risk_level,
+        origin_kind=origin_kind.strip()[:32] or "unknown",
+        origin_label=origin_label.strip()[:64] or "unknown",
         status=ApprovalTicketStatus.OPEN,
+        last_transition_kind=origin_kind.strip()[:32] or "unknown",
+        last_transition_label=origin_label.strip()[:64] or "unknown",
         executed_result_json={},
         expires_at=proposal.expires_at,
     )
@@ -87,7 +99,14 @@ def get_approval_ticket(db: Session, *, user_id: int, ticket_id: str) -> Approva
     )
 
 
-def confirm_approval_ticket(db: Session, *, user_id: int, ticket_id: str) -> tuple[ApprovalTicket, bool]:
+def confirm_approval_ticket(
+    db: Session,
+    *,
+    user_id: int,
+    ticket_id: str,
+    transition_kind: str = "web",
+    transition_label: str = "embedded_agent",
+) -> tuple[ApprovalTicket, bool]:
     ticket = db.scalar(
         select(ApprovalTicket)
         .where(ApprovalTicket.ticket_id == ticket_id, ApprovalTicket.user_id == user_id)
@@ -111,6 +130,8 @@ def confirm_approval_ticket(db: Session, *, user_id: int, ticket_id: str) -> tup
         )
     if _is_expired(ticket):
         ticket.status = ApprovalTicketStatus.EXPIRED
+        ticket.last_transition_kind = transition_kind.strip()[:32] or "unknown"
+        ticket.last_transition_label = transition_label.strip()[:64] or "unknown"
         db.commit()
         db.refresh(ticket)
         raise ApprovalTicketError(
@@ -136,6 +157,8 @@ def confirm_approval_ticket(db: Session, *, user_id: int, ticket_id: str) -> tup
         raise
     except Exception as exc:
         ticket.status = ApprovalTicketStatus.FAILED
+        ticket.last_transition_kind = transition_kind.strip()[:32] or "unknown"
+        ticket.last_transition_label = transition_label.strip()[:64] or "unknown"
         ticket.executed_result_json = {"error": str(exc)}
         db.commit()
         db.refresh(ticket)
@@ -145,6 +168,8 @@ def confirm_approval_ticket(db: Session, *, user_id: int, ticket_id: str) -> tup
     ticket.status = ApprovalTicketStatus.EXECUTED
     ticket.confirmed_at = now
     ticket.executed_at = now
+    ticket.last_transition_kind = transition_kind.strip()[:32] or "unknown"
+    ticket.last_transition_label = transition_label.strip()[:64] or "unknown"
     ticket.executed_result_json = jsonable_encoder(executed_result)
     proposal.status = AgentProposalStatus.ACCEPTED
     db.commit()
@@ -152,7 +177,14 @@ def confirm_approval_ticket(db: Session, *, user_id: int, ticket_id: str) -> tup
     return ticket, False
 
 
-def cancel_approval_ticket(db: Session, *, user_id: int, ticket_id: str) -> tuple[ApprovalTicket, bool]:
+def cancel_approval_ticket(
+    db: Session,
+    *,
+    user_id: int,
+    ticket_id: str,
+    transition_kind: str = "web",
+    transition_label: str = "embedded_agent",
+) -> tuple[ApprovalTicket, bool]:
     ticket = db.scalar(
         select(ApprovalTicket)
         .where(ApprovalTicket.ticket_id == ticket_id, ApprovalTicket.user_id == user_id)
@@ -177,6 +209,8 @@ def cancel_approval_ticket(db: Session, *, user_id: int, ticket_id: str) -> tupl
     now = datetime.now(timezone.utc)
     ticket.status = ApprovalTicketStatus.CANCELED
     ticket.canceled_at = now
+    ticket.last_transition_kind = transition_kind.strip()[:32] or "unknown"
+    ticket.last_transition_label = transition_label.strip()[:64] or "unknown"
     proposal = db.scalar(select(AgentProposal).where(AgentProposal.id == ticket.proposal_id).limit(1))
     if proposal is not None:
         proposal.status = AgentProposalStatus.REJECTED

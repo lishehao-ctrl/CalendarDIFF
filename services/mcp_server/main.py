@@ -25,8 +25,11 @@ from app.modules.agents.approval_service import (
 from app.modules.agents.proposal_service import (
     AgentProposalInvalidStateError,
     create_change_decision_proposal,
+    create_change_decision_proposal_with_origin,
     create_family_relink_preview_proposal,
+    create_family_relink_preview_proposal_with_origin,
     create_source_recovery_proposal,
+    create_source_recovery_proposal_with_origin,
     get_agent_proposal,
 )
 from app.modules.agents.schemas import (
@@ -306,7 +309,15 @@ def get_family_context_impl(*, family_id: int, notify_email: str | None = None, 
 def create_change_decision_proposal_impl(*, change_id: int, notify_email: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user(
         notify_email,
-        lambda db, user: serialize_agent_proposal(create_change_decision_proposal(db=db, user_id=user.id, change_id=change_id)),
+        lambda db, user: serialize_agent_proposal(
+            create_change_decision_proposal_with_origin(
+                db=db,
+                user_id=user.id,
+                change_id=change_id,
+                origin_kind="mcp",
+                origin_label="create_change_decision_proposal",
+            )
+        ),
         ctx=ctx,
     )
 
@@ -314,7 +325,15 @@ def create_change_decision_proposal_impl(*, change_id: int, notify_email: str | 
 def create_source_recovery_proposal_impl(*, source_id: int, notify_email: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user(
         notify_email,
-        lambda db, user: serialize_agent_proposal(create_source_recovery_proposal(db=db, user_id=user.id, source_id=source_id)),
+        lambda db, user: serialize_agent_proposal(
+            create_source_recovery_proposal_with_origin(
+                db=db,
+                user_id=user.id,
+                source_id=source_id,
+                origin_kind="mcp",
+                origin_label="create_source_recovery_proposal",
+            )
+        ),
         ctx=ctx,
     )
 
@@ -329,7 +348,14 @@ def create_family_relink_preview_proposal_impl(
     return _run_with_user(
         notify_email,
         lambda db, user: serialize_agent_proposal(
-            create_family_relink_preview_proposal(db=db, user_id=user.id, raw_type_id=raw_type_id, family_id=family_id)
+            create_family_relink_preview_proposal_with_origin(
+                db=db,
+                user_id=user.id,
+                raw_type_id=raw_type_id,
+                family_id=family_id,
+                origin_kind="mcp",
+                origin_label="create_family_relink_preview_proposal",
+            )
         ),
         ctx=ctx,
     )
@@ -348,7 +374,16 @@ def get_proposal_impl(*, proposal_id: int, notify_email: str | None = None, ctx:
 def create_approval_ticket_impl(*, proposal_id: int, notify_email: str | None = None, channel: str = "mcp", ctx: Context | None = None) -> dict:
     return _run_with_user(
         notify_email,
-        lambda db, user: serialize_approval_ticket(create_approval_ticket(db=db, user_id=user.id, proposal_id=proposal_id, channel=channel)),
+        lambda db, user: serialize_approval_ticket(
+            create_approval_ticket(
+                db=db,
+                user_id=user.id,
+                proposal_id=proposal_id,
+                channel=channel,
+                origin_kind="mcp",
+                origin_label="create_approval_ticket",
+            )
+        ),
         ctx=ctx,
     )
 
@@ -366,7 +401,15 @@ def get_approval_ticket_impl(*, ticket_id: str, notify_email: str | None = None,
 def confirm_approval_ticket_impl(*, ticket_id: str, notify_email: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user(
         notify_email,
-        lambda db, user: serialize_approval_ticket(confirm_approval_ticket(db=db, user_id=user.id, ticket_id=ticket_id)[0]),
+        lambda db, user: serialize_approval_ticket(
+            confirm_approval_ticket(
+                db=db,
+                user_id=user.id,
+                ticket_id=ticket_id,
+                transition_kind="mcp",
+                transition_label="confirm_approval_ticket",
+            )[0]
+        ),
         ctx=ctx,
     )
 
@@ -374,7 +417,15 @@ def confirm_approval_ticket_impl(*, ticket_id: str, notify_email: str | None = N
 def cancel_approval_ticket_impl(*, ticket_id: str, notify_email: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user(
         notify_email,
-        lambda db, user: serialize_approval_ticket(cancel_approval_ticket(db=db, user_id=user.id, ticket_id=ticket_id)[0]),
+        lambda db, user: serialize_approval_ticket(
+            cancel_approval_ticket(
+                db=db,
+                user_id=user.id,
+                ticket_id=ticket_id,
+                transition_kind="mcp",
+                transition_label="cancel_approval_ticket",
+            )[0]
+        ),
         ctx=ctx,
     )
 

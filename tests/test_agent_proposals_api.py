@@ -150,6 +150,9 @@ def test_agent_change_decision_proposal_is_persisted_and_fetchable(client, db_se
     assert payload["execution_mode_code"] == "agents.proposal.execution_mode.approval_ticket_required"
     assert payload["next_step_code"] == "agents.proposal.next_step.create_ticket"
     assert payload["can_create_ticket"] is True
+    assert payload["owner_user_id"] == user.id
+    assert payload["origin_kind"] == "web"
+    assert payload["origin_label"] == "embedded_agent"
     assert payload["risk_level"] == "medium"
     assert payload["suggested_payload"] == {
         "kind": "change_decision",
@@ -268,6 +271,9 @@ def test_agent_source_recovery_proposal_is_persisted_and_scoped(client, db_sessi
     assert payload["execution_mode_code"] == "agents.proposal.execution_mode.web_only"
     assert payload["next_step_code"] == "agents.proposal.next_step.open_web_flow"
     assert payload["can_create_ticket"] is False
+    assert payload["owner_user_id"] == user.id
+    assert payload["origin_kind"] == "web"
+    assert payload["origin_label"] == "embedded_agent"
     assert payload["risk_level"] == "high"
     assert payload["suggested_payload"]["kind"] == "reconnect_source"
     assert payload["context"]["source_id"] == source.id

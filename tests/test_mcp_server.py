@@ -191,7 +191,11 @@ def test_mcp_impl_round_trip_uses_existing_agent_layers(db_session) -> None:
     assert source_context["source"]["source_id"] == source.id
     assert family_context["family"]["id"] == family.id
     assert proposal["target_id"] == str(change.id)
+    assert proposal["origin_kind"] == "mcp"
+    assert proposal["origin_label"] == "create_change_decision_proposal"
     assert fetched_proposal["proposal_id"] == proposal["proposal_id"]
+    assert ticket["origin_kind"] == "mcp"
+    assert ticket["origin_label"] == "create_approval_ticket"
     assert ticket["proposal_id"] == proposal["proposal_id"]
 
 
@@ -217,4 +221,6 @@ def test_mcp_family_relink_preview_proposal_impl_uses_existing_agent_layers(db_s
     assert proposal["proposal_type"] == "family_relink_preview"
     assert proposal["target_kind"] == "family_relink"
     assert proposal["suggested_payload"]["kind"] == "web_only_family_relink_preview"
+    assert proposal["origin_kind"] == "mcp"
+    assert proposal["origin_label"] == "create_family_relink_preview_proposal"
     assert proposal["target_snapshot"]["target_family_id"] == target_family.id

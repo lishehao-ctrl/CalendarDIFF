@@ -87,6 +87,9 @@ def test_agent_family_relink_preview_proposal_is_persisted_and_fetchable(client,
     assert payload["proposal_type"] == "family_relink_preview"
     assert payload["target_kind"] == "family_relink"
     assert payload["suggested_action"] == "preview_relink"
+    assert payload["owner_user_id"] == user.id
+    assert payload["origin_kind"] == "web"
+    assert payload["origin_label"] == "embedded_agent"
     assert payload["suggested_payload"] == {
         "kind": "web_only_family_relink_preview",
         "raw_type_id": raw_type.id,
