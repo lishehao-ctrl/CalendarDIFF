@@ -30,6 +30,7 @@ Current Phase 2 agent proposal surface is:
 
 - `GET /agent/proposals`
 - `POST /agent/proposals/change-decision`
+- `POST /agent/proposals/family-relink-preview`
 - `POST /agent/proposals/source-recovery`
 - `GET /agent/proposals/{proposal_id}`
 
@@ -72,6 +73,7 @@ Users can now create per-account MCP access tokens through Settings:
 - `GET /agent/context/families/{family_id}`
 - `GET /agent/proposals`
 - `POST /agent/proposals/change-decision`
+- `POST /agent/proposals/family-relink-preview`
 - `POST /agent/proposals/source-recovery`
 - `GET /agent/proposals/{proposal_id}`
 - `GET /agent/activity/recent`

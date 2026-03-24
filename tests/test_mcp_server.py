@@ -6,13 +6,14 @@ import anyio
 
 from app.db.models.input import IngestTriggerType, SyncRequest, SyncRequestStage, SyncRequestStatus
 from app.db.models.review import Change, ChangeIntakePhase, ChangeOrigin, ChangeReviewBucket, ChangeSourceRef, ChangeType, ReviewStatus
-from app.db.models.shared import CourseWorkItemLabelFamily, User
+from app.db.models.shared import CourseWorkItemLabelFamily, CourseWorkItemRawType, User
 from app.modules.common.course_identity import normalize_label_token, normalized_course_identity_key, parse_course_display
 from app.modules.sources.schemas import InputSourceCreateRequest
 from app.modules.sources.sources_service import create_input_source
 from services.mcp_server.main import (
     create_approval_ticket_impl,
     create_change_decision_proposal_impl,
+    create_family_relink_preview_proposal_impl,
     get_family_context_impl,
     get_workspace_context_impl,
     get_change_context_impl,
@@ -192,3 +193,28 @@ def test_mcp_impl_round_trip_uses_existing_agent_layers(db_session) -> None:
     assert proposal["target_id"] == str(change.id)
     assert fetched_proposal["proposal_id"] == proposal["proposal_id"]
     assert ticket["proposal_id"] == proposal["proposal_id"]
+
+
+def test_mcp_family_relink_preview_proposal_impl_uses_existing_agent_layers(db_session) -> None:
+    user = _create_user(db_session, email="mcp-family-proposal@example.com")
+    source_family = _create_family(db_session, user_id=user.id, course_display="CSE 170 WI26", canonical_label="Quiz")
+    target_family = _create_family(db_session, user_id=user.id, course_display="CSE 170 WI26", canonical_label="Project")
+    raw_type = CourseWorkItemRawType(
+        family_id=source_family.id,
+        raw_type="write-up",
+        normalized_raw_type="write up",
+        metadata_json={},
+    )
+    db_session.add(raw_type)
+    db_session.commit()
+
+    proposal = create_family_relink_preview_proposal_impl(
+        raw_type_id=raw_type.id,
+        family_id=target_family.id,
+        notify_email=user.notify_email,
+    )
+
+    assert proposal["proposal_type"] == "family_relink_preview"
+    assert proposal["target_kind"] == "family_relink"
+    assert proposal["suggested_payload"]["kind"] == "web_only_family_relink_preview"
+    assert proposal["target_snapshot"]["target_family_id"] == target_family.id

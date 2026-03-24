@@ -15,7 +15,7 @@ from app.modules.sources.schemas import InputSourceResponse, SourceObservability
 
 AgentRiskLevelLiteral = Literal["low", "medium", "high"]
 AgentConditionSeverityLiteral = Literal["info", "warning", "blocking"]
-AgentProposalTypeLiteral = Literal["change_decision", "source_recovery"]
+AgentProposalTypeLiteral = Literal["change_decision", "source_recovery", "family_relink_preview"]
 AgentProposalStatusLiteral = Literal["open", "accepted", "rejected", "expired", "superseded"]
 ApprovalTicketStatusLiteral = Literal["open", "executed", "canceled", "expired", "failed"]
 AgentActivityKindLiteral = Literal["proposal", "ticket"]
@@ -82,6 +82,13 @@ class AgentChangeDecisionProposalRequest(BaseModel):
 
 class AgentSourceRecoveryProposalRequest(BaseModel):
     source_id: int = Field(ge=1)
+
+    model_config = {"extra": "forbid"}
+
+
+class AgentFamilyRelinkPreviewProposalRequest(BaseModel):
+    raw_type_id: int = Field(ge=1)
+    family_id: int = Field(ge=1)
 
     model_config = {"extra": "forbid"}
 
@@ -219,6 +226,7 @@ __all__ = [
     "AgentBlockingConditionResponse",
     "AgentChangeDecisionProposalRequest",
     "AgentChangeContextResponse",
+    "AgentFamilyRelinkPreviewProposalRequest",
     "AgentFamilyContextResponse",
     "AgentProposalResponse",
     "AgentRecommendedActionResponse",

@@ -109,7 +109,7 @@ Backend tasks:
 - [ ] add proposal endpoints:
   - [ ] `POST /agent/proposals/change-decision`
   - [ ] `POST /agent/proposals/source-recovery`
-  - [ ] `POST /agent/proposals/family-relink-preview`
+  - [x] `POST /agent/proposals/family-relink-preview`
 - [ ] standardize proposal outputs for:
   - approve
   - reject

@@ -10,8 +10,11 @@ from app.db.models.agents import AgentProposal, AgentProposalStatus, AgentPropos
 from app.modules.agents.service import (
     AgentContextNotFoundError,
     build_change_agent_context,
+    build_family_agent_context,
     build_source_agent_context,
 )
+from app.modules.families.family_service import get_course_work_item_family
+from app.modules.families.raw_type_service import get_course_raw_type
 
 
 class AgentProposalInvalidStateError(RuntimeError):
@@ -108,6 +111,98 @@ def create_source_recovery_proposal(db: Session, *, user_id: int, source_id: int
     return proposal
 
 
+def create_family_relink_preview_proposal(
+    db: Session,
+    *,
+    user_id: int,
+    raw_type_id: int,
+    family_id: int,
+) -> AgentProposal:
+    raw_type = get_course_raw_type(db, user_id=user_id, raw_type_id=raw_type_id)
+    if raw_type is None:
+        raise AgentContextNotFoundError(
+            code="agents.context.raw_type_not_found",
+            message="Observed label not found",
+            message_code="agents.context.raw_type_not_found",
+        )
+    target_family = get_course_work_item_family(db, user_id=user_id, family_id=family_id)
+    if target_family is None:
+        raise AgentContextNotFoundError(
+            code="agents.context.family_not_found",
+            message="Family not found",
+            message_code="agents.context.family_not_found",
+        )
+    current_family = raw_type.family
+    if current_family is not None and int(current_family.id) == int(target_family.id):
+        raise AgentProposalInvalidStateError(
+            code="agents.proposals.family.already_in_family",
+            message="Observed label is already mapped to this canonical family",
+            message_code="agents.proposals.family.already_in_family",
+        )
+    family_context = build_family_agent_context(db=db, user_id=user_id, family_id=family_id)
+    matching_suggestion = next(
+        (
+            row
+            for row in family_context.get("pending_raw_type_suggestions") or []
+            if int(row.get("source_raw_type_id") or 0) == int(raw_type_id)
+            and int(row.get("suggested_family_id") or 0) == int(family_id)
+        ),
+        None,
+    )
+    risk_level = "low" if matching_suggestion is not None else "medium"
+    proposal = AgentProposal(
+        user_id=user_id,
+        proposal_type=AgentProposalType.FAMILY_RELINK_PREVIEW,
+        status=AgentProposalStatus.OPEN,
+        target_kind="family_relink",
+        target_id=f"{raw_type_id}:{family_id}",
+        summary=_family_relink_summary(raw_type=raw_type.raw_type, target_family=target_family.canonical_label),
+        summary_code="agents.proposals.family_relink_preview.summary",
+        reason=_family_relink_reason(
+            raw_type=raw_type.raw_type,
+            current_family=current_family.canonical_label if current_family is not None else None,
+            target_family=target_family.canonical_label,
+            matching_suggestion=matching_suggestion,
+        ),
+        reason_code="agents.proposals.family_relink_preview.reason",
+        risk_level=risk_level,
+        confidence=_confidence_for_risk_level(risk_level),
+        suggested_action="preview_relink",
+        payload_json=_jsonable(
+            {
+                "kind": "web_only_family_relink_preview",
+                "raw_type_id": raw_type_id,
+                "family_id": family_id,
+            }
+        ),
+        context_json=_jsonable(
+            {
+                "raw_type_id": raw_type.id,
+                "raw_type": raw_type.raw_type,
+                "current_family_id": current_family.id if current_family is not None else None,
+                "current_family_name": current_family.canonical_label if current_family is not None else None,
+                "target_family_context": family_context,
+                "matching_suggestion": matching_suggestion,
+            }
+        ),
+        target_snapshot_json=_jsonable(
+            {
+                "raw_type_id": raw_type.id,
+                "raw_type": raw_type.raw_type,
+                "current_family_id": current_family.id if current_family is not None else None,
+                "target_family_id": target_family.id,
+                "target_family_name": target_family.canonical_label,
+                "course_display": (family_context.get("family") or {}).get("course_display"),
+            }
+        ),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
+    )
+    db.add(proposal)
+    db.commit()
+    db.refresh(proposal)
+    return proposal
+
+
 def get_agent_proposal(db: Session, *, user_id: int, proposal_id: int) -> AgentProposal | None:
     return db.scalar(
         select(AgentProposal)
@@ -164,6 +259,29 @@ def _source_payload(*, source_id: int, action: str, provider: str) -> dict:
     return {"kind": "wait_for_runtime", "source_id": source_id}
 
 
+def _family_relink_summary(*, raw_type: str, target_family: str) -> str:
+    return f"Preview moving observed label '{raw_type}' into canonical family '{target_family}'."
+
+
+def _family_relink_reason(
+    *,
+    raw_type: str,
+    current_family: str | None,
+    target_family: str,
+    matching_suggestion: dict | None,
+) -> str:
+    if matching_suggestion is not None:
+        return (
+            f"A pending observed-label suggestion already points '{raw_type}' "
+            f"from '{current_family or 'Unassigned'}' to '{target_family}'. "
+            "Review the relink impact before applying it in the web flow."
+        )
+    return (
+        f"Review whether observed label '{raw_type}' should move from "
+        f"'{current_family or 'Unassigned'}' to '{target_family}' before changing future family mapping behavior."
+    )
+
+
 def _confidence_for_risk_level(risk_level: str) -> float:
     return {
         "low": 0.92,
@@ -210,6 +328,7 @@ def _minimal_source_context_snapshot(*, context: dict) -> dict:
 __all__ = [
     "AgentProposalInvalidStateError",
     "create_change_decision_proposal",
+    "create_family_relink_preview_proposal",
     "create_source_recovery_proposal",
     "get_agent_proposal",
 ]

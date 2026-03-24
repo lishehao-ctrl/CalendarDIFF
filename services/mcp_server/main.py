@@ -25,6 +25,7 @@ from app.modules.agents.approval_service import (
 from app.modules.agents.proposal_service import (
     AgentProposalInvalidStateError,
     create_change_decision_proposal,
+    create_family_relink_preview_proposal,
     create_source_recovery_proposal,
     get_agent_proposal,
 )
@@ -318,6 +319,22 @@ def create_source_recovery_proposal_impl(*, source_id: int, notify_email: str | 
     )
 
 
+def create_family_relink_preview_proposal_impl(
+    *,
+    raw_type_id: int,
+    family_id: int,
+    notify_email: str | None = None,
+    ctx: Context | None = None,
+) -> dict:
+    return _run_with_user(
+        notify_email,
+        lambda db, user: serialize_agent_proposal(
+            create_family_relink_preview_proposal(db=db, user_id=user.id, raw_type_id=raw_type_id, family_id=family_id)
+        ),
+        ctx=ctx,
+    )
+
+
 def get_proposal_impl(*, proposal_id: int, notify_email: str | None = None, ctx: Context | None = None) -> dict:
     def _load(db: Session, user: User) -> dict:
         proposal = get_agent_proposal(db=db, user_id=user.id, proposal_id=proposal_id)
@@ -419,6 +436,23 @@ def create_change_decision_proposal_tool(change_id: int, notify_email: str | Non
 def create_source_recovery_proposal_tool(source_id: int, notify_email: str | None = None, ctx: Context | None = None) -> AgentProposalResponse:
     return AgentProposalResponse.model_validate(
         create_source_recovery_proposal_impl(source_id=source_id, notify_email=notify_email, ctx=ctx)
+    )
+
+
+@mcp.tool(name="create_family_relink_preview_proposal", description="Create a persisted family relink preview proposal.", structured_output=True)
+def create_family_relink_preview_proposal_tool(
+    raw_type_id: int,
+    family_id: int,
+    notify_email: str | None = None,
+    ctx: Context | None = None,
+) -> AgentProposalResponse:
+    return AgentProposalResponse.model_validate(
+        create_family_relink_preview_proposal_impl(
+            raw_type_id=raw_type_id,
+            family_id=family_id,
+            notify_email=notify_email,
+            ctx=ctx,
+        )
     )
 
 

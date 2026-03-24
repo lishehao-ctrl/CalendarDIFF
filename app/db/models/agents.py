@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 class AgentProposalType(str, Enum):
     CHANGE_DECISION = "change_decision"
     SOURCE_RECOVERY = "source_recovery"
+    FAMILY_RELINK_PREVIEW = "family_relink_preview"
 
 
 class AgentProposalStatus(str, Enum):

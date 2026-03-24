@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.modules.agents.schemas import (
     AgentChangeDecisionProposalRequest,
     AgentChangeContextResponse,
+    AgentFamilyRelinkPreviewProposalRequest,
     AgentFamilyContextResponse,
     AgentProposalResponse,
     AgentRecentActivityResponse,
@@ -45,6 +46,7 @@ from app.modules.agents.service import (
 from app.modules.agents.proposal_service import (
     AgentProposalInvalidStateError,
     create_change_decision_proposal,
+    create_family_relink_preview_proposal,
     create_source_recovery_proposal,
     get_agent_proposal,
 )
@@ -127,6 +129,26 @@ def post_agent_source_recovery_proposal(
         proposal = create_source_recovery_proposal(db=db, user_id=user.id, source_id=payload.source_id)
     except AgentContextNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.detail) from exc
+    return AgentProposalResponse.model_validate(serialize_agent_proposal(proposal))
+
+
+@router.post("/proposals/family-relink-preview", response_model=AgentProposalResponse, status_code=status.HTTP_201_CREATED)
+def post_agent_family_relink_preview_proposal(
+    payload: AgentFamilyRelinkPreviewProposalRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> AgentProposalResponse:
+    try:
+        proposal = create_family_relink_preview_proposal(
+            db=db,
+            user_id=user.id,
+            raw_type_id=payload.raw_type_id,
+            family_id=payload.family_id,
+        )
+    except AgentContextNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.detail) from exc
+    except AgentProposalInvalidStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.detail) from exc
     return AgentProposalResponse.model_validate(serialize_agent_proposal(proposal))
 
 

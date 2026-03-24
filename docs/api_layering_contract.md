@@ -220,13 +220,19 @@ Approval tickets are the bounded execution path for agent/social-confirmable act
 
 ### Current agent stance
 
-There is no executable Families agent surface yet.
-Families remains web-first.
+Families now has:
+
+- read-only context: `GET /agent/context/families/{family_id}`
+- preview-only proposal: `POST /agent/proposals/family-relink-preview`
+
+There is still no executable Families agent surface.
+Families remains web-first for actual mutation.
 
 ### Do not
 
 - do not use `/changes/{change_id}/label-learning` as the primary Families lane index
-- do not invent agent proposal/ticket semantics for Families until preview and execution boundaries are intentionally added
+- do not route Families writes through `/agent/*`
+- do not treat family preview proposals as executable actions
 
 ## Manual
 
