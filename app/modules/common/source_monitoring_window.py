@@ -60,7 +60,6 @@ class SourceMonitoringWindow:
 
 MONITORING_WINDOW_KEYS = ("monitor_since",)
 MONITORING_REQUIRED_KEYS = ("monitor_since",)
-LEGACY_TERM_KEYS = ("term_key", "term_from", "term_to")
 DEFAULT_MONITOR_LOOKBACK_DAYS = 90
 
 
@@ -79,8 +78,6 @@ def normalize_monitoring_window_config(
         if default_if_missing:
             normalized.update(_default_monitoring_window(timezone_name=timezone_name).to_config_json())
         return normalized
-    for key in LEGACY_TERM_KEYS:
-        normalized.pop(key, None)
     normalized.update(window.to_config_json())
     return normalized
 
@@ -92,9 +89,6 @@ def parse_monitoring_window_config(config: Any, *, required: bool) -> SourceMoni
         return None
 
     subset = {key: config.get(key) for key in MONITORING_WINDOW_KEYS if key in config}
-    legacy_monitor_since = _legacy_monitor_since(config)
-    if subset.get("monitor_since") in (None, "") and legacy_monitor_since is not None:
-        subset["monitor_since"] = legacy_monitor_since.isoformat()
 
     present_required = [key for key in MONITORING_REQUIRED_KEYS if subset.get(key) not in (None, "")]
     if not present_required:
@@ -264,18 +258,6 @@ def _resolve_timezone(timezone_name: str | None) -> ZoneInfo:
         return ZoneInfo(candidate)
     except ZoneInfoNotFoundError:
         return ZoneInfo("UTC")
-
-
-def _legacy_monitor_since(config: dict[str, Any]) -> date | None:
-    raw = config.get("term_from")
-    if not isinstance(raw, str) or not raw.strip():
-        return None
-    try:
-        return date.fromisoformat(raw.strip())
-    except ValueError:
-        return None
-
-
 def _default_monitoring_window(*, timezone_name: str | None) -> SourceMonitoringWindow:
     local_today = datetime_to_local_date(datetime.now(timezone.utc), timezone_name=timezone_name) or datetime.now(timezone.utc).date()
     return SourceMonitoringWindow(monitor_since=local_today - timedelta(days=DEFAULT_MONITOR_LOOKBACK_DAYS))

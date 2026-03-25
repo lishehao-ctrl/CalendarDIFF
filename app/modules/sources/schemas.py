@@ -146,6 +146,58 @@ class SyncRequestStatusResponse(BaseModel):
     progress: dict | None = None
 
 
+class LlmInvocationLogResponse(BaseModel):
+    request_id: str | None = None
+    source_id: int | None = None
+    task_name: str
+    profile_family: str
+    route_id: str
+    route_index: int
+    provider_id: str
+    vendor: str
+    protocol: str
+    model: str
+    session_cache_enabled: bool
+    success: bool
+    latency_ms: int | None = None
+    upstream_request_id: str | None = None
+    response_id: str | None = None
+    error_code: str | None = None
+    retryable: bool | None = None
+    http_status: int | None = None
+    usage: dict | None = None
+    created_at: datetime
+
+
+class LlmInvocationSummaryResponse(BaseModel):
+    total_count: int
+    success_count: int
+    failure_count: int
+    avg_latency_ms: int | None = None
+    input_tokens: int = 0
+    cached_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+    output_tokens: int = 0
+    reasoning_tokens: int = 0
+    total_tokens: int = 0
+    task_counts: dict[str, int] = Field(default_factory=dict)
+    model_counts: dict[str, int] = Field(default_factory=dict)
+    protocol_counts: dict[str, int] = Field(default_factory=dict)
+
+
+class SyncRequestLlmInvocationsResponse(BaseModel):
+    request_id: str
+    items: list[LlmInvocationLogResponse]
+    summary: LlmInvocationSummaryResponse
+
+
+class SourceLlmInvocationsResponse(BaseModel):
+    source_id: int
+    request_id: str | None = None
+    items: list[LlmInvocationLogResponse]
+    summary: LlmInvocationSummaryResponse
+
+
 class SourceObservabilitySyncResponse(BaseModel):
     request_id: str
     phase: Literal["bootstrap", "replay"]

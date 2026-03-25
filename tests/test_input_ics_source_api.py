@@ -12,10 +12,9 @@ from app.modules.sources.schemas import InputSourceCreateRequest
 from app.modules.sources.sources_service import create_input_source
 
 
-def _create_registered_user(db_session, *, notify_email: str) -> User:
+def _create_registered_user(db_session, *, email: str) -> User:
     user = User(
-        email=None,
-        notify_email=notify_email,
+        email=email,
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
@@ -38,7 +37,7 @@ def _create_ics_source(db_session, *, user: User, url: str) -> InputSource:
 
 
 def test_ics_source_create_normalizes_to_canvas_identity(input_client, db_session, authenticate_client) -> None:
-    user = _create_registered_user(db_session, notify_email="canvas-owner@example.com")
+    user = _create_registered_user(db_session, email="canvas-owner@example.com")
     authenticate_client(input_client, user=user)
 
     response = input_client.post(
@@ -63,7 +62,7 @@ def test_ics_source_create_normalizes_to_canvas_identity(input_client, db_sessio
 
 
 def test_ics_source_create_is_singleton_per_user(input_client, db_session, authenticate_client) -> None:
-    user = _create_registered_user(db_session, notify_email="canvas-singleton@example.com")
+    user = _create_registered_user(db_session, email="canvas-singleton@example.com")
     existing = _create_ics_source(db_session, user=user, url="https://example.com/canvas-a.ics")
     authenticate_client(input_client, user=user)
 
@@ -79,17 +78,14 @@ def test_ics_source_create_is_singleton_per_user(input_client, db_session, authe
     )
 
     assert response.status_code == 409
-    assert response.json() == {
-        "detail": {
-            "code": "ics_source_exists",
-            "message": "ics source already exists for this user",
-            "existing_source_id": existing.id,
-        }
-    }
+    assert response.json()["detail"]["code"] == "ics_source_exists"
+    assert response.json()["detail"]["message"] == "ics source already exists for this user"
+    assert response.json()["detail"]["message_code"] == "sources.create.ics_source_exists"
+    assert response.json()["detail"]["existing_source_id"] == existing.id
 
 
 def test_ics_source_create_defaults_monitoring_window(input_client, db_session, authenticate_client) -> None:
-    user = _create_registered_user(db_session, notify_email="canvas-default-window@example.com")
+    user = _create_registered_user(db_session, email="canvas-default-window@example.com")
     authenticate_client(input_client, user=user)
 
     response = input_client.post(
@@ -109,7 +105,7 @@ def test_ics_source_create_defaults_monitoring_window(input_client, db_session, 
 
 
 def test_ics_source_patch_updates_url_and_preserves_identity(input_client, db_session, authenticate_client) -> None:
-    user = _create_registered_user(db_session, notify_email="canvas-patch@example.com")
+    user = _create_registered_user(db_session, email="canvas-patch@example.com")
     source = _create_ics_source(db_session, user=user, url="https://example.com/canvas-a.ics")
     authenticate_client(input_client, user=user)
 
@@ -139,7 +135,7 @@ def test_ics_source_patch_updates_url_and_preserves_identity(input_client, db_se
 
 
 def test_ics_source_archive_moves_row_to_archived_listing(input_client, db_session, authenticate_client) -> None:
-    user = _create_registered_user(db_session, notify_email="canvas-archive@example.com")
+    user = _create_registered_user(db_session, email="canvas-archive@example.com")
     source = _create_ics_source(db_session, user=user, url="https://example.com/canvas-a.ics")
     authenticate_client(input_client, user=user)
 

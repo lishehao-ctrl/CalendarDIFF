@@ -13,9 +13,11 @@ from app.modules.sources.schemas import (
     InputSourceCreateRequest,
     InputSourcePatchRequest,
     InputSourceResponse,
+    SourceLlmInvocationsResponse,
     SourceObservabilityResponse,
     SourceSyncHistoryResponse,
 )
+from app.modules.sources.llm_invocations_service import list_source_llm_invocations
 from app.modules.sources.source_runtime_state import derive_source_runtime_state
 from app.modules.sources.read_service import build_source_read_payload
 from app.modules.sources.source_serializers import serialize_source
@@ -94,7 +96,10 @@ def list_sources(
             ),
         )
     rows = list_input_sources(db, user_id=user.id, status=normalized_status)
-    return [InputSourceResponse.model_validate(build_source_read_payload(db, source=row)) for row in rows]
+    return [
+        InputSourceResponse.model_validate(build_source_read_payload(db, source=row, language_code=user.language_code))
+        for row in rows
+    ]
 
 
 @router.patch("/sources/{source_id}", response_model=InputSourceResponse)
@@ -129,7 +134,7 @@ def get_source_observability(
 ) -> SourceObservabilityResponse:
     source = require_owned_source_or_404(db=db, user_id=user.id, source_id=source_id)
     return SourceObservabilityResponse.model_validate(
-        build_source_observability_payload(db, source_id=source.id)
+        build_source_observability_payload(db, source_id=source.id, language_code=user.language_code)
     )
 
 
@@ -143,6 +148,25 @@ def get_source_sync_history(
     source = require_owned_source_or_404(db=db, user_id=user.id, source_id=source_id)
     return SourceSyncHistoryResponse.model_validate(
         build_source_sync_history_payload(db, source_id=source.id, limit=limit)
+    )
+
+
+@router.get("/sources/{source_id}/llm-invocations", response_model=SourceLlmInvocationsResponse)
+def get_source_llm_invocations(
+    source_id: int,
+    request_id: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=500),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
+) -> SourceLlmInvocationsResponse:
+    source = require_owned_source_or_404(db=db, user_id=user.id, source_id=source_id)
+    return SourceLlmInvocationsResponse.model_validate(
+        list_source_llm_invocations(
+            db,
+            source_id=source.id,
+            request_id=request_id,
+            limit=limit,
+        )
     )
 
 

@@ -52,7 +52,6 @@ def test_run_orchestrator_tick_reschedules_next_auto_sync_to_fixed_slot(db_sessi
 
     user = User(
         email="scheduler-owner@example.com",
-        notify_email="scheduler-owner@example.com",
         timezone_name="America/Los_Angeles",
         onboarding_completed_at=fixed_now,
     )
@@ -97,7 +96,6 @@ def test_apply_ingest_result_reschedules_source_to_next_fixed_slot(db_session) -
     applied_at = datetime(2026, 3, 20, 19, 30, tzinfo=timezone.utc)
     user = User(
         email="apply-owner@example.com",
-        notify_email="apply-owner@example.com",
         timezone_name="America/Los_Angeles",
         onboarding_completed_at=applied_at,
     )

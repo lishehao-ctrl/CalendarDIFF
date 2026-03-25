@@ -14,8 +14,7 @@ from app.modules.sources.sources_service import create_input_source
 
 def _create_registered_user(db_session) -> User:
     user = User(
-        email=None,
-        notify_email="gmail-owner@example.com",
+        email="gmail-owner@example.com",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
@@ -85,13 +84,10 @@ def test_gmail_source_create_is_singleton_per_user(input_client, db_session, aut
     )
 
     assert response.status_code == 409
-    assert response.json() == {
-        "detail": {
-            "code": "gmail_source_exists",
-            "message": "gmail source already exists for this user",
-            "existing_source_id": existing.id,
-        }
-    }
+    assert response.json()["detail"]["code"] == "gmail_source_exists"
+    assert response.json()["detail"]["message"] == "gmail source already exists for this user"
+    assert response.json()["detail"]["message_code"] == "sources.create.gmail_source_exists"
+    assert response.json()["detail"]["existing_source_id"] == existing.id
 
 
 def test_gmail_source_create_defaults_monitoring_window(input_client, db_session, authenticate_client) -> None:

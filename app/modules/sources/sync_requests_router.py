@@ -14,10 +14,12 @@ from app.modules.common.api_errors import api_error_detail
 from app.modules.common.source_monitoring_window import parse_source_monitoring_window, source_timezone_name
 from app.modules.sources.router_common import require_owned_source_or_404
 from app.modules.sources.schemas import (
+    SyncRequestLlmInvocationsResponse,
     SyncRequestCreateRequest,
     SyncRequestCreateResponse,
     SyncRequestStatusResponse,
 )
+from app.modules.sources.llm_invocations_service import list_sync_request_llm_invocations
 from app.modules.sources.source_monitoring_window_rebind import has_pending_monitoring_window_update
 from app.modules.sources.status_projection import build_sync_request_status_payload
 from app.modules.sources.sync_requests_service import enqueue_sync_request_idempotent, get_sync_request_status
@@ -99,6 +101,32 @@ def get_sync_request(
             ),
         )
     return SyncRequestStatusResponse.model_validate(build_sync_request_status_payload(db, sync_request=row))
+
+
+@router.get("/sync-requests/{request_id}/llm-invocations", response_model=SyncRequestLlmInvocationsResponse)
+def get_sync_request_llm_invocations(
+    request_id: str,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user_or_401),
+) -> SyncRequestLlmInvocationsResponse:
+    row = get_sync_request_status(db, request_id=request_id)
+    if row is None or row.source.user_id != user.id:
+        raise HTTPException(
+            status_code=404,
+            detail=api_error_detail(
+                code="sync_request_not_found",
+                message="Sync request not found",
+                message_code="sources.sync.request_not_found",
+            ),
+        )
+    return SyncRequestLlmInvocationsResponse.model_validate(
+        list_sync_request_llm_invocations(
+            db,
+            request_id=request_id,
+            limit=max(min(int(limit), 500), 1),
+        )
+    )
 
 
 __all__ = ["router"]

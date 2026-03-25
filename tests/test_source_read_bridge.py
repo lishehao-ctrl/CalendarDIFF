@@ -20,7 +20,6 @@ def _create_calendar_source(db_session) -> tuple[User, InputSource]:
     now = datetime.now(timezone.utc)
     user = User(
         email="bridge-owner@example.com",
-        notify_email="bridge-owner@example.com",
         onboarding_completed_at=now,
     )
     db_session.add(user)

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from app.db.models.runtime import CalendarComponentParseStatus, CalendarComponentParseTask, IngestJob, IngestJobStatus, IngestUnresolvedRecord
-from app.db.models.input import IngestTriggerType, InputSource, SyncRequest, SyncRequestStatus
+from app.db.models.runtime import IngestUnresolvedRecord
+from app.db.models.input import IngestTriggerType, InputSource, SyncRequest, SyncRequestStage, SyncRequestStatus
 from app.db.models.review import Change, ChangeIntakePhase, ChangeOrigin, ChangeReviewBucket, ChangeSourceRef, ChangeType, IngestApplyLog, ReviewStatus
 from app.db.models.shared import User
 from app.modules.sources.schemas import InputSourceCreateRequest
@@ -13,7 +13,6 @@ from app.modules.sources.sources_service import create_input_source
 def _create_user(db_session, *, email: str) -> User:
     user = User(
         email=email,
-        notify_email=email,
         timezone_name="America/Los_Angeles",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
@@ -38,12 +37,27 @@ def _create_source(db_session, *, user: User, provider: str) -> InputSource:
     )
 
 
-def _seed_sync_request(db_session, *, source: InputSource, request_id: str, status: SyncRequestStatus) -> SyncRequest:
+def _seed_sync_request(
+    db_session,
+    *,
+    source: InputSource,
+    request_id: str,
+    status: SyncRequestStatus,
+    stage: SyncRequestStage = SyncRequestStage.CONNECTOR_FETCH,
+    substage: str | None = None,
+    progress_json: dict | None = None,
+    stage_updated_at: datetime | None = None,
+) -> SyncRequest:
+    effective_stage_updated_at = stage_updated_at or datetime.now(timezone.utc)
     row = SyncRequest(
         request_id=request_id,
         source_id=source.id,
         trigger_type=IngestTriggerType.MANUAL,
         status=status,
+        stage=stage,
+        substage=substage,
+        progress_json=progress_json,
+        stage_updated_at=effective_stage_updated_at,
         idempotency_key=f"idemp:{request_id}",
         metadata_json={"kind": "test"},
     )
@@ -67,42 +81,23 @@ def _attach_change_source_ref(db_session, *, change: Change, source: InputSource
     )
 
 
-def _seed_job(db_session, *, source: InputSource, request_id: str, payload_json: dict) -> IngestJob:
-    row = IngestJob(
-        request_id=request_id,
-        source_id=source.id,
-        status=IngestJobStatus.CLAIMED,
-        attempt=0,
-        claimed_by="test-worker",
-        claim_token="token",
-        payload_json=payload_json,
-    )
-    db_session.add(row)
-    db_session.commit()
-    db_session.refresh(row)
-    return row
-
-
 def test_sources_api_exposes_gmail_sync_progress(input_client, db_session, authenticate_client) -> None:
     user = _create_user(db_session, email="progress-gmail@example.com")
     source = _create_source(db_session, user=user, provider="gmail")
-    _seed_sync_request(db_session, source=source, request_id="gmail-progress-req", status=SyncRequestStatus.RUNNING)
-    _seed_job(
+    _seed_sync_request(
         db_session,
         source=source,
         request_id="gmail-progress-req",
-        payload_json={
-            "provider": "gmail",
-            "workflow_stage": "CONNECTOR_FETCH_RUNNING",
-            "sync_progress": {
-                "phase": "gmail_bootstrap_fetch",
-                "label": "Scanning Gmail bootstrap window",
-                "detail": "Inspected 25 of 100 emails in the bootstrap window.",
-                "current": 25,
-                "total": 100,
-                "percent": 25,
-                "unit": "emails",
-            },
+        status=SyncRequestStatus.RUNNING,
+        stage=SyncRequestStage.CONNECTOR_FETCH,
+        progress_json={
+            "phase": "gmail_bootstrap_fetch",
+            "label": "Scanning Gmail bootstrap window",
+            "detail": "Inspected 25 of 100 emails in the bootstrap window.",
+            "current": 25,
+            "total": 100,
+            "percent": 25,
+            "unit": "emails",
         },
     )
 
@@ -127,65 +122,23 @@ def test_sources_api_exposes_gmail_sync_progress(input_client, db_session, authe
 def test_sync_request_status_exposes_calendar_component_progress(input_client, db_session, authenticate_client) -> None:
     user = _create_user(db_session, email="progress-calendar@example.com")
     source = _create_source(db_session, user=user, provider="ics")
-    _seed_sync_request(db_session, source=source, request_id="calendar-progress-req", status=SyncRequestStatus.RUNNING)
-    _seed_job(
+    _seed_sync_request(
         db_session,
         source=source,
         request_id="calendar-progress-req",
-        payload_json={
-            "provider": "ics",
-            "workflow_stage": "LLM_CALENDAR_FANOUT_QUEUED",
+        status=SyncRequestStatus.RUNNING,
+        stage=SyncRequestStage.LLM_PARSE,
+        substage="calendar_child_queue",
+        progress_json={
+            "phase": "calendar_parsing",
+            "label": "Parsing calendar events",
+            "detail": "2 of 4 calendar events have finished parsing.",
+            "current": 2,
+            "total": 4,
+            "percent": 50,
+            "unit": "events",
         },
     )
-    db_session.add_all(
-        [
-            CalendarComponentParseTask(
-                request_id="calendar-progress-req",
-                source_id=source.id,
-                component_key="evt-1",
-                external_event_id="evt-1",
-                vevent_uid="evt-1",
-                recurrence_id=None,
-                fingerprint="fp-1",
-                component_ical_b64="Zm9v",
-                status=CalendarComponentParseStatus.SUCCEEDED,
-            ),
-            CalendarComponentParseTask(
-                request_id="calendar-progress-req",
-                source_id=source.id,
-                component_key="evt-2",
-                external_event_id="evt-2",
-                vevent_uid="evt-2",
-                recurrence_id=None,
-                fingerprint="fp-2",
-                component_ical_b64="YmFy",
-                status=CalendarComponentParseStatus.RUNNING,
-            ),
-            CalendarComponentParseTask(
-                request_id="calendar-progress-req",
-                source_id=source.id,
-                component_key="evt-3",
-                external_event_id="evt-3",
-                vevent_uid="evt-3",
-                recurrence_id=None,
-                fingerprint="fp-3",
-                component_ical_b64="YmF6",
-                status=CalendarComponentParseStatus.FAILED,
-            ),
-            CalendarComponentParseTask(
-                request_id="calendar-progress-req",
-                source_id=source.id,
-                component_key="evt-4",
-                external_event_id="evt-4",
-                vevent_uid="evt-4",
-                recurrence_id=None,
-                fingerprint="fp-4",
-                component_ical_b64="cXV4",
-                status=CalendarComponentParseStatus.PENDING,
-            ),
-        ]
-    )
-    db_session.commit()
 
     authenticate_client(input_client, user=user)
     response = input_client.get("/sync-requests/calendar-progress-req", headers={"X-API-Key": "test-api-key"})
@@ -216,27 +169,28 @@ def test_source_observability_exposes_idle_operator_guidance(input_client, db_se
 def test_source_observability_exposes_stale_running_operator_guidance(input_client, db_session, authenticate_client) -> None:
     user = _create_user(db_session, email="guidance-stale@example.com")
     source = _create_source(db_session, user=user, provider="ics")
-    sync_request = _seed_sync_request(db_session, source=source, request_id="guidance-stale-req", status=SyncRequestStatus.RUNNING)
-    sync_request.updated_at = datetime.now(timezone.utc)
-    _seed_job(
+    stale_updated_at = datetime.now(timezone.utc) - timedelta(seconds=240)
+    sync_request = _seed_sync_request(
         db_session,
         source=source,
         request_id="guidance-stale-req",
-        payload_json={
-            "provider": "ics",
-            "workflow_stage": "LLM_CALENDAR_REDUCE_WAITING",
-            "sync_progress": {
-                "phase": "calendar_parsing",
-                "label": "Parsing calendar events",
-                "detail": "0 of 12 calendar events have finished parsing.",
-                "current": 0,
-                "total": 12,
-                "percent": 0,
-                "unit": "events",
-            },
-            "sync_progress_updated_at": (datetime.now(timezone.utc) - timedelta(seconds=240)).isoformat(),
+        status=SyncRequestStatus.RUNNING,
+        stage=SyncRequestStage.PROVIDER_REDUCE,
+        substage="calendar_reduce_wait",
+        progress_json={
+            "phase": "calendar_parsing",
+            "label": "Parsing calendar events",
+            "detail": "0 of 12 calendar events have finished parsing.",
+            "current": 0,
+            "total": 12,
+            "percent": 0,
+            "unit": "events",
+            "updated_at": stale_updated_at.isoformat(),
         },
+        stage_updated_at=stale_updated_at,
     )
+    sync_request.updated_at = datetime.now(timezone.utc)
+    db_session.commit()
 
     authenticate_client(input_client, user=user)
     response = input_client.get(f"/sources/{source.id}/observability", headers={"X-API-Key": "test-api-key"})
@@ -354,7 +308,7 @@ def test_sync_request_status_exposes_llm_usage_summary_and_elapsed_ms(input_clie
             "output_tokens": 500,
             "reasoning_tokens": 0,
             "total_tokens": 3500,
-            "api_modes": {"chat_completions": 4},
+            "protocols": {"chat_completions": 4},
             "models": {"qwen3.5-flash": 4},
             "task_counts": {"gmail_purpose_mode_classify": 4},
             "last_observed_at": "2026-03-18T00:00:10+00:00",
@@ -379,26 +333,23 @@ def test_sync_request_status_exposes_llm_usage_summary_and_elapsed_ms(input_clie
 def test_sources_api_prefers_running_sync_over_newer_pending_sync(input_client, db_session, authenticate_client) -> None:
     user = _create_user(db_session, email="progress-priority@example.com")
     source = _create_source(db_session, user=user, provider="gmail")
-    _seed_sync_request(db_session, source=source, request_id="older-running", status=SyncRequestStatus.RUNNING)
-    _seed_sync_request(db_session, source=source, request_id="newer-pending", status=SyncRequestStatus.PENDING)
-    _seed_job(
+    _seed_sync_request(
         db_session,
         source=source,
         request_id="older-running",
-        payload_json={
-            "provider": "gmail",
-            "workflow_stage": "CONNECTOR_FETCH_RUNNING",
-            "sync_progress": {
-                "phase": "gmail_bootstrap_fetch",
-                "label": "Scanning Gmail bootstrap window",
-                "detail": "Inspected 10 of 20 emails in the bootstrap window.",
-                "current": 10,
-                "total": 20,
-                "percent": 50,
-                "unit": "emails",
-            },
+        status=SyncRequestStatus.RUNNING,
+        stage=SyncRequestStage.CONNECTOR_FETCH,
+        progress_json={
+            "phase": "gmail_bootstrap_fetch",
+            "label": "Scanning Gmail bootstrap window",
+            "detail": "Inspected 10 of 20 emails in the bootstrap window.",
+            "current": 10,
+            "total": 20,
+            "percent": 50,
+            "unit": "emails",
         },
     )
+    _seed_sync_request(db_session, source=source, request_id="newer-pending", status=SyncRequestStatus.PENDING)
 
     authenticate_client(input_client, user=user)
     response = input_client.get("/sources", headers={"X-API-Key": "test-api-key"})
@@ -437,12 +388,27 @@ def test_source_observability_splits_bootstrap_and_latest_replay(input_client, d
             "output_tokens": 300,
             "reasoning_tokens": 0,
             "total_tokens": 9300,
-            "api_modes": {"chat_completions": 10},
+            "protocols": {"chat_completions": 10},
             "models": {"qwen3.5-flash": 10},
             "task_counts": {"gmail_purpose_mode_classify": 10},
         },
     }
-    replay = _seed_sync_request(db_session, source=source, request_id="replay-req", status=SyncRequestStatus.RUNNING)
+    replay = _seed_sync_request(
+        db_session,
+        source=source,
+        request_id="replay-req",
+        status=SyncRequestStatus.RUNNING,
+        stage=SyncRequestStage.CONNECTOR_FETCH,
+        progress_json={
+            "phase": "gmail_bootstrap_fetch",
+            "label": "Scanning Gmail bootstrap window",
+            "detail": "Inspected 20 of 100 emails in the bootstrap window.",
+            "current": 20,
+            "total": 100,
+            "percent": 20,
+            "unit": "emails",
+        },
+    )
     replay.trigger_type = IngestTriggerType.MANUAL
     replay.created_at = datetime(2026, 3, 18, 1, 0, 0, tzinfo=timezone.utc)
     replay.updated_at = datetime(2026, 3, 18, 1, 0, 30, tzinfo=timezone.utc)
@@ -459,29 +425,11 @@ def test_source_observability_splits_bootstrap_and_latest_replay(input_client, d
             "output_tokens": 80,
             "reasoning_tokens": 0,
             "total_tokens": 1280,
-            "api_modes": {"chat_completions": 2},
+            "protocols": {"chat_completions": 2},
             "models": {"qwen3.5-flash": 2},
             "task_counts": {"gmail_purpose_mode_classify": 2},
         },
     }
-    _seed_job(
-        db_session,
-        source=source,
-        request_id="replay-req",
-        payload_json={
-            "provider": "gmail",
-            "workflow_stage": "CONNECTOR_FETCH_RUNNING",
-            "sync_progress": {
-                "phase": "gmail_bootstrap_fetch",
-                "label": "Scanning Gmail bootstrap window",
-                "detail": "Inspected 20 of 100 emails in the bootstrap window.",
-                "current": 20,
-                "total": 100,
-                "percent": 20,
-                "unit": "emails",
-            },
-        },
-    )
     db_session.commit()
 
     authenticate_client(input_client, user=user)
@@ -522,29 +470,26 @@ def test_source_sync_history_lists_bootstrap_and_replay_newest_first(input_clien
     replay_a.created_at = datetime(2026, 3, 18, 1, 0, 0, tzinfo=timezone.utc)
     replay_a.updated_at = datetime(2026, 3, 18, 1, 1, 0, tzinfo=timezone.utc)
 
-    replay_b = _seed_sync_request(db_session, source=source, request_id="history-replay-b", status=SyncRequestStatus.RUNNING)
+    replay_b = _seed_sync_request(
+        db_session,
+        source=source,
+        request_id="history-replay-b",
+        status=SyncRequestStatus.RUNNING,
+        stage=SyncRequestStage.CONNECTOR_FETCH,
+        progress_json={
+            "phase": "gmail_bootstrap_fetch",
+            "label": "Scanning Gmail bootstrap window",
+            "detail": "Inspected 5 of 10 emails in the bootstrap window.",
+            "current": 5,
+            "total": 10,
+            "percent": 50,
+            "unit": "emails",
+        },
+    )
     replay_b.trigger_type = IngestTriggerType.MANUAL
     replay_b.created_at = datetime(2026, 3, 18, 2, 0, 0, tzinfo=timezone.utc)
     replay_b.updated_at = datetime(2026, 3, 18, 2, 0, 30, tzinfo=timezone.utc)
 
-    _seed_job(
-        db_session,
-        source=source,
-        request_id="history-replay-b",
-        payload_json={
-            "provider": "gmail",
-            "workflow_stage": "CONNECTOR_FETCH_RUNNING",
-            "sync_progress": {
-                "phase": "gmail_bootstrap_fetch",
-                "label": "Scanning Gmail bootstrap window",
-                "detail": "Inspected 5 of 10 emails in the bootstrap window.",
-                "current": 5,
-                "total": 10,
-                "percent": 50,
-                "unit": "emails",
-            },
-        },
-    )
     db_session.commit()
 
     authenticate_client(input_client, user=user)

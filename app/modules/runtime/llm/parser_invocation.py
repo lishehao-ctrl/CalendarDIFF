@@ -6,7 +6,6 @@ from collections.abc import Callable
 import redis
 
 from app.modules.runtime.connectors.llm_parsers import LlmParseError
-from app.modules.runtime.kernel.parse_task_queue import increment_parse_metric_counter, record_parse_latency_ms
 
 
 class RateLimitRejected(RuntimeError):
@@ -22,22 +21,14 @@ def invoke_parser_with_limit_impl(
     parse_call: Callable[[], object],
 ):
     del stream_key
-    increment_parse_metric_counter(redis_client, metric_name="llm_calls_total")
     started = time.perf_counter()
     try:
-        result = parse_call()
-        latency_ms = max(int((time.perf_counter() - started) * 1000), 0)
-        record_parse_latency_ms(redis_client, latency_ms=latency_ms)
-        return result
+        return parse_call()
     except LlmParseError as exc:
-        latency_ms = max(int((time.perf_counter() - started) * 1000), 0)
-        record_parse_latency_ms(redis_client, latency_ms=latency_ms)
-        if is_rate_limited_llm_error_impl(exc):
-            increment_parse_metric_counter(redis_client, metric_name="llm_calls_rate_limited")
+        del started
         raise
     except Exception:
-        latency_ms = max(int((time.perf_counter() - started) * 1000), 0)
-        record_parse_latency_ms(redis_client, latency_ms=latency_ms)
+        del started
         raise
 
 

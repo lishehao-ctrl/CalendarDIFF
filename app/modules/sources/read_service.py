@@ -12,10 +12,10 @@ from app.modules.sources.status_projection import (
 )
 
 
-def build_source_read_payload(db: Session, *, source: InputSource) -> dict:
+def build_source_read_payload(db: Session, *, source: InputSource, language_code: str | None = None) -> dict:
     runtime_state = derive_source_runtime_state(db, source=source)
     active_sync = get_display_sync_request_for_source(db, source_id=source.id)
-    observability = build_source_observability_payload(db, source_id=source.id)
+    observability = build_source_observability_payload(db, source_id=source.id, language_code=language_code)
     sync_progress = build_sync_progress_payload(db, sync_request=active_sync) if active_sync is not None else None
     return serialize_source(
         source,

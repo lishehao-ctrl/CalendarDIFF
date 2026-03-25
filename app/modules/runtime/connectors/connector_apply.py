@@ -47,17 +47,17 @@ def apply_success_without_llm(
         context=context,
         completed_at=fetched_at,
         cursor_patch=cursor_patch,
-        payload_workflow_stage="RESULT_READY",
+        payload_workflow_stage="COMPLETED",
         payload_remove_keys=["sync_progress", "sync_progress_updated_at", "connector_continuation"],
         apply_cursor_patch=False,
-        touch_source_success_state=False,
-        sync_status=SyncRequestStatus.RUNNING,
-        sync_stage=SyncRequestStage.RESULT_READY,
-        sync_substage="connector_result_ready",
+        touch_source_success_state=True,
+        sync_status=SyncRequestStatus.SUCCEEDED,
+        sync_stage=SyncRequestStage.COMPLETED,
+        sync_substage="apply_completed",
         sync_progress=build_sync_progress_payload(
-            phase="result_ready",
-            label="Result ready to apply",
-            detail="Connector fetch finished and the result is ready for canonical apply.",
+            phase="completed",
+            label="Sync completed",
+            detail="Connector fetch finished with no parser work and no apply step was required.",
             current=record_count,
             total=record_count,
             percent=100,
@@ -65,6 +65,13 @@ def apply_success_without_llm(
             updated_at=fetched_at,
         ),
     )
+    if context.source is not None:
+        apply_pending_monitoring_window_update_if_terminal(
+            db=db,
+            source=context.source,
+            terminal_status=SyncRequestStatus.SUCCEEDED,
+            applied_at=fetched_at,
+        )
 
 
 def apply_failure(

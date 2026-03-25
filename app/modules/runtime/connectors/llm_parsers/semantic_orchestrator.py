@@ -5,7 +5,7 @@ import re
 from typing import Any, TypeVar, cast
 
 from icalendar import Calendar
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.modules.common.payload_schemas import SourceFacts
@@ -25,11 +25,10 @@ from app.modules.runtime.connectors.llm_parsers.schemas import (
     GmailPurposeModeResponse,
 )
 from app.modules.llm_gateway import (
-    LLM_FORMAT_MAX_ATTEMPTS,
     LlmGatewayError,
     LlmInvokeRequest,
-    LlmInvokeResult,
     invoke_llm_json,
+    invoke_llm_typed,
 )
 
 logger = logging.getLogger(__name__)
@@ -689,60 +688,25 @@ def _invoke_schema_validated(
     schema_invalid_code: str,
     upstream_error_code: str,
 ) -> tuple[ModelT, str | None, str | None]:
-    parsed: ModelT | None = None
-    invoke_result: LlmInvokeResult | None = None
-    for attempt in range(1, LLM_FORMAT_MAX_ATTEMPTS + 1):
-        try:
-            invoke_result = invoke_llm_json(db, invoke_request=invoke_request)
-        except LlmGatewayError as exc:
-            raise _map_llm_error(
-                exc=exc,
-                provider=context.provider,
-                schema_invalid_code=schema_invalid_code,
-                upstream_error_code=upstream_error_code,
-            ) from exc
-
-        try:
-            parsed = response_model.model_validate(invoke_result.json_object)
-            break
-        except ValidationError as exc:
-            if attempt < LLM_FORMAT_MAX_ATTEMPTS:
-                logger.warning(
-                    "semantic_orchestrator.format_retry request_id=%s source_id=%s task_name=%s error_code=%s attempt=%s/%s",
-                    context.request_id or "-",
-                    context.source_id,
-                    stage_label,
-                    schema_invalid_code,
-                    attempt,
-                    LLM_FORMAT_MAX_ATTEMPTS,
-                )
-                continue
-            logger.warning(
-                "semantic_orchestrator.format_retry_exhausted request_id=%s source_id=%s task_name=%s error_code=%s attempt=%s/%s",
-                context.request_id or "-",
-                context.source_id,
-                stage_label,
-                schema_invalid_code,
-                attempt,
-                LLM_FORMAT_MAX_ATTEMPTS,
-            )
-            raise LlmParseError(
-                code=schema_invalid_code,
-                message=f"llm schema invalid ({stage_label}): {exc.errors()}",
-                retryable=False,
-                provider=context.provider,
-                parser_version="mainline",
-            ) from exc
-
-    if parsed is None or invoke_result is None:
-        raise LlmParseError(
-            code=schema_invalid_code,
-            message=f"llm returned no valid payload after retries ({stage_label})",
-            retryable=False,
-            provider=context.provider,
-            parser_version="mainline",
+    try:
+        typed_result = invoke_llm_typed(
+            db,
+            invoke_request=invoke_request,
+            response_model=response_model,
+            validation_label=stage_label,
+            invoke_json_fn=lambda db_session, request: invoke_llm_json(db_session, invoke_request=request),
         )
+    except LlmGatewayError as exc:
+        raise _map_llm_error(
+            exc=exc,
+            provider=context.provider,
+            schema_invalid_code=schema_invalid_code,
+            upstream_error_code=upstream_error_code,
+        ) from exc
 
+    parsed = typed_result.value
+    assert isinstance(parsed, response_model)
+    invoke_result = typed_result.invoke_result
     model_hint = invoke_result.model if isinstance(invoke_result.model, str) and invoke_result.model.strip() else None
     return parsed, model_hint, invoke_result.response_id
 

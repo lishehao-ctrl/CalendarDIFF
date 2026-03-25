@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from app.modules.common.structured_copy import render_structured_list, render_structured_text
+
 
 def build_source_product_phase(
     *,
@@ -30,153 +32,263 @@ def build_source_recovery_payload(
     active_payload: dict | None,
     latest_replay_payload: dict | None,
     bootstrap_payload: dict | None,
+    language_code: str | None = None,
 ) -> dict:
     bootstrap_state = str((bootstrap_summary or {}).get("state") or "")
     active_status = str((active_payload or {}).get("status") or "")
     latest_replay_status = str((latest_replay_payload or {}).get("status") or "")
     guidance_action = str((operator_guidance or {}).get("recommended_action") or "")
     guidance_severity = str((operator_guidance or {}).get("severity") or "")
+    last_good_sync_at = _last_good_sync_at(latest_replay_payload=latest_replay_payload, bootstrap_payload=bootstrap_payload)
+    degraded_since = _pick_degraded_since(latest_replay_payload=latest_replay_payload, active_payload=active_payload)
 
     if provider == "gmail" and oauth_connection_status == "not_connected":
+        impact_code = "sources.recovery.gmail.oauth_disconnected"
+        recovery_step_codes = [
+            "sources.recovery.gmail.step.reconnect_mailbox",
+            "sources.recovery.gmail.step.wait_for_sync",
+        ]
         return {
             "trust_state": "blocked",
-            "impact_summary": "New Gmail-based changes may be missing until the mailbox is reconnected.",
-            "impact_code": "sources.recovery.gmail.oauth_disconnected",
+            "impact_summary": render_structured_text(
+                code=impact_code,
+                language_code=language_code,
+                fallback="New Gmail-based changes may be missing until the mailbox is reconnected.",
+            ),
+            "impact_code": impact_code,
             "next_action": "reconnect_gmail",
-            "next_action_label": "Reconnect Gmail",
-            "last_good_sync_at": _last_good_sync_at(latest_replay_payload=latest_replay_payload, bootstrap_payload=bootstrap_payload),
-            "degraded_since": _pick_degraded_since(latest_replay_payload=latest_replay_payload, active_payload=active_payload),
-            "recovery_steps": [
-                "Reconnect the mailbox to restore intake.",
-                "Wait for the next sync to finish before trusting new email-backed changes.",
-            ],
-            "recovery_step_codes": [
-                "sources.recovery.gmail.step.reconnect_mailbox",
-                "sources.recovery.gmail.step.wait_for_sync",
-            ],
+            "next_action_label": render_structured_text(
+                code="sources.recovery.next_action.reconnect_gmail",
+                language_code=language_code,
+                fallback="Reconnect Gmail",
+            ),
+            "last_good_sync_at": last_good_sync_at,
+            "degraded_since": degraded_since,
+            "recovery_steps": render_structured_list(
+                codes=recovery_step_codes,
+                language_code=language_code,
+                fallback_items=[
+                    "Reconnect the mailbox to restore intake.",
+                    "Wait for the next sync to finish before trusting new email-backed changes.",
+                ],
+            ),
+            "recovery_step_codes": recovery_step_codes,
         }
 
     if runtime_state == "rebind_pending" and provider == "ics":
+        impact_code = "sources.recovery.ics.rebind_pending"
+        recovery_step_codes = [
+            "sources.recovery.ics.step.confirm_feed_settings",
+            "sources.recovery.ics.step.run_sync_after_update",
+        ]
         return {
             "trust_state": "blocked",
-            "impact_summary": "Canvas ICS needs updated monitoring settings before new calendar updates can be trusted.",
-            "impact_code": "sources.recovery.ics.rebind_pending",
+            "impact_summary": render_structured_text(
+                code=impact_code,
+                language_code=language_code,
+                fallback="Canvas ICS needs updated monitoring settings before new calendar updates can be trusted.",
+            ),
+            "impact_code": impact_code,
             "next_action": "update_ics",
-            "next_action_label": "Update Canvas ICS",
-            "last_good_sync_at": _last_good_sync_at(latest_replay_payload=latest_replay_payload, bootstrap_payload=bootstrap_payload),
-            "degraded_since": _pick_degraded_since(latest_replay_payload=latest_replay_payload, active_payload=active_payload),
-            "recovery_steps": [
-                "Open the Canvas ICS connection flow and confirm the current feed settings.",
-                "Run another sync after saving the updated link.",
-            ],
-            "recovery_step_codes": [
-                "sources.recovery.ics.step.confirm_feed_settings",
-                "sources.recovery.ics.step.run_sync_after_update",
-            ],
+            "next_action_label": render_structured_text(
+                code="sources.recovery.next_action.update_ics",
+                language_code=language_code,
+                fallback="Update Canvas ICS",
+            ),
+            "last_good_sync_at": last_good_sync_at,
+            "degraded_since": degraded_since,
+            "recovery_steps": render_structured_list(
+                codes=recovery_step_codes,
+                language_code=language_code,
+                fallback_items=[
+                    "Open the Canvas ICS connection flow and confirm the current feed settings.",
+                    "Run another sync after saving the updated link.",
+                ],
+            ),
+            "recovery_step_codes": recovery_step_codes,
         }
 
     if guidance_action == "investigate_runtime" or latest_replay_status == "FAILED":
+        impact_code = f"sources.recovery.{provider or 'source'}.runtime_failed"
+        recovery_step_codes = [
+            "sources.recovery.runtime_failed.step.retry_sync",
+            "sources.recovery.runtime_failed.step.investigate_if_repeat",
+        ]
         return {
             "trust_state": "stale",
-            "impact_summary": _runtime_failure_summary(provider=provider),
-            "impact_code": f"sources.recovery.{provider or 'source'}.runtime_failed",
+            "impact_summary": render_structured_text(
+                code=impact_code,
+                language_code=language_code,
+                fallback=_runtime_failure_summary(provider=provider),
+            ),
+            "impact_code": impact_code,
             "next_action": "retry_sync",
-            "next_action_label": "Retry sync",
-            "last_good_sync_at": _last_good_sync_at(latest_replay_payload=latest_replay_payload, bootstrap_payload=bootstrap_payload),
-            "degraded_since": _pick_degraded_since(latest_replay_payload=latest_replay_payload, active_payload=active_payload),
-            "recovery_steps": [
-                "Retry the source sync.",
-                "If the next sync also fails, investigate the source connection before trusting new changes.",
-            ],
-            "recovery_step_codes": [
-                "sources.recovery.runtime_failed.step.retry_sync",
-                "sources.recovery.runtime_failed.step.investigate_if_repeat",
-            ],
+            "next_action_label": render_structured_text(
+                code="sources.recovery.next_action.retry_sync",
+                language_code=language_code,
+                fallback="Retry sync",
+            ),
+            "last_good_sync_at": last_good_sync_at,
+            "degraded_since": degraded_since,
+            "recovery_steps": render_structured_list(
+                codes=recovery_step_codes,
+                language_code=language_code,
+                fallback_items=[
+                    "Retry the source sync.",
+                    "If the next sync also fails, investigate the source connection before trusting new changes.",
+                ],
+            ),
+            "recovery_step_codes": recovery_step_codes,
         }
 
     if guidance_action == "wait_for_runtime" and guidance_severity == "blocking":
+        impact_code = f"sources.recovery.{provider or 'source'}.runtime_stalled"
+        recovery_step_codes = [
+            "sources.recovery.runtime_stalled.step.wait",
+            "sources.recovery.runtime_stalled.step.resume_after_progress",
+        ]
         return {
             "trust_state": "blocked",
-            "impact_summary": _runtime_stalled_summary(provider=provider),
-            "impact_code": f"sources.recovery.{provider or 'source'}.runtime_stalled",
+            "impact_summary": render_structured_text(
+                code=impact_code,
+                language_code=language_code,
+                fallback=_runtime_stalled_summary(provider=provider),
+            ),
+            "impact_code": impact_code,
             "next_action": "wait",
-            "next_action_label": "Wait for runtime",
-            "last_good_sync_at": _last_good_sync_at(latest_replay_payload=latest_replay_payload, bootstrap_payload=bootstrap_payload),
-            "degraded_since": _pick_degraded_since(latest_replay_payload=latest_replay_payload, active_payload=active_payload),
-            "recovery_steps": [
-                "Let the current runtime work finish or recover.",
-                "Only trust new changes after progress starts moving again or the sync completes.",
-            ],
-            "recovery_step_codes": [
-                "sources.recovery.runtime_stalled.step.wait",
-                "sources.recovery.runtime_stalled.step.resume_after_progress",
-            ],
+            "next_action_label": render_structured_text(
+                code="sources.recovery.next_action.wait_for_runtime",
+                language_code=language_code,
+                fallback="Wait for runtime",
+            ),
+            "last_good_sync_at": last_good_sync_at,
+            "degraded_since": degraded_since,
+            "recovery_steps": render_structured_list(
+                codes=recovery_step_codes,
+                language_code=language_code,
+                fallback_items=[
+                    "Let the current runtime work finish or recover.",
+                    "Only trust new changes after progress starts moving again or the sync completes.",
+                ],
+            ),
+            "recovery_step_codes": recovery_step_codes,
         }
 
     if bootstrap_state == "running":
+        impact_code = "sources.recovery.baseline.running"
+        recovery_step_codes = [
+            "sources.recovery.baseline.running.step.wait",
+            "sources.recovery.baseline.running.step.review_after_import",
+        ]
         return {
             "trust_state": "partial",
-            "impact_summary": "Baseline import is still building this source before steady-state monitoring begins.",
-            "impact_code": "sources.recovery.baseline.running",
+            "impact_summary": render_structured_text(
+                code=impact_code,
+                language_code=language_code,
+                fallback="Baseline import is still building this source before steady-state monitoring begins.",
+            ),
+            "impact_code": impact_code,
             "next_action": "wait",
-            "next_action_label": "Wait for baseline import",
-            "last_good_sync_at": _last_good_sync_at(latest_replay_payload=latest_replay_payload, bootstrap_payload=bootstrap_payload),
-            "degraded_since": _pick_degraded_since(latest_replay_payload=latest_replay_payload, active_payload=active_payload),
-            "recovery_steps": [
-                "Wait for the initial import to complete.",
-                "Review any baseline items before treating this source as fully live.",
-            ],
-            "recovery_step_codes": [
-                "sources.recovery.baseline.running.step.wait",
-                "sources.recovery.baseline.running.step.review_after_import",
-            ],
+            "next_action_label": render_structured_text(
+                code="sources.recovery.next_action.wait_for_baseline",
+                language_code=language_code,
+                fallback="Wait for baseline import",
+            ),
+            "last_good_sync_at": last_good_sync_at,
+            "degraded_since": degraded_since,
+            "recovery_steps": render_structured_list(
+                codes=recovery_step_codes,
+                language_code=language_code,
+                fallback_items=[
+                    "Wait for the initial import to complete.",
+                    "Review any baseline items before treating this source as fully live.",
+                ],
+            ),
+            "recovery_step_codes": recovery_step_codes,
         }
 
     if bootstrap_state == "review_required":
+        impact_code = "sources.recovery.baseline.review_required"
+        recovery_step_codes = [
+            "sources.recovery.baseline.review_required.step.finish_initial_review",
+            "sources.recovery.baseline.review_required.step.use_replay_after_review",
+        ]
         return {
             "trust_state": "partial",
-            "impact_summary": "Baseline import finished, but Initial Review still has items waiting before this source is fully trusted.",
-            "impact_code": "sources.recovery.baseline.review_required",
+            "impact_summary": render_structured_text(
+                code=impact_code,
+                language_code=language_code,
+                fallback="Baseline import finished, but Initial Review still has items waiting before this source is fully trusted.",
+            ),
+            "impact_code": impact_code,
             "next_action": "wait",
-            "next_action_label": "Finish Initial Review",
-            "last_good_sync_at": _last_good_sync_at(latest_replay_payload=latest_replay_payload, bootstrap_payload=bootstrap_payload),
-            "degraded_since": _pick_degraded_since(latest_replay_payload=latest_replay_payload, active_payload=active_payload),
-            "recovery_steps": [
-                "Finish Initial Review for this source.",
-                "After that, use Replay Review for day-to-day change handling.",
-            ],
-            "recovery_step_codes": [
-                "sources.recovery.baseline.review_required.step.finish_initial_review",
-                "sources.recovery.baseline.review_required.step.use_replay_after_review",
-            ],
+            "next_action_label": render_structured_text(
+                code="sources.recovery.next_action.finish_initial_review",
+                language_code=language_code,
+                fallback="Finish Initial Review",
+            ),
+            "last_good_sync_at": last_good_sync_at,
+            "degraded_since": degraded_since,
+            "recovery_steps": render_structured_list(
+                codes=recovery_step_codes,
+                language_code=language_code,
+                fallback_items=[
+                    "Finish Initial Review for this source.",
+                    "After that, use Replay Review for day-to-day change handling.",
+                ],
+            ),
+            "recovery_step_codes": recovery_step_codes,
         }
 
     if active_status in {"PENDING", "QUEUED", "RUNNING"} or guidance_action == "continue_review_with_caution":
+        impact_code = f"sources.recovery.{provider or 'source'}.active_sync"
+        recovery_step_codes = [
+            "sources.recovery.active_sync.step.review_current_changes",
+            "sources.recovery.active_sync.step.expect_more_after_completion",
+        ]
         return {
             "trust_state": "partial",
-            "impact_summary": _active_sync_summary(provider=provider),
-            "impact_code": f"sources.recovery.{provider or 'source'}.active_sync",
+            "impact_summary": render_structured_text(
+                code=impact_code,
+                language_code=language_code,
+                fallback=_active_sync_summary(provider=provider),
+            ),
+            "impact_code": impact_code,
             "next_action": "wait",
-            "next_action_label": "Wait for sync",
-            "last_good_sync_at": _last_good_sync_at(latest_replay_payload=latest_replay_payload, bootstrap_payload=bootstrap_payload),
-            "degraded_since": _pick_degraded_since(latest_replay_payload=latest_replay_payload, active_payload=active_payload),
-            "recovery_steps": [
-                "Current changes can still be reviewed.",
-                "Expect more changes to appear after the active sync completes.",
-            ],
-            "recovery_step_codes": [
-                "sources.recovery.active_sync.step.review_current_changes",
-                "sources.recovery.active_sync.step.expect_more_after_completion",
-            ],
+            "next_action_label": render_structured_text(
+                code="sources.recovery.next_action.wait_for_sync",
+                language_code=language_code,
+                fallback="Wait for sync",
+            ),
+            "last_good_sync_at": last_good_sync_at,
+            "degraded_since": degraded_since,
+            "recovery_steps": render_structured_list(
+                codes=recovery_step_codes,
+                language_code=language_code,
+                fallback_items=[
+                    "Current changes can still be reviewed.",
+                    "Expect more changes to appear after the active sync completes.",
+                ],
+            ),
+            "recovery_step_codes": recovery_step_codes,
         }
 
+    impact_code = f"sources.recovery.{provider or 'source'}.trusted"
     return {
         "trust_state": "trusted",
-        "impact_summary": _trusted_summary(provider=provider),
-        "impact_code": f"sources.recovery.{provider or 'source'}.trusted",
+        "impact_summary": render_structured_text(
+            code=impact_code,
+            language_code=language_code,
+            fallback=_trusted_summary(provider=provider),
+        ),
+        "impact_code": impact_code,
         "next_action": "wait",
-        "next_action_label": "No action needed",
-        "last_good_sync_at": _last_good_sync_at(latest_replay_payload=latest_replay_payload, bootstrap_payload=bootstrap_payload),
+        "next_action_label": render_structured_text(
+            code="sources.recovery.next_action.none",
+            language_code=language_code,
+            fallback="No action needed",
+        ),
+        "last_good_sync_at": last_good_sync_at,
         "degraded_since": None,
         "recovery_steps": [],
         "recovery_step_codes": [],

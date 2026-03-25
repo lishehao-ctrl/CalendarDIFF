@@ -21,6 +21,7 @@ from app.db.models.review import (
     IngestApplyLog,
     ReviewStatus,
 )
+from app.modules.common.structured_copy import render_structured_text
 from app.modules.llm_gateway.usage_tracking import LLM_USAGE_SUMMARY_KEY, present_llm_usage_summary
 from app.modules.sources.recovery_projection import build_source_product_phase, build_source_recovery_payload
 from app.modules.sources.source_runtime_state import derive_source_runtime_state
@@ -78,7 +79,7 @@ def build_sync_request_status_payload(db: Session, *, sync_request: SyncRequest)
     }
 
 
-def build_source_observability_payload(db: Session, *, source_id: int) -> dict:
+def build_source_observability_payload(db: Session, *, source_id: int, language_code: str | None = None) -> dict:
     source = db.scalar(select(InputSource).where(InputSource.id == source_id).limit(1))
     source_context = _build_source_context(db, source=source)
     sync_rows = list(
@@ -100,7 +101,11 @@ def build_source_observability_payload(db: Session, *, source_id: int) -> dict:
             "recommended_action": "continue_review",
             "severity": "info",
             "reason_code": "source_idle",
-            "message": "No active sync is running. Continue reviewing changes.",
+            "message": render_structured_text(
+                code="sources.operator_guidance.source_idle",
+                language_code=language_code,
+                fallback="No active sync is running. Continue reviewing changes.",
+            ),
             "message_code": "sources.operator_guidance.source_idle",
             "message_params": {},
             "related_request_id": None,
@@ -115,6 +120,7 @@ def build_source_observability_payload(db: Session, *, source_id: int) -> dict:
             active_payload=None,
             latest_replay_payload=None,
             bootstrap_payload=None,
+            language_code=language_code,
         )
         return {
             "source_id": source_id,
@@ -153,6 +159,7 @@ def build_source_observability_payload(db: Session, *, source_id: int) -> dict:
         active_payload=active_payload,
         latest_replay_payload=latest_replay_payload,
         bootstrap_payload=bootstrap_payload,
+        language_code=language_code,
     )
     source_recovery = build_source_recovery_payload(
         provider=str(source_context.get("provider") or ""),
@@ -163,6 +170,7 @@ def build_source_observability_payload(db: Session, *, source_id: int) -> dict:
         active_payload=active_payload,
         latest_replay_payload=latest_replay_payload,
         bootstrap_payload=bootstrap_payload,
+        language_code=language_code,
     )
     return {
         "source_id": source_id,
@@ -361,7 +369,6 @@ def build_sync_progress_payload(
     if explicit_progress is not None:
         return explicit_progress
 
-    # Minimal fallback for pre-migration historical rows.
     if sync_request.status == SyncRequestStatus.PENDING:
         return {
             "phase": "pending",
@@ -384,19 +391,6 @@ def build_sync_progress_payload(
             "percent": None,
             "unit": None,
         }
-
-    job = db.scalar(select(IngestJob).where(IngestJob.request_id == sync_request.request_id))
-    if job is not None:
-        payload = job.payload_json if isinstance(job.payload_json, dict) else {}
-        progress = _build_job_progress_payload(
-            db,
-            request_id=sync_request.request_id,
-            payload=payload,
-            result=result,
-            apply_log=apply_log,
-        )
-        if progress is not None:
-            return progress
 
     if result is not None and apply_log is None:
         record_count = len(result.records or [])
@@ -432,48 +426,16 @@ def _build_effective_stage_payload(
     result: IngestResult | None,
     apply_log: IngestApplyLog | None,
 ) -> tuple[str | None, str | None, datetime | None]:
+    del db
     explicit_stage = sync_request.stage.value if getattr(sync_request, "stage", None) is not None else None
     explicit_substage = sync_request.substage
     explicit_updated_at = sync_request.stage_updated_at
-    if isinstance(sync_request.progress_json, dict):
-        return explicit_stage, explicit_substage, explicit_updated_at
-
-    job = db.scalar(select(IngestJob).where(IngestJob.request_id == sync_request.request_id))
-    payload = job.payload_json if job is not None and isinstance(job.payload_json, dict) else {}
-    workflow_stage = payload.get("workflow_stage")
-    if isinstance(workflow_stage, str):
-        mapped = _legacy_stage_from_workflow_stage(workflow_stage=workflow_stage)
-        if mapped is not None:
-            progress_updated_at = payload.get("sync_progress_updated_at")
-            if isinstance(progress_updated_at, str) and progress_updated_at:
-                normalized_updated_at = datetime.fromisoformat(
-                    progress_updated_at[:-1] + "+00:00" if progress_updated_at.endswith("Z") else progress_updated_at
-                )
-            else:
-                normalized_updated_at = job.updated_at if job is not None else sync_request.updated_at
-            return mapped[0], mapped[1], normalized_updated_at
 
     if result is not None and apply_log is None:
         return SyncRequestStage.RESULT_READY.value, "result_ready", result.fetched_at
     if apply_log is not None:
         return SyncRequestStage.COMPLETED.value, "apply_completed", apply_log.applied_at
     return explicit_stage, explicit_substage, explicit_updated_at
-
-
-def _legacy_stage_from_workflow_stage(*, workflow_stage: str) -> tuple[str, str] | None:
-    normalized = workflow_stage.strip().upper()
-    mapping = {
-        "LLM_ENQUEUE_PENDING": (SyncRequestStage.LLM_QUEUE.value, "parse_payload_ready"),
-        "LLM_QUEUED": (SyncRequestStage.LLM_PARSE.value, "llm_task_queued"),
-        "LLM_RUNNING": (SyncRequestStage.LLM_PARSE.value, "llm_parse"),
-        "LLM_CALENDAR_FANOUT_QUEUED": (SyncRequestStage.LLM_PARSE.value, "calendar_child_queue"),
-        "LLM_CALENDAR_REDUCE_WAITING": (SyncRequestStage.PROVIDER_REDUCE.value, "calendar_reduce_wait"),
-        "LLM_RATE_LIMIT_BACKPRESSURE": (SyncRequestStage.LLM_PARSE.value, "llm_backpressure"),
-        "CONNECTOR_RETRY_WAITING": (SyncRequestStage.CONNECTOR_FETCH.value, "connector_retry_waiting"),
-        "CONNECTOR_DEAD_LETTER": (SyncRequestStage.FAILED.value, "connector_dead_letter"),
-        "LLM_DEAD_LETTER": (SyncRequestStage.FAILED.value, "llm_dead_letter"),
-    }
-    return mapping.get(normalized)
 
 
 def _build_explicit_progress_payload(*, sync_request: SyncRequest) -> dict | None:
@@ -507,6 +469,71 @@ def _build_explicit_progress_payload(*, sync_request: SyncRequest) -> dict | Non
                 "percent": None,
                 "unit": None,
             }
+        return {
+            "phase": "connector_fetch",
+            "label": "Fetching source data",
+            "detail": "The backend is fetching source data before parsing.",
+            "updated_at": sync_request.stage_updated_at or sync_request.updated_at,
+            "current": None,
+            "total": None,
+            "percent": None,
+            "unit": None,
+        }
+    if stage == SyncRequestStage.LLM_QUEUE:
+        return {
+            "phase": "llm_queue",
+            "label": "Queueing parser",
+            "detail": "Source data is ready and parser tasks are being enqueued.",
+            "updated_at": sync_request.stage_updated_at or sync_request.updated_at,
+            "current": None,
+            "total": None,
+            "percent": None,
+            "unit": None,
+        }
+    if stage == SyncRequestStage.LLM_PARSE:
+        return {
+            "phase": "llm_parse",
+            "label": "Parsing source data",
+            "detail": "The backend is extracting structured deadline data.",
+            "updated_at": sync_request.stage_updated_at or sync_request.updated_at,
+            "current": None,
+            "total": None,
+            "percent": None,
+            "unit": None,
+        }
+    if stage == SyncRequestStage.PROVIDER_REDUCE:
+        return {
+            "phase": "provider_reduce",
+            "label": "Reducing parsed results",
+            "detail": "Parsed provider results are being merged into one semantic result.",
+            "updated_at": sync_request.stage_updated_at or sync_request.updated_at,
+            "current": None,
+            "total": None,
+            "percent": None,
+            "unit": None,
+        }
+    if stage == SyncRequestStage.RESULT_READY:
+        return {
+            "phase": "result_ready",
+            "label": "Parsed result ready",
+            "detail": "Parsed source data is ready for apply.",
+            "updated_at": sync_request.stage_updated_at or sync_request.updated_at,
+            "current": None,
+            "total": None,
+            "percent": None,
+            "unit": None,
+        }
+    if stage == SyncRequestStage.APPLYING:
+        return {
+            "phase": "applying",
+            "label": "Applying extracted results",
+            "detail": "Parsed results are being applied to observations and review.",
+            "updated_at": sync_request.stage_updated_at or sync_request.updated_at,
+            "current": None,
+            "total": None,
+            "percent": None,
+            "unit": None,
+        }
     if stage == SyncRequestStage.COMPLETED:
         return {
             "phase": "completed",
@@ -524,119 +551,6 @@ def _build_explicit_progress_payload(*, sync_request: SyncRequest) -> dict | Non
             "label": "Sync failed",
             "detail": sync_request.error_message or "The sync failed.",
             "updated_at": sync_request.stage_updated_at or sync_request.updated_at,
-            "current": None,
-            "total": None,
-            "percent": None,
-            "unit": None,
-        }
-    return None
-
-
-def _build_job_progress_payload(
-    db: Session,
-    *,
-    request_id: str,
-    payload: dict,
-    result: IngestResult | None,
-    apply_log: IngestApplyLog | None,
-) -> dict | None:
-    provider = payload.get("provider")
-    provider_name = provider.strip().lower() if isinstance(provider, str) else None
-    workflow_stage = payload.get("workflow_stage")
-    if provider_name == "gmail":
-        progress = payload.get("sync_progress") or payload.get("gmail_progress")
-        if isinstance(progress, dict):
-            progress_payload = _normalize_progress_payload(progress)
-            progress_updated_at = payload.get("sync_progress_updated_at")
-            if isinstance(progress_updated_at, str) and progress_updated_at:
-                progress_payload["updated_at"] = progress_updated_at
-            return progress_payload
-        parse_payload = payload.get("llm_parse_payload")
-        if isinstance(parse_payload, dict) and parse_payload.get("kind") == "gmail":
-            messages = parse_payload.get("messages")
-            total = len(messages) if isinstance(messages, list) else 0
-            if total > 0:
-                return {
-                    "phase": "gmail_llm_queue",
-                    "label": "Queued for Gmail extraction",
-                    "detail": f"{total} emails are ready for LLM extraction.",
-                    "updated_at": payload.get("llm_enqueue_pending_at"),
-                    "current": total,
-                    "total": total,
-                    "percent": 100,
-                    "unit": "emails",
-                }
-    if provider_name in {"ics", "calendar"}:
-        progress = payload.get("sync_progress")
-        if isinstance(progress, dict) and payload.get("workflow_stage") != "LLM_CALENDAR_FANOUT_QUEUED":
-            progress_payload = _normalize_progress_payload(progress)
-            progress_updated_at = payload.get("sync_progress_updated_at")
-            if isinstance(progress_updated_at, str) and progress_updated_at:
-                progress_payload["updated_at"] = progress_updated_at
-            return progress_payload
-        component_counts, latest_component_updated_at = _calendar_component_progress_snapshot(db, request_id=request_id)
-        total_components = sum(component_counts.values())
-        if total_components > 0:
-            completed_components = (
-                component_counts.get(CalendarComponentParseStatus.SUCCEEDED.value, 0)
-                + component_counts.get(CalendarComponentParseStatus.UNRESOLVED.value, 0)
-                + component_counts.get(CalendarComponentParseStatus.FAILED.value, 0)
-            )
-            return {
-                "phase": "calendar_parsing" if completed_components < total_components else "calendar_reducing",
-                "label": "Parsing calendar events" if completed_components < total_components else "Reducing parsed events",
-                "detail": f"{completed_components} of {total_components} calendar events have finished parsing.",
-                "updated_at": latest_component_updated_at,
-                "current": completed_components,
-                "total": total_components,
-                "percent": _percent(completed_components, total_components),
-                "unit": "events",
-            }
-        parse_payload = payload.get("llm_parse_payload")
-        if isinstance(parse_payload, dict) and parse_payload.get("kind") == "calendar_delta":
-            changed_components = parse_payload.get("changed_components")
-            removed_components = parse_payload.get("removed_component_keys")
-            changed_total = len(changed_components) if isinstance(changed_components, list) else 0
-            removed_total = len(removed_components) if isinstance(removed_components, list) else 0
-            if changed_total > 0:
-                return {
-                    "phase": "calendar_queueing",
-                    "label": "Preparing calendar event parses",
-                    "detail": f"{changed_total} calendar events are queued for parsing."
-                    + (f" {removed_total} removals are waiting for reducer apply." if removed_total > 0 else ""),
-                    "updated_at": payload.get("llm_enqueue_pending_at"),
-                    "current": 0,
-                    "total": changed_total,
-                    "percent": 0,
-                    "unit": "events",
-                }
-            if removed_total > 0:
-                return {
-                    "phase": "calendar_removed_only",
-                    "label": "Applying calendar removals",
-                    "detail": f"{removed_total} removed calendar items are waiting for apply.",
-                    "updated_at": payload.get("llm_enqueue_pending_at"),
-                    "current": removed_total,
-                    "total": removed_total,
-                    "percent": 100,
-                    "unit": "events",
-                }
-    if result is not None and apply_log is None:
-        record_count = len(result.records or [])
-        return {
-            "phase": "applying",
-            "label": "Applying extracted results",
-            "detail": f"{record_count} parsed records are being applied to observations and review.",
-            "current": record_count if record_count > 0 else None,
-            "total": record_count if record_count > 0 else None,
-            "percent": 100 if record_count > 0 else None,
-            "unit": "records" if record_count > 0 else None,
-        }
-    if workflow_stage == "LLM_ENQUEUE_PENDING":
-        return {
-            "phase": "llm_enqueue_pending",
-            "label": "Waiting to queue parser",
-            "detail": "Connector fetch finished and the parser queue is the next step.",
             "current": None,
             "total": None,
             "percent": None,
@@ -719,6 +633,7 @@ def build_source_operator_guidance_payload(
     active_payload: dict | None,
     latest_replay_payload: dict | None,
     bootstrap_payload: dict | None,
+    language_code: str | None = None,
 ) -> dict | None:
     if isinstance(active_payload, dict):
         status = str(active_payload.get("status") or "")
@@ -732,45 +647,65 @@ def build_source_operator_guidance_payload(
         )
         age_seconds = _progress_age_seconds(updated_at)
         if status in {"PENDING", "QUEUED"}:
+            message_code = "sources.operator_guidance.sync_queued"
             return {
                 "recommended_action": "continue_review",
                 "severity": "info",
                 "reason_code": "sync_queued",
-                "message": "Source sync is queued. Continue reviewing current changes; more changes may appear later.",
-                "message_code": "sources.operator_guidance.sync_queued",
+                "message": render_structured_text(
+                    code=message_code,
+                    language_code=language_code,
+                    fallback="Source sync is queued. Continue reviewing current changes; more changes may appear later.",
+                ),
+                "message_code": message_code,
                 "message_params": {},
                 "related_request_id": request_id,
                 "progress_age_seconds": age_seconds,
             }
         if status == "RUNNING":
             if stage in {"provider_reduce", "applying"} and age_seconds is not None and age_seconds >= 180:
+                message_code = "sources.operator_guidance.sync_progress_stale"
                 return {
                     "recommended_action": "wait_for_runtime",
                     "severity": "blocking",
                     "reason_code": "sync_progress_stale",
-                    "message": "This source has not reported fresh progress recently. Wait for runtime recovery before making lane-changing decisions.",
-                    "message_code": "sources.operator_guidance.sync_progress_stale",
+                    "message": render_structured_text(
+                        code=message_code,
+                        language_code=language_code,
+                        fallback="This source has not reported fresh progress recently. Wait for runtime recovery before making lane-changing decisions.",
+                    ),
+                    "message_code": message_code,
                     "message_params": {},
                     "related_request_id": request_id,
                     "progress_age_seconds": age_seconds,
                 }
+            message_code = "sources.operator_guidance.sync_running"
             return {
                 "recommended_action": "continue_review_with_caution",
                 "severity": "warning",
                 "reason_code": "sync_running",
-                "message": "This source is still processing. You can review current changes, but new changes may still arrive.",
-                "message_code": "sources.operator_guidance.sync_running",
+                "message": render_structured_text(
+                    code=message_code,
+                    language_code=language_code,
+                    fallback="This source is still processing. You can review current changes, but new changes may still arrive.",
+                ),
+                "message_code": message_code,
                 "message_params": {},
                 "related_request_id": request_id,
                 "progress_age_seconds": age_seconds,
             }
         if status == "FAILED" or stage == "failed":
+            message_code = "sources.operator_guidance.active_sync_failed"
             return {
                 "recommended_action": "investigate_runtime",
                 "severity": "blocking",
                 "reason_code": "active_sync_failed",
-                "message": "The active source sync failed. Investigate runtime health before trusting this lane to be current.",
-                "message_code": "sources.operator_guidance.active_sync_failed",
+                "message": render_structured_text(
+                    code=message_code,
+                    language_code=language_code,
+                    fallback="The active source sync failed. Investigate runtime health before trusting this lane to be current.",
+                ),
+                "message_code": message_code,
                 "message_params": {},
                 "related_request_id": request_id,
                 "progress_age_seconds": age_seconds,
@@ -781,23 +716,33 @@ def build_source_operator_guidance_payload(
             continue
         if str(payload.get("status") or "") != "FAILED":
             continue
+        message_code = "sources.operator_guidance.latest_sync_failed"
         return {
             "recommended_action": "investigate_runtime",
             "severity": "blocking",
             "reason_code": "latest_sync_failed",
-            "message": "The latest source sync failed. Investigate source/runtime health before trusting this lane to be current.",
-            "message_code": "sources.operator_guidance.latest_sync_failed",
+            "message": render_structured_text(
+                code=message_code,
+                language_code=language_code,
+                fallback="The latest source sync failed. Investigate source/runtime health before trusting this lane to be current.",
+            ),
+            "message_code": message_code,
             "message_params": {},
             "related_request_id": str(payload.get("request_id") or "") or None,
             "progress_age_seconds": None,
         }
 
+    message_code = "sources.operator_guidance.source_idle"
     return {
         "recommended_action": "continue_review",
         "severity": "info",
         "reason_code": "source_idle",
-        "message": "No active sync is running. Continue reviewing changes.",
-        "message_code": "sources.operator_guidance.source_idle",
+        "message": render_structured_text(
+            code=message_code,
+            language_code=language_code,
+            fallback="No active sync is running. Continue reviewing changes.",
+        ),
+        "message_code": message_code,
         "message_params": {},
         "related_request_id": None,
         "progress_age_seconds": None,
