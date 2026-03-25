@@ -41,7 +41,7 @@ def empty_llm_usage_summary() -> dict[str, Any]:
         "output_tokens": 0,
         "reasoning_tokens": 0,
         "total_tokens": 0,
-        "api_modes": {},
+        "protocols": {},
         "models": {},
         "task_counts": {},
         "tasks": {},
@@ -69,9 +69,9 @@ def merge_llm_usage_summary(
             continue
         summary[key] += max(int(value), 0)
 
-    api_mode = str(result.api_mode or "").strip()
-    if api_mode:
-        _increment_count(summary["api_modes"], api_mode)
+    protocol = str(result.protocol or "").strip()
+    if protocol:
+        _increment_count(summary["protocols"], protocol)
     model = str(result.model or "").strip()
     if model:
         _increment_count(summary["models"], model)
@@ -83,7 +83,7 @@ def merge_llm_usage_summary(
             result=result,
             normalized_usage=normalized_usage,
             model=model,
-            api_mode=api_mode,
+            protocol=protocol,
         )
 
     summary["last_observed_at"] = datetime.now(UTC).isoformat()
@@ -133,7 +133,7 @@ def _coerce_summary(existing: dict[str, Any] | None) -> dict[str, Any]:
             summary[key] = max(int(existing.get(key) or 0), 0)
         except Exception:
             summary[key] = 0
-    for mapping_key in ("api_modes", "models", "task_counts"):
+    for mapping_key in ("protocols", "models", "task_counts"):
         summary[mapping_key] = _coerce_counter_map(existing.get(mapping_key))
     tasks = existing.get("tasks")
     if isinstance(tasks, dict):
@@ -160,7 +160,7 @@ def _coerce_task_summary(existing: dict[str, Any] | None) -> dict[str, Any]:
         "reasoning_tokens": 0,
         "total_tokens": 0,
         "models": {},
-        "api_modes": {},
+        "protocols": {},
     }
     if not isinstance(existing, dict):
         return task_summary
@@ -181,7 +181,7 @@ def _coerce_task_summary(existing: dict[str, Any] | None) -> dict[str, Any]:
         except Exception:
             task_summary[key] = 0
     task_summary["models"] = _coerce_counter_map(existing.get("models"))
-    task_summary["api_modes"] = _coerce_counter_map(existing.get("api_modes"))
+    task_summary["protocols"] = _coerce_counter_map(existing.get("protocols"))
     return task_summary
 
 
@@ -191,7 +191,7 @@ def _merge_task_summary(
     result: LlmInvokeResult,
     normalized_usage: dict[str, int | None],
     model: str,
-    api_mode: str,
+    protocol: str,
 ) -> dict[str, Any]:
     task_summary = _coerce_task_summary(existing)
     task_summary["successful_call_count"] += 1
@@ -205,8 +205,8 @@ def _merge_task_summary(
         task_summary[key] += max(int(value), 0)
     if model:
         _increment_count(task_summary["models"], model)
-    if api_mode:
-        _increment_count(task_summary["api_modes"], api_mode)
+    if protocol:
+        _increment_count(task_summary["protocols"], protocol)
     return task_summary
 
 
@@ -247,7 +247,7 @@ def present_llm_usage_summary(summary: dict[str, Any] | None) -> dict[str, Any] 
         "output_tokens": max(int(normalized.get("output_tokens") or 0), 0),
         "reasoning_tokens": max(int(normalized.get("reasoning_tokens") or 0), 0),
         "total_tokens": max(int(normalized.get("total_tokens") or 0), 0),
-        "api_modes": dict(normalized.get("api_modes") or {}),
+        "protocols": dict(normalized.get("protocols") or {}),
         "models": dict(normalized.get("models") or {}),
         "task_counts": dict(normalized.get("task_counts") or {}),
         "last_observed_at": normalized.get("last_observed_at"),

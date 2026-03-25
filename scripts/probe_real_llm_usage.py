@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.input import InputSource
 from app.db.session import get_session_factory
-from app.modules.common.source_term_window import parse_iso_datetime, parse_source_term_window, source_timezone_name
+from app.modules.common.source_monitoring_window import parse_iso_datetime, parse_source_monitoring_window, source_timezone_name
 from app.modules.runtime.connectors.gmail_fetcher import _known_course_tokens_for_source, matches_gmail_source_filters
 from app.modules.runtime.connectors.llm_parsers.calendar_parser import _extract_source_facts
 from app.modules.runtime.connectors.llm_parsers.schemas import (
@@ -212,7 +212,7 @@ def collect_calendar_samples(*, count: int, rng: random.Random) -> list[dict[str
             raise RuntimeError("calendar source is missing url")
         content = httpx.get(url, timeout=30).content
         calendar = Calendar.from_ical(content)
-        term_window = parse_source_term_window(source, required=False)
+        monitoring_window = parse_source_monitoring_window(source, required=False)
         timezone_name = source_timezone_name(source)
         candidates: list[dict[str, Any]] = []
         index = 0
@@ -222,7 +222,7 @@ def collect_calendar_samples(*, count: int, rng: random.Random) -> list[dict[str
             source_facts = _extract_source_facts(component=component, source_id=source.id, index=index)
             index += 1
             dtstart = parse_iso_datetime(source_facts.get("source_dtstart_utc"))
-            if term_window is not None and not term_window.contains_datetime(dtstart, timezone_name=timezone_name):
+            if monitoring_window is not None and not monitoring_window.contains_datetime(dtstart, timezone_name=timezone_name):
                 continue
             candidates.append(source_facts)
         if len(candidates) < count:
@@ -247,10 +247,10 @@ def collect_gmail_samples(
             raise RuntimeError("gmail source is missing refresh_token")
         client = GmailClient()
         access_token = client.refresh_access_token(refresh_token=refresh_token).access_token
-        term_window = parse_source_term_window(source, required=False)
-        if term_window is None:
-            raise RuntimeError("gmail source is missing term window")
-        start_date, end_exclusive = term_window.gmail_query_bounds()
+        monitoring_window = parse_source_monitoring_window(source, required=False)
+        if monitoring_window is None:
+            raise RuntimeError("gmail source is missing monitoring window")
+        start_date, end_exclusive = monitoring_window.gmail_query_bounds()
         ids = client.list_message_ids(
             access_token=access_token,
             query=f"after:{start_date} before:{end_exclusive}",
@@ -263,7 +263,7 @@ def collect_gmail_samples(
             if not matches_gmail_source_filters(
                 metadata=metadata,
                 config=source.config.config_json if source.config else {},
-                term_window=term_window,
+                term_window=monitoring_window,
                 timezone_name=source_timezone_name(source),
                 known_course_tokens=known_tokens,
             ):

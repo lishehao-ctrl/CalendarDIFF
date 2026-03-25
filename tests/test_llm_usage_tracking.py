@@ -43,7 +43,7 @@ def test_normalize_llm_usage_reads_cache_and_reasoning_fields() -> None:
 
 def test_record_sync_request_llm_usage_persists_summary_on_sync_request(db_session) -> None:
     user = User(
-        notify_email="usage-tracking@example.com",
+        email="usage-tracking@example.com",
         password_hash="hash",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
@@ -87,8 +87,8 @@ def test_record_sync_request_llm_usage_persists_summary_on_sync_request(db_sessi
     result = LlmInvokeResult(
         json_object={"mode": "atomic"},
         provider_id="env-default",
+        protocol="responses",
         model="qwen3.5-plus",
-        api_mode="responses",
         latency_ms=420,
         response_id="resp-1",
         upstream_request_id="upstream-1",
@@ -125,6 +125,6 @@ def test_record_sync_request_llm_usage_persists_summary_on_sync_request(db_sessi
     assert summary["output_tokens"] == 120
     assert summary["reasoning_tokens"] == 60
     assert summary["total_tokens"] == 1120
-    assert summary["api_modes"] == {"responses": 1}
+    assert summary["protocols"] == {"responses": 1}
     assert summary["models"] == {"qwen3.5-plus": 1}
     assert summary["task_counts"] == {"gmail_purpose_mode_classify": 1}

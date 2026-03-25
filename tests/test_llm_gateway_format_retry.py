@@ -3,11 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pytest
+from pydantic import BaseModel
 
 import app.modules.llm_gateway.gateway as gateway_module
+import app.modules.llm_gateway.route_registry as route_registry_module
 from app.modules.llm_gateway.contracts import LlmGatewayError, LlmInvokeRequest, ResolvedLlmProfile
 from app.modules.llm_gateway.gateway import LlmGateway
 from app.modules.llm_gateway.retry_policy import LLM_FORMAT_MAX_ATTEMPTS
+from app.modules.llm_gateway.route_registry import ResolvedLlmRoute
+from app.modules.llm_gateway.structured import invoke_llm_typed
 
 
 @dataclass
@@ -27,9 +31,9 @@ class SequencedTransport:
 def _profile() -> ResolvedLlmProfile:
     return ResolvedLlmProfile(
         provider_id="env-default",
-        vendor="openai-compatible",
+        vendor="openai",
+        protocol="responses",
         base_url="https://example.com/v1",
-        api_mode="responses",
         model="test-model",
         api_key="test-key",
         session_cache_enabled=False,
@@ -58,7 +62,7 @@ def _gateway_error(*, code: str, retryable: bool = False) -> LlmGatewayError:
         message=code,
         retryable=retryable,
         provider_id="env-default",
-        api_mode="responses",
+        protocol="responses",
     )
 
 
@@ -97,6 +101,11 @@ class CapturingTransport:
         return _success_response()
 
 
+class _StrictPayload(BaseModel):
+    ok: bool
+    count: int
+
+
 def test_gateway_retries_schema_invalid_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     transport = SequencedTransport(
         outcomes=[
@@ -107,9 +116,9 @@ def test_gateway_retries_schema_invalid_then_succeeds(monkeypatch: pytest.Monkey
     )
     gateway = LlmGateway(transport=transport)  # type: ignore[arg-type]
     monkeypatch.setattr(
-        gateway_module,
+        route_registry_module,
         "resolve_llm_profile",
-        lambda db, source_id, explicit_api_mode=None: _profile(),
+        lambda db, source_id, explicit_provider_id=None, explicit_protocol=None: _profile(),
     )
 
     result = gateway.invoke_json(None, invoke_request=_invoke_request())  # type: ignore[arg-type]
@@ -124,9 +133,9 @@ def test_gateway_retries_empty_output_until_max_then_raises(monkeypatch: pytest.
     )
     gateway = LlmGateway(transport=transport)  # type: ignore[arg-type]
     monkeypatch.setattr(
-        gateway_module,
+        route_registry_module,
         "resolve_llm_profile",
-        lambda db, source_id, explicit_api_mode=None: _profile(),
+        lambda db, source_id, explicit_provider_id=None, explicit_protocol=None: _profile(),
     )
 
     with pytest.raises(LlmGatewayError) as exc_info:
@@ -142,9 +151,9 @@ def test_gateway_does_not_retry_non_format_error(monkeypatch: pytest.MonkeyPatch
     )
     gateway = LlmGateway(transport=transport)  # type: ignore[arg-type]
     monkeypatch.setattr(
-        gateway_module,
+        route_registry_module,
         "resolve_llm_profile",
-        lambda db, source_id, explicit_api_mode=None: _profile(),
+        lambda db, source_id, explicit_provider_id=None, explicit_protocol=None: _profile(),
     )
 
     with pytest.raises(LlmGatewayError) as exc_info:
@@ -154,17 +163,17 @@ def test_gateway_does_not_retry_non_format_error(monkeypatch: pytest.MonkeyPatch
     assert transport.calls == 1
 
 
-def test_gateway_switches_base_url_when_api_mode_override_changes(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gateway_switches_base_url_when_protocol_override_changes(monkeypatch: pytest.MonkeyPatch) -> None:
     transport = CapturingTransport()
     gateway = LlmGateway(transport=transport)  # type: ignore[arg-type]
     monkeypatch.setattr(
-        gateway_module,
+        route_registry_module,
         "resolve_llm_profile",
-        lambda db, source_id, explicit_api_mode=None: ResolvedLlmProfile(
+        lambda db, source_id, explicit_provider_id=None, explicit_protocol=None: ResolvedLlmProfile(
             provider_id="env-default",
-            vendor="openai-compatible",
+            vendor="dashscope_openai",
+            protocol=explicit_protocol or "chat_completions",
             base_url="https://dashscope-us.aliyuncs.com/compatible-mode/v1",
-            api_mode=explicit_api_mode or "chat_completions",
             model="test-model",
             api_key="test-key",
             session_cache_enabled=False,
@@ -176,9 +185,9 @@ def test_gateway_switches_base_url_when_api_mode_override_changes(monkeypatch: p
     monkeypatch.setattr(
         gateway_module,
         "resolve_llm_base_url",
-        lambda *, api_mode, fallback_base_url=None: (
+        lambda *, protocol, fallback_base_url=None, provider_id=None: (
             "https://dashscope-us.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1"
-            if api_mode == "responses"
+            if protocol == "responses"
             else "https://dashscope-us.aliyuncs.com/compatible-mode/v1"
         ),
     )
@@ -194,12 +203,12 @@ def test_gateway_switches_base_url_when_api_mode_override_changes(monkeypatch: p
             source_id=1,
             request_id="req-1",
             source_provider="gmail",
-            api_mode_override="responses",
+            protocol_override="responses",
         ),
     )  # type: ignore[arg-type]
 
     assert transport.profile is not None
-    assert transport.profile.api_mode == "responses"
+    assert transport.profile.protocol == "responses"
     assert transport.profile.base_url == "https://dashscope-us.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1"
 
 
@@ -208,9 +217,9 @@ def test_gateway_records_sync_request_usage_after_success(monkeypatch: pytest.Mo
     gateway = LlmGateway(transport=transport)  # type: ignore[arg-type]
     captured: dict[str, object] = {}
     monkeypatch.setattr(
-        gateway_module,
+        route_registry_module,
         "resolve_llm_profile",
-        lambda db, source_id, explicit_api_mode=None: _profile(),
+        lambda db, source_id, explicit_provider_id=None, explicit_protocol=None: _profile(),
     )
     monkeypatch.setattr(
         gateway_module,
@@ -223,3 +232,149 @@ def test_gateway_records_sync_request_usage_after_success(monkeypatch: pytest.Mo
     assert result.json_object == {"ok": True}
     assert captured["invoke_request"] == _invoke_request()
     assert captured["result"] == result
+
+
+def test_invoke_llm_typed_retries_model_validation_until_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"count": 0}
+
+    def fake_invoke(db, *, invoke_request):  # type: ignore[no-untyped-def]
+        del db
+        del invoke_request
+        calls["count"] += 1
+        if calls["count"] < 3:
+            return gateway_module.LlmInvokeResult(
+                json_object={"ok": True},
+                provider_id="env-default",
+                protocol="responses",
+                model="test-model",
+                latency_ms=5,
+                response_id=f"resp-{calls['count']}",
+                raw_usage={},
+            )
+        return gateway_module.LlmInvokeResult(
+            json_object={"ok": True, "count": 3},
+            provider_id="env-default",
+            protocol="responses",
+            model="test-model",
+            latency_ms=5,
+            response_id="resp-3",
+            raw_usage={},
+        )
+
+    monkeypatch.setattr("app.modules.llm_gateway.structured.invoke_llm_json", fake_invoke)
+
+    result = invoke_llm_typed(
+        None,  # type: ignore[arg-type]
+        invoke_request=_invoke_request(),
+        response_model=_StrictPayload,
+        validation_label="strict_payload",
+    )
+
+    assert isinstance(result.value, _StrictPayload)
+    assert result.value.count == 3
+    assert calls["count"] == 3
+
+
+def test_gateway_uses_agent_profile_family_when_requested(monkeypatch: pytest.MonkeyPatch) -> None:
+    transport = CapturingTransport()
+    gateway = LlmGateway(transport=transport)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        route_registry_module,
+        "resolve_agent_llm_profile",
+        lambda explicit_protocol=None, explicit_provider_id=None: ResolvedLlmProfile(
+            provider_id="agent-env-default",
+            vendor="openai",
+            protocol=explicit_protocol or "responses",
+            base_url="https://agent.example.com/v1",
+            model="agent-model",
+            api_key="test-key",
+            session_cache_enabled=False,
+            timeout_seconds=12.0,
+            max_retries=0,
+            max_input_chars=12000,
+        ),
+    )
+    monkeypatch.setattr(
+        route_registry_module,
+        "resolve_llm_profile",
+        lambda db, source_id, explicit_provider_id=None, explicit_protocol=None: _profile(),
+    )
+
+    gateway.invoke_json(
+        None,
+        invoke_request=LlmInvokeRequest(
+            task_name="agent_task",
+            system_prompt="Return JSON object only.",
+            user_payload={"message": {"subject": "hello"}},
+            output_schema_name="AnyObject",
+            output_schema_json={"type": "object"},
+            profile_family="agent",
+            protocol_override="responses",
+        ),
+    )  # type: ignore[arg-type]
+
+    assert transport.profile is not None
+    assert transport.profile.provider_id == "agent-env-default"
+    assert transport.profile.model == "agent-model"
+
+
+def test_gateway_falls_back_to_second_route_on_retryable_upstream_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    primary = ResolvedLlmRoute(
+        route_id="ingestion:env-default:responses:primary",
+        profile=_profile(),
+        is_fallback=False,
+    )
+    fallback = ResolvedLlmRoute(
+        route_id="ingestion:env-default:chat_completions:fallback",
+        profile=ResolvedLlmProfile(
+            provider_id="env-default",
+            vendor="openai",
+            protocol="chat_completions",
+            base_url="https://example.com/v1",
+            model="fallback-model",
+            api_key="test-key",
+            session_cache_enabled=False,
+            timeout_seconds=12.0,
+            max_retries=0,
+            max_input_chars=12000,
+        ),
+        is_fallback=True,
+    )
+
+    class _FallbackTransport:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.profiles: list[ResolvedLlmProfile] = []
+
+        def post_json(self, **kwargs: object) -> tuple[dict, int, str | None]:
+            profile = kwargs.get("profile")
+            assert isinstance(profile, ResolvedLlmProfile)
+            self.profiles.append(profile)
+            self.calls += 1
+            if self.calls == 1:
+                raise _gateway_error(code="parse_llm_upstream_error", retryable=True)
+            return (
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": "{\"ok\":true}",
+                            }
+                        }
+                    ],
+                    "usage": {"total_tokens": 1},
+                },
+                7,
+                "upstream-2",
+            )
+
+    transport = _FallbackTransport()
+    gateway = LlmGateway(transport=transport)  # type: ignore[arg-type]
+    monkeypatch.setattr(gateway_module, "resolve_llm_routes", lambda db, invoke_request: [primary, fallback])
+
+    result = gateway.invoke_json(None, invoke_request=_invoke_request())  # type: ignore[arg-type]
+
+    assert result.json_object == {"ok": True}
+    assert result.route_id == "ingestion:env-default:chat_completions:fallback"
+    assert [profile.protocol for profile in transport.profiles] == ["responses", "chat_completions"]

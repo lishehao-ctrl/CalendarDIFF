@@ -6,12 +6,12 @@ from app.modules.llm_gateway.contracts import LlmInvokeRequest, ResolvedLlmProfi
 from app.modules.llm_gateway.transport_openai_compat import OpenAICompatTransport
 
 
-def _profile(*, session_cache_enabled: bool) -> ResolvedLlmProfile:
+def _profile(*, session_cache_enabled: bool, vendor: str = "openai", protocol: str = "responses") -> ResolvedLlmProfile:
     return ResolvedLlmProfile(
         provider_id="env-default",
-        vendor="openai-compatible",
+        vendor=vendor,  # type: ignore[arg-type]
+        protocol=protocol,  # type: ignore[arg-type]
         base_url="https://example.com/v1",
-        api_mode="responses",
         model="test-model",
         api_key="test-key",
         session_cache_enabled=session_cache_enabled,
@@ -149,7 +149,7 @@ def test_transport_adds_session_cache_header_when_enabled(monkeypatch) -> None:
     monkeypatch.setattr("app.modules.llm_gateway.transport_openai_compat.httpx.Client", _FakeClient)
     transport = OpenAICompatTransport()
     transport.post_json(
-        profile=_profile(session_cache_enabled=True),
+        profile=_profile(session_cache_enabled=True, vendor="dashscope_openai"),
         payload={"model": "test-model", "input": "hello"},
         request_context={"request_id": "req-1"},
     )
@@ -174,14 +174,14 @@ def test_chat_completions_payload_places_cache_prefix_at_start() -> None:
             source_id=1,
             request_id="req-1",
             source_provider="gmail",
-            api_mode_override="chat_completions",
+            protocol_override="chat_completions",
             session_cache_mode="enable",
         ),
         profile=ResolvedLlmProfile(
             provider_id="env-default",
-            vendor="openai-compatible",
+            vendor="openai",
+            protocol="chat_completions",
             base_url="https://example.com/v1",
-            api_mode="chat_completions",
             model="test-model",
             api_key="test-key",
             session_cache_enabled=False,
@@ -214,14 +214,14 @@ def test_chat_completions_task_prompt_keeps_task_specific_tail_outside_cache_pre
             source_id=1,
             request_id="req-1",
             source_provider="gmail",
-            api_mode_override="chat_completions",
+            protocol_override="chat_completions",
             session_cache_mode="enable",
         ),
         profile=ResolvedLlmProfile(
             provider_id="env-default",
-            vendor="openai-compatible",
+            vendor="openai",
+            protocol="chat_completions",
             base_url="https://example.com/v1",
-            api_mode="chat_completions",
             model="test-model",
             api_key="test-key",
             session_cache_enabled=False,
@@ -259,14 +259,14 @@ def test_chat_completions_can_cache_task_prompt_and_leave_message_body_in_tail()
             source_id=1,
             request_id="req-1",
             source_provider="gmail",
-            api_mode_override="chat_completions",
+            protocol_override="chat_completions",
             session_cache_mode="enable",
         ),
         profile=ResolvedLlmProfile(
             provider_id="env-default",
-            vendor="openai-compatible",
+            vendor="dashscope_openai",
+            protocol="chat_completions",
             base_url="https://example.com/v1",
-            api_mode="chat_completions",
             model="test-model",
             api_key="test-key",
             session_cache_enabled=False,

@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 
 from app.modules.llm_gateway.contracts import (
-    LlmApiModeLiteral,
     LlmGatewayError,
     LlmInvokeRequest,
+    LlmProtocolLiteral,
     ResolvedLlmProfile,
 )
 from app.modules.llm_gateway.json_contract import parse_json_object_from_text
@@ -40,7 +40,7 @@ def extract_responses_json(
     *,
     response_json: dict,
     provider_id: str,
-    api_mode: LlmApiModeLiteral,
+    protocol: LlmProtocolLiteral,
 ) -> tuple[dict, dict, str | None]:
     error_payload = response_json.get("error")
     if isinstance(error_payload, dict):
@@ -50,7 +50,7 @@ def extract_responses_json(
             message=message,
             retryable=False,
             provider_id=provider_id,
-            api_mode=api_mode,
+            protocol=protocol,
         )
 
     output = response_json.get("output")
@@ -61,7 +61,7 @@ def extract_responses_json(
     payload = parse_json_object_from_text(
         raw_text=raw_text,
         provider_id=provider_id,
-        api_mode=api_mode,
+        protocol=protocol,
     )
     usage = response_json.get("usage")
     if not isinstance(usage, dict):

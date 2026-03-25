@@ -7,9 +7,9 @@ from app.modules.llm_gateway.timeout_policy import estimate_input_tokens, with_d
 def _profile(*, timeout_seconds: float = 30.0) -> ResolvedLlmProfile:
     return ResolvedLlmProfile(
         provider_id="env-default",
-        vendor="openai-compatible",
+        vendor="openai",
+        protocol="responses",
         base_url="https://example.com/v1",
-        api_mode="responses",
         model="test-model",
         api_key="test-key",
         session_cache_enabled=False,

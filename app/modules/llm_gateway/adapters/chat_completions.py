@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from app.modules.llm_gateway.contracts import LlmApiModeLiteral, LlmInvokeRequest, ResolvedLlmProfile
+from app.modules.llm_gateway.contracts import LlmInvokeRequest, LlmProtocolLiteral, LlmStreamRequest, ResolvedLlmProfile
 from app.modules.llm_gateway.json_contract import parse_json_object_from_text
 
 
@@ -68,7 +68,7 @@ def extract_chat_completions_json(
     *,
     response_json: dict,
     provider_id: str,
-    api_mode: LlmApiModeLiteral,
+    protocol: LlmProtocolLiteral,
 ) -> tuple[dict, dict, str | None]:
     choices = response_json.get("choices")
     if not isinstance(choices, list) or not choices:
@@ -84,12 +84,27 @@ def extract_chat_completions_json(
     payload = parse_json_object_from_text(
         raw_text=raw_text,
         provider_id=provider_id,
-        api_mode=api_mode,
+        protocol=protocol,
     )
     usage = response_json.get("usage")
     if not isinstance(usage, dict):
         usage = {}
     return payload, usage, None
+
+
+def build_chat_completions_stream_payload(
+    *,
+    stream_request: LlmStreamRequest,
+    profile: ResolvedLlmProfile,
+) -> dict:
+    return {
+        "model": profile.model,
+        "temperature": stream_request.temperature,
+        "messages": [
+            {"role": "system", "content": stream_request.system_prompt.strip()},
+            {"role": "user", "content": _build_stream_user_prompt(stream_request=stream_request)},
+        ],
+    }
 
 
 def _build_system_prompt(*, invoke_request: LlmInvokeRequest) -> str:
@@ -196,6 +211,19 @@ def _build_user_prompt(*, invoke_request: LlmInvokeRequest, input_json: str) -> 
         input_json,
     ]
     return "\n".join(lines)
+
+
+def _build_stream_user_prompt(*, stream_request: LlmStreamRequest) -> str:
+    if isinstance(stream_request.shared_user_payload, dict):
+        return json.dumps(
+            {
+                "message_context": stream_request.shared_user_payload,
+                "task_input": stream_request.user_payload,
+            },
+            ensure_ascii=True,
+            separators=(",", ":"),
+        )
+    return json.dumps(stream_request.user_payload, ensure_ascii=True, separators=(",", ":"))
 
 
 def _truncate_prefix_payload(*, payload: dict, max_chars: int) -> str:

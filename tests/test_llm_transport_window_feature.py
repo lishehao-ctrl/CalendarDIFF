@@ -8,8 +8,10 @@ from app.modules.llm_gateway.contracts import LlmInvokeRequest, LlmInvokeResult,
 from app.modules.llm_gateway.gateway import LlmGateway
 from app.modules.llm_gateway.runtime_control import (
     reset_llm_invoke_observer,
+    reset_llm_trace_observer,
     reset_session_cache_mode_override,
     set_llm_invoke_observer,
+    set_llm_trace_observer,
     set_session_cache_mode_override,
 )
 from app.modules.llm_gateway.transport_openai_compat import OpenAICompatTransport
@@ -20,9 +22,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 def _profile(*, session_cache_enabled: bool) -> ResolvedLlmProfile:
     return ResolvedLlmProfile(
         provider_id="env-default",
-        vendor="openai-compatible",
+        vendor="openai",
+        protocol="responses",
         base_url="https://example.com/v1",
-        api_mode="responses",
         model="test-model",
         api_key="test-key",
         session_cache_enabled=session_cache_enabled,
@@ -114,8 +116,8 @@ def test_gateway_respects_session_cache_override_and_observer(monkeypatch) -> No
             )
 
     monkeypatch.setattr(
-        "app.modules.llm_gateway.gateway.resolve_llm_profile",
-        lambda db, source_id, explicit_api_mode=None: _profile(session_cache_enabled=False),
+        "app.modules.llm_gateway.route_registry.resolve_llm_profile",
+        lambda db, source_id, explicit_provider_id=None, explicit_protocol=None: _profile(session_cache_enabled=False),
     )
 
     gateway = LlmGateway(transport=_FakeTransport())
@@ -129,6 +131,46 @@ def test_gateway_respects_session_cache_override_and_observer(monkeypatch) -> No
 
     assert result.response_id == "resp-1"
     assert observed == [("gmail_purpose_mode_classify", "resp-1")]
+
+
+def test_gateway_emits_trace_event(monkeypatch) -> None:
+    observed: list[dict] = []
+
+    class _FakeTransport:
+        def post_json(self, *, profile, payload, request_context):  # noqa: ANN001
+            return (
+                {"output": [{"type": "message", "content": [{"type": "output_text", "text": "{}"}]}], "usage": {}, "id": "resp-1"},
+                12,
+                "upstream-1",
+            )
+
+    monkeypatch.setattr(
+        "app.modules.llm_gateway.gateway.resolve_llm_routes",
+        lambda db, invoke_request: [
+            type(
+                "Route",
+                (),
+                {
+                    "route_id": "ingestion:env-default:responses:primary",
+                    "profile": _profile(session_cache_enabled=False),
+                    "is_fallback": False,
+                },
+            )()
+        ],
+    )
+
+    gateway = LlmGateway(transport=_FakeTransport())
+    trace_token = set_llm_trace_observer(lambda event: observed.append(event.as_payload()))
+    try:
+        gateway.invoke_json(db=None, invoke_request=_request())  # type: ignore[arg-type]
+    finally:
+        reset_llm_trace_observer(trace_token)
+
+    assert len(observed) == 1
+    assert observed[0]["task_name"] == "gmail_purpose_mode_classify"
+    assert observed[0]["route_id"] == "ingestion:env-default:responses:primary"
+    assert observed[0]["success"] is True
+    assert observed[0]["response_id"] == "resp-1"
 
 
 

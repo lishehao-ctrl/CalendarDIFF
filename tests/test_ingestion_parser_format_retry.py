@@ -17,7 +17,7 @@ class DummyInvokeResult:
     json_object: dict
     model: str = "test-model"
     provider_id: str = "env-default"
-    api_mode: str = "responses"
+    protocol: str = "responses"
     latency_ms: int = 1
     response_id: str | None = "resp-test"
     upstream_request_id: str | None = None

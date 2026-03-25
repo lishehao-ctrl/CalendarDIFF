@@ -7,6 +7,10 @@ from collections.abc import Iterator, Mapping
 
 import httpx
 
+from app.modules.llm_gateway.adapters.gemini_generate_content import (
+    extract_gemini_generate_content_json,
+    extract_gemini_text,
+)
 from app.modules.llm_gateway.contracts import (
     LlmGatewayError,
     LlmProtocolLiteral,
@@ -18,7 +22,7 @@ from app.modules.llm_gateway.request_limiter import get_global_request_limiter
 logger = logging.getLogger(__name__)
 
 
-class OpenAICompatTransport:
+class GeminiNativeTransport:
     def post_json(
         self,
         *,
@@ -33,22 +37,8 @@ class OpenAICompatTransport:
                 return self._post_json_once(profile=profile, payload=payload, request_context=request_context)
             except LlmGatewayError as exc:
                 last_error = exc
-                if not exc.retryable:
+                if not exc.retryable or attempt >= attempts:
                     break
-                if attempt < attempts:
-                    logger.info(
-                        "llm_transport.retry request_id=%s source_id=%s task_name=%s provider_id=%s model=%s "
-                        "attempt=%s/%s error_code=%s retryable=%s",
-                        _ctx(request_context, "request_id"),
-                        _ctx(request_context, "source_id"),
-                        _ctx(request_context, "task_name"),
-                        profile.provider_id,
-                        profile.model,
-                        attempt,
-                        attempts,
-                        exc.code,
-                        exc.retryable,
-                    )
         assert last_error is not None
         raise last_error
 
@@ -59,18 +49,7 @@ class OpenAICompatTransport:
         payload: dict,
         request_context: Mapping[str, object] | None = None,
     ) -> Iterator[LlmStreamEvent]:
-        if profile.protocol != "chat_completions":
-            raise LlmGatewayError(
-                code="parse_llm_stream_unsupported",
-                message=f"streaming is not supported for protocol '{profile.protocol}'",
-                retryable=False,
-                provider_id=profile.provider_id,
-                protocol=profile.protocol,
-            )
         acquire_result = get_global_request_limiter().acquire()
-        endpoint = build_openai_compat_endpoint(base_url=profile.base_url, protocol=profile.protocol)
-        headers = _build_headers(profile=profile)
-        timeout = _build_timeout(profile=profile)
         if acquire_result.waited_ms > 0:
             logger.info(
                 "llm_transport.window_wait request_id=%s source_id=%s task_name=%s provider_id=%s model=%s "
@@ -85,16 +64,17 @@ class OpenAICompatTransport:
                 acquire_result.window_seconds,
                 acquire_result.max_requests,
             )
+        endpoint = build_gemini_native_endpoint(base_url=profile.base_url, model=profile.model, stream=True)
+        headers = {"x-goog-api-key": profile.api_key, "Content-Type": "application/json"}
+        timeout = _build_timeout(profile=profile)
         with httpx.Client(timeout=timeout, follow_redirects=True) as client:
             started = time.perf_counter()
             try:
-                stream_payload = dict(_merge_extra_body(payload=payload, profile=profile))
-                stream_payload["stream"] = True
-                with client.stream("POST", endpoint, headers=headers, json=stream_payload) as response:
+                with client.stream("POST", endpoint, headers=headers, json=_merge_extra_body(payload=payload, profile=profile)) as response:
                     response.raise_for_status()
                     upstream_request_id = response.headers.get("x-request-id") or response.headers.get("request-id")
-                    response_id: str | None = None
                     final_usage: dict = {}
+                    response_id: str | None = None
                     for line in response.iter_lines():
                         text = (line or "").strip()
                         if not text:
@@ -106,23 +86,23 @@ class OpenAICompatTransport:
                         chunk_json = json.loads(text)
                         if not isinstance(chunk_json, dict):
                             continue
-                        response_id = _extract_response_id(chunk_json) or response_id
-                        usage = chunk_json.get("usage")
+                        response_id = _response_id_text(chunk_json) or response_id
+                        usage = chunk_json.get("usageMetadata")
                         if isinstance(usage, dict):
                             final_usage = usage
-                        delta_text = _extract_openai_chat_delta(chunk_json)
-                        if delta_text:
+                        delta = _extract_delta_text(chunk_json)
+                        if delta:
                             yield LlmStreamEvent(
                                 event_type="delta",
                                 provider_id=profile.provider_id,
                                 vendor=profile.vendor,
                                 protocol=profile.protocol,
                                 model=profile.model,
-                                text_delta=delta_text,
+                                text_delta=delta,
                                 response_id=response_id,
                                 upstream_request_id=upstream_request_id,
                                 raw_usage={},
-                                vendor_event_type="chat.completions.chunk",
+                                vendor_event_type="gemini_candidate_chunk",
                             )
                     latency_ms = max(int((time.perf_counter() - started) * 1000), 0)
                     yield LlmStreamEvent(
@@ -134,11 +114,10 @@ class OpenAICompatTransport:
                         response_id=response_id,
                         upstream_request_id=upstream_request_id,
                         raw_usage=final_usage,
-                        vendor_event_type="chat.completions.completed",
+                        vendor_event_type="gemini_stream_completed",
                     )
                     logger.info(
-                        "llm_transport.stream_ok request_id=%s source_id=%s task_name=%s provider_id=%s model=%s "
-                        "latency_ms=%s endpoint=%s",
+                        "llm_transport.stream_ok request_id=%s source_id=%s task_name=%s provider_id=%s model=%s latency_ms=%s endpoint=%s",
                         _ctx(request_context, "request_id"),
                         _ctx(request_context, "source_id"),
                         _ctx(request_context, "task_name"),
@@ -148,18 +127,17 @@ class OpenAICompatTransport:
                         endpoint,
                     )
             except httpx.TimeoutException as exc:
-                raise _transport_error("parse_llm_timeout", f"llm request timeout: {exc}", True, profile, None) from exc
+                raise _stream_error("parse_llm_timeout", str(exc), True, profile, 0) from exc
             except httpx.NetworkError as exc:
-                raise _transport_error("parse_llm_upstream_error", f"llm network error: {exc}", True, profile, None) from exc
+                raise _stream_error("parse_llm_upstream_error", f"llm network error: {exc}", True, profile, 0) from exc
             except httpx.HTTPStatusError as exc:
-                status_code = exc.response.status_code
-                retryable = status_code == 429 or status_code >= 500
-                raise _transport_error(
+                retryable = exc.response.status_code == 429 or exc.response.status_code >= 500
+                raise _stream_error(
                     "parse_llm_upstream_error",
-                    f"llm upstream http error: {status_code}",
+                    f"llm upstream http error: {exc.response.status_code}",
                     retryable,
                     profile,
-                    status_code,
+                    exc.response.status_code,
                 ) from exc
 
     def _post_json_once(
@@ -170,8 +148,8 @@ class OpenAICompatTransport:
         request_context: Mapping[str, object] | None,
     ) -> tuple[dict, int, str | None]:
         acquire_result = get_global_request_limiter().acquire()
-        endpoint = build_openai_compat_endpoint(base_url=profile.base_url, protocol=profile.protocol)
-        headers = _build_headers(profile=profile)
+        endpoint = build_gemini_native_endpoint(base_url=profile.base_url, model=profile.model, stream=False)
+        headers = {"x-goog-api-key": profile.api_key, "Content-Type": "application/json"}
         timeout = _build_timeout(profile=profile)
         if acquire_result.waited_ms > 0:
             logger.info(
@@ -193,13 +171,13 @@ class OpenAICompatTransport:
                 response = client.post(endpoint, headers=headers, json=_merge_extra_body(payload=payload, profile=profile))
             response.raise_for_status()
         except httpx.TimeoutException as exc:
-            raise _transport_error("parse_llm_timeout", f"llm request timeout: {exc}", True, profile, None) from exc
+            raise _stream_error("parse_llm_timeout", f"llm request timeout: {exc}", True, profile, None) from exc
         except httpx.NetworkError as exc:
-            raise _transport_error("parse_llm_upstream_error", f"llm network error: {exc}", True, profile, None) from exc
+            raise _stream_error("parse_llm_upstream_error", f"llm network error: {exc}", True, profile, None) from exc
         except httpx.HTTPStatusError as exc:
             status_code = exc.response.status_code
             retryable = status_code == 429 or status_code >= 500
-            raise _transport_error(
+            raise _stream_error(
                 "parse_llm_upstream_error",
                 f"llm upstream http error: {status_code}",
                 retryable,
@@ -207,86 +185,56 @@ class OpenAICompatTransport:
                 status_code,
             ) from exc
         latency_ms = max(int((time.perf_counter() - started) * 1000), 0)
-        try:
-            response_json = response.json()
-        except Exception as exc:
-            raise _transport_error("parse_llm_schema_invalid", "llm response is not valid json", False, profile, response.status_code) from exc
+        response_json = response.json()
         if not isinstance(response_json, dict):
-            raise _transport_error("parse_llm_schema_invalid", "llm response root must be object", False, profile, response.status_code)
-        upstream_request_id = response.headers.get("x-request-id") or response.headers.get("request-id")
-        logger.info(
-            "llm_transport.ok request_id=%s source_id=%s task_name=%s provider_id=%s model=%s "
-            "latency_ms=%s error_code=- retryable=- http_status=%s endpoint=%s",
-            _ctx(request_context, "request_id"),
-            _ctx(request_context, "source_id"),
-            _ctx(request_context, "task_name"),
-            profile.provider_id,
-            profile.model,
-            latency_ms,
-            response.status_code,
-            endpoint,
+            raise _stream_error("parse_llm_schema_invalid", "gemini response root must be object", False, profile, response.status_code)
+        _payload, _usage, _response_id = extract_gemini_generate_content_json(
+            response_json=response_json,
+            provider_id=profile.provider_id,
+            protocol=profile.protocol,
         )
+        upstream_request_id = response.headers.get("x-request-id") or response.headers.get("request-id")
         return response_json, latency_ms, upstream_request_id
 
 
-def build_openai_compat_endpoint(*, base_url: str, protocol: LlmProtocolLiteral) -> str:
+def build_gemini_native_endpoint(*, base_url: str, model: str, stream: bool) -> str:
     normalized = base_url.strip().rstrip("/")
     if not normalized:
         raise ValueError("base_url is required")
-    endpoint_suffix = "responses" if protocol == "responses" else "chat/completions"
-
-    if normalized.endswith(f"/{endpoint_suffix}"):
-        return normalized
-    if normalized.endswith("/chat/completions"):
-        normalized = normalized[: -len("/chat/completions")]
-    if normalized.endswith("/responses"):
-        normalized = normalized[: -len("/responses")]
-    if normalized.endswith("/v1"):
-        return f"{normalized}/{endpoint_suffix}"
-    return f"{normalized}/v1/{endpoint_suffix}"
+    suffix = ":streamGenerateContent?alt=sse" if stream else ":generateContent"
+    if "{model}" in normalized:
+        return normalized.format(model=model) + suffix
+    if normalized.endswith(":generateContent") or normalized.endswith(":streamGenerateContent"):
+        return normalized if not stream else normalized.split("?", 1)[0] + "?alt=sse"
+    return f"{normalized}/{model}{suffix}"
 
 
-def _extract_openai_chat_delta(chunk_json: dict) -> str:
-    choices = chunk_json.get("choices")
-    if not isinstance(choices, list) or not choices:
+def _extract_delta_text(chunk_json: dict) -> str:
+    candidates = chunk_json.get("candidates")
+    if not isinstance(candidates, list):
         return ""
-    first = choices[0]
-    if not isinstance(first, dict):
-        return ""
-    delta = first.get("delta")
-    if not isinstance(delta, dict):
-        return ""
-    content = delta.get("content")
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        chunks: list[str] = []
-        for item in content:
-            if isinstance(item, str) and item:
-                chunks.append(item)
+    chunks: list[str] = []
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        content = candidate.get("content")
+        if not isinstance(content, dict):
+            continue
+        parts = content.get("parts")
+        if not isinstance(parts, list):
+            continue
+        for part in parts:
+            if not isinstance(part, dict):
                 continue
-            if not isinstance(item, dict):
-                continue
-            text = item.get("text")
-            if isinstance(text, str) and text:
+            text = part.get("text")
+            if isinstance(text, str):
                 chunks.append(text)
-        return "".join(chunks)
-    return ""
+    return "".join(chunks)
 
 
-def _extract_response_id(chunk_json: dict) -> str | None:
-    raw = chunk_json.get("id")
+def _response_id_text(payload: dict) -> str | None:
+    raw = payload.get("responseId") or payload.get("response_id")
     return raw.strip() if isinstance(raw, str) and raw.strip() else None
-
-
-def _build_headers(*, profile: ResolvedLlmProfile) -> dict[str, str]:
-    headers = {
-        "Authorization": f"Bearer {profile.api_key}",
-        "Content-Type": "application/json",
-    }
-    if profile.vendor == "dashscope_openai" and profile.protocol == "responses" and profile.session_cache_enabled:
-        headers["x-dashscope-session-cache"] = "enable"
-    return headers
 
 
 def _build_timeout(*, profile: ResolvedLlmProfile) -> httpx.Timeout | None:
@@ -300,22 +248,15 @@ def _build_timeout(*, profile: ResolvedLlmProfile) -> httpx.Timeout | None:
     )
 
 
-def _ctx(context: Mapping[str, object] | None, key: str) -> object:
-    if context is None:
-        return "-"
-    value = context.get(key)
-    return value if value is not None else "-"
-
-
 def _merge_extra_body(*, payload: dict, profile: ResolvedLlmProfile) -> dict:
     if not profile.extra_body:
         return payload
-    merged = dict(profile.extra_body)
-    merged.update(payload)
+    merged = dict(payload)
+    merged.update(profile.extra_body)
     return merged
 
 
-def _transport_error(
+def _stream_error(
     code: str,
     message: str,
     retryable: bool,
@@ -332,4 +273,13 @@ def _transport_error(
     )
 
 
-__all__ = ["OpenAICompatTransport", "build_openai_compat_endpoint"]
+def _ctx(request_context: Mapping[str, object] | None, key: str) -> str:
+    if request_context is None:
+        return "-"
+    value = request_context.get(key)
+    if value is None:
+        return "-"
+    return str(value)
+
+
+__all__ = ["GeminiNativeTransport", "build_gemini_native_endpoint"]

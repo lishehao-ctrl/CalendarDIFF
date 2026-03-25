@@ -65,6 +65,37 @@ class CalendarComponentParseCacheStatus(str, Enum):
     NON_RETRYABLE_SKIP = "NON_RETRYABLE_SKIP"
 
 
+class LlmInvocationLog(Base):
+    __tablename__ = "llm_invocation_logs"
+    __table_args__ = (
+        Index("ix_llm_invocation_logs_created", "created_at"),
+        Index("ix_llm_invocation_logs_request", "request_id", "created_at"),
+        Index("ix_llm_invocation_logs_source_task", "source_id", "task_name", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    task_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    profile_family: Mapped[str] = mapped_column(String(32), nullable=False)
+    route_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    route_index: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    provider_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    vendor: Mapped[str] = mapped_column(String(64), nullable=False)
+    protocol: Mapped[str] = mapped_column(String(64), nullable=False, server_default="responses")
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    session_cache_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    upstream_request_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    response_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    retryable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    usage_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class IngestJob(Base):
     __tablename__ = "ingest_jobs"
     __table_args__ = (
@@ -278,4 +309,5 @@ __all__ = [
     "IngestJobStatus",
     "IngestResult",
     "IngestUnresolvedRecord",
+    "LlmInvocationLog",
 ]

@@ -5,7 +5,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-from app.modules.llm_gateway.contracts import LlmApiModeLiteral, LlmGatewayError, ResolvedLlmProfile
+from app.modules.llm_gateway.contracts import LlmGatewayError, LlmProtocolLiteral, ResolvedLlmProfile
 
 
 def truncate_user_payload(*, user_payload: dict, profile: ResolvedLlmProfile) -> str:
@@ -20,19 +20,19 @@ def truncate_user_payload(*, user_payload: dict, profile: ResolvedLlmProfile) ->
     return f"{serialized[:head]}\n{serialized[-tail:]}"
 
 
-def ensure_json_object(*, payload: Any, provider_id: str, api_mode: LlmApiModeLiteral | None) -> dict:
+def ensure_json_object(*, payload: Any, provider_id: str, protocol: LlmProtocolLiteral | None) -> dict:
     if not isinstance(payload, dict):
         raise LlmGatewayError(
             code="parse_llm_schema_invalid",
             message="llm output root must be a json object",
             retryable=False,
             provider_id=provider_id,
-            api_mode=api_mode,
+            protocol=protocol,
         )
     return payload
 
 
-def parse_json_object_from_text(*, raw_text: str, provider_id: str, api_mode: LlmApiModeLiteral | None) -> dict:
+def parse_json_object_from_text(*, raw_text: str, provider_id: str, protocol: LlmProtocolLiteral | None) -> dict:
     text = raw_text.strip()
     if not text:
         raise LlmGatewayError(
@@ -40,7 +40,7 @@ def parse_json_object_from_text(*, raw_text: str, provider_id: str, api_mode: Ll
             message="llm output text is empty",
             retryable=False,
             provider_id=provider_id,
-            api_mode=api_mode,
+            protocol=protocol,
         )
     try:
         parsed = json.loads(text)
@@ -56,7 +56,7 @@ def parse_json_object_from_text(*, raw_text: str, provider_id: str, api_mode: Ll
                     message="llm output is not valid json object",
                     retryable=False,
                     provider_id=provider_id,
-                    api_mode=api_mode,
+                    protocol=protocol,
                 ) from exc
         else:
             raise LlmGatewayError(
@@ -64,9 +64,9 @@ def parse_json_object_from_text(*, raw_text: str, provider_id: str, api_mode: Ll
                 message="llm output is not valid json object",
                 retryable=False,
                 provider_id=provider_id,
-                api_mode=api_mode,
+                protocol=protocol,
             )
-    return ensure_json_object(payload=parsed, provider_id=provider_id, api_mode=api_mode)
+    return ensure_json_object(payload=parsed, provider_id=provider_id, protocol=protocol)
 
 
 def validate_schema(
@@ -75,7 +75,7 @@ def validate_schema(
     schema: dict,
     schema_name: str,
     provider_id: str,
-    api_mode: LlmApiModeLiteral | None,
+    protocol: LlmProtocolLiteral | None,
 ) -> None:
     validator = Draft202012Validator(schema)
     errors = sorted(validator.iter_errors(payload), key=lambda err: list(err.absolute_path))
@@ -87,5 +87,5 @@ def validate_schema(
         message=f"{schema_name} validation failed: {brief}",
         retryable=False,
         provider_id=provider_id,
-        api_mode=api_mode,
+        protocol=protocol,
     )
