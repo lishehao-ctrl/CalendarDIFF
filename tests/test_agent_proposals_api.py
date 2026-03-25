@@ -533,3 +533,22 @@ def test_agent_change_edit_commit_proposal_rejects_empty_patch(client, db_sessio
         json={"change_id": change.id, "patch": {}},
     )
     assert response.status_code == 422
+
+
+def test_agent_change_decision_proposal_respects_explicit_language_override(client, db_session, auth_headers) -> None:
+    user = _create_user(db_session, email="agent-proposal-language-override@example.com")
+    source = _create_source(db_session, user=user, provider="ics")
+    family = _create_family(db_session, user_id=user.id, course_display="CSE 160 WI26", canonical_label="Quiz")
+    change = _create_editable_change(db_session, user=user, source=source, family=family)
+
+    response = client.post(
+        "/agent/proposals/change-decision",
+        headers=auth_headers(client, user=user),
+        json={"change_id": change.id, "language_code": "zh-CN"},
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["language_code"] == "zh-CN"
+    assert payload["language_resolution_source"] == "explicit"
+    assert "通过" in payload["summary"] or "拒绝" in payload["summary"] or "审核" in payload["summary"]

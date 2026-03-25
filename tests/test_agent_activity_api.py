@@ -270,3 +270,33 @@ def test_low_risk_open_ticket_exposes_social_safe_cta_code(client, db_session, a
     assert response.status_code == 200
     payload = response.json()
     assert payload[0]["social_safe_cta_code"] == "agents.ticket.cta.confirm"
+
+
+def test_agent_activity_localizes_ticket_summary_in_chinese(client, db_session, auth_headers) -> None:
+    user = _create_user(db_session, email="agent-activity-zh@example.com")
+    base = datetime.now(timezone.utc)
+    proposal = _create_proposal(
+        db_session,
+        user_id=user.id,
+        proposal_id=501,
+        status=AgentProposalStatus.OPEN,
+        updated_at=base - timedelta(minutes=1),
+        summary="Proposal row",
+    )
+    _create_ticket(
+        db_session,
+        ticket_id="ticket-zh",
+        proposal_id=proposal.id,
+        user_id=user.id,
+        status=ApprovalTicketStatus.EXECUTED,
+        updated_at=base,
+    )
+
+    response = client.get("/agent/activity/recent?language_code=zh-CN", headers=auth_headers(client, user=user))
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["language_code"] == "zh-CN"
+    assert payload["language_resolution_source"] == "explicit"
+    ticket_row = next(item for item in payload["items"] if item["item_kind"] == "ticket")
+    assert "已执行" in ticket_row["summary"]
+    assert "审批票据" in ticket_row["detail"]
