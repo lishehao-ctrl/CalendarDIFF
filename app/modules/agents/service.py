@@ -94,7 +94,7 @@ def build_source_agent_context(db: Session, *, user_id: int, source_id: int, lan
     }
 
 
-def build_family_agent_context(db: Session, *, user_id: int, family_id: int) -> dict:
+def build_family_agent_context(db: Session, *, user_id: int, family_id: int, language_code: str | None = None) -> dict:
     family = get_course_work_item_family(db, user_id=user_id, family_id=family_id)
     if family is None:
         raise AgentContextNotFoundError(
@@ -131,9 +131,11 @@ def build_family_agent_context(db: Session, *, user_id: int, family_id: int) -> 
         "recommended_next_action": _family_recommended_next_action(
             family=family_payload,
             pending_suggestion_count=len(suggestion_payloads),
+            language_code=language_code,
         ),
         "blocking_conditions": _family_blocking_conditions(
             pending_suggestion_count=len(suggestion_payloads),
+            language_code=language_code,
         ),
         "available_next_tools": _family_available_next_tools(
             pending_suggestion_count=len(suggestion_payloads),
@@ -349,13 +351,22 @@ def _source_available_next_tools(*, source: dict, observability: dict) -> list[s
     return _dedupe_strings(tools)
 
 
-def _family_recommended_next_action(*, family: dict, pending_suggestion_count: int) -> dict:
+def _family_recommended_next_action(*, family: dict, pending_suggestion_count: int, language_code: str | None = None) -> dict:
     canonical_label = str(family.get("canonical_label") or "Family")
     if pending_suggestion_count > 0:
         return {
             "lane": "families",
-            "label": "Review observed labels",
-            "reason": f"{pending_suggestion_count} observed-label suggestions still need review for {canonical_label}.",
+            "label": render_structured_text(
+                code="agents.context.family.action.review_observed_labels",
+                language_code=language_code,
+                fallback="Review observed labels",
+            ),
+            "reason": render_structured_text(
+                code="agents.context.family.pending_raw_type_suggestions",
+                language_code=language_code,
+                params={"pending_count": pending_suggestion_count},
+                fallback=f"{pending_suggestion_count} observed-label suggestions still need review for {canonical_label}.",
+            ),
             "reason_code": "agents.context.family.pending_raw_type_suggestions",
             "reason_params": {"pending_count": pending_suggestion_count},
             "risk_level": "medium",
@@ -363,8 +374,17 @@ def _family_recommended_next_action(*, family: dict, pending_suggestion_count: i
         }
     return {
         "lane": "families",
-        "label": "Review canonical family",
-        "reason": f"{canonical_label} is ready for canonical label and relink review.",
+        "label": render_structured_text(
+            code="agents.context.family.action.review_canonical_family",
+            language_code=language_code,
+            fallback="Review canonical family",
+        ),
+        "reason": render_structured_text(
+            code="agents.context.family.review_family_detail",
+            language_code=language_code,
+            params={"canonical_label": canonical_label},
+            fallback=f"{canonical_label} is ready for canonical label and relink review.",
+        ),
         "reason_code": "agents.context.family.review_family_detail",
         "reason_params": {},
         "risk_level": "low",
@@ -372,13 +392,18 @@ def _family_recommended_next_action(*, family: dict, pending_suggestion_count: i
     }
 
 
-def _family_blocking_conditions(*, pending_suggestion_count: int) -> list[dict]:
+def _family_blocking_conditions(*, pending_suggestion_count: int, language_code: str | None = None) -> list[dict]:
     if pending_suggestion_count <= 0:
         return []
     return [
         {
             "code": "family_pending_raw_type_suggestions",
-            "message": f"{pending_suggestion_count} observed-label suggestions are still waiting for review.",
+            "message": render_structured_text(
+                code="agents.context.family.blocking.pending_raw_type_suggestions",
+                language_code=language_code,
+                params={"pending_count": pending_suggestion_count},
+                fallback=f"{pending_suggestion_count} observed-label suggestions are still waiting for review.",
+            ),
             "severity": "warning",
         }
     ]

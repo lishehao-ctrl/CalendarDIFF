@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.agents import ApprovalTicket, AgentProposal
+from app.modules.agents.schemas import _render_approval_ticket_copy, serialize_agent_proposal
 from app.modules.agents.lifecycle import (
     proposal_can_create_ticket,
     proposal_execution_mode,
@@ -62,11 +63,14 @@ def build_recent_agent_activity(
     *,
     user_id: int,
     limit: int = 20,
+    language_code: str | None = None,
 ) -> dict:
     proposals = list_agent_proposals(db, user_id=user_id, status="all", limit=limit)
     tickets = list_approval_tickets(db, user_id=user_id, status="all", limit=limit)
 
-    items = [_serialize_proposal_activity(row) for row in proposals] + [_serialize_ticket_activity(row) for row in tickets]
+    items = [_serialize_proposal_activity(row, language_code=language_code) for row in proposals] + [
+        _serialize_ticket_activity(row, language_code=language_code) for row in tickets
+    ]
     items.sort(key=lambda row: (_occurred_at_sort_key(row.get("occurred_at")), row.get("activity_id") or ""), reverse=True)
     return {
         "generated_at": datetime.now(timezone.utc),
@@ -74,7 +78,8 @@ def build_recent_agent_activity(
     }
 
 
-def _serialize_proposal_activity(row: AgentProposal) -> dict:
+def _serialize_proposal_activity(row: AgentProposal, *, language_code: str | None = None) -> dict:
+    localized = serialize_agent_proposal(row, language_code=language_code)
     return {
         "item_kind": "proposal",
         "activity_id": f"proposal:{row.id}",
@@ -88,9 +93,9 @@ def _serialize_proposal_activity(row: AgentProposal) -> dict:
         "risk_level": row.risk_level,
         "target_kind": row.target_kind,
         "target_id": row.target_id,
-        "summary": row.summary,
+        "summary": localized["summary"],
         "summary_code": row.summary_code,
-        "detail": row.reason,
+        "detail": localized["reason"],
         "detail_code": row.reason_code,
         "origin_kind": row.origin_kind,
         "origin_label": row.origin_label,
@@ -112,7 +117,8 @@ def _serialize_proposal_activity(row: AgentProposal) -> dict:
     }
 
 
-def _serialize_ticket_activity(row: ApprovalTicket) -> dict:
+def _serialize_ticket_activity(row: ApprovalTicket, *, language_code: str | None = None) -> dict:
+    localized = _render_approval_ticket_copy(row=row, language_code=language_code)
     return {
         "item_kind": "ticket",
         "activity_id": f"ticket:{row.ticket_id}",
@@ -126,10 +132,10 @@ def _serialize_ticket_activity(row: ApprovalTicket) -> dict:
         "risk_level": row.risk_level,
         "target_kind": row.target_kind,
         "target_id": row.target_id,
-        "summary": _ticket_summary(row),
+        "summary": localized["activity_summary"],
         "summary_code": f"agents.activity.ticket.{row.status.value}",
-        "detail": _ticket_detail(row),
-        "detail_code": f"agents.activity.ticket.{row.action_type}.{row.status.value}",
+        "detail": localized["activity_detail"],
+        "detail_code": f"agents.activity.ticket.detail.{row.status.value}",
         "origin_kind": row.origin_kind,
         "origin_label": row.origin_label,
         "origin_request_id": row.origin_request_id,
@@ -148,26 +154,6 @@ def _serialize_ticket_activity(row: ApprovalTicket) -> dict:
         "suggested_action": None,
         "action_type": row.action_type,
     }
-
-
-def _ticket_summary(row: ApprovalTicket) -> str:
-    status_label = row.status.value.replace("_", " ")
-    action_label = row.action_type.replace("_", " ")
-    return f"{action_label.title()} ticket {status_label}."
-
-
-def _ticket_detail(row: ApprovalTicket) -> str:
-    if row.status.value == "executed":
-        return "The approval ticket executed through the bounded agent gateway."
-    if row.status.value == "canceled":
-        return "The approval ticket was canceled before execution."
-    if row.status.value == "failed":
-        return "The approval ticket attempted execution but failed."
-    if row.status.value == "expired":
-        return "The approval ticket expired before confirmation."
-    return "The approval ticket is still waiting for confirmation."
-
-
 def _occurred_at_sort_key(value: object) -> float:
     if isinstance(value, datetime):
         timestamp = value.timestamp()

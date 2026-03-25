@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.security import require_public_api_key
@@ -58,22 +58,24 @@ router = APIRouter(prefix="/agent", tags=["agents"], dependencies=[Depends(requi
 
 @router.get("/context/workspace", response_model=AgentWorkspaceContextResponse)
 def get_agent_workspace_context(
+    language_code: str | None = Query(default=None),
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> AgentWorkspaceContextResponse:
     return AgentWorkspaceContextResponse.model_validate(
-        get_workspace_context(db=db, user_id=user.id, language_code=user.language_code)
+        get_workspace_context(db=db, user_id=user.id, language_code=language_code or user.language_code)
     )
 
 
 @router.get("/context/changes/{change_id}", response_model=AgentChangeContextResponse)
 def get_agent_change_context(
     change_id: int,
+    language_code: str | None = Query(default=None),
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> AgentChangeContextResponse:
     try:
-        payload = get_change_context(db=db, user_id=user.id, change_id=change_id, language_code=user.language_code)
+        payload = get_change_context(db=db, user_id=user.id, change_id=change_id, language_code=language_code or user.language_code)
     except AgentContextNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.detail) from exc
     return AgentChangeContextResponse.model_validate(payload)
@@ -82,11 +84,12 @@ def get_agent_change_context(
 @router.get("/context/sources/{source_id}", response_model=AgentSourceContextResponse)
 def get_agent_source_context(
     source_id: int,
+    language_code: str | None = Query(default=None),
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> AgentSourceContextResponse:
     try:
-        payload = get_source_context(db=db, user_id=user.id, source_id=source_id, language_code=user.language_code)
+        payload = get_source_context(db=db, user_id=user.id, source_id=source_id, language_code=language_code or user.language_code)
     except AgentContextNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.detail) from exc
     return AgentSourceContextResponse.model_validate(payload)
@@ -95,11 +98,12 @@ def get_agent_source_context(
 @router.get("/context/families/{family_id}", response_model=AgentFamilyContextResponse)
 def get_agent_family_context(
     family_id: int,
+    language_code: str | None = Query(default=None),
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> AgentFamilyContextResponse:
     try:
-        payload = get_family_context(db=db, user_id=user.id, family_id=family_id)
+        payload = get_family_context(db=db, user_id=user.id, family_id=family_id, language_code=language_code or user.language_code)
     except AgentContextNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.detail) from exc
     return AgentFamilyContextResponse.model_validate(payload)
@@ -116,7 +120,7 @@ def post_agent_change_decision_proposal(
             db=db,
             user_id=user.id,
             change_id=payload.change_id,
-            language_code=user.language_code,
+            language_code=payload.language_code or user.language_code,
         )
     except AgentContextNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.detail) from exc
@@ -137,6 +141,7 @@ def post_agent_change_edit_commit_proposal(
             user_id=user.id,
             change_id=payload.change_id,
             patch=payload.patch.model_dump(exclude_unset=True),
+            language_code=payload.language_code or user.language_code,
         )
     except AgentContextNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.detail) from exc
@@ -156,7 +161,7 @@ def post_agent_source_recovery_proposal(
             db=db,
             user_id=user.id,
             source_id=payload.source_id,
-            language_code=user.language_code,
+            language_code=payload.language_code or user.language_code,
         )
     except AgentContextNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.detail) from exc
@@ -175,6 +180,7 @@ def post_agent_family_relink_preview_proposal(
             user_id=user.id,
             raw_type_id=payload.raw_type_id,
             family_id=payload.family_id,
+            language_code=payload.language_code or user.language_code,
         )
     except AgentContextNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.detail) from exc
@@ -195,6 +201,7 @@ def post_agent_family_relink_commit_proposal(
             user_id=user.id,
             raw_type_id=payload.raw_type_id,
             family_id=payload.family_id,
+            language_code=payload.language_code or user.language_code,
         )
     except AgentContextNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.detail) from exc
@@ -215,6 +222,7 @@ def post_agent_label_learning_commit_proposal(
             user_id=user.id,
             change_id=payload.change_id,
             family_id=payload.family_id,
+            language_code=payload.language_code or user.language_code,
         )
     except AgentContextNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.detail) from exc
@@ -227,6 +235,7 @@ def post_agent_label_learning_commit_proposal(
 def get_agent_proposals_route(
     status_filter: str = "all",
     limit: int = 20,
+    language_code: str | None = Query(default=None),
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> list[AgentProposalResponse]:
@@ -246,7 +255,7 @@ def get_agent_proposals_route(
         user_id=user.id,
         status=normalized_status,
         limit=max(1, min(int(limit), 100)),
-        language_code=user.language_code,
+        language_code=language_code or user.language_code,
     )
     return [AgentProposalResponse.model_validate(row) for row in rows]
 
@@ -254,10 +263,11 @@ def get_agent_proposals_route(
 @router.get("/proposals/{proposal_id}", response_model=AgentProposalResponse)
 def get_agent_proposal_route(
     proposal_id: int,
+    language_code: str | None = Query(default=None),
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> AgentProposalResponse:
-    proposal = get_proposal(db=db, user_id=user.id, proposal_id=proposal_id, language_code=user.language_code)
+    proposal = get_proposal(db=db, user_id=user.id, proposal_id=proposal_id, language_code=language_code or user.language_code)
     if proposal is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -267,7 +277,7 @@ def get_agent_proposal_route(
                 "message_code": "agents.proposals.not_found",
                 "message_params": {},
             },
-    )
+        )
     return AgentProposalResponse.model_validate(proposal)
 
 
@@ -275,6 +285,7 @@ def get_agent_proposal_route(
 def get_approval_tickets_route(
     status_filter: str = "all",
     limit: int = 20,
+    language_code: str | None = Query(default=None),
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> list[ApprovalTicketResponse]:
@@ -294,6 +305,7 @@ def get_approval_tickets_route(
         user_id=user.id,
         status=normalized_status,
         limit=max(1, min(int(limit), 100)),
+        language_code=language_code or user.language_code,
     )
     return [ApprovalTicketResponse.model_validate(row) for row in rows]
 
@@ -310,6 +322,7 @@ def post_approval_ticket(
             user_id=user.id,
             proposal_id=payload.proposal_id,
             channel=payload.channel,
+            language_code=payload.language_code or user.language_code,
         )
     except ApprovalTicketError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
@@ -319,20 +332,32 @@ def post_approval_ticket(
 @router.get("/activity/recent", response_model=AgentRecentActivityResponse)
 def get_recent_agent_activity_route(
     limit: int = 20,
+    language_code: str | None = Query(default=None),
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> AgentRecentActivityResponse:
-    payload = get_recent_activity(db=db, user_id=user.id, limit=max(1, min(int(limit), 100)))
+    payload = get_recent_activity(
+        db=db,
+        user_id=user.id,
+        limit=max(1, min(int(limit), 100)),
+        language_code=language_code or user.language_code,
+    )
     return AgentRecentActivityResponse.model_validate(payload)
 
 
 @router.get("/approval-tickets/{ticket_id}", response_model=ApprovalTicketResponse)
 def get_approval_ticket_route(
     ticket_id: str,
+    language_code: str | None = Query(default=None),
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> ApprovalTicketResponse:
-    ticket = get_approval_ticket_for_user(db=db, user_id=user.id, ticket_id=ticket_id)
+    ticket = get_approval_ticket_for_user(
+        db=db,
+        user_id=user.id,
+        ticket_id=ticket_id,
+        language_code=language_code or user.language_code,
+    )
     if ticket is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -353,9 +378,13 @@ def post_approval_ticket_confirm(
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> ApprovalTicketResponse:
-    del payload
     try:
-        ticket = confirm_approval_ticket_for_user(db=db, user_id=user.id, ticket_id=ticket_id)
+        ticket = confirm_approval_ticket_for_user(
+            db=db,
+            user_id=user.id,
+            ticket_id=ticket_id,
+            language_code=payload.language_code or user.language_code,
+        )
     except ApprovalTicketError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return ApprovalTicketResponse.model_validate(ticket)
@@ -368,9 +397,13 @@ def post_approval_ticket_cancel(
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> ApprovalTicketResponse:
-    del payload
     try:
-        ticket = cancel_approval_ticket_for_user(db=db, user_id=user.id, ticket_id=ticket_id)
+        ticket = cancel_approval_ticket_for_user(
+            db=db,
+            user_id=user.id,
+            ticket_id=ticket_id,
+            language_code=payload.language_code or user.language_code,
+        )
     except ApprovalTicketError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return ApprovalTicketResponse.model_validate(ticket)

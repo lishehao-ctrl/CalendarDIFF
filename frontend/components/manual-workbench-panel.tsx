@@ -601,7 +601,13 @@ export function ManualWorkbenchPanel() {
               {filteredEventRows.map((event) => {
                 const expanded = expandedEventUid === event.entity_uid;
                 return (
-                  <div key={event.entity_uid} className={workbenchSupportPanelClassName("default", "px-4 py-3")}>
+                  <div
+                    key={event.entity_uid}
+                    className={workbenchQueueRowClassName({
+                      selected: expanded,
+                      className: "px-4 py-3",
+                    })}
+                  >
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-ink">{eventSummaryLabel(event)}</p>

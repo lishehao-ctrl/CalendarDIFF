@@ -107,7 +107,7 @@ export default function OverviewPage({ basePath = "" }: { basePath?: string }) {
                   <span>{surface.hero.progressLabel}</span>
                   <span>{surface.hero.progressPercent}%</span>
                 </div>
-                <div className="h-2 rounded-full bg-white/60">
+                <div className="h-2 rounded-full bg-[rgba(20,32,44,0.08)]">
                   <div
                     className="h-2 rounded-full bg-cobalt transition-all duration-500"
                     style={{ width: `${Math.min(Math.max(surface.hero.progressPercent, 0), 100)}%` }}

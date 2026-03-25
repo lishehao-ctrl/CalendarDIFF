@@ -41,6 +41,8 @@ class AgentRecommendedActionResponse(BaseModel):
 
 class AgentWorkspaceContextResponse(BaseModel):
     generated_at: datetime
+    language_code: str
+    language_resolution_source: str
     summary: ChangesWorkbenchSummaryResponse
     top_pending_changes: list[ChangeItemResponse]
     recommended_next_action: AgentRecommendedActionResponse
@@ -50,6 +52,8 @@ class AgentWorkspaceContextResponse(BaseModel):
 
 class AgentChangeContextResponse(BaseModel):
     generated_at: datetime
+    language_code: str
+    language_resolution_source: str
     change: ChangeItemResponse
     recommended_next_action: AgentRecommendedActionResponse
     blocking_conditions: list[AgentBlockingConditionResponse] = Field(default_factory=list)
@@ -58,6 +62,8 @@ class AgentChangeContextResponse(BaseModel):
 
 class AgentSourceContextResponse(BaseModel):
     generated_at: datetime
+    language_code: str
+    language_resolution_source: str
     source: InputSourceResponse
     observability: SourceObservabilityResponse
     active_sync_request: SyncRequestStatusResponse | None = None
@@ -68,6 +74,8 @@ class AgentSourceContextResponse(BaseModel):
 
 class AgentFamilyContextResponse(BaseModel):
     generated_at: datetime
+    language_code: str
+    language_resolution_source: str
     family: CourseWorkItemFamilyResponse
     raw_types: list[CourseRawTypeResponse] = Field(default_factory=list)
     pending_raw_type_suggestions: list[RawTypeSuggestionItemResponse] = Field(default_factory=list)
@@ -78,12 +86,14 @@ class AgentFamilyContextResponse(BaseModel):
 
 class AgentChangeDecisionProposalRequest(BaseModel):
     change_id: int = Field(ge=1)
+    language_code: str | None = Field(default=None, max_length=16)
 
     model_config = {"extra": "forbid"}
 
 
 class AgentSourceRecoveryProposalRequest(BaseModel):
     source_id: int = Field(ge=1)
+    language_code: str | None = Field(default=None, max_length=16)
 
     model_config = {"extra": "forbid"}
 
@@ -91,6 +101,7 @@ class AgentSourceRecoveryProposalRequest(BaseModel):
 class AgentFamilyRelinkPreviewProposalRequest(BaseModel):
     raw_type_id: int = Field(ge=1)
     family_id: int = Field(ge=1)
+    language_code: str | None = Field(default=None, max_length=16)
 
     model_config = {"extra": "forbid"}
 
@@ -98,6 +109,7 @@ class AgentFamilyRelinkPreviewProposalRequest(BaseModel):
 class AgentFamilyRelinkCommitProposalRequest(BaseModel):
     raw_type_id: int = Field(ge=1)
     family_id: int = Field(ge=1)
+    language_code: str | None = Field(default=None, max_length=16)
 
     model_config = {"extra": "forbid"}
 
@@ -105,6 +117,7 @@ class AgentFamilyRelinkCommitProposalRequest(BaseModel):
 class AgentLabelLearningCommitProposalRequest(BaseModel):
     change_id: int = Field(ge=1)
     family_id: int = Field(ge=1)
+    language_code: str | None = Field(default=None, max_length=16)
 
     model_config = {"extra": "forbid"}
 
@@ -127,12 +140,15 @@ class AgentChangeEditCommitPatchRequest(BaseModel):
 class AgentChangeEditCommitProposalRequest(BaseModel):
     change_id: int = Field(ge=1)
     patch: AgentChangeEditCommitPatchRequest
+    language_code: str | None = Field(default=None, max_length=16)
 
     model_config = {"extra": "forbid"}
 
 
 class AgentProposalResponse(BaseModel):
     proposal_id: int
+    language_code: str
+    language_resolution_source: str
     owner_user_id: int
     proposal_type: AgentProposalTypeLiteral
     status: AgentProposalStatusLiteral
@@ -164,20 +180,25 @@ class AgentProposalResponse(BaseModel):
 class ApprovalTicketCreateRequest(BaseModel):
     proposal_id: int = Field(ge=1)
     channel: str = Field(default="web", min_length=1, max_length=32)
+    language_code: str | None = Field(default=None, max_length=16)
 
     model_config = {"extra": "forbid"}
 
 
 class ApprovalTicketConfirmRequest(BaseModel):
+    language_code: str | None = Field(default=None, max_length=16)
     model_config = {"extra": "forbid"}
 
 
 class ApprovalTicketCancelRequest(BaseModel):
+    language_code: str | None = Field(default=None, max_length=16)
     model_config = {"extra": "forbid"}
 
 
 class ApprovalTicketResponse(BaseModel):
     ticket_id: str
+    language_code: str
+    language_resolution_source: str
     proposal_id: int
     owner_user_id: int
     channel: str
@@ -197,6 +218,9 @@ class ApprovalTicketResponse(BaseModel):
     confirm_summary_code: str
     cancel_summary_code: str
     transition_message_code: str
+    confirm_summary: str
+    cancel_summary: str
+    transition_message: str
     social_safe_cta_code: str | None = None
     can_confirm: bool
     can_cancel: bool
@@ -249,10 +273,17 @@ class AgentRecentActivityItemResponse(BaseModel):
 
 class AgentRecentActivityResponse(BaseModel):
     generated_at: datetime
+    language_code: str
+    language_resolution_source: str
     items: list[AgentRecentActivityItemResponse] = Field(default_factory=list)
 
 
-def serialize_approval_ticket(row) -> dict:
+def serialize_approval_ticket(
+    row,
+    *,
+    language_code: str | None = None,
+    language_resolution_source: str | None = None,
+) -> dict:
     from app.modules.agents.lifecycle import (
         ticket_can_cancel,
         ticket_can_confirm,
@@ -264,8 +295,11 @@ def serialize_approval_ticket(row) -> dict:
         ticket_transition_message_code,
     )
 
+    ticket_copy = _render_approval_ticket_copy(row=row, language_code=language_code)
     return {
         "ticket_id": row.ticket_id,
+        "language_code": language_code or "en",
+        "language_resolution_source": language_resolution_source or "default",
         "proposal_id": row.proposal_id,
         "owner_user_id": row.user_id,
         "channel": row.channel,
@@ -285,6 +319,9 @@ def serialize_approval_ticket(row) -> dict:
         "confirm_summary_code": ticket_confirm_summary_code(row),
         "cancel_summary_code": ticket_cancel_summary_code(row),
         "transition_message_code": ticket_transition_message_code(row),
+        "confirm_summary": ticket_copy["confirm_summary"],
+        "cancel_summary": ticket_copy["cancel_summary"],
+        "transition_message": ticket_copy["transition_message"],
         "social_safe_cta_code": ticket_social_safe_cta_code(row),
         "can_confirm": ticket_can_confirm(row),
         "can_cancel": ticket_can_cancel(row),
@@ -300,7 +337,12 @@ def serialize_approval_ticket(row) -> dict:
     }
 
 
-def serialize_agent_proposal(row, *, language_code: str | None = None) -> dict:
+def serialize_agent_proposal(
+    row,
+    *,
+    language_code: str | None = None,
+    language_resolution_source: str | None = None,
+) -> dict:
     from app.modules.agents.lifecycle import (
         proposal_can_create_ticket,
         proposal_execution_mode,
@@ -324,6 +366,8 @@ def serialize_agent_proposal(row, *, language_code: str | None = None) -> dict:
 
     return {
         "proposal_id": row.id,
+        "language_code": language_code or "en",
+        "language_resolution_source": language_resolution_source or "default",
         "owner_user_id": row.user_id,
         "proposal_type": row.proposal_type.value,
         "status": row.status.value,
@@ -354,6 +398,9 @@ def serialize_agent_proposal(row, *, language_code: str | None = None) -> dict:
 
 
 def _proposal_summary_params(*, row, language_code: str | None) -> dict:
+    stored = getattr(row, "summary_params_json", None)
+    if isinstance(stored, dict) and stored:
+        return dict(stored)
     proposal_type = getattr(row.proposal_type, "value", "")
     if proposal_type == "change_decision":
         review_bucket = _proposal_review_bucket(row)
@@ -374,6 +421,9 @@ def _proposal_summary_params(*, row, language_code: str | None) -> dict:
 
 
 def _proposal_reason_params(row) -> dict:
+    stored = getattr(row, "reason_params_json", None)
+    if isinstance(stored, dict) and stored:
+        return dict(stored)
     context = row.context_json if isinstance(row.context_json, dict) else {}
     recommendation = context.get("recommended_next_action")
     if isinstance(recommendation, dict) and isinstance(recommendation.get("reason_params"), dict) and recommendation.get("reason_params"):
@@ -432,6 +482,46 @@ def _provider_label(provider: str) -> str:
     return provider.strip().title() or "Source"
 
 
+def _render_approval_ticket_copy(*, row, language_code: str | None) -> dict:
+    action_label = render_structured_text(
+        code=f"agents.ticket.action.{row.action_type}",
+        language_code=language_code,
+        fallback=row.action_type.replace("_", " "),
+    )
+    return {
+        "confirm_summary": render_structured_text(
+            code="agents.ticket.confirm.summary",
+            language_code=language_code,
+            params={"action_label": action_label},
+            fallback=f"Confirm {action_label}.",
+        ),
+        "cancel_summary": render_structured_text(
+            code="agents.ticket.cancel.summary",
+            language_code=language_code,
+            params={"action_label": action_label},
+            fallback=f"Cancel {action_label}.",
+        ),
+        "transition_message": render_structured_text(
+            code=f"agents.ticket.transition.{row.status.value}",
+            language_code=language_code,
+            params={"action_label": action_label},
+            fallback=f"{action_label} {row.status.value}.",
+        ),
+        "activity_summary": render_structured_text(
+            code=f"agents.activity.ticket.summary.{row.status.value}",
+            language_code=language_code,
+            params={"action_label": action_label},
+            fallback=f"{action_label} {row.status.value}.",
+        ),
+        "activity_detail": render_structured_text(
+            code=f"agents.activity.ticket.detail.{row.status.value}",
+            language_code=language_code,
+            params={"action_label": action_label},
+            fallback=f"{action_label} {row.status.value}.",
+        ),
+    }
+
+
 __all__ = [
     "AgentRecentActivityItemResponse",
     "AgentRecentActivityResponse",
@@ -453,6 +543,7 @@ __all__ = [
     "ApprovalTicketConfirmRequest",
     "ApprovalTicketCreateRequest",
     "ApprovalTicketResponse",
+    "_render_approval_ticket_copy",
     "serialize_approval_ticket",
     "serialize_agent_proposal",
 ]

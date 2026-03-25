@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.agents import AgentProposal, AgentProposalStatus, AgentProposalType
+from app.modules.agents.language_context import AgentLanguageContext, collect_agent_input_texts, resolve_agent_language_context
 from app.db.models.review import Change, ChangeType, ReviewStatus
 from app.modules.agents.family_relink_projection import (
     FamilyRelinkProjectionValidationError,
@@ -32,6 +33,7 @@ from app.modules.changes.edit_service import (
     ChangeEditValidationError,
     preview_change_edit,
 )
+from app.modules.common.structured_copy import render_structured_text
 from app.modules.common.stable_json_hash import stable_json_hash
 
 
@@ -44,6 +46,21 @@ class AgentProposalInvalidStateError(RuntimeError):
             "message_code": message_code,
             "message_params": {},
         }
+
+
+def _resolve_language_context_for_user(
+    db: Session,
+    *,
+    user_id: int,
+    explicit_language_code: str | None,
+    input_texts: list[str] | None = None,
+) -> AgentLanguageContext:
+    return resolve_agent_language_context(
+        db,
+        user_id=user_id,
+        explicit_language_code=explicit_language_code,
+        input_texts=input_texts or [],
+    )
 
 
 def create_change_decision_proposal(db: Session, *, user_id: int, change_id: int) -> AgentProposal:
@@ -66,7 +83,17 @@ def create_change_decision_proposal_with_origin(
     origin_request_id: str | None = None,
     language_code: str | None = None,
 ) -> AgentProposal:
-    context = build_change_agent_context(db=db, user_id=user_id, change_id=change_id, language_code=language_code)
+    language_context = _resolve_language_context_for_user(
+        db,
+        user_id=user_id,
+        explicit_language_code=language_code,
+    )
+    context = build_change_agent_context(
+        db=db,
+        user_id=user_id,
+        change_id=change_id,
+        language_code=language_context.effective_language_code,
+    )
     change = context["change"]
     if str(change.get("review_status") or "") != "pending":
         raise AgentProposalInvalidStateError(
@@ -76,6 +103,17 @@ def create_change_decision_proposal_with_origin(
         )
     support = change.get("decision_support") or {}
     action_kind = str(support.get("suggested_action") or "review_carefully")
+    review_bucket = str(change.get("review_bucket") or "changes")
+    summary_code = f"agents.proposals.change_decision.{action_kind}.summary"
+    summary_params_json = {
+        "lane_label": render_structured_text(
+            code=f"agents.lane.{review_bucket}",
+            language_code=language_context.effective_language_code,
+            fallback="Initial Review" if review_bucket == "initial_review" else "Replay Review",
+        )
+    }
+    reason_code = str(support.get("suggested_action_reason_code") or "agents.proposals.change_decision.reason")
+    reason_params_json: dict = {}
     draft = generate_agent_proposal_draft(
         db=db,
         draft_request=AgentProposalDraftRequest(
@@ -83,11 +121,24 @@ def create_change_decision_proposal_with_origin(
             target_kind="change",
             target_id=str(change_id),
             origin_request_id=origin_request_id,
+            language_context=language_context,
             deterministic_draft=AgentProposalDraft(
-                summary=_change_summary(action_kind=action_kind, review_bucket=str(change.get("review_bucket") or "changes")),
-                summary_code=f"agents.proposals.change_decision.{action_kind}.summary",
-                reason=str(support.get("suggested_action_reason") or ""),
-                reason_code=str(support.get("suggested_action_reason_code") or "agents.proposals.change_decision.reason"),
+                summary=render_structured_text(
+                    code=summary_code,
+                    language_code=language_context.effective_language_code,
+                    params=summary_params_json,
+                    fallback=_change_summary(action_kind=action_kind, review_bucket=review_bucket),
+                ),
+                summary_code=summary_code,
+                summary_params_json=summary_params_json,
+                reason=render_structured_text(
+                    code=reason_code,
+                    language_code=language_context.effective_language_code,
+                    params=reason_params_json,
+                    fallback=str(support.get("suggested_action_reason") or ""),
+                ),
+                reason_code=reason_code,
+                reason_params_json=reason_params_json,
                 risk_level=str(support.get("risk_level") or "medium"),
                 confidence=_confidence_for_risk_level(str(support.get("risk_level") or "medium")),
                 suggested_action=action_kind,
@@ -113,8 +164,10 @@ def create_change_decision_proposal_with_origin(
         target_id=str(change_id),
         summary=draft.summary,
         summary_code=draft.summary_code,
+        summary_params_json=draft.summary_params_json,
         reason=draft.reason,
         reason_code=draft.reason_code,
+        reason_params_json=draft.reason_params_json,
         risk_level=draft.risk_level,
         confidence=draft.confidence,
         suggested_action=draft.suggested_action,
@@ -152,12 +205,31 @@ def create_source_recovery_proposal_with_origin(
     origin_request_id: str | None = None,
     language_code: str | None = None,
 ) -> AgentProposal:
-    context = build_source_agent_context(db=db, user_id=user_id, source_id=source_id, language_code=language_code)
+    language_context = _resolve_language_context_for_user(
+        db,
+        user_id=user_id,
+        explicit_language_code=language_code,
+    )
+    context = build_source_agent_context(
+        db=db,
+        user_id=user_id,
+        source_id=source_id,
+        language_code=language_context.effective_language_code,
+    )
     source = context["source"]
     observability = context["observability"]
     recovery = observability.get("source_recovery") or {}
     guidance = observability.get("operator_guidance") or {}
     suggested_action = str(recovery.get("next_action") or "wait")
+    provider = str(source.get("provider") or "")
+    summary_code = f"agents.proposals.source_recovery.{suggested_action}.summary"
+    summary_params_json = {"provider_label": _provider_label(provider)}
+    reason_code = str(guidance.get("reason_code") or recovery.get("impact_code") or "agents.proposals.source_recovery.reason")
+    reason_params_json = (
+        dict(guidance.get("message_params"))
+        if isinstance(guidance.get("message_params"), dict)
+        else {}
+    )
     draft = generate_agent_proposal_draft(
         db=db,
         draft_request=AgentProposalDraftRequest(
@@ -165,15 +237,28 @@ def create_source_recovery_proposal_with_origin(
             target_kind="source",
             target_id=str(source_id),
             origin_request_id=origin_request_id,
+            language_context=language_context,
             deterministic_draft=AgentProposalDraft(
-                summary=_source_summary(provider=str(source.get("provider") or "source"), action=suggested_action),
-                summary_code=f"agents.proposals.source_recovery.{suggested_action}.summary",
-                reason=str(guidance.get("message") or recovery.get("impact_summary") or ""),
-                reason_code=str(guidance.get("reason_code") or recovery.get("impact_code") or "agents.proposals.source_recovery.reason"),
+                summary=render_structured_text(
+                    code=summary_code,
+                    language_code=language_context.effective_language_code,
+                    params=summary_params_json,
+                    fallback=_source_summary(provider=provider or "source", action=suggested_action),
+                ),
+                summary_code=summary_code,
+                summary_params_json=summary_params_json,
+                reason=render_structured_text(
+                    code=reason_code,
+                    language_code=language_context.effective_language_code,
+                    params=reason_params_json,
+                    fallback=str(guidance.get("message") or recovery.get("impact_summary") or ""),
+                ),
+                reason_code=reason_code,
+                reason_params_json=reason_params_json,
                 risk_level=str((context.get("recommended_next_action") or {}).get("risk_level") or "medium"),
                 confidence=_confidence_for_risk_level(str((context.get("recommended_next_action") or {}).get("risk_level") or "medium")),
                 suggested_action=suggested_action,
-                payload_json=_jsonable(_source_payload(source_id=source_id, action=suggested_action, provider=str(source.get("provider") or ""))),
+                payload_json=_jsonable(_source_payload(source_id=source_id, action=suggested_action, provider=provider)),
                 context_json=_jsonable(_minimal_source_context_snapshot(context=context)),
                 target_snapshot_json=_jsonable(
                     {
@@ -195,8 +280,10 @@ def create_source_recovery_proposal_with_origin(
         target_id=str(source_id),
         summary=draft.summary,
         summary_code=draft.summary_code,
+        summary_params_json=draft.summary_params_json,
         reason=draft.reason,
         reason_code=draft.reason_code,
+        reason_params_json=draft.reason_params_json,
         risk_level=draft.risk_level,
         confidence=draft.confidence,
         suggested_action=draft.suggested_action,
@@ -220,6 +307,7 @@ def create_family_relink_preview_proposal(
     user_id: int,
     raw_type_id: int,
     family_id: int,
+    language_code: str | None = None,
 ) -> AgentProposal:
     return create_family_relink_preview_proposal_with_origin(
         db=db,
@@ -228,6 +316,7 @@ def create_family_relink_preview_proposal(
         family_id=family_id,
         origin_kind="web",
         origin_label="embedded_agent",
+        language_code=language_code,
     )
 
 
@@ -237,6 +326,7 @@ def create_family_relink_commit_proposal(
     user_id: int,
     raw_type_id: int,
     family_id: int,
+    language_code: str | None = None,
 ) -> AgentProposal:
     return create_family_relink_commit_proposal_with_origin(
         db=db,
@@ -245,6 +335,7 @@ def create_family_relink_commit_proposal(
         family_id=family_id,
         origin_kind="web",
         origin_label="embedded_agent",
+        language_code=language_code,
     )
 
 
@@ -254,6 +345,7 @@ def create_label_learning_commit_proposal(
     user_id: int,
     change_id: int,
     family_id: int,
+    language_code: str | None = None,
 ) -> AgentProposal:
     return create_label_learning_commit_proposal_with_origin(
         db=db,
@@ -262,6 +354,7 @@ def create_label_learning_commit_proposal(
         family_id=family_id,
         origin_kind="web",
         origin_label="embedded_agent",
+        language_code=language_code,
     )
 
 
@@ -271,6 +364,7 @@ def create_change_edit_commit_proposal(
     user_id: int,
     change_id: int,
     patch: dict,
+    language_code: str | None = None,
 ) -> AgentProposal:
     return create_change_edit_commit_proposal_with_origin(
         db=db,
@@ -279,6 +373,7 @@ def create_change_edit_commit_proposal(
         patch=patch,
         origin_kind="web",
         origin_label="embedded_agent",
+        language_code=language_code,
     )
 
 
@@ -291,7 +386,13 @@ def create_family_relink_preview_proposal_with_origin(
     origin_kind: str,
     origin_label: str,
     origin_request_id: str | None = None,
+    language_code: str | None = None,
 ) -> AgentProposal:
+    language_context = _resolve_language_context_for_user(
+        db,
+        user_id=user_id,
+        explicit_language_code=language_code,
+    )
     projection = _build_family_relink_projection_or_raise(
         db=db,
         user_id=user_id,
@@ -303,6 +404,20 @@ def create_family_relink_preview_proposal_with_origin(
     target_family_snapshot = projection["target_family"]
     impact = projection["impact"]
     risk_level = str(impact.get("risk_level") or "medium")
+    summary_code = "agents.proposals.family_relink_preview.summary"
+    summary_params_json = {
+        "raw_type": str(raw_type_snapshot.get("raw_type") or ""),
+        "target_family": str(target_family_snapshot.get("canonical_label") or ""),
+    }
+    reason_code = "agents.proposals.family_relink_preview.reason"
+    reason_params_json = {
+        "raw_type": str(raw_type_snapshot.get("raw_type") or ""),
+        "current_family": str(current_family_snapshot.get("canonical_label") or ""),
+        "target_family": str(target_family_snapshot.get("canonical_label") or ""),
+        "impacted_event_count": int(impact.get("impacted_event_count") or 0),
+        "impacted_pending_change_count": int(impact.get("impacted_pending_change_count") or 0),
+        "matching_suggestion_count": int(impact.get("matching_suggestion_count") or 0),
+    }
     draft = generate_agent_proposal_draft(
         db=db,
         draft_request=AgentProposalDraftRequest(
@@ -310,21 +425,34 @@ def create_family_relink_preview_proposal_with_origin(
             target_kind="family_relink",
             target_id=f"{raw_type_id}:{family_id}",
             origin_request_id=origin_request_id,
+            language_context=language_context,
             deterministic_draft=AgentProposalDraft(
-                summary=_family_relink_preview_summary(
-                    raw_type=str(raw_type_snapshot.get("raw_type") or ""),
-                    target_family=str(target_family_snapshot.get("canonical_label") or ""),
+                summary=render_structured_text(
+                    code=summary_code,
+                    language_code=language_context.effective_language_code,
+                    params=summary_params_json,
+                    fallback=_family_relink_preview_summary(
+                        raw_type=str(raw_type_snapshot.get("raw_type") or ""),
+                        target_family=str(target_family_snapshot.get("canonical_label") or ""),
+                    ),
                 ),
-                summary_code="agents.proposals.family_relink_preview.summary",
-                reason=_family_relink_preview_reason(
-                    raw_type=str(raw_type_snapshot.get("raw_type") or ""),
-                    current_family=str(current_family_snapshot.get("canonical_label") or ""),
-                    target_family=str(target_family_snapshot.get("canonical_label") or ""),
-                    impacted_event_count=int(impact.get("impacted_event_count") or 0),
-                    impacted_pending_change_count=int(impact.get("impacted_pending_change_count") or 0),
-                    matching_suggestion_count=int(impact.get("matching_suggestion_count") or 0),
+                summary_code=summary_code,
+                summary_params_json=summary_params_json,
+                reason=render_structured_text(
+                    code=reason_code,
+                    language_code=language_context.effective_language_code,
+                    params=reason_params_json,
+                    fallback=_family_relink_preview_reason(
+                        raw_type=str(raw_type_snapshot.get("raw_type") or ""),
+                        current_family=str(current_family_snapshot.get("canonical_label") or ""),
+                        target_family=str(target_family_snapshot.get("canonical_label") or ""),
+                        impacted_event_count=int(impact.get("impacted_event_count") or 0),
+                        impacted_pending_change_count=int(impact.get("impacted_pending_change_count") or 0),
+                        matching_suggestion_count=int(impact.get("matching_suggestion_count") or 0),
+                    ),
                 ),
-                reason_code="agents.proposals.family_relink_preview.reason",
+                reason_code=reason_code,
+                reason_params_json=reason_params_json,
                 risk_level=risk_level,
                 confidence=_confidence_for_risk_level(risk_level),
                 suggested_action="preview_relink",
@@ -348,8 +476,10 @@ def create_family_relink_preview_proposal_with_origin(
         target_id=f"{raw_type_id}:{family_id}",
         summary=draft.summary,
         summary_code=draft.summary_code,
+        summary_params_json=draft.summary_params_json,
         reason=draft.reason,
         reason_code=draft.reason_code,
+        reason_params_json=draft.reason_params_json,
         risk_level=draft.risk_level,
         confidence=draft.confidence,
         suggested_action=draft.suggested_action,
@@ -376,7 +506,13 @@ def create_family_relink_commit_proposal_with_origin(
     origin_kind: str,
     origin_label: str,
     origin_request_id: str | None = None,
+    language_code: str | None = None,
 ) -> AgentProposal:
+    language_context = _resolve_language_context_for_user(
+        db,
+        user_id=user_id,
+        explicit_language_code=language_code,
+    )
     projection = _build_family_relink_projection_or_raise(
         db=db,
         user_id=user_id,
@@ -394,6 +530,19 @@ def create_family_relink_commit_proposal_with_origin(
     raw_type_snapshot = projection["raw_type"]
     current_family_snapshot = projection["current_family"]
     target_family_snapshot = projection["target_family"]
+    summary_code = "agents.proposals.family_relink_commit.summary"
+    summary_params_json = {
+        "raw_type": str(raw_type_snapshot.get("raw_type") or ""),
+        "target_family": str(target_family_snapshot.get("canonical_label") or ""),
+    }
+    reason_code = "agents.proposals.family_relink_commit.reason"
+    reason_params_json = {
+        "raw_type": str(raw_type_snapshot.get("raw_type") or ""),
+        "current_family": str(current_family_snapshot.get("canonical_label") or ""),
+        "target_family": str(target_family_snapshot.get("canonical_label") or ""),
+        "impacted_event_count": int(impact.get("impacted_event_count") or 0),
+        "impacted_pending_change_count": int(impact.get("impacted_pending_change_count") or 0),
+    }
     draft = generate_agent_proposal_draft(
         db=db,
         draft_request=AgentProposalDraftRequest(
@@ -401,20 +550,33 @@ def create_family_relink_commit_proposal_with_origin(
             target_kind="family_relink",
             target_id=f"{raw_type_id}:{family_id}",
             origin_request_id=origin_request_id,
+            language_context=language_context,
             deterministic_draft=AgentProposalDraft(
-                summary=_family_relink_commit_summary(
-                    raw_type=str(raw_type_snapshot.get("raw_type") or ""),
-                    target_family=str(target_family_snapshot.get("canonical_label") or ""),
+                summary=render_structured_text(
+                    code=summary_code,
+                    language_code=language_context.effective_language_code,
+                    params=summary_params_json,
+                    fallback=_family_relink_commit_summary(
+                        raw_type=str(raw_type_snapshot.get("raw_type") or ""),
+                        target_family=str(target_family_snapshot.get("canonical_label") or ""),
+                    ),
                 ),
-                summary_code="agents.proposals.family_relink_commit.summary",
-                reason=_family_relink_commit_reason(
-                    raw_type=str(raw_type_snapshot.get("raw_type") or ""),
-                    current_family=str(current_family_snapshot.get("canonical_label") or ""),
-                    target_family=str(target_family_snapshot.get("canonical_label") or ""),
-                    impacted_event_count=int(impact.get("impacted_event_count") or 0),
-                    impacted_pending_change_count=int(impact.get("impacted_pending_change_count") or 0),
+                summary_code=summary_code,
+                summary_params_json=summary_params_json,
+                reason=render_structured_text(
+                    code=reason_code,
+                    language_code=language_context.effective_language_code,
+                    params=reason_params_json,
+                    fallback=_family_relink_commit_reason(
+                        raw_type=str(raw_type_snapshot.get("raw_type") or ""),
+                        current_family=str(current_family_snapshot.get("canonical_label") or ""),
+                        target_family=str(target_family_snapshot.get("canonical_label") or ""),
+                        impacted_event_count=int(impact.get("impacted_event_count") or 0),
+                        impacted_pending_change_count=int(impact.get("impacted_pending_change_count") or 0),
+                    ),
                 ),
-                reason_code="agents.proposals.family_relink_commit.reason",
+                reason_code=reason_code,
+                reason_params_json=reason_params_json,
                 risk_level="low",
                 confidence=_confidence_for_risk_level("low"),
                 suggested_action="commit_relink",
@@ -438,8 +600,10 @@ def create_family_relink_commit_proposal_with_origin(
         target_id=f"{raw_type_id}:{family_id}",
         summary=draft.summary,
         summary_code=draft.summary_code,
+        summary_params_json=draft.summary_params_json,
         reason=draft.reason,
         reason_code=draft.reason_code,
+        reason_params_json=draft.reason_params_json,
         risk_level=draft.risk_level,
         confidence=draft.confidence,
         suggested_action=draft.suggested_action,
@@ -466,7 +630,14 @@ def create_change_edit_commit_proposal_with_origin(
     origin_kind: str,
     origin_label: str,
     origin_request_id: str | None = None,
+    language_code: str | None = None,
 ) -> AgentProposal:
+    language_context = _resolve_language_context_for_user(
+        db,
+        user_id=user_id,
+        explicit_language_code=language_code,
+        input_texts=collect_agent_input_texts(patch),
+    )
     change = _load_change_edit_commit_target_or_raise(db=db, user_id=user_id, change_id=change_id)
     try:
         preview = preview_change_edit(
@@ -499,6 +670,16 @@ def create_change_edit_commit_proposal_with_origin(
 
     serialized_patch = _jsonable(patch)
     patch_fields = sorted(serialized_patch.keys())
+    summary_code = "agents.proposals.change_edit_commit.summary"
+    summary_params_json = {
+        "change_type": change.change_type.value,
+        "patch_fields": _localized_patch_fields(patch_fields, language_code=language_context.effective_language_code),
+    }
+    reason_code = "agents.proposals.change_edit_commit.reason"
+    reason_params_json = {
+        "patch_fields": _localized_patch_fields(patch_fields, language_code=language_context.effective_language_code),
+        "delta_text": _localized_delta_text(preview=preview, language_code=language_context.effective_language_code),
+    }
     draft = generate_agent_proposal_draft(
         db=db,
         draft_request=AgentProposalDraftRequest(
@@ -506,11 +687,24 @@ def create_change_edit_commit_proposal_with_origin(
             target_kind="change",
             target_id=str(change_id),
             origin_request_id=origin_request_id,
+            language_context=language_context,
             deterministic_draft=AgentProposalDraft(
-                summary=_proposal_edit_commit_summary(change_type=change.change_type.value, patch_fields=patch_fields),
-                summary_code="agents.proposals.change_edit_commit.summary",
-                reason=_proposal_edit_commit_reason(preview=preview, patch_fields=patch_fields),
-                reason_code="agents.proposals.change_edit_commit.reason",
+                summary=render_structured_text(
+                    code=summary_code,
+                    language_code=language_context.effective_language_code,
+                    params=summary_params_json,
+                    fallback=_proposal_edit_commit_summary(change_type=change.change_type.value, patch_fields=patch_fields),
+                ),
+                summary_code=summary_code,
+                summary_params_json=summary_params_json,
+                reason=render_structured_text(
+                    code=reason_code,
+                    language_code=language_context.effective_language_code,
+                    params=reason_params_json,
+                    fallback=_proposal_edit_commit_reason(preview=preview, patch_fields=patch_fields),
+                ),
+                reason_code=reason_code,
+                reason_params_json=reason_params_json,
                 risk_level="low",
                 confidence=_confidence_for_risk_level("low"),
                 suggested_action="commit_proposal_edit",
@@ -547,8 +741,10 @@ def create_change_edit_commit_proposal_with_origin(
         target_id=str(change_id),
         summary=draft.summary,
         summary_code=draft.summary_code,
+        summary_params_json=draft.summary_params_json,
         reason=draft.reason,
         reason_code=draft.reason_code,
+        reason_params_json=draft.reason_params_json,
         risk_level=draft.risk_level,
         confidence=draft.confidence,
         suggested_action=draft.suggested_action,
@@ -575,7 +771,13 @@ def create_label_learning_commit_proposal_with_origin(
     origin_kind: str,
     origin_label: str,
     origin_request_id: str | None = None,
+    language_code: str | None = None,
 ) -> AgentProposal:
+    language_context = _resolve_language_context_for_user(
+        db,
+        user_id=user_id,
+        explicit_language_code=language_code,
+    )
     projection = _build_label_learning_projection_or_raise(
         db=db,
         user_id=user_id,
@@ -585,6 +787,17 @@ def create_label_learning_commit_proposal_with_origin(
     change_snapshot = projection["change"]
     target_family_snapshot = projection["target_family"]
     impact = projection["impact"]
+    summary_code = "agents.proposals.label_learning_commit.summary"
+    summary_params_json = {
+        "raw_label": str(change_snapshot.get("raw_label") or ""),
+        "target_family": str(target_family_snapshot.get("canonical_label") or ""),
+    }
+    reason_code = "agents.proposals.label_learning_commit.reason"
+    reason_params_json = {
+        "raw_label": str(change_snapshot.get("raw_label") or ""),
+        "target_family": str(target_family_snapshot.get("canonical_label") or ""),
+        "course_display": str(change_snapshot.get("course_display") or ""),
+    }
     draft = generate_agent_proposal_draft(
         db=db,
         draft_request=AgentProposalDraftRequest(
@@ -592,18 +805,31 @@ def create_label_learning_commit_proposal_with_origin(
             target_kind="label_learning",
             target_id=f"{change_id}:{family_id}",
             origin_request_id=origin_request_id,
+            language_context=language_context,
             deterministic_draft=AgentProposalDraft(
-                summary=_label_learning_commit_summary(
-                    raw_label=str(change_snapshot.get("raw_label") or ""),
-                    target_family=str(target_family_snapshot.get("canonical_label") or ""),
+                summary=render_structured_text(
+                    code=summary_code,
+                    language_code=language_context.effective_language_code,
+                    params=summary_params_json,
+                    fallback=_label_learning_commit_summary(
+                        raw_label=str(change_snapshot.get("raw_label") or ""),
+                        target_family=str(target_family_snapshot.get("canonical_label") or ""),
+                    ),
                 ),
-                summary_code="agents.proposals.label_learning_commit.summary",
-                reason=_label_learning_commit_reason(
-                    raw_label=str(change_snapshot.get("raw_label") or ""),
-                    target_family=str(target_family_snapshot.get("canonical_label") or ""),
-                    course_display=str(change_snapshot.get("course_display") or ""),
+                summary_code=summary_code,
+                summary_params_json=summary_params_json,
+                reason=render_structured_text(
+                    code=reason_code,
+                    language_code=language_context.effective_language_code,
+                    params=reason_params_json,
+                    fallback=_label_learning_commit_reason(
+                        raw_label=str(change_snapshot.get("raw_label") or ""),
+                        target_family=str(target_family_snapshot.get("canonical_label") or ""),
+                        course_display=str(change_snapshot.get("course_display") or ""),
+                    ),
                 ),
-                reason_code="agents.proposals.label_learning_commit.reason",
+                reason_code=reason_code,
+                reason_params_json=reason_params_json,
                 risk_level=str(impact.get("risk_level") or "low"),
                 confidence=_confidence_for_risk_level("low"),
                 suggested_action="commit_label_learning",
@@ -637,8 +863,10 @@ def create_label_learning_commit_proposal_with_origin(
         target_id=f"{change_id}:{family_id}",
         summary=draft.summary,
         summary_code=draft.summary_code,
+        summary_params_json=draft.summary_params_json,
         reason=draft.reason,
         reason_code=draft.reason_code,
+        reason_params_json=draft.reason_params_json,
         risk_level=draft.risk_level,
         confidence=draft.confidence,
         suggested_action=draft.suggested_action,
@@ -675,7 +903,7 @@ def _change_summary(*, action_kind: str, review_bucket: str) -> str:
 
 
 def _source_summary(*, provider: str, action: str) -> str:
-    provider_label = "Gmail" if provider == "gmail" else "Canvas ICS" if provider == "ics" else provider.title() or "Source"
+    provider_label = _provider_label(provider)
     return {
         "reconnect_gmail": f"Reconnect {provider_label} before trusting this source again.",
         "retry_sync": f"Run another sync for {provider_label}.",
@@ -775,6 +1003,62 @@ def _proposal_edit_commit_reason(*, preview: dict, patch_fields: list[str]) -> s
     return (
         f"Updated proposal fields: {', '.join(patch_fields) or 'none'}. "
         f"The preview stays in proposal mode, keeps the change pending, and currently shows {delta_text}."
+    )
+
+
+def _provider_label(provider: str) -> str:
+    normalized = provider.strip().lower()
+    if normalized == "gmail":
+        return "Gmail"
+    if normalized == "ics":
+        return "Canvas ICS"
+    return provider.strip().title() or "Source"
+
+
+def _localized_patch_fields(*, patch_fields: list[str], language_code: str) -> str:
+    labels = {
+        "event_name": render_structured_text(
+            code="agents.proposals.change_edit.field.event_name",
+            language_code=language_code,
+            fallback="event name",
+        ),
+        "due_date": render_structured_text(
+            code="agents.proposals.change_edit.field.due_date",
+            language_code=language_code,
+            fallback="due date",
+        ),
+        "due_time": render_structured_text(
+            code="agents.proposals.change_edit.field.due_time",
+            language_code=language_code,
+            fallback="due time",
+        ),
+        "time_precision": render_structured_text(
+            code="agents.proposals.change_edit.field.time_precision",
+            language_code=language_code,
+            fallback="time precision",
+        ),
+    }
+    localized = [labels.get(field, field) for field in patch_fields]
+    return ", ".join(localized) if localized else render_structured_text(
+        code="agents.proposals.change_edit.field.none",
+        language_code=language_code,
+        fallback="proposal fields",
+    )
+
+
+def _localized_delta_text(*, preview: dict, language_code: str) -> str:
+    delta_seconds = preview.get("delta_seconds")
+    if isinstance(delta_seconds, int):
+        return render_structured_text(
+            code="agents.proposals.change_edit.delta.seconds",
+            language_code=language_code,
+            params={"seconds": delta_seconds},
+            fallback=f"{delta_seconds} seconds",
+        )
+    return render_structured_text(
+        code="agents.proposals.change_edit.delta.none",
+        language_code=language_code,
+        fallback="no time delta",
     )
 
 

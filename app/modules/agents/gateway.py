@@ -4,6 +4,11 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.modules.agents.language_context import (
+    AgentLanguageContext,
+    collect_agent_input_texts,
+    resolve_agent_language_context,
+)
 from app.modules.agents.activity_service import (
     build_recent_agent_activity,
     list_agent_proposals,
@@ -41,30 +46,69 @@ class AgentGatewayOrigin:
 
 
 def get_workspace_context(db: Session, *, user_id: int, language_code: str | None = None) -> dict:
-    return build_workspace_agent_context(db=db, user_id=user_id, language_code=language_code)
+    language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
+    payload = build_workspace_agent_context(
+        db=db,
+        user_id=user_id,
+        language_code=language_context.effective_language_code,
+    )
+    return _attach_language_metadata(payload, language_context=language_context)
 
 
 def get_change_context(db: Session, *, user_id: int, change_id: int, language_code: str | None = None) -> dict:
-    return build_change_agent_context(db=db, user_id=user_id, change_id=change_id, language_code=language_code)
+    language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
+    payload = build_change_agent_context(
+        db=db,
+        user_id=user_id,
+        change_id=change_id,
+        language_code=language_context.effective_language_code,
+    )
+    return _attach_language_metadata(payload, language_context=language_context)
 
 
 def get_source_context(db: Session, *, user_id: int, source_id: int, language_code: str | None = None) -> dict:
-    return build_source_agent_context(db=db, user_id=user_id, source_id=source_id, language_code=language_code)
+    language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
+    payload = build_source_agent_context(
+        db=db,
+        user_id=user_id,
+        source_id=source_id,
+        language_code=language_context.effective_language_code,
+    )
+    return _attach_language_metadata(payload, language_context=language_context)
 
 
-def get_family_context(db: Session, *, user_id: int, family_id: int) -> dict:
-    return build_family_agent_context(db=db, user_id=user_id, family_id=family_id)
+def get_family_context(db: Session, *, user_id: int, family_id: int, language_code: str | None = None) -> dict:
+    language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
+    payload = build_family_agent_context(
+        db=db,
+        user_id=user_id,
+        family_id=family_id,
+        language_code=language_context.effective_language_code,
+    )
+    return _attach_language_metadata(payload, language_context=language_context)
 
 
-def get_recent_activity(db: Session, *, user_id: int, limit: int = 20) -> dict:
-    return build_recent_agent_activity(db=db, user_id=user_id, limit=limit)
+def get_recent_activity(db: Session, *, user_id: int, limit: int = 20, language_code: str | None = None) -> dict:
+    language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
+    payload = build_recent_agent_activity(
+        db=db,
+        user_id=user_id,
+        limit=limit,
+        language_code=language_context.effective_language_code,
+    )
+    return _attach_language_metadata(payload, language_context=language_context)
 
 
 def get_proposal(db: Session, *, user_id: int, proposal_id: int, language_code: str | None = None) -> dict | None:
+    language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
     proposal = get_agent_proposal(db=db, user_id=user_id, proposal_id=proposal_id)
     if proposal is None:
         return None
-    return serialize_agent_proposal(proposal, language_code=language_code)
+    return serialize_agent_proposal(
+        proposal,
+        language_code=language_context.effective_language_code,
+        language_resolution_source=language_context.resolution_source,
+    )
 
 
 def list_proposals(
@@ -75,8 +119,13 @@ def list_proposals(
     limit: int = 20,
     language_code: str | None = None,
 ) -> list[dict]:
+    language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
     return [
-        serialize_agent_proposal(row, language_code=language_code)
+        serialize_agent_proposal(
+            row,
+            language_code=language_context.effective_language_code,
+            language_resolution_source=language_context.resolution_source,
+        )
         for row in list_agent_proposals(db=db, user_id=user_id, status=status, limit=limit)
     ]
 
@@ -89,6 +138,7 @@ def create_change_decision_proposal(
     origin: AgentGatewayOrigin | None = None,
     language_code: str | None = None,
 ) -> dict:
+    language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
     resolved_origin = origin or AgentGatewayOrigin()
     proposal = create_change_decision_proposal_with_origin(
         db=db,
@@ -97,9 +147,13 @@ def create_change_decision_proposal(
         origin_kind=resolved_origin.kind,
         origin_label=resolved_origin.label,
         origin_request_id=resolved_origin.request_id,
-        language_code=language_code,
+        language_code=language_context.effective_language_code,
     )
-    return serialize_agent_proposal(proposal, language_code=language_code)
+    return serialize_agent_proposal(
+        proposal,
+        language_code=language_context.effective_language_code,
+        language_resolution_source=language_context.resolution_source,
+    )
 
 
 def create_change_edit_commit_proposal(
@@ -109,7 +163,14 @@ def create_change_edit_commit_proposal(
     change_id: int,
     patch: dict,
     origin: AgentGatewayOrigin | None = None,
+    language_code: str | None = None,
 ) -> dict:
+    language_context = _resolve_language_context(
+        db,
+        user_id=user_id,
+        language_code=language_code,
+        input_texts=collect_agent_input_texts(patch),
+    )
     resolved_origin = origin or AgentGatewayOrigin()
     proposal = create_change_edit_commit_proposal_with_origin(
         db=db,
@@ -119,8 +180,13 @@ def create_change_edit_commit_proposal(
         origin_kind=resolved_origin.kind,
         origin_label=resolved_origin.label,
         origin_request_id=resolved_origin.request_id,
+        language_code=language_context.effective_language_code,
     )
-    return serialize_agent_proposal(proposal)
+    return serialize_agent_proposal(
+        proposal,
+        language_code=language_context.effective_language_code,
+        language_resolution_source=language_context.resolution_source,
+    )
 
 
 def create_source_recovery_proposal(
@@ -131,6 +197,7 @@ def create_source_recovery_proposal(
     origin: AgentGatewayOrigin | None = None,
     language_code: str | None = None,
 ) -> dict:
+    language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
     resolved_origin = origin or AgentGatewayOrigin()
     proposal = create_source_recovery_proposal_with_origin(
         db=db,
@@ -139,9 +206,13 @@ def create_source_recovery_proposal(
         origin_kind=resolved_origin.kind,
         origin_label=resolved_origin.label,
         origin_request_id=resolved_origin.request_id,
-        language_code=language_code,
+        language_code=language_context.effective_language_code,
     )
-    return serialize_agent_proposal(proposal, language_code=language_code)
+    return serialize_agent_proposal(
+        proposal,
+        language_code=language_context.effective_language_code,
+        language_resolution_source=language_context.resolution_source,
+    )
 
 
 def create_family_relink_preview_proposal(
@@ -151,7 +222,9 @@ def create_family_relink_preview_proposal(
     raw_type_id: int,
     family_id: int,
     origin: AgentGatewayOrigin | None = None,
+    language_code: str | None = None,
 ) -> dict:
+    language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
     resolved_origin = origin or AgentGatewayOrigin()
     proposal = create_family_relink_preview_proposal_with_origin(
         db=db,
@@ -161,8 +234,13 @@ def create_family_relink_preview_proposal(
         origin_kind=resolved_origin.kind,
         origin_label=resolved_origin.label,
         origin_request_id=resolved_origin.request_id,
+        language_code=language_context.effective_language_code,
     )
-    return serialize_agent_proposal(proposal)
+    return serialize_agent_proposal(
+        proposal,
+        language_code=language_context.effective_language_code,
+        language_resolution_source=language_context.resolution_source,
+    )
 
 
 def create_family_relink_commit_proposal(
@@ -172,7 +250,9 @@ def create_family_relink_commit_proposal(
     raw_type_id: int,
     family_id: int,
     origin: AgentGatewayOrigin | None = None,
+    language_code: str | None = None,
 ) -> dict:
+    language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
     resolved_origin = origin or AgentGatewayOrigin()
     proposal = create_family_relink_commit_proposal_with_origin(
         db=db,
@@ -182,8 +262,13 @@ def create_family_relink_commit_proposal(
         origin_kind=resolved_origin.kind,
         origin_label=resolved_origin.label,
         origin_request_id=resolved_origin.request_id,
+        language_code=language_context.effective_language_code,
     )
-    return serialize_agent_proposal(proposal)
+    return serialize_agent_proposal(
+        proposal,
+        language_code=language_context.effective_language_code,
+        language_resolution_source=language_context.resolution_source,
+    )
 
 
 def create_label_learning_commit_proposal(
@@ -193,7 +278,9 @@ def create_label_learning_commit_proposal(
     change_id: int,
     family_id: int,
     origin: AgentGatewayOrigin | None = None,
+    language_code: str | None = None,
 ) -> dict:
+    language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
     resolved_origin = origin or AgentGatewayOrigin()
     proposal = create_label_learning_commit_proposal_with_origin(
         db=db,
@@ -203,8 +290,13 @@ def create_label_learning_commit_proposal(
         origin_kind=resolved_origin.kind,
         origin_label=resolved_origin.label,
         origin_request_id=resolved_origin.request_id,
+        language_code=language_context.effective_language_code,
     )
-    return serialize_agent_proposal(proposal)
+    return serialize_agent_proposal(
+        proposal,
+        language_code=language_context.effective_language_code,
+        language_resolution_source=language_context.resolution_source,
+    )
 
 
 def create_approval_ticket_for_proposal(
@@ -214,7 +306,9 @@ def create_approval_ticket_for_proposal(
     proposal_id: int,
     channel: str,
     origin: AgentGatewayOrigin | None = None,
+    language_code: str | None = None,
 ) -> dict:
+    language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
     resolved_origin = origin or AgentGatewayOrigin()
     ticket = create_approval_ticket(
         db=db,
@@ -225,14 +319,29 @@ def create_approval_ticket_for_proposal(
         origin_label=resolved_origin.label,
         origin_request_id=resolved_origin.request_id,
     )
-    return serialize_approval_ticket(ticket)
+    return serialize_approval_ticket(
+        ticket,
+        language_code=language_context.effective_language_code,
+        language_resolution_source=language_context.resolution_source,
+    )
 
 
-def get_approval_ticket_for_user(db: Session, *, user_id: int, ticket_id: str) -> dict | None:
+def get_approval_ticket_for_user(
+    db: Session,
+    *,
+    user_id: int,
+    ticket_id: str,
+    language_code: str | None = None,
+) -> dict | None:
+    language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
     ticket = get_approval_ticket(db=db, user_id=user_id, ticket_id=ticket_id)
     if ticket is None:
         return None
-    return serialize_approval_ticket(ticket)
+    return serialize_approval_ticket(
+        ticket,
+        language_code=language_context.effective_language_code,
+        language_resolution_source=language_context.resolution_source,
+    )
 
 
 def list_approval_tickets_for_user(
@@ -241,9 +350,15 @@ def list_approval_tickets_for_user(
     user_id: int,
     status: str = "all",
     limit: int = 20,
+    language_code: str | None = None,
 ) -> list[dict]:
+    language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
     return [
-        serialize_approval_ticket(row)
+        serialize_approval_ticket(
+            row,
+            language_code=language_context.effective_language_code,
+            language_resolution_source=language_context.resolution_source,
+        )
         for row in list_approval_tickets(db=db, user_id=user_id, status=status, limit=limit)
     ]
 
@@ -254,7 +369,9 @@ def confirm_approval_ticket_for_user(
     user_id: int,
     ticket_id: str,
     origin: AgentGatewayOrigin | None = None,
+    language_code: str | None = None,
 ) -> dict:
+    language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
     resolved_origin = origin or AgentGatewayOrigin()
     ticket, _idempotent = confirm_approval_ticket(
         db=db,
@@ -263,7 +380,11 @@ def confirm_approval_ticket_for_user(
         transition_kind=resolved_origin.kind,
         transition_label=resolved_origin.label,
     )
-    return serialize_approval_ticket(ticket)
+    return serialize_approval_ticket(
+        ticket,
+        language_code=language_context.effective_language_code,
+        language_resolution_source=language_context.resolution_source,
+    )
 
 
 def cancel_approval_ticket_for_user(
@@ -272,7 +393,9 @@ def cancel_approval_ticket_for_user(
     user_id: int,
     ticket_id: str,
     origin: AgentGatewayOrigin | None = None,
+    language_code: str | None = None,
 ) -> dict:
+    language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
     resolved_origin = origin or AgentGatewayOrigin()
     ticket, _idempotent = cancel_approval_ticket(
         db=db,
@@ -281,7 +404,33 @@ def cancel_approval_ticket_for_user(
         transition_kind=resolved_origin.kind,
         transition_label=resolved_origin.label,
     )
-    return serialize_approval_ticket(ticket)
+    return serialize_approval_ticket(
+        ticket,
+        language_code=language_context.effective_language_code,
+        language_resolution_source=language_context.resolution_source,
+    )
+
+
+def _resolve_language_context(
+    db: Session,
+    *,
+    user_id: int,
+    language_code: str | None,
+    input_texts: list[str] | None = None,
+) -> AgentLanguageContext:
+    return resolve_agent_language_context(
+        db,
+        user_id=user_id,
+        explicit_language_code=language_code,
+        input_texts=input_texts or [],
+    )
+
+
+def _attach_language_metadata(payload: dict, *, language_context: AgentLanguageContext) -> dict:
+    output = dict(payload)
+    output["language_code"] = language_context.effective_language_code
+    output["language_resolution_source"] = language_context.resolution_source
+    return output
 
 
 __all__ = [

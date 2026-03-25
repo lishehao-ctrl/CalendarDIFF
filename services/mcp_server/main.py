@@ -69,6 +69,7 @@ from pydantic import BaseModel, Field
 
 INSTRUCTIONS = """
 CalendarDIFF MCP server for operator-grade academic deadline review.
+CalendarDIFF MCP 服务用于受控的学业时间变更审核与执行辅助。
 
 Use read-only tools first:
 - get_workspace_context
@@ -82,7 +83,12 @@ Use read-only tools first:
 Only create proposals or approval tickets when the task clearly requires action.
 Do not assume that every proposal is executable.
 Use approval tickets for execution; do not skip directly to business writes.
+执行必须通过 approval ticket，不要绕过审批直接做业务写入。
 """
+
+
+def _tool_desc(en: str, zh: str) -> str:
+    return f"{en} / {zh}"
 
 
 class PendingChangesResult(BaseModel):
@@ -324,24 +330,24 @@ def _run_with_user_audited(
         raise _normalize_error(exc) from exc
 
 
-def get_workspace_context_impl(*, email: str | None = None, ctx: Context | None = None) -> dict:
+def get_workspace_context_impl(*, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="get_workspace_context",
         input_payload={},
         email=email,
         ctx=ctx,
-        fn=lambda db, user: get_workspace_context(db=db, user_id=user.id),
+        fn=lambda db, user: get_workspace_context(db=db, user_id=user.id, language_code=language_code),
     )
 
 
-def get_recent_agent_activity_impl(*, email: str | None = None, limit: int = 10, ctx: Context | None = None) -> dict:
+def get_recent_agent_activity_impl(*, email: str | None = None, limit: int = 10, language_code: str | None = None, ctx: Context | None = None) -> dict:
     safe_limit = max(1, min(limit, 50))
     return _run_with_user_audited(
         tool_name="get_recent_agent_activity",
         input_payload={"limit": safe_limit},
         email=email,
         ctx=ctx,
-        fn=lambda db, user: get_recent_activity(db=db, user_id=user.id, limit=safe_limit),
+        fn=lambda db, user: get_recent_activity(db=db, user_id=user.id, limit=safe_limit, language_code=language_code),
     )
 
 
@@ -351,6 +357,7 @@ def list_pending_changes_impl(
     limit: int = 10,
     review_bucket: str = "all",
     intake_phase: str = "all",
+    language_code: str | None = None,
     ctx: Context | None = None,
 ) -> list[dict]:
     safe_limit = max(1, min(limit, 50))
@@ -368,51 +375,52 @@ def list_pending_changes_impl(
             source_id=None,
             limit=safe_limit,
             offset=0,
+            language_code=language_code,
         ),
     )
 
 
-def list_sources_impl(*, email: str | None = None, status: str = "active", ctx: Context | None = None) -> list[dict]:
+def list_sources_impl(*, email: str | None = None, status: str = "active", language_code: str | None = None, ctx: Context | None = None) -> list[dict]:
     return _run_with_user_audited(
         tool_name="list_sources",
         input_payload={"status": status},
         email=email,
         ctx=ctx,
-        fn=lambda db, user: [build_source_read_payload(db, source=row) for row in list_input_sources(db, user_id=user.id, status=status)],
+        fn=lambda db, user: [build_source_read_payload(db, source=row, language_code=language_code) for row in list_input_sources(db, user_id=user.id, status=status)],
     )
 
 
-def get_change_context_impl(*, change_id: int, email: str | None = None, ctx: Context | None = None) -> dict:
+def get_change_context_impl(*, change_id: int, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="get_change_context",
         input_payload={"change_id": change_id},
         email=email,
         ctx=ctx,
-        fn=lambda db, user: get_change_context(db=db, user_id=user.id, change_id=change_id),
+        fn=lambda db, user: get_change_context(db=db, user_id=user.id, change_id=change_id, language_code=language_code),
     )
 
 
-def get_source_context_impl(*, source_id: int, email: str | None = None, ctx: Context | None = None) -> dict:
+def get_source_context_impl(*, source_id: int, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="get_source_context",
         input_payload={"source_id": source_id},
         email=email,
         ctx=ctx,
-        fn=lambda db, user: get_source_context(db=db, user_id=user.id, source_id=source_id),
+        fn=lambda db, user: get_source_context(db=db, user_id=user.id, source_id=source_id, language_code=language_code),
     )
 
 
-def get_family_context_impl(*, family_id: int, email: str | None = None, ctx: Context | None = None) -> dict:
+def get_family_context_impl(*, family_id: int, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="get_family_context",
         input_payload={"family_id": family_id},
         email=email,
         ctx=ctx,
-        fn=lambda db, user: get_family_context(db=db, user_id=user.id, family_id=family_id),
+        fn=lambda db, user: get_family_context(db=db, user_id=user.id, family_id=family_id, language_code=language_code),
     )
 
 
-def create_change_decision_proposal_impl(*, change_id: int, email: str | None = None, ctx: Context | None = None) -> dict:
+def create_change_decision_proposal_impl(*, change_id: int, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="create_change_decision_proposal",
         input_payload={"change_id": change_id},
@@ -422,6 +430,7 @@ def create_change_decision_proposal_impl(*, change_id: int, email: str | None = 
             db=db,
             user_id=user.id,
             change_id=change_id,
+            language_code=language_code,
             origin=AgentGatewayOrigin(
                 kind="mcp",
                 label="create_change_decision_proposal",
@@ -431,7 +440,7 @@ def create_change_decision_proposal_impl(*, change_id: int, email: str | None = 
     )
 
 
-def create_source_recovery_proposal_impl(*, source_id: int, email: str | None = None, ctx: Context | None = None) -> dict:
+def create_source_recovery_proposal_impl(*, source_id: int, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="create_source_recovery_proposal",
         input_payload={"source_id": source_id},
@@ -441,6 +450,7 @@ def create_source_recovery_proposal_impl(*, source_id: int, email: str | None = 
             db=db,
             user_id=user.id,
             source_id=source_id,
+            language_code=language_code,
             origin=AgentGatewayOrigin(
                 kind="mcp",
                 label="create_source_recovery_proposal",
@@ -455,6 +465,7 @@ def create_change_edit_commit_proposal_impl(
     change_id: int,
     patch: dict[str, Any],
     email: str | None = None,
+    language_code: str | None = None,
     ctx: Context | None = None,
 ) -> dict:
     return _run_with_user_audited(
@@ -467,6 +478,7 @@ def create_change_edit_commit_proposal_impl(
             user_id=user.id,
             change_id=change_id,
             patch=patch,
+            language_code=language_code,
             origin=AgentGatewayOrigin(
                 kind="mcp",
                 label="create_change_edit_commit_proposal",
@@ -481,6 +493,7 @@ def create_family_relink_preview_proposal_impl(
     raw_type_id: int,
     family_id: int,
     email: str | None = None,
+    language_code: str | None = None,
     ctx: Context | None = None,
 ) -> dict:
     return _run_with_user_audited(
@@ -493,6 +506,7 @@ def create_family_relink_preview_proposal_impl(
             user_id=user.id,
             raw_type_id=raw_type_id,
             family_id=family_id,
+            language_code=language_code,
             origin=AgentGatewayOrigin(
                 kind="mcp",
                 label="create_family_relink_preview_proposal",
@@ -507,6 +521,7 @@ def create_family_relink_commit_proposal_impl(
     raw_type_id: int,
     family_id: int,
     email: str | None = None,
+    language_code: str | None = None,
     ctx: Context | None = None,
 ) -> dict:
     return _run_with_user_audited(
@@ -519,6 +534,7 @@ def create_family_relink_commit_proposal_impl(
             user_id=user.id,
             raw_type_id=raw_type_id,
             family_id=family_id,
+            language_code=language_code,
             origin=AgentGatewayOrigin(
                 kind="mcp",
                 label="create_family_relink_commit_proposal",
@@ -533,6 +549,7 @@ def create_label_learning_commit_proposal_impl(
     change_id: int,
     family_id: int,
     email: str | None = None,
+    language_code: str | None = None,
     ctx: Context | None = None,
 ) -> dict:
     return _run_with_user_audited(
@@ -545,6 +562,7 @@ def create_label_learning_commit_proposal_impl(
             user_id=user.id,
             change_id=change_id,
             family_id=family_id,
+            language_code=language_code,
             origin=AgentGatewayOrigin(
                 kind="mcp",
                 label="create_label_learning_commit_proposal",
@@ -554,9 +572,9 @@ def create_label_learning_commit_proposal_impl(
     )
 
 
-def get_proposal_impl(*, proposal_id: int, email: str | None = None, ctx: Context | None = None) -> dict:
+def get_proposal_impl(*, proposal_id: int, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> dict:
     def _load(db: Session, user: User) -> dict:
-        proposal = get_proposal(db=db, user_id=user.id, proposal_id=proposal_id)
+        proposal = get_proposal(db=db, user_id=user.id, proposal_id=proposal_id, language_code=language_code)
         if proposal is None:
             raise RuntimeError("Agent proposal not found.")
         return proposal
@@ -570,18 +588,18 @@ def get_proposal_impl(*, proposal_id: int, email: str | None = None, ctx: Contex
     )
 
 
-def list_proposals_impl(*, email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> list[dict]:
+def list_proposals_impl(*, email: str | None = None, status: str = "all", limit: int = 10, language_code: str | None = None, ctx: Context | None = None) -> list[dict]:
     safe_limit = max(1, min(limit, 50))
     return _run_with_user_audited(
         tool_name="list_proposals",
         input_payload={"status": status, "limit": safe_limit},
         email=email,
         ctx=ctx,
-        fn=lambda db, user: list_proposals(db=db, user_id=user.id, status=status, limit=safe_limit),
+        fn=lambda db, user: list_proposals(db=db, user_id=user.id, status=status, limit=safe_limit, language_code=language_code),
     )
 
 
-def create_approval_ticket_impl(*, proposal_id: int, email: str | None = None, channel: str = "mcp", ctx: Context | None = None) -> dict:
+def create_approval_ticket_impl(*, proposal_id: int, email: str | None = None, channel: str = "mcp", language_code: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="create_approval_ticket",
         input_payload={"proposal_id": proposal_id, "channel": channel},
@@ -592,6 +610,7 @@ def create_approval_ticket_impl(*, proposal_id: int, email: str | None = None, c
             user_id=user.id,
             proposal_id=proposal_id,
             channel=channel,
+            language_code=language_code,
             origin=AgentGatewayOrigin(
                 kind="mcp",
                 label="create_approval_ticket",
@@ -601,9 +620,9 @@ def create_approval_ticket_impl(*, proposal_id: int, email: str | None = None, c
     )
 
 
-def get_approval_ticket_impl(*, ticket_id: str, email: str | None = None, ctx: Context | None = None) -> dict:
+def get_approval_ticket_impl(*, ticket_id: str, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> dict:
     def _load(db: Session, user: User) -> dict:
-        ticket = get_approval_ticket_for_user(db=db, user_id=user.id, ticket_id=ticket_id)
+        ticket = get_approval_ticket_for_user(db=db, user_id=user.id, ticket_id=ticket_id, language_code=language_code)
         if ticket is None:
             raise RuntimeError("Approval ticket not found.")
         return ticket
@@ -617,18 +636,18 @@ def get_approval_ticket_impl(*, ticket_id: str, email: str | None = None, ctx: C
     )
 
 
-def list_approval_tickets_impl(*, email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> list[dict]:
+def list_approval_tickets_impl(*, email: str | None = None, status: str = "all", limit: int = 10, language_code: str | None = None, ctx: Context | None = None) -> list[dict]:
     safe_limit = max(1, min(limit, 50))
     return _run_with_user_audited(
         tool_name="list_approval_tickets",
         input_payload={"status": status, "limit": safe_limit},
         email=email,
         ctx=ctx,
-        fn=lambda db, user: list_approval_tickets_for_user(db=db, user_id=user.id, status=status, limit=safe_limit),
+        fn=lambda db, user: list_approval_tickets_for_user(db=db, user_id=user.id, status=status, limit=safe_limit, language_code=language_code),
     )
 
 
-def confirm_approval_ticket_impl(*, ticket_id: str, email: str | None = None, ctx: Context | None = None) -> dict:
+def confirm_approval_ticket_impl(*, ticket_id: str, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="confirm_approval_ticket",
         input_payload={"ticket_id": ticket_id},
@@ -638,12 +657,13 @@ def confirm_approval_ticket_impl(*, ticket_id: str, email: str | None = None, ct
             db=db,
             user_id=user.id,
             ticket_id=ticket_id,
+            language_code=language_code,
             origin=AgentGatewayOrigin(kind="mcp", label="confirm_approval_ticket"),
         ),
     )
 
 
-def cancel_approval_ticket_impl(*, ticket_id: str, email: str | None = None, ctx: Context | None = None) -> dict:
+def cancel_approval_ticket_impl(*, ticket_id: str, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="cancel_approval_ticket",
         input_payload={"ticket_id": ticket_id},
@@ -653,27 +673,29 @@ def cancel_approval_ticket_impl(*, ticket_id: str, email: str | None = None, ctx
             db=db,
             user_id=user.id,
             ticket_id=ticket_id,
+            language_code=language_code,
             origin=AgentGatewayOrigin(kind="mcp", label="cancel_approval_ticket"),
         ),
     )
 
 
-@mcp.tool(name="get_workspace_context", description="Get the aggregated CalendarDIFF workspace context for a user.", structured_output=True)
-def get_workspace_context_tool(email: str | None = None, ctx: Context | None = None) -> AgentWorkspaceContextResponse:
-    return AgentWorkspaceContextResponse.model_validate(get_workspace_context_impl(email=email, ctx=ctx))
+@mcp.tool(name="get_workspace_context", description=_tool_desc("Get the aggregated CalendarDIFF workspace context for a user.", "获取用户的 CalendarDIFF 工作区聚合上下文。"), structured_output=True)
+def get_workspace_context_tool(email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> AgentWorkspaceContextResponse:
+    return AgentWorkspaceContextResponse.model_validate(get_workspace_context_impl(email=email, language_code=language_code, ctx=ctx))
 
 
-@mcp.tool(name="get_recent_agent_activity", description="Get recent agent proposals, approval tickets, and transitions for a user.", structured_output=True)
-def get_recent_agent_activity_tool(email: str | None = None, limit: int = 10, ctx: Context | None = None) -> AgentRecentActivityResponse:
-    return AgentRecentActivityResponse.model_validate(get_recent_agent_activity_impl(email=email, limit=limit, ctx=ctx))
+@mcp.tool(name="get_recent_agent_activity", description=_tool_desc("Get recent agent proposals, approval tickets, and transitions for a user.", "获取用户最近的 agent proposal、approval ticket 与状态变更。"), structured_output=True)
+def get_recent_agent_activity_tool(email: str | None = None, limit: int = 10, language_code: str | None = None, ctx: Context | None = None) -> AgentRecentActivityResponse:
+    return AgentRecentActivityResponse.model_validate(get_recent_agent_activity_impl(email=email, limit=limit, language_code=language_code, ctx=ctx))
 
 
-@mcp.tool(name="list_pending_changes", description="List pending changes for a user.", structured_output=True)
+@mcp.tool(name="list_pending_changes", description=_tool_desc("List pending changes for a user.", "列出用户当前待处理的变更。"), structured_output=True)
 def list_pending_changes_tool(
     email: str | None = None,
     limit: int = 10,
     review_bucket: str = "all",
     intake_phase: str = "all",
+    language_code: str | None = None,
     ctx: Context | None = None,
 ) -> PendingChangesResult:
     return PendingChangesResult.model_validate(
@@ -683,51 +705,53 @@ def list_pending_changes_tool(
                 limit=limit,
                 review_bucket=review_bucket,
                 intake_phase=intake_phase,
+                language_code=language_code,
                 ctx=ctx,
             )
         }
     )
 
 
-@mcp.tool(name="list_sources", description="List sources with current read-model projections for a user.", structured_output=True)
-def list_sources_tool(email: str | None = None, status: str = "active", ctx: Context | None = None) -> SourcesListResult:
-    return SourcesListResult.model_validate({"items": list_sources_impl(email=email, status=status, ctx=ctx)})
+@mcp.tool(name="list_sources", description=_tool_desc("List sources with current read-model projections for a user.", "列出用户当前来源及其读模型投影。"), structured_output=True)
+def list_sources_tool(email: str | None = None, status: str = "active", language_code: str | None = None, ctx: Context | None = None) -> SourcesListResult:
+    return SourcesListResult.model_validate({"items": list_sources_impl(email=email, status=status, language_code=language_code, ctx=ctx)})
 
 
-@mcp.tool(name="get_change_context", description="Get agent context for a specific change.", structured_output=True)
-def get_change_context_tool(change_id: int, email: str | None = None, ctx: Context | None = None) -> AgentChangeContextResponse:
-    return AgentChangeContextResponse.model_validate(get_change_context_impl(change_id=change_id, email=email, ctx=ctx))
+@mcp.tool(name="get_change_context", description=_tool_desc("Get agent context for a specific change.", "获取指定 change 的 agent 上下文。"), structured_output=True)
+def get_change_context_tool(change_id: int, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> AgentChangeContextResponse:
+    return AgentChangeContextResponse.model_validate(get_change_context_impl(change_id=change_id, email=email, language_code=language_code, ctx=ctx))
 
 
-@mcp.tool(name="get_source_context", description="Get agent context for a specific source.", structured_output=True)
-def get_source_context_tool(source_id: int, email: str | None = None, ctx: Context | None = None) -> AgentSourceContextResponse:
-    return AgentSourceContextResponse.model_validate(get_source_context_impl(source_id=source_id, email=email, ctx=ctx))
+@mcp.tool(name="get_source_context", description=_tool_desc("Get agent context for a specific source.", "获取指定 source 的 agent 上下文。"), structured_output=True)
+def get_source_context_tool(source_id: int, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> AgentSourceContextResponse:
+    return AgentSourceContextResponse.model_validate(get_source_context_impl(source_id=source_id, email=email, language_code=language_code, ctx=ctx))
 
 
-@mcp.tool(name="get_family_context", description="Get agent context for a specific family.", structured_output=True)
-def get_family_context_tool(family_id: int, email: str | None = None, ctx: Context | None = None) -> AgentFamilyContextResponse:
-    return AgentFamilyContextResponse.model_validate(get_family_context_impl(family_id=family_id, email=email, ctx=ctx))
+@mcp.tool(name="get_family_context", description=_tool_desc("Get agent context for a specific family.", "获取指定 family 的 agent 上下文。"), structured_output=True)
+def get_family_context_tool(family_id: int, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> AgentFamilyContextResponse:
+    return AgentFamilyContextResponse.model_validate(get_family_context_impl(family_id=family_id, email=email, language_code=language_code, ctx=ctx))
 
 
-@mcp.tool(name="create_change_decision_proposal", description="Create a persisted change-decision proposal.", structured_output=True)
-def create_change_decision_proposal_tool(change_id: int, email: str | None = None, ctx: Context | None = None) -> AgentProposalResponse:
+@mcp.tool(name="create_change_decision_proposal", description=_tool_desc("Create a persisted change-decision proposal.", "创建一条持久化的 change decision proposal。"), structured_output=True)
+def create_change_decision_proposal_tool(change_id: int, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> AgentProposalResponse:
     return AgentProposalResponse.model_validate(
-        create_change_decision_proposal_impl(change_id=change_id, email=email, ctx=ctx)
+        create_change_decision_proposal_impl(change_id=change_id, email=email, language_code=language_code, ctx=ctx)
     )
 
 
-@mcp.tool(name="create_source_recovery_proposal", description="Create a persisted source-recovery proposal.", structured_output=True)
-def create_source_recovery_proposal_tool(source_id: int, email: str | None = None, ctx: Context | None = None) -> AgentProposalResponse:
+@mcp.tool(name="create_source_recovery_proposal", description=_tool_desc("Create a persisted source-recovery proposal.", "创建一条持久化的 source recovery proposal。"), structured_output=True)
+def create_source_recovery_proposal_tool(source_id: int, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> AgentProposalResponse:
     return AgentProposalResponse.model_validate(
-        create_source_recovery_proposal_impl(source_id=source_id, email=email, ctx=ctx)
+        create_source_recovery_proposal_impl(source_id=source_id, email=email, language_code=language_code, ctx=ctx)
     )
 
 
-@mcp.tool(name="create_change_edit_commit_proposal", description="Create an executable proposal-edit commit proposal for a pending change.", structured_output=True)
+@mcp.tool(name="create_change_edit_commit_proposal", description=_tool_desc("Create an executable proposal-edit commit proposal for a pending change.", "为待处理 change 创建一条可执行的 proposal edit commit proposal。"), structured_output=True)
 def create_change_edit_commit_proposal_tool(
     change_id: int,
     patch: dict[str, Any],
     email: str | None = None,
+    language_code: str | None = None,
     ctx: Context | None = None,
 ) -> AgentProposalResponse:
     return AgentProposalResponse.model_validate(
@@ -735,16 +759,18 @@ def create_change_edit_commit_proposal_tool(
             change_id=change_id,
             patch=patch,
             email=email,
+            language_code=language_code,
             ctx=ctx,
         )
     )
 
 
-@mcp.tool(name="create_family_relink_preview_proposal", description="Create a persisted family relink preview proposal.", structured_output=True)
+@mcp.tool(name="create_family_relink_preview_proposal", description=_tool_desc("Create a persisted family relink preview proposal.", "创建一条持久化的 family relink preview proposal。"), structured_output=True)
 def create_family_relink_preview_proposal_tool(
     raw_type_id: int,
     family_id: int,
     email: str | None = None,
+    language_code: str | None = None,
     ctx: Context | None = None,
 ) -> AgentProposalResponse:
     return AgentProposalResponse.model_validate(
@@ -752,16 +778,18 @@ def create_family_relink_preview_proposal_tool(
             raw_type_id=raw_type_id,
             family_id=family_id,
             email=email,
+            language_code=language_code,
             ctx=ctx,
         )
     )
 
 
-@mcp.tool(name="create_family_relink_commit_proposal", description="Create an executable family relink commit proposal.", structured_output=True)
+@mcp.tool(name="create_family_relink_commit_proposal", description=_tool_desc("Create an executable family relink commit proposal.", "创建一条可执行的 family relink commit proposal。"), structured_output=True)
 def create_family_relink_commit_proposal_tool(
     raw_type_id: int,
     family_id: int,
     email: str | None = None,
+    language_code: str | None = None,
     ctx: Context | None = None,
 ) -> AgentProposalResponse:
     return AgentProposalResponse.model_validate(
@@ -769,16 +797,18 @@ def create_family_relink_commit_proposal_tool(
             raw_type_id=raw_type_id,
             family_id=family_id,
             email=email,
+            language_code=language_code,
             ctx=ctx,
         )
     )
 
 
-@mcp.tool(name="create_label_learning_commit_proposal", description="Create an executable label-learning add-alias proposal.", structured_output=True)
+@mcp.tool(name="create_label_learning_commit_proposal", description=_tool_desc("Create an executable label-learning add-alias proposal.", "创建一条可执行的 label learning add-alias proposal。"), structured_output=True)
 def create_label_learning_commit_proposal_tool(
     change_id: int,
     family_id: int,
     email: str | None = None,
+    language_code: str | None = None,
     ctx: Context | None = None,
 ) -> AgentProposalResponse:
     return AgentProposalResponse.model_validate(
@@ -786,54 +816,56 @@ def create_label_learning_commit_proposal_tool(
             change_id=change_id,
             family_id=family_id,
             email=email,
+            language_code=language_code,
             ctx=ctx,
         )
     )
 
 
-@mcp.tool(name="get_proposal", description="Fetch a persisted agent proposal.", structured_output=True)
-def get_proposal_tool(proposal_id: int, email: str | None = None, ctx: Context | None = None) -> AgentProposalResponse:
-    return AgentProposalResponse.model_validate(get_proposal_impl(proposal_id=proposal_id, email=email, ctx=ctx))
+@mcp.tool(name="get_proposal", description=_tool_desc("Fetch a persisted agent proposal.", "读取一条已持久化的 agent proposal。"), structured_output=True)
+def get_proposal_tool(proposal_id: int, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> AgentProposalResponse:
+    return AgentProposalResponse.model_validate(get_proposal_impl(proposal_id=proposal_id, email=email, language_code=language_code, ctx=ctx))
 
 
-@mcp.tool(name="list_proposals", description="List recent persisted agent proposals.", structured_output=True)
-def list_proposals_tool(email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> ProposalListResult:
-    return ProposalListResult.model_validate({"items": list_proposals_impl(email=email, status=status, limit=limit, ctx=ctx)})
+@mcp.tool(name="list_proposals", description=_tool_desc("List recent persisted agent proposals.", "列出最近的持久化 agent proposals。"), structured_output=True)
+def list_proposals_tool(email: str | None = None, status: str = "all", limit: int = 10, language_code: str | None = None, ctx: Context | None = None) -> ProposalListResult:
+    return ProposalListResult.model_validate({"items": list_proposals_impl(email=email, status=status, limit=limit, language_code=language_code, ctx=ctx)})
 
 
-@mcp.tool(name="create_approval_ticket", description="Create an approval ticket from an executable proposal.", structured_output=True)
+@mcp.tool(name="create_approval_ticket", description=_tool_desc("Create an approval ticket from an executable proposal.", "从一条可执行 proposal 创建 approval ticket。"), structured_output=True)
 def create_approval_ticket_tool(
     proposal_id: int,
     email: str | None = None,
     channel: str = "mcp",
+    language_code: str | None = None,
     ctx: Context | None = None,
 ) -> ApprovalTicketResponse:
     return ApprovalTicketResponse.model_validate(
-        create_approval_ticket_impl(proposal_id=proposal_id, email=email, channel=channel, ctx=ctx)
+        create_approval_ticket_impl(proposal_id=proposal_id, email=email, channel=channel, language_code=language_code, ctx=ctx)
     )
 
 
-@mcp.tool(name="get_approval_ticket", description="Fetch an approval ticket.", structured_output=True)
-def get_approval_ticket_tool(ticket_id: str, email: str | None = None, ctx: Context | None = None) -> ApprovalTicketResponse:
-    return ApprovalTicketResponse.model_validate(get_approval_ticket_impl(ticket_id=ticket_id, email=email, ctx=ctx))
+@mcp.tool(name="get_approval_ticket", description=_tool_desc("Fetch an approval ticket.", "读取一张 approval ticket。"), structured_output=True)
+def get_approval_ticket_tool(ticket_id: str, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> ApprovalTicketResponse:
+    return ApprovalTicketResponse.model_validate(get_approval_ticket_impl(ticket_id=ticket_id, email=email, language_code=language_code, ctx=ctx))
 
 
-@mcp.tool(name="list_approval_tickets", description="List recent approval tickets.", structured_output=True)
-def list_approval_tickets_tool(email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> ApprovalTicketListResult:
-    return ApprovalTicketListResult.model_validate({"items": list_approval_tickets_impl(email=email, status=status, limit=limit, ctx=ctx)})
+@mcp.tool(name="list_approval_tickets", description=_tool_desc("List recent approval tickets.", "列出最近的 approval tickets。"), structured_output=True)
+def list_approval_tickets_tool(email: str | None = None, status: str = "all", limit: int = 10, language_code: str | None = None, ctx: Context | None = None) -> ApprovalTicketListResult:
+    return ApprovalTicketListResult.model_validate({"items": list_approval_tickets_impl(email=email, status=status, limit=limit, language_code=language_code, ctx=ctx)})
 
 
-@mcp.tool(name="confirm_approval_ticket", description="Confirm and execute an approval ticket.", structured_output=True)
-def confirm_approval_ticket_tool(ticket_id: str, email: str | None = None, ctx: Context | None = None) -> ApprovalTicketResponse:
+@mcp.tool(name="confirm_approval_ticket", description=_tool_desc("Confirm and execute an approval ticket.", "确认并执行一张 approval ticket。"), structured_output=True)
+def confirm_approval_ticket_tool(ticket_id: str, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> ApprovalTicketResponse:
     return ApprovalTicketResponse.model_validate(
-        confirm_approval_ticket_impl(ticket_id=ticket_id, email=email, ctx=ctx)
+        confirm_approval_ticket_impl(ticket_id=ticket_id, email=email, language_code=language_code, ctx=ctx)
     )
 
 
-@mcp.tool(name="cancel_approval_ticket", description="Cancel an open approval ticket.", structured_output=True)
-def cancel_approval_ticket_tool(ticket_id: str, email: str | None = None, ctx: Context | None = None) -> ApprovalTicketResponse:
+@mcp.tool(name="cancel_approval_ticket", description=_tool_desc("Cancel an open approval ticket.", "取消一张打开状态的 approval ticket。"), structured_output=True)
+def cancel_approval_ticket_tool(ticket_id: str, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> ApprovalTicketResponse:
     return ApprovalTicketResponse.model_validate(
-        cancel_approval_ticket_impl(ticket_id=ticket_id, email=email, ctx=ctx)
+        cancel_approval_ticket_impl(ticket_id=ticket_id, email=email, language_code=language_code, ctx=ctx)
     )
 
 

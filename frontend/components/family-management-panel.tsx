@@ -589,7 +589,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
   const isObservedMobileWorkbench = isMobile && workspaceArea === "raw-types";
   const inlineRelinkPreview =
     isObservedMobileWorkbench && relinkPreviewRawType && relinkPreviewTargetFamily ? (
-      <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/72 p-4">
+      <div className={workbenchSupportPanelClassName("default", "mt-4 p-4")}>
         <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.observed.reviewImpact")}</p>
         <div className="mt-3 space-y-3 text-sm text-[#314051]">
           <p>
@@ -606,11 +606,11 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
           <p>{translate("families.observed.pendingChangesGap")}</p>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-[0.95rem] border border-line/80 bg-white/80 p-3 text-sm text-[#314051]">
+          <div className={workbenchSupportPanelClassName("quiet", "p-3 text-sm text-[#314051]")}>
             <p className="font-medium text-ink">{translate("families.labels.activeEvents")}</p>
             <p className="mt-2">{relinkPreviewEvents.length}</p>
           </div>
-          <div className="rounded-[0.95rem] border border-line/80 bg-white/80 p-3 text-sm text-[#314051]">
+          <div className={workbenchSupportPanelClassName("quiet", "p-3 text-sm text-[#314051]")}>
             <p className="font-medium text-ink">{translate("families.areas.suggestions")}</p>
             <p className="mt-2">{relinkPreviewSuggestionCount}</p>
           </div>
@@ -643,7 +643,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
             <Badge tone="info">{translate("families.labels.observedLabel")}: {selectedFamilyRawTypes.length}</Badge>
           </div>
 
-          <div className="mt-5 rounded-[1rem] border border-line/80 bg-white/72 p-4">
+          <div className={workbenchSupportPanelClassName("default", "mt-5 p-4")}>
             <div className="flex items-start justify-between gap-4">
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.list.canonicalRename")}</p>
               <Button size="sm" onClick={() => void saveSelectedFamily()} disabled={busyFamilyId === activeWorkbenchFamily.id}>
@@ -653,7 +653,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
             <Input className="mt-4" value={draftLabel} onChange={(event) => setDraftLabel(event.target.value)} placeholder={translate("families.list.canonicalLabelPlaceholder")} />
           </div>
 
-          <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/72 p-4">
+          <div className={workbenchSupportPanelClassName("default", "mt-4 p-4")}>
             <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.list.observedLabels")}</p>
             <div className="mt-4 flex flex-wrap gap-2">
               {selectedFamilyRawTypes.map((rawType) => (
@@ -664,12 +664,12 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
             </div>
           </div>
 
-          <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/72 p-4">
+          <div className={workbenchSupportPanelClassName("default", "mt-4 p-4")}>
             <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.list.eventPreview")}</p>
             <div className="mt-4 space-y-3">
               {selectedFamilyEvents.slice(0, 3).length > 0 ? (
                 selectedFamilyEvents.slice(0, 3).map((event) => (
-                  <div key={event.entity_uid} className="rounded-[0.95rem] border border-line/80 bg-white/80 p-3">
+                  <div key={event.entity_uid} className={workbenchSupportPanelClassName("quiet", "p-3")}>
                     <p className="font-medium text-ink">{familyEventTitle(event)}</p>
                     <p className="mt-1 text-sm text-[#596270]">
                       {formatSemanticDue(
@@ -703,7 +703,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
 
       {activeRawType ? (
         <>
-          <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/72 p-4">
+          <div className={workbenchSupportPanelClassName("default", "mt-4 p-4")}>
             <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.labels.canonicalFamily")}</p>
             <select
               aria-label={translate("families.list.canonicalRename")}
@@ -736,11 +736,11 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
           {inlineRelinkPreview}
 
           {activeRawTypeSuggestions.length > 0 ? (
-            <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/72 p-4">
+            <div className={workbenchSupportPanelClassName("default", "mt-4 p-4")}>
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.areas.suggestions")}</p>
               <div className="mt-3 space-y-3">
                 {activeRawTypeSuggestions.slice(0, 3).map((suggestion) => (
-                  <div key={suggestion.id} className="rounded-[0.95rem] border border-line/80 bg-white/80 p-3">
+                  <div key={suggestion.id} className={workbenchSupportPanelClassName("quiet", "p-3")}>
                     <p className="text-sm font-medium text-ink">
                       {suggestion.source_family_name || translate("families.suggestions.unknownFamily")} → {suggestion.suggested_family_name || translate("families.suggestions.suggestedFamily")}
                     </p>
@@ -810,7 +810,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
       </Card>
 
       {banner ? (
-        <Card className={banner.tone === "error" ? "border-[#efc4b5] bg-[#fff3ef] p-4" : "border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] p-4"}>
+        <Card className={workbenchStateSurfaceClassName(banner.tone === "error" ? "error" : "info", "p-4")}>
           <p className="text-sm text-[#314051]">{banner.text}</p>
         </Card>
       ) : null}
@@ -830,7 +830,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
             </div>
 
             {createOpen ? (
-              <div className="mt-4 rounded-[1.15rem] border border-line/80 bg-white/70 p-4">
+              <div className={workbenchSupportPanelClassName("default", "mt-4 p-4")}>
                 <p className="text-sm font-medium text-ink">{translate("families.create.title")}</p>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                   <Input value={newCanonicalLabel} onChange={(event) => setNewCanonicalLabel(event.target.value)} placeholder={translate("families.create.canonicalLabel")} />
@@ -919,7 +919,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                   </div>
                 </div>
 
-                <div className="mt-5 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+                <div className={workbenchSupportPanelClassName("default", "mt-5 p-4")}>
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.list.canonicalRename")}</p>
@@ -931,7 +931,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                   <Input className="mt-4" value={draftLabel} onChange={(event) => setDraftLabel(event.target.value)} placeholder={translate("families.list.canonicalLabelPlaceholder")} />
                 </div>
 
-                <div className="mt-4 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+                <div className={workbenchSupportPanelClassName("default", "mt-4 p-4")}>
                   <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.list.observedLabels")}</p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     {selectedFamilyRawTypes.length > 0 ? (
@@ -949,7 +949,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                   </p>
                 </div>
 
-                <div className="mt-4 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+                <div className={workbenchSupportPanelClassName("default", "mt-4 p-4")}>
                   <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.list.eventPreview")}</p>
                   <p className="mt-2 text-sm text-[#596270]">{translate("families.list.eventPreviewSummary")}</p>
                   <div className="mt-4 space-y-3">
@@ -967,7 +967,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                       </div>
                     ) : (
                       pagedEvents.rows.map((event) => (
-                        <div key={event.entity_uid} className="rounded-[1rem] border border-line/80 bg-white/80 p-4">
+                        <div key={event.entity_uid} className={workbenchSupportPanelClassName("quiet", "p-4")}>
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="min-w-0">
                               <p className="font-medium text-ink">{familyEventTitle(event)}</p>
@@ -1142,7 +1142,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
               <EmptyState title={translate("families.suggestions.noRows")} description={translate("families.suggestions.noRowsDescription")} />
             ) : (
               pagedSuggestions.rows.map((suggestion) => (
-                <div key={suggestion.id} className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+                <div key={suggestion.id} className={workbenchSupportPanelClassName("default", "p-4")}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{suggestion.course_display}</p>
@@ -1193,7 +1193,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
           </SheetHeader>
           {relinkPreviewRawType && relinkPreviewTargetFamily ? (
             <div className="mt-6 space-y-4">
-              <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+              <div className={workbenchSupportPanelClassName("default", "p-4")}>
                 <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.labels.observedLabel")}</p>
                 <p className="mt-2 text-base font-semibold text-ink">{relinkPreviewRawType.raw_type}</p>
                 <p className="mt-3 text-sm text-[#314051]">
@@ -1204,14 +1204,14 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                 </p>
               </div>
 
-              <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+              <div className={workbenchSupportPanelClassName("default", "p-4")}>
                 <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.observed.reviewImpact")}</p>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-[1rem] border border-line/80 bg-white/80 p-3 text-sm text-[#314051]">
+                  <div className={workbenchSupportPanelClassName("quiet", "p-3 text-sm text-[#314051]")}>
                     <p className="font-medium text-ink">{translate("families.labels.activeEvents")}</p>
                     <p className="mt-2">{relinkPreviewEvents.length}</p>
                   </div>
-                  <div className="rounded-[1rem] border border-line/80 bg-white/80 p-3 text-sm text-[#314051]">
+                  <div className={workbenchSupportPanelClassName("quiet", "p-3 text-sm text-[#314051]")}>
                     <p className="font-medium text-ink">{translate("families.areas.suggestions")}</p>
                     <p className="mt-2">{relinkPreviewSuggestionCount}</p>
                   </div>
@@ -1220,14 +1220,14 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                 <p className="mt-2 text-sm leading-6 text-[#596270]">{translate("families.observed.futureImports")}</p>
               </div>
 
-              <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+              <div className={workbenchSupportPanelClassName("default", "p-4")}>
                 <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.observed.sampleEvents")}</p>
                 <div className="mt-4 space-y-3">
                   {relinkPreviewEvents.length === 0 ? (
                     <p className="text-sm text-[#596270]">{translate("families.observed.noSampleEvents")}</p>
                   ) : (
                     relinkPreviewEvents.map((event) => (
-                      <div key={event.entity_uid} className="rounded-[1rem] border border-line/80 bg-white/80 p-4">
+                      <div key={event.entity_uid} className={workbenchSupportPanelClassName("quiet", "p-4")}>
                         <p className="font-medium text-ink">{familyEventTitle(event)}</p>
                         <p className="mt-1 text-sm text-[#596270]">
                           {formatSemanticDue(event as unknown as Record<string, unknown>, translate("common.labels.notAvailable"))}

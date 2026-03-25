@@ -869,9 +869,11 @@ function DecisionWorkspaceRail({
 
         <div className="mt-4 space-y-3">
           <div
-            className={`rounded-[1.15rem] border p-3 ${
-              decisionSupport?.suggested_action === "approve" ? "border-[rgba(31,94,255,0.24)] bg-[rgba(31,94,255,0.06)]" : "border-line/80 bg-white/72"
-            }`}
+            className={
+              decisionSupport?.suggested_action === "approve"
+                ? workbenchStateSurfaceClassName("info", "p-3")
+                : workbenchSupportPanelClassName("default", "p-3")
+            }
           >
             <Button className="w-full" onClick={() => onDecide("approve")} disabled={!pending || decisionBusy !== null}>
               <CheckCheck className="mr-2 h-4 w-4" />
@@ -880,9 +882,11 @@ function DecisionWorkspaceRail({
             <p className="mt-2 text-xs leading-5 text-[#596270]">{actionPreviewText(selected, "approve")}</p>
           </div>
           <div
-            className={`rounded-[1.15rem] border p-3 ${
-              decisionSupport?.suggested_action === "reject" ? "border-[rgba(215,90,45,0.24)] bg-[#fff4ee]" : "border-line/80 bg-white/72"
-            }`}
+            className={
+              decisionSupport?.suggested_action === "reject"
+                ? workbenchStateSurfaceClassName("error", "p-3")
+                : workbenchSupportPanelClassName("default", "p-3")
+            }
           >
             <Button className="w-full" variant="danger" onClick={() => onDecide("reject")} disabled={!pending || decisionBusy !== null}>
               <XCircle className="mr-2 h-4 w-4" />
@@ -891,9 +895,11 @@ function DecisionWorkspaceRail({
             <p className="mt-2 text-xs leading-5 text-[#596270]">{actionPreviewText(selected, "reject")}</p>
           </div>
           <div
-            className={`rounded-[1.15rem] border p-3 ${
-              decisionSupport?.suggested_action === "edit" ? "border-[rgba(215,162,45,0.26)] bg-[#fff8e8]" : "border-line/80 bg-white/72"
-            }`}
+            className={
+              decisionSupport?.suggested_action === "edit"
+                ? workbenchSupportPanelClassName("info", "p-3")
+                : workbenchSupportPanelClassName("default", "p-3")
+            }
           >
             <Button asChild className="w-full" variant="ghost">
               <Link href={withBasePath(basePath, `/changes/${selected.id}/canonical`)}>
@@ -925,7 +931,7 @@ function DecisionWorkspaceRail({
         </div>
 
         {!pending ? (
-          <div className="mt-4 rounded-[1.1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#596270]">
+          <div className={workbenchStateSurfaceClassName("neutral", "mt-4 p-4 text-sm text-[#596270]")}>
             {translate("changes.alreadyReviewedState", {
               status: formatStatusLabel(selected.review_status).toLowerCase(),
             })}
@@ -934,14 +940,14 @@ function DecisionWorkspaceRail({
       </Card>
 
       {pending && labelLearningBusy === "preview" ? (
-        <Card className="p-5 text-sm text-[#596270]">
+        <Card className={workbenchStateSurfaceClassName("neutral", "p-5 text-sm text-[#596270]")}>
           <p className="font-medium text-ink">{translate("changes.approveAndLearn")}</p>
           <p className="mt-2 leading-6">{translate("changes.loading")}</p>
         </Card>
       ) : null}
 
       {pending && labelLearningError ? (
-        <Card className="border-[#efc4b5] bg-[#fff3ef] p-5 text-sm text-[#7f3d2a]">
+        <Card className={workbenchStateSurfaceClassName("error", "p-5 text-sm text-[#7f3d2a]")}>
           <p className="font-medium text-ink">{translate("changes.approveAndLearn")}</p>
           <p className="mt-2 leading-6">{labelLearningError}</p>
           <div className="mt-3">
@@ -964,11 +970,11 @@ function DecisionWorkspaceRail({
             </Button>
           </div>
           <div className="mt-4 grid gap-3">
-            <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+            <div className={workbenchSupportPanelClassName("default", "p-4")}>
               <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.mapping.observedLabel")}</p>
               <p className="mt-2 text-sm font-medium text-ink">{labelLearning.raw_label || translate("common.labels.unknown")}</p>
             </div>
-            <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+            <div className={workbenchSupportPanelClassName("default", "p-4")}>
               <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.mapping.currentFamily")}</p>
               <p className="mt-2 text-sm font-medium text-ink">{mappingFamily || translate("changes.mapping.unresolvedFamily")}</p>
             </div>
@@ -1030,12 +1036,12 @@ function DecisionWorkspaceRail({
       <Card className="p-5">
         <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changes.workspace.technicalDetails")}</p>
         <div className="mt-4 grid gap-3">
-          <div className="rounded-[1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
+          <div className={workbenchSupportPanelClassName("quiet", "p-4 text-sm text-[#314051]")}>
             <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.reviewBucket")}</p>
             <p className="mt-2 font-medium text-ink">{formatStatusLabel(selected.review_bucket)}</p>
             <p className="mt-3 text-xs text-[#6d7885]">Intake phase: {formatStatusLabel(selected.intake_phase)}</p>
           </div>
-          <div className="rounded-[1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
+          <div className={workbenchSupportPanelClassName("quiet", "p-4 text-sm text-[#314051]")}>
             <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.sourceReferences")}</p>
             <p className="mt-2 font-medium text-ink">
               {selected.primary_source ? sourceDescriptor(selected.primary_source) : translate("changes.noPrimarySource")}
@@ -1485,7 +1491,7 @@ export function ChangeItemsPanel({
                   : translate("changes.hero.replaySummary")}
               </p>
               {reviewBucket === "initial_review" ? (
-                <div className="mt-4 max-w-xl space-y-3 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+                <div className={workbenchSupportPanelClassName("quiet", "mt-4 max-w-xl space-y-3 p-4")}>
                   <div className="flex flex-wrap gap-2 text-sm">
                     <Badge tone={initialReviewComplete ? "approved" : "pending"}>
                       {translate("changes.hero.pending", { count: initialReviewProgress.pending_count })}
@@ -1507,7 +1513,7 @@ export function ChangeItemsPanel({
                       </span>
                       <span>{initialReviewProgress.completion_percent}%</span>
                     </div>
-                    <div className="h-2 rounded-full bg-white/60">
+                    <div className="h-2 rounded-full bg-[rgba(20,32,44,0.08)]">
                       <div
                         className="h-2 rounded-full bg-cobalt transition-all duration-500"
                         style={{ width: `${Math.min(Math.max(initialReviewProgress.completion_percent, 0), 100)}%` }}
@@ -1541,13 +1547,13 @@ export function ChangeItemsPanel({
           </div>
 
           {banner ? (
-            <Card className={banner.tone === "error" ? "border-[#efc4b5] bg-[#fff3ef] p-4" : "border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] p-4"}>
+            <Card className={workbenchStateSurfaceClassName(banner.tone === "error" ? "error" : "info", "p-4")}>
               <p className="text-sm text-[#314051]">{banner.text}</p>
             </Card>
           ) : null}
 
           {reviewBucket === "changes" && summaryData.baseline_review_pending > 0 ? (
-            <div className="rounded-[1.15rem] border border-[rgba(215,90,45,0.18)] bg-[#fff8f4] p-4">
+            <div className={workbenchStateSurfaceClassName("error", "p-4")}>
               <p className="text-sm font-medium text-ink">
                 {summaryData.baseline_review_pending === 1
                   ? translate("changes.baselineWaitingOne")
@@ -1570,7 +1576,7 @@ export function ChangeItemsPanel({
               <Badge tone="info">{translate("changes.visibleChanges", { count: rows.length })}</Badge>
               <Badge tone="info">{translate("changes.courseGroups", { count: groups.length })}</Badge>
             </div>
-            <label className="hidden items-center gap-2 rounded-full border border-line/80 bg-white/75 px-3 py-1.5 text-sm text-[#314051] md:flex">
+            <label className="hidden items-center gap-2 rounded-full border border-line/80 bg-[var(--surface-support)] px-3 py-1.5 text-sm text-[#314051] md:flex">
               <span className="text-[#6d7885]">{translate("changes.source")}</span>
               <select
                 aria-label={translate("changes.source")}
@@ -1609,7 +1615,7 @@ export function ChangeItemsPanel({
           </div>
 
       {statusFilter === "pending" && isDesktop ? (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-[1.15rem] border border-line/80 bg-white/65 p-4">
+            <div className={workbenchSupportPanelClassName("quiet", "mt-4 flex flex-wrap items-center justify-between gap-4 p-4")}>
               <label className="flex items-center gap-3 text-sm text-[#314051]">
                 <Checkbox aria-label="Select all visible review changes" checked={allVisibleSelected} onChange={(event) => toggleVisibleSelection(event.currentTarget.checked)} />
                 {translate("changes.selectVisible")}
@@ -1883,7 +1889,7 @@ export function ChangeItemsPanel({
                 ))}
               </select>
             </div>
-            <div className="rounded-[1rem] border border-line/80 bg-white/72 p-4 text-sm text-[#596270]">
+            <div className={workbenchSupportPanelClassName("quiet", "p-4 text-sm text-[#596270]")}>
               {rows.length} visible changes · {groups.length} course group{groups.length === 1 ? "" : "s"}
             </div>
           </div>
