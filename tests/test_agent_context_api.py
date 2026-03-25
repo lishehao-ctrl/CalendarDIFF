@@ -13,7 +13,6 @@ from app.modules.sources.sources_service import create_input_source
 def _create_user(db_session, *, email: str) -> User:
     user = User(
         email=email,
-        notify_email=email,
         password_hash="hash",
         timezone_name="America/Los_Angeles",
         onboarding_completed_at=datetime.now(timezone.utc),
@@ -272,6 +271,8 @@ def test_agent_source_context_exposes_source_and_runtime_consistently(input_clie
     assert payload["active_sync_request"]["request_id"] == "agent-source-sync"
     assert payload["active_sync_request"]["stage"] == "connector_fetch"
     assert payload["recommended_next_action"]["lane"] == "sources"
+    assert payload["recommended_next_action"]["label"] == payload["observability"]["source_recovery"]["next_action_label"]
+    assert payload["recommended_next_action"]["reason"] == payload["observability"]["source_recovery"]["impact_summary"]
     assert "run_source_sync" in payload["available_next_tools"]
     assert "view_sync_history" in payload["available_next_tools"]
     assert any(item["severity"] == "blocking" for item in payload["blocking_conditions"])

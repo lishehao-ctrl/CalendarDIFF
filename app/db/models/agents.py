@@ -17,6 +17,8 @@ class AgentProposalType(str, Enum):
     CHANGE_DECISION = "change_decision"
     SOURCE_RECOVERY = "source_recovery"
     FAMILY_RELINK_PREVIEW = "family_relink_preview"
+    LABEL_LEARNING_COMMIT = "label_learning_commit"
+    PROPOSAL_EDIT_COMMIT = "proposal_edit_commit"
 
 
 class AgentProposalStatus(str, Enum):

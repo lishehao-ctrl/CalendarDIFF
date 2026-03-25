@@ -24,6 +24,7 @@ from app.db.models.runtime import (
     IngestJobStatus,
     IngestResult,
     IngestUnresolvedRecord,
+    LlmInvocationLog,
 )
 from app.db.models.input import (
     IngestTriggerType,
@@ -92,6 +93,7 @@ __all__ = [
     "NotificationChannel",
     "NotificationStatus",
     "OutboxStatus",
+    "LlmInvocationLog",
     "ReviewStatus",
     "SourceEventObservation",
     "SourceKind",

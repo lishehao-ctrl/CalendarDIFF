@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.modules.changes.schemas import ChangeItemResponse, ChangesWorkbenchSummaryResponse
+from app.modules.common.structured_copy import render_structured_text
 from app.modules.families.schemas import (
     CourseRawTypeResponse,
     CourseWorkItemFamilyResponse,
@@ -15,7 +16,7 @@ from app.modules.sources.schemas import InputSourceResponse, SourceObservability
 
 AgentRiskLevelLiteral = Literal["low", "medium", "high"]
 AgentConditionSeverityLiteral = Literal["info", "warning", "blocking"]
-AgentProposalTypeLiteral = Literal["change_decision", "source_recovery", "family_relink_preview"]
+AgentProposalTypeLiteral = Literal["change_decision", "source_recovery", "family_relink_preview", "label_learning_commit", "proposal_edit_commit"]
 AgentProposalStatusLiteral = Literal["open", "accepted", "rejected", "expired", "superseded"]
 ApprovalTicketStatusLiteral = Literal["open", "executed", "canceled", "expired", "failed"]
 AgentActivityKindLiteral = Literal["proposal", "ticket"]
@@ -90,6 +91,42 @@ class AgentSourceRecoveryProposalRequest(BaseModel):
 class AgentFamilyRelinkPreviewProposalRequest(BaseModel):
     raw_type_id: int = Field(ge=1)
     family_id: int = Field(ge=1)
+
+    model_config = {"extra": "forbid"}
+
+
+class AgentFamilyRelinkCommitProposalRequest(BaseModel):
+    raw_type_id: int = Field(ge=1)
+    family_id: int = Field(ge=1)
+
+    model_config = {"extra": "forbid"}
+
+
+class AgentLabelLearningCommitProposalRequest(BaseModel):
+    change_id: int = Field(ge=1)
+    family_id: int = Field(ge=1)
+
+    model_config = {"extra": "forbid"}
+
+
+class AgentChangeEditCommitPatchRequest(BaseModel):
+    event_name: str | None = Field(default=None, max_length=512)
+    due_date: date | None = None
+    due_time: str | None = Field(default=None, max_length=32)
+    time_precision: Literal["date_only", "datetime"] | None = None
+
+    model_config = {"extra": "forbid"}
+
+    @model_validator(mode="after")
+    def _validate_non_empty_patch(self) -> "AgentChangeEditCommitPatchRequest":
+        if not self.model_fields_set:
+            raise ValueError("patch must include at least one editable proposal field")
+        return self
+
+
+class AgentChangeEditCommitProposalRequest(BaseModel):
+    change_id: int = Field(ge=1)
+    patch: AgentChangeEditCommitPatchRequest
 
     model_config = {"extra": "forbid"}
 
@@ -263,13 +300,26 @@ def serialize_approval_ticket(row) -> dict:
     }
 
 
-def serialize_agent_proposal(row) -> dict:
+def serialize_agent_proposal(row, *, language_code: str | None = None) -> dict:
     from app.modules.agents.lifecycle import (
         proposal_can_create_ticket,
         proposal_execution_mode,
         proposal_execution_mode_code,
         proposal_lifecycle_code,
         proposal_next_step_code,
+    )
+
+    summary = render_structured_text(
+        code=row.summary_code,
+        language_code=language_code,
+        params=_proposal_summary_params(row=row, language_code=language_code),
+        fallback=row.summary,
+    )
+    reason = render_structured_text(
+        code=_proposal_reason_code(row),
+        language_code=language_code,
+        params=_proposal_reason_params(row),
+        fallback=row.reason,
     )
 
     return {
@@ -279,9 +329,9 @@ def serialize_agent_proposal(row) -> dict:
         "status": row.status.value,
         "target_kind": row.target_kind,
         "target_id": row.target_id,
-        "summary": row.summary,
+        "summary": summary,
         "summary_code": row.summary_code,
-        "reason": row.reason,
+        "reason": reason,
         "reason_code": row.reason_code,
         "risk_level": row.risk_level,
         "confidence": row.confidence,
@@ -303,13 +353,96 @@ def serialize_agent_proposal(row) -> dict:
     }
 
 
+def _proposal_summary_params(*, row, language_code: str | None) -> dict:
+    proposal_type = getattr(row.proposal_type, "value", "")
+    if proposal_type == "change_decision":
+        review_bucket = _proposal_review_bucket(row)
+        if review_bucket:
+            fallback = "Initial Review" if review_bucket == "initial_review" else "Replay Review"
+            return {
+                "lane_label": render_structured_text(
+                    code=f"agents.lane.{review_bucket}",
+                    language_code=language_code,
+                    fallback=fallback,
+                )
+            }
+    if proposal_type == "source_recovery":
+        provider = _proposal_provider(row)
+        if provider:
+            return {"provider_label": _provider_label(provider)}
+    return {}
+
+
+def _proposal_reason_params(row) -> dict:
+    context = row.context_json if isinstance(row.context_json, dict) else {}
+    recommendation = context.get("recommended_next_action")
+    if isinstance(recommendation, dict) and isinstance(recommendation.get("reason_params"), dict) and recommendation.get("reason_params"):
+        return recommendation["reason_params"]
+    operator_guidance = context.get("operator_guidance")
+    if isinstance(operator_guidance, dict) and isinstance(operator_guidance.get("message_params"), dict) and operator_guidance.get("message_params"):
+        return operator_guidance["message_params"]
+    return {}
+
+
+def _proposal_reason_code(row) -> str:
+    reason_code = str(getattr(row, "reason_code", "") or "")
+    if "." in reason_code:
+        return reason_code
+
+    context = row.context_json if isinstance(row.context_json, dict) else {}
+    operator_guidance = context.get("operator_guidance")
+    if isinstance(operator_guidance, dict):
+        message_code = operator_guidance.get("message_code")
+        if isinstance(message_code, str) and message_code:
+            return message_code
+    source_recovery = context.get("source_recovery")
+    if isinstance(source_recovery, dict):
+        impact_code = source_recovery.get("impact_code")
+        if isinstance(impact_code, str) and impact_code:
+            return impact_code
+    return reason_code
+
+
+def _proposal_review_bucket(row) -> str | None:
+    context = row.context_json if isinstance(row.context_json, dict) else {}
+    target_snapshot = row.target_snapshot_json if isinstance(row.target_snapshot_json, dict) else {}
+    for payload in (context, target_snapshot):
+        review_bucket = payload.get("review_bucket")
+        if isinstance(review_bucket, str) and review_bucket:
+            return review_bucket
+    return None
+
+
+def _proposal_provider(row) -> str | None:
+    context = row.context_json if isinstance(row.context_json, dict) else {}
+    target_snapshot = row.target_snapshot_json if isinstance(row.target_snapshot_json, dict) else {}
+    payload = row.payload_json if isinstance(row.payload_json, dict) else {}
+    for candidate in (context.get("provider"), target_snapshot.get("provider"), payload.get("provider")):
+        if isinstance(candidate, str) and candidate:
+            return candidate
+    return None
+
+
+def _provider_label(provider: str) -> str:
+    normalized = provider.strip().lower()
+    if normalized == "gmail":
+        return "Gmail"
+    if normalized == "ics":
+        return "Canvas ICS"
+    return provider.strip().title() or "Source"
+
+
 __all__ = [
     "AgentRecentActivityItemResponse",
     "AgentRecentActivityResponse",
     "AgentBlockingConditionResponse",
+    "AgentChangeEditCommitPatchRequest",
+    "AgentChangeEditCommitProposalRequest",
     "AgentChangeDecisionProposalRequest",
     "AgentChangeContextResponse",
     "AgentFamilyRelinkPreviewProposalRequest",
+    "AgentFamilyRelinkCommitProposalRequest",
+    "AgentLabelLearningCommitProposalRequest",
     "AgentFamilyContextResponse",
     "AgentProposalResponse",
     "AgentRecommendedActionResponse",

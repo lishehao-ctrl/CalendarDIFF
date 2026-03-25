@@ -31,7 +31,16 @@ def test_build_final_report_marks_success_when_all_layers_pass() -> None:
         excluded_dirty={"raw_paths": [], "excluded_categories": {"frontend": False, "llm_gateway": False, "sources": False, "openapi_snapshot": False}},
         strict_results=[{"success": True}],
         pycompile_result={"success": True},
-        live_eval_summary={"success_rate": 1.0},
+        live_eval_summary={
+            "success_rate": 1.0,
+            "executable_actions_exercised": {
+                "change_decision": True,
+                "proposal_edit_commit": True,
+                "run_source_sync": True,
+                "family_relink_commit": True,
+                "label_learning_add_alias_commit": True,
+            },
+        },
         claw_smoke_summary={
             "success": True,
             "steps": [
@@ -40,6 +49,12 @@ def test_build_final_report_marks_success_when_all_layers_pass() -> None:
                 {"name": "change_context", "ok": True, "payload": {}},
                 {"name": "family_context", "ok": True, "payload": {}},
                 {"name": "change_proposal", "ok": True, "payload": {}},
+                {"name": "change_edit_commit_proposal", "ok": True, "payload": {}},
+                {"name": "change_edit_commit_ticket_create", "ok": True, "payload": {}},
+                {"name": "change_edit_commit_ticket_confirm", "ok": True, "payload": {}},
+                {"name": "family_relink_commit_proposal", "ok": True, "payload": {}},
+                {"name": "family_relink_commit_ticket_create", "ok": True, "payload": {}},
+                {"name": "family_relink_commit_ticket_confirm", "ok": True, "payload": {}},
                 {"name": "family_relink_preview", "ok": True, "payload": {"can_create_ticket": False}},
                 {"name": "approval_ticket_create", "ok": True, "payload": {}},
                 {"name": "approval_ticket_confirm", "ok": True, "payload": {}},
@@ -50,7 +65,11 @@ def test_build_final_report_marks_success_when_all_layers_pass() -> None:
     )
 
     assert report["success"] is True
+    assert report["passed"] is True
     assert report["tool_families_exercised"]["read_context"] is True
     assert report["tool_families_exercised"]["proposal"] is True
     assert report["tool_families_exercised"]["approval"] is True
+    assert report["smoke_actions_exercised"]["proposal_edit_commit"] is True
+    assert report["smoke_actions_exercised"]["family_low_risk_execute"] is True
+    assert report["executable_actions_exercised"]["label_learning_add_alias_commit"] is True
     assert report["family_relink_preview_non_executable"] is True

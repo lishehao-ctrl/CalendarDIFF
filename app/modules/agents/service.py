@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.changes.change_listing_service import get_change, list_changes
 from app.modules.common.api_errors import api_error_detail
+from app.modules.common.structured_copy import render_structured_text
 from app.modules.families.family_service import get_course_work_item_family
 from app.modules.families.raw_type_service import list_course_raw_types
 from app.modules.families.raw_type_suggestion_service import list_raw_type_suggestion_items
@@ -22,8 +23,8 @@ class AgentContextNotFoundError(RuntimeError):
         self.detail = api_error_detail(code=code, message=message, message_code=message_code)
 
 
-def build_workspace_agent_context(db: Session, *, user_id: int) -> dict:
-    summary = get_changes_workbench_summary(db=db, user_id=user_id)
+def build_workspace_agent_context(db: Session, *, user_id: int, language_code: str | None = None) -> dict:
+    summary = get_changes_workbench_summary(db=db, user_id=user_id, language_code=language_code)
     top_pending_changes = list_changes(
         db,
         user_id=user_id,
@@ -33,19 +34,20 @@ def build_workspace_agent_context(db: Session, *, user_id: int) -> dict:
         source_id=None,
         limit=5,
         offset=0,
+        language_code=language_code,
     )
     return {
         "generated_at": datetime.now(timezone.utc),
         "summary": summary,
         "top_pending_changes": top_pending_changes,
         "recommended_next_action": _workspace_recommended_next_action(summary=summary),
-        "blocking_conditions": _workspace_blocking_conditions(summary=summary),
+        "blocking_conditions": _workspace_blocking_conditions(summary=summary, language_code=language_code),
         "available_next_tools": _workspace_available_next_tools(summary=summary),
     }
 
 
-def build_change_agent_context(db: Session, *, user_id: int, change_id: int) -> dict:
-    change = get_change(db, user_id=user_id, change_id=change_id)
+def build_change_agent_context(db: Session, *, user_id: int, change_id: int, language_code: str | None = None) -> dict:
+    change = get_change(db, user_id=user_id, change_id=change_id, language_code=language_code)
     if change is None:
         raise AgentContextNotFoundError(
             code="agents.context.change_not_found",
@@ -55,13 +57,13 @@ def build_change_agent_context(db: Session, *, user_id: int, change_id: int) -> 
     return {
         "generated_at": datetime.now(timezone.utc),
         "change": change,
-        "recommended_next_action": _change_recommended_next_action(change=change),
-        "blocking_conditions": _change_blocking_conditions(change=change),
+        "recommended_next_action": _change_recommended_next_action(change=change, language_code=language_code),
+        "blocking_conditions": _change_blocking_conditions(change=change, language_code=language_code),
         "available_next_tools": _change_available_next_tools(change=change),
     }
 
 
-def build_source_agent_context(db: Session, *, user_id: int, source_id: int) -> dict:
+def build_source_agent_context(db: Session, *, user_id: int, source_id: int, language_code: str | None = None) -> dict:
     source = get_input_source(db, user_id=user_id, source_id=source_id)
     if source is None:
         raise AgentContextNotFoundError(
@@ -69,8 +71,8 @@ def build_source_agent_context(db: Session, *, user_id: int, source_id: int) -> 
             message="Source not found",
             message_code="agents.context.source_not_found",
         )
-    source_payload = build_source_read_payload(db, source=source)
-    observability = build_source_observability_payload(db, source_id=source.id)
+    source_payload = build_source_read_payload(db, source=source, language_code=language_code)
+    observability = build_source_observability_payload(db, source_id=source.id, language_code=language_code)
     active_row = get_display_sync_request_for_source(db, source_id=source.id)
     active_sync_request = build_sync_request_status_payload(db, sync_request=active_row) if active_row is not None else None
     return {
@@ -78,8 +80,16 @@ def build_source_agent_context(db: Session, *, user_id: int, source_id: int) -> 
         "source": source_payload,
         "observability": observability,
         "active_sync_request": active_sync_request,
-        "recommended_next_action": _source_recommended_next_action(source=source_payload, observability=observability),
-        "blocking_conditions": _source_blocking_conditions(source=source_payload, observability=observability),
+        "recommended_next_action": _source_recommended_next_action(
+            source=source_payload,
+            observability=observability,
+            language_code=language_code,
+        ),
+        "blocking_conditions": _source_blocking_conditions(
+            source=source_payload,
+            observability=observability,
+            language_code=language_code,
+        ),
         "available_next_tools": _source_available_next_tools(source=source_payload, observability=observability),
     }
 
@@ -158,7 +168,7 @@ def _workspace_risk_level(*, summary: dict) -> str:
     return "low"
 
 
-def _workspace_blocking_conditions(*, summary: dict) -> list[dict]:
+def _workspace_blocking_conditions(*, summary: dict, language_code: str | None) -> list[dict]:
     items: list[dict] = []
     sources = summary.get("sources") or {}
     if int(sources.get("blocking_count") or 0) > 0:
@@ -173,7 +183,11 @@ def _workspace_blocking_conditions(*, summary: dict) -> list[dict]:
         items.append(
             {
                 "code": "baseline_review_pending",
-                "message": "Baseline import review is not finished yet.",
+                "message": render_structured_text(
+                    code="agents.context.workspace.baseline_review_pending",
+                    language_code=language_code,
+                    fallback="Baseline import review is not finished yet.",
+                ),
                 "severity": "warning",
             }
         )
@@ -193,13 +207,13 @@ def _workspace_available_next_tools(*, summary: dict) -> list[str]:
     return _dedupe_strings(tools)
 
 
-def _change_recommended_next_action(*, change: dict) -> dict:
+def _change_recommended_next_action(*, change: dict, language_code: str | None) -> dict:
     support = change.get("decision_support") or {}
     review_bucket = str(change.get("review_bucket") or "changes")
     suggested_action = str(support.get("suggested_action") or "review_carefully")
     return {
         "lane": review_bucket,
-        "label": _change_action_label(suggested_action),
+        "label": _change_action_label(suggested_action, language_code=language_code),
         "reason": str(support.get("suggested_action_reason") or ""),
         "reason_code": str(support.get("suggested_action_reason_code") or "agents.context.change.suggested_action"),
         "reason_params": {},
@@ -208,13 +222,17 @@ def _change_recommended_next_action(*, change: dict) -> dict:
     }
 
 
-def _change_blocking_conditions(*, change: dict) -> list[dict]:
+def _change_blocking_conditions(*, change: dict, language_code: str | None) -> list[dict]:
     conditions: list[dict] = []
     if str(change.get("review_status") or "") != "pending":
         conditions.append(
             {
                 "code": "change_already_reviewed",
-                "message": "This change has already been reviewed.",
+                "message": render_structured_text(
+                    code="agents.context.change_already_reviewed",
+                    language_code=language_code,
+                    fallback="This change has already been reviewed.",
+                ),
                 "severity": "blocking",
             }
         )
@@ -242,6 +260,7 @@ def _change_available_next_tools(*, change: dict) -> list[str]:
             [
                 "submit_change_decision",
                 "preview_change_edit",
+                "create_change_edit_commit_proposal",
                 "preview_label_learning",
                 "review_families",
             ]
@@ -249,16 +268,24 @@ def _change_available_next_tools(*, change: dict) -> list[str]:
     return _dedupe_strings(tools)
 
 
-def _source_recommended_next_action(*, source: dict, observability: dict) -> dict:
+def _source_recommended_next_action(*, source: dict, observability: dict, language_code: str | None) -> dict:
     guidance = observability.get("operator_guidance") or {}
     recovery = observability.get("source_recovery") or {}
     lane = "sources"
-    recommended_action = str(guidance.get("recommended_action") or "continue_review")
+    recommended_action = str(recovery.get("next_action") or guidance.get("recommended_action") or "continue_review")
+    recommended_label = str(recovery.get("next_action_label") or "")
+    recommended_reason = str(recovery.get("impact_summary") or guidance.get("message") or "")
+    recommended_reason_code = str(
+        recovery.get("impact_code")
+        or guidance.get("message_code")
+        or guidance.get("reason_code")
+        or "agents.context.source.next_action"
+    )
     return {
         "lane": lane,
-        "label": _source_action_label(recommended_action),
-        "reason": str(guidance.get("message") or recovery.get("impact_summary") or ""),
-        "reason_code": str(guidance.get("reason_code") or "agents.context.source.next_action"),
+        "label": recommended_label or _source_action_label(recommended_action, language_code=language_code),
+        "reason": recommended_reason,
+        "reason_code": recommended_reason_code,
         "reason_params": guidance.get("message_params") or {},
         "risk_level": _source_risk_level(observability=observability),
         "recommended_tool": _source_recommended_tool(source=source, observability=observability),
@@ -275,7 +302,7 @@ def _source_risk_level(*, observability: dict) -> str:
     return "low"
 
 
-def _source_blocking_conditions(*, source: dict, observability: dict) -> list[dict]:
+def _source_blocking_conditions(*, source: dict, observability: dict, language_code: str | None) -> list[dict]:
     conditions: list[dict] = []
     guidance = observability.get("operator_guidance") or {}
     recovery = observability.get("source_recovery") or {}
@@ -300,7 +327,11 @@ def _source_blocking_conditions(*, source: dict, observability: dict) -> list[di
         conditions.append(
             {
                 "code": "gmail_oauth_not_connected",
-                "message": "Gmail is not currently connected.",
+                "message": render_structured_text(
+                    code="agents.context.gmail_oauth_not_connected",
+                    language_code=language_code,
+                    fallback="Gmail is not currently connected.",
+                ),
                 "severity": "blocking",
             }
         )
@@ -370,13 +401,20 @@ def _lane_to_tool(lane: str) -> str:
     }.get(lane, "review_replay_changes")
 
 
-def _change_action_label(action: str) -> str:
-    return {
+def _change_action_label(action: str, *, language_code: str | None) -> str:
+    code = {
+        "approve": "agents.context.change.action.approve",
+        "reject": "agents.context.change.action.reject",
+        "edit": "agents.context.change.action.edit",
+        "review_carefully": "agents.context.change.action.review_carefully",
+    }.get(action)
+    fallback = {
         "approve": "Approve change",
         "reject": "Reject change",
         "edit": "Edit before approval",
         "review_carefully": "Review carefully",
     }.get(action, "Review change")
+    return render_structured_text(code=code, language_code=language_code, fallback=fallback)
 
 
 def _change_action_tool(action: str) -> str:
@@ -388,13 +426,20 @@ def _change_action_tool(action: str) -> str:
     }.get(action, "view_change")
 
 
-def _source_action_label(action: str) -> str:
-    return {
+def _source_action_label(action: str, *, language_code: str | None) -> str:
+    code = {
+        "continue_review": "agents.context.source.action.continue_review",
+        "continue_review_with_caution": "agents.context.source.action.continue_review_with_caution",
+        "wait_for_runtime": "agents.context.source.action.wait_for_runtime",
+        "investigate_runtime": "agents.context.source.action.investigate_runtime",
+    }.get(action)
+    fallback = {
         "continue_review": "Continue review",
         "continue_review_with_caution": "Continue review with caution",
         "wait_for_runtime": "Wait for runtime",
         "investigate_runtime": "Investigate runtime",
     }.get(action, "Review source")
+    return render_structured_text(code=code, language_code=language_code, fallback=fallback)
 
 
 def _source_recommended_tool(*, source: dict, observability: dict) -> str:

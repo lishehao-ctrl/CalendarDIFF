@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.db.models.agents import AgentProposal, AgentProposalStatus, AgentProposalType
 from app.db.models.input import IngestTriggerType, InputSource, SourceKind, SyncRequest, SyncRequestStage, SyncRequestStatus
-from app.db.models.review import Change, ChangeIntakePhase, ChangeOrigin, ChangeReviewBucket, ChangeSourceRef, ChangeType, ReviewStatus
+from app.db.models.review import Change, ChangeIntakePhase, ChangeOrigin, ChangeReviewBucket, ChangeSourceRef, ChangeType, ReviewStatus, SourceEventObservation
 from app.db.models.shared import CourseWorkItemLabelFamily, User
 from app.modules.common.course_identity import normalize_label_token, normalized_course_identity_key, parse_course_display
 from app.modules.sources.schemas import InputSourceCreateRequest
@@ -16,7 +16,6 @@ from app.modules.sources.sources_service import create_input_source
 def _create_user(db_session, *, email: str) -> User:
     user = User(
         email=email,
-        notify_email=email,
         password_hash="hash",
         timezone_name="America/Los_Angeles",
         onboarding_completed_at=datetime.now(timezone.utc),
@@ -71,6 +70,143 @@ def _create_family(
     db_session.commit()
     db_session.refresh(family)
     return family
+
+
+def _create_label_learning_change(db_session, *, user: User, source: InputSource, raw_label: str, title: str) -> Change:
+    entity_uid = f"tmp-{title.lower().replace(' ', '-')}"
+    external_event_id = f"evt-{title.lower().replace(' ', '-')}"
+    semantic_event = {
+        "uid": entity_uid,
+        "course_dept": "CSE",
+        "course_number": 100,
+        "course_quarter": "WI",
+        "course_year2": 26,
+        "family_name": raw_label,
+        "raw_type": raw_label,
+        "event_name": title,
+        "ordinal": 1,
+        "due_date": "2026-03-12",
+        "due_time": "23:59:00",
+        "time_precision": "datetime",
+    }
+    db_session.add(
+        SourceEventObservation(
+            user_id=user.id,
+            source_id=source.id,
+            source_kind=source.source_kind,
+            provider=source.provider,
+            external_event_id=external_event_id,
+            entity_uid=entity_uid,
+            event_payload={
+                "source_facts": {
+                    "external_event_id": external_event_id,
+                    "source_title": title,
+                    "source_dtstart_utc": "2026-03-12T23:59:00+00:00",
+                    "source_dtend_utc": "2026-03-13T00:59:00+00:00",
+                },
+                "semantic_event": semantic_event,
+                "link_signals": {},
+                "kind_resolution": {
+                    "status": "unresolved",
+                    "reason_code": "missing_course_identity",
+                },
+            },
+            event_hash="2" * 64,
+            observed_at=datetime.now(timezone.utc),
+            is_active=True,
+        )
+    )
+    change = Change(
+        user_id=user.id,
+        entity_uid=entity_uid,
+        change_origin=ChangeOrigin.INGEST_PROPOSAL,
+        change_type=ChangeType.CREATED,
+        detected_at=datetime.now(timezone.utc),
+        after_semantic_json=semantic_event,
+        source_refs=[
+            ChangeSourceRef(
+                position=0,
+                source_id=source.id,
+                source_kind=SourceKind.CALENDAR,
+                provider="ics",
+                external_event_id=external_event_id,
+                confidence=0.95,
+            )
+        ],
+        review_status=ReviewStatus.PENDING,
+    )
+    db_session.add(change)
+    db_session.commit()
+    db_session.refresh(change)
+    return change
+
+
+def _create_editable_change(
+    db_session,
+    *,
+    user: User,
+    source: InputSource,
+    family: CourseWorkItemLabelFamily,
+    change_type: ChangeType = ChangeType.DUE_CHANGED,
+) -> Change:
+    change = Change(
+        user_id=user.id,
+        entity_uid=f"agent-editable-change-{change_type.value}",
+        change_origin=ChangeOrigin.INGEST_PROPOSAL,
+        change_type=change_type,
+        intake_phase=ChangeIntakePhase.REPLAY,
+        review_bucket=ChangeReviewBucket.CHANGES,
+        detected_at=datetime.now(timezone.utc),
+        before_semantic_json={
+            "uid": f"agent-editable-change-{change_type.value}",
+            "course_dept": "CSE",
+            "course_number": 180,
+            "course_quarter": "WI",
+            "course_year2": 26,
+            "family_id": family.id,
+            "family_name": family.canonical_label,
+            "event_name": "Project Proposal",
+            "ordinal": 1,
+            "due_date": "2026-03-20",
+            "due_time": "09:00:00",
+            "time_precision": "datetime",
+        },
+        after_semantic_json={
+            "uid": f"agent-editable-change-{change_type.value}",
+            "course_dept": "CSE",
+            "course_number": 180,
+            "course_quarter": "WI",
+            "course_year2": 26,
+            "family_id": family.id,
+            "family_name": family.canonical_label,
+            "event_name": "Project Proposal",
+            "ordinal": 1,
+            "due_date": "2026-03-21",
+            "due_time": "09:00:00",
+            "time_precision": "datetime",
+        }
+        if change_type != ChangeType.REMOVED
+        else None,
+        before_evidence_json={"provider": "ics"},
+        after_evidence_json={"provider": "ics"} if change_type != ChangeType.REMOVED else None,
+        review_status=ReviewStatus.PENDING,
+    )
+    db_session.add(change)
+    db_session.flush()
+    db_session.add(
+        ChangeSourceRef(
+            change_id=change.id,
+            position=0,
+            source_id=source.id,
+            source_kind=source.source_kind,
+            provider=source.provider,
+            external_event_id=f"evt-agent-editable-{change_type.value}",
+            confidence=0.95,
+        )
+    )
+    db_session.commit()
+    db_session.refresh(change)
+    return change
 
 
 def test_agent_change_decision_proposal_is_persisted_and_fetchable(client, db_session, auth_headers) -> None:
@@ -288,3 +424,112 @@ def test_agent_source_recovery_proposal_is_persisted_and_scoped(client, db_sessi
     other_headers = auth_headers(client, user=other_user)
     forbidden = client.get(f"/agent/proposals/{payload['proposal_id']}", headers=other_headers)
     assert forbidden.status_code == 404
+
+
+def test_agent_label_learning_commit_proposal_is_persisted_and_fetchable(client, db_session, auth_headers) -> None:
+    user = _create_user(db_session, email="agent-proposal-label-learning@example.com")
+    source = _create_source(db_session, user=user, provider="ics")
+    family = _create_family(db_session, user_id=user.id, course_display="CSE 100 WI26", canonical_label="Homework")
+    change = _create_label_learning_change(db_session, user=user, source=source, raw_label="HW", title="HW1")
+
+    response = client.post(
+        "/agent/proposals/label-learning-commit",
+        headers=auth_headers(client, user=user),
+        json={"change_id": change.id, "family_id": family.id},
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["proposal_type"] == "label_learning_commit"
+    assert payload["target_kind"] == "label_learning"
+    assert payload["suggested_action"] == "commit_label_learning"
+    assert payload["execution_mode"] == "approval_ticket_required"
+    assert payload["can_create_ticket"] is True
+    assert payload["suggested_payload"]["kind"] == "label_learning_add_alias_commit"
+    assert payload["target_snapshot"]["change_id"] == change.id
+    assert payload["target_snapshot"]["target_family_id"] == family.id
+
+    row = db_session.scalar(select(AgentProposal).where(AgentProposal.id == payload["proposal_id"]))
+    assert row is not None
+    assert row.proposal_type == AgentProposalType.LABEL_LEARNING_COMMIT
+    assert row.status == AgentProposalStatus.OPEN
+
+
+def test_agent_change_edit_commit_proposal_is_persisted_and_fetchable(client, db_session, auth_headers) -> None:
+    user = _create_user(db_session, email="agent-proposal-edit@example.com")
+    source = _create_source(db_session, user=user, provider="ics")
+    family = _create_family(db_session, user_id=user.id, course_display="CSE 180 WI26", canonical_label="Project")
+    change = _create_editable_change(db_session, user=user, source=source, family=family)
+
+    response = client.post(
+        "/agent/proposals/change-edit-commit",
+        headers=auth_headers(client, user=user),
+        json={
+            "change_id": change.id,
+            "patch": {
+                "event_name": "Project Proposal (updated)",
+                "due_date": "2026-03-24",
+                "due_time": "10:30:00",
+                "time_precision": "datetime",
+            },
+        },
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["proposal_type"] == "proposal_edit_commit"
+    assert payload["target_kind"] == "change"
+    assert payload["target_id"] == str(change.id)
+    assert payload["suggested_action"] == "commit_proposal_edit"
+    assert payload["execution_mode"] == "approval_ticket_required"
+    assert payload["can_create_ticket"] is True
+    assert payload["suggested_payload"] == {
+        "kind": "proposal_edit_commit",
+        "change_id": change.id,
+        "patch": {
+            "event_name": "Project Proposal (updated)",
+            "due_date": "2026-03-24",
+            "due_time": "10:30:00",
+            "time_precision": "datetime",
+        },
+    }
+    assert payload["context"]["proposal_change_type"] == "due_changed"
+    assert payload["context"]["candidate_after"]["due_date"] == "2026-03-24"
+    assert payload["context"]["candidate_after"]["due_time"] == "10:30:00"
+    assert payload["target_snapshot"]["change_id"] == change.id
+    assert payload["target_snapshot"]["review_status"] == "pending"
+    assert payload["target_snapshot"]["change_type"] == "due_changed"
+    assert payload["target_snapshot"]["patch_fields"] == ["due_date", "due_time", "event_name", "time_precision"]
+    assert payload["target_snapshot"]["current_after_payload_hash"]
+
+    row = db_session.scalar(select(AgentProposal).where(AgentProposal.id == payload["proposal_id"]))
+    assert row is not None
+    assert row.proposal_type == AgentProposalType.PROPOSAL_EDIT_COMMIT
+    assert row.status == AgentProposalStatus.OPEN
+
+
+def test_agent_change_edit_commit_proposal_rejects_removed_change(client, db_session, auth_headers) -> None:
+    user = _create_user(db_session, email="agent-proposal-edit-removed@example.com")
+    source = _create_source(db_session, user=user, provider="ics")
+    family = _create_family(db_session, user_id=user.id, course_display="CSE 181 WI26", canonical_label="Project")
+    change = _create_editable_change(db_session, user=user, source=source, family=family, change_type=ChangeType.REMOVED)
+
+    response = client.post(
+        "/agent/proposals/change-edit-commit",
+        headers=auth_headers(client, user=user),
+        json={"change_id": change.id, "patch": {"due_date": "2026-03-25"}},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "agents.proposals.change_edit.unsupported_change_type"
+
+
+def test_agent_change_edit_commit_proposal_rejects_empty_patch(client, db_session, auth_headers) -> None:
+    user = _create_user(db_session, email="agent-proposal-edit-empty@example.com")
+    source = _create_source(db_session, user=user, provider="ics")
+    family = _create_family(db_session, user_id=user.id, course_display="CSE 182 WI26", canonical_label="Project")
+    change = _create_editable_change(db_session, user=user, source=source, family=family)
+
+    response = client.post(
+        "/agent/proposals/change-edit-commit",
+        headers=auth_headers(client, user=user),
+        json={"change_id": change.id, "patch": {}},
+    )
+    assert response.status_code == 422

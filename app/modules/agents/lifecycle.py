@@ -9,7 +9,7 @@ ProposalExecutionMode = Literal["approval_ticket_required", "web_only"]
 
 def proposal_execution_mode(row: AgentProposal) -> ProposalExecutionMode:
     kind = str((row.payload_json or {}).get("kind") or "")
-    if kind in {"change_decision", "run_source_sync"}:
+    if kind in {"change_decision", "run_source_sync", "family_relink_commit", "label_learning_add_alias_commit", "proposal_edit_commit"}:
         return "approval_ticket_required"
     return "web_only"
 

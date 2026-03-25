@@ -6,8 +6,8 @@ from sqlalchemy import select
 
 from app.db.models.agents import ApprovalTicket, ApprovalTicketStatus, AgentProposal, AgentProposalStatus, ChannelDelivery
 from app.db.models.input import IngestTriggerType, InputSource, SourceKind, SyncRequest, SyncRequestStage, SyncRequestStatus
-from app.db.models.review import Change, ChangeIntakePhase, ChangeOrigin, ChangeReviewBucket, ChangeSourceRef, ChangeType, ReviewStatus
-from app.db.models.shared import CourseWorkItemLabelFamily, User
+from app.db.models.review import Change, ChangeIntakePhase, ChangeOrigin, ChangeReviewBucket, ChangeSourceRef, ChangeType, ReviewStatus, SourceEventObservation
+from app.db.models.shared import CourseWorkItemLabelFamily, CourseWorkItemRawType, User
 from app.modules.common.course_identity import normalize_label_token, normalized_course_identity_key, parse_course_display
 from app.modules.sources.schemas import InputSourceCreateRequest
 from app.modules.sources.sources_service import create_input_source
@@ -16,7 +16,6 @@ from app.modules.sources.sources_service import create_input_source
 def _create_user(db_session, *, email: str) -> User:
     user = User(
         email=email,
-        notify_email=email,
         password_hash="hash",
         timezone_name="America/Los_Angeles",
         onboarding_completed_at=datetime.now(timezone.utc),
@@ -127,6 +126,75 @@ def _create_pending_change(db_session, *, user: User, source: InputSource, famil
             confidence=0.95,
         )
     )
+    db_session.commit()
+    db_session.refresh(change)
+    return change
+
+
+def _create_label_learning_change(db_session, *, user: User, source: InputSource, raw_label: str, title: str) -> Change:
+    entity_uid = f"tmp-{title.lower().replace(' ', '-')}"
+    external_event_id = f"evt-{title.lower().replace(' ', '-')}"
+    semantic_event = {
+        "uid": entity_uid,
+        "course_dept": "CSE",
+        "course_number": 100,
+        "course_quarter": "WI",
+        "course_year2": 26,
+        "family_name": raw_label,
+        "raw_type": raw_label,
+        "event_name": title,
+        "ordinal": 1,
+        "due_date": "2026-03-12",
+        "due_time": "23:59:00",
+        "time_precision": "datetime",
+    }
+    db_session.add(
+        SourceEventObservation(
+            user_id=user.id,
+            source_id=source.id,
+            source_kind=source.source_kind,
+            provider=source.provider,
+            external_event_id=external_event_id,
+            entity_uid=entity_uid,
+            event_payload={
+                "source_facts": {
+                    "external_event_id": external_event_id,
+                    "source_title": title,
+                    "source_dtstart_utc": "2026-03-12T23:59:00+00:00",
+                    "source_dtend_utc": "2026-03-13T00:59:00+00:00",
+                },
+                "semantic_event": semantic_event,
+                "link_signals": {},
+                "kind_resolution": {
+                    "status": "unresolved",
+                    "reason_code": "missing_course_identity",
+                },
+            },
+            event_hash="2" * 64,
+            observed_at=datetime.now(timezone.utc),
+            is_active=True,
+        )
+    )
+    change = Change(
+        user_id=user.id,
+        entity_uid=entity_uid,
+        change_origin=ChangeOrigin.INGEST_PROPOSAL,
+        change_type=ChangeType.CREATED,
+        detected_at=datetime.now(timezone.utc),
+        after_semantic_json=semantic_event,
+        source_refs=[
+            ChangeSourceRef(
+                position=0,
+                source_id=source.id,
+                source_kind=SourceKind.CALENDAR,
+                provider="ics",
+                external_event_id=external_event_id,
+                confidence=0.95,
+            )
+        ],
+        review_status=ReviewStatus.PENDING,
+    )
+    db_session.add(change)
     db_session.commit()
     db_session.refresh(change)
     return change
@@ -289,6 +357,164 @@ def test_source_retry_sync_approval_ticket_executes_new_sync_request(client, db_
     assert new_sync.source_id == source.id
     assert proposal_row is not None and proposal_row.status == AgentProposalStatus.ACCEPTED
     assert [row.delivery_kind for row in deliveries] == ["approval_ticket_open", "approval_ticket_executed"]
+
+
+def test_family_relink_commit_approval_ticket_executes_relink(client, db_session, auth_headers) -> None:
+    user = _create_user(db_session, email="approval-ticket-family@example.com")
+    source_family = _create_family(db_session, user_id=user.id, course_display="CSE 170 WI26", canonical_label="Quiz")
+    target_family = _create_family(db_session, user_id=user.id, course_display="CSE 170 WI26", canonical_label="Homework")
+    raw_type = CourseWorkItemRawType(
+        family_id=source_family.id,
+        raw_type="write-up",
+        normalized_raw_type="write up",
+        metadata_json={},
+    )
+    db_session.add(raw_type)
+    db_session.commit()
+
+    headers = auth_headers(client, user=user)
+    proposal_response = client.post(
+        "/agent/proposals/family-relink-commit",
+        headers=headers,
+        json={"raw_type_id": raw_type.id, "family_id": target_family.id},
+    )
+    assert proposal_response.status_code == 201
+    proposal_id = proposal_response.json()["proposal_id"]
+
+    ticket_response = client.post("/agent/approval-tickets", headers=headers, json={"proposal_id": proposal_id})
+    assert ticket_response.status_code == 201
+    ticket_payload = ticket_response.json()
+    assert ticket_payload["action_type"] == "family_relink_commit"
+
+    confirm_response = client.post(f"/agent/approval-tickets/{ticket_payload['ticket_id']}/confirm", headers=headers, json={})
+    assert confirm_response.status_code == 200
+    confirmed = confirm_response.json()
+    assert confirmed["status"] == "executed"
+    assert confirmed["executed_result"]["kind"] == "family_relink_commit"
+    assert confirmed["executed_result"]["family_id"] == target_family.id
+
+    db_session.expire_all()
+    refreshed_raw_type = db_session.scalar(select(CourseWorkItemRawType).where(CourseWorkItemRawType.id == raw_type.id))
+    proposal_row = db_session.scalar(select(AgentProposal).where(AgentProposal.id == proposal_id))
+    ticket_row = db_session.scalar(select(ApprovalTicket).where(ApprovalTicket.ticket_id == ticket_payload["ticket_id"]))
+    assert refreshed_raw_type is not None
+    assert refreshed_raw_type.family_id == target_family.id
+    assert proposal_row is not None and proposal_row.status == AgentProposalStatus.ACCEPTED
+    assert ticket_row is not None and ticket_row.status == ApprovalTicketStatus.EXECUTED
+
+
+def test_label_learning_commit_approval_ticket_executes_alias_mapping(client, db_session, auth_headers) -> None:
+    user = _create_user(db_session, email="approval-ticket-label@example.com")
+    source = _create_source(db_session, user=user, provider="ics")
+    family = _create_family(db_session, user_id=user.id, course_display="CSE 100 WI26", canonical_label="Homework")
+    change = _create_label_learning_change(db_session, user=user, source=source, raw_label="HW", title="HW1")
+
+    headers = auth_headers(client, user=user)
+    proposal_response = client.post(
+        "/agent/proposals/label-learning-commit",
+        headers=headers,
+        json={"change_id": change.id, "family_id": family.id},
+    )
+    assert proposal_response.status_code == 201
+    proposal_id = proposal_response.json()["proposal_id"]
+
+    ticket_response = client.post("/agent/approval-tickets", headers=headers, json={"proposal_id": proposal_id})
+    assert ticket_response.status_code == 201
+    ticket_id = ticket_response.json()["ticket_id"]
+
+    confirm_response = client.post(f"/agent/approval-tickets/{ticket_id}/confirm", headers=headers, json={})
+    assert confirm_response.status_code == 200
+    confirmed = confirm_response.json()
+    assert confirmed["status"] == "executed"
+    assert confirmed["executed_result"]["kind"] == "label_learning_add_alias_commit"
+    assert confirmed["executed_result"]["family_id"] == family.id
+
+    db_session.expire_all()
+    proposal = db_session.scalar(select(AgentProposal).where(AgentProposal.id == proposal_id))
+    refreshed_change = db_session.scalar(select(Change).where(Change.id == change.id))
+    assert proposal is not None and proposal.status == AgentProposalStatus.ACCEPTED
+    assert refreshed_change is not None and refreshed_change.review_status == ReviewStatus.APPROVED
+
+
+def test_proposal_edit_commit_approval_ticket_applies_pending_proposal_edit(client, db_session, auth_headers) -> None:
+    user = _create_user(db_session, email="approval-ticket-proposal-edit@example.com")
+    source = _create_source(db_session, user=user, provider="ics")
+    family = _create_family(db_session, user_id=user.id, course_display="CSE 183 WI26", canonical_label="Project")
+    change = _create_pending_change(db_session, user=user, source=source, family=family)
+
+    headers = auth_headers(client, user=user)
+    proposal_response = client.post(
+        "/agent/proposals/change-edit-commit",
+        headers=headers,
+        json={
+            "change_id": change.id,
+            "patch": {
+                "event_name": "Quiz 1 (edited)",
+                "due_date": "2026-03-24",
+                "due_time": "10:30:00",
+                "time_precision": "datetime",
+            },
+        },
+    )
+    assert proposal_response.status_code == 201
+    proposal_id = proposal_response.json()["proposal_id"]
+
+    ticket_response = client.post("/agent/approval-tickets", headers=headers, json={"proposal_id": proposal_id})
+    assert ticket_response.status_code == 201
+    ticket_payload = ticket_response.json()
+    assert ticket_payload["action_type"] == "proposal_edit_commit"
+
+    confirm_response = client.post(f"/agent/approval-tickets/{ticket_payload['ticket_id']}/confirm", headers=headers, json={})
+    assert confirm_response.status_code == 200
+    confirmed = confirm_response.json()
+    assert confirmed["status"] == "executed"
+    assert confirmed["confirm_summary_code"] == "agents.ticket.confirm.proposal_edit_commit.summary"
+    assert confirmed["transition_message_code"] == "agents.ticket.transition.proposal_edit_commit.executed"
+    assert confirmed["executed_result"]["kind"] == "proposal_edit_commit"
+    assert confirmed["executed_result"]["change_id"] == change.id
+    assert confirmed["executed_result"]["edited_change_id"] == change.id
+
+    db_session.expire_all()
+    refreshed_change = db_session.scalar(select(Change).where(Change.id == change.id))
+    proposal_row = db_session.scalar(select(AgentProposal).where(AgentProposal.id == proposal_id))
+    assert refreshed_change is not None
+    assert refreshed_change.review_status == ReviewStatus.PENDING
+    assert refreshed_change.after_semantic_json["event_name"] == "Quiz 1 (edited)"
+    assert refreshed_change.after_semantic_json["due_date"] == "2026-03-24"
+    assert refreshed_change.after_semantic_json["due_time"] == "10:30:00"
+    assert refreshed_change.after_evidence_json is not None
+    assert proposal_row is not None and proposal_row.status == AgentProposalStatus.ACCEPTED
+
+
+def test_proposal_edit_commit_approval_ticket_rejects_payload_drift(client, db_session, auth_headers) -> None:
+    user = _create_user(db_session, email="approval-ticket-proposal-edit-drift@example.com")
+    source = _create_source(db_session, user=user, provider="ics")
+    family = _create_family(db_session, user_id=user.id, course_display="CSE 184 WI26", canonical_label="Project")
+    change = _create_pending_change(db_session, user=user, source=source, family=family)
+
+    headers = auth_headers(client, user=user)
+    proposal_response = client.post(
+        "/agent/proposals/change-edit-commit",
+        headers=headers,
+        json={"change_id": change.id, "patch": {"due_date": "2026-03-25"}},
+    )
+    assert proposal_response.status_code == 201
+    proposal_id = proposal_response.json()["proposal_id"]
+
+    ticket_response = client.post("/agent/approval-tickets", headers=headers, json={"proposal_id": proposal_id})
+    assert ticket_response.status_code == 201
+    ticket_id = ticket_response.json()["ticket_id"]
+
+    change.after_semantic_json = {
+        **change.after_semantic_json,
+        "due_date": "2026-03-26",
+    }
+    db_session.add(change)
+    db_session.commit()
+
+    confirm_response = client.post(f"/agent/approval-tickets/{ticket_id}/confirm", headers=headers, json={})
+    assert confirm_response.status_code == 409
+    assert confirm_response.json()["detail"]["code"] == "agents.approval.proposal_edit_state_drifted"
 
 
 def test_non_executable_source_recovery_proposal_cannot_create_ticket(client, db_session, auth_headers) -> None:
