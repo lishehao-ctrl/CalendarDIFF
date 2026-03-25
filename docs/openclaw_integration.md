@@ -35,7 +35,7 @@ For real users connecting their own CalendarDIFF accounts:
    - the MCP URL
    - a Bearer token
 
-Do not use `CALENDARDIFF_MCP_DEFAULT_NOTIFY_EMAIL` for public multi-user access.
+Do not use `CALENDARDIFF_MCP_DEFAULT_EMAIL` for public multi-user access.
 That is local/dev mode only.
 
 ## What CalendarDIFF already exposes
@@ -54,8 +54,11 @@ That is local/dev mode only.
 
 - `list_proposals`
 - `create_change_decision_proposal`
+- `create_change_edit_commit_proposal`
 - `create_source_recovery_proposal`
 - `create_family_relink_preview_proposal`
+- `create_family_relink_commit_proposal`
+- `create_label_learning_commit_proposal`
 - `get_proposal`
 
 ### Approval tools
@@ -77,7 +80,7 @@ That is local/dev mode only.
 Recommended local/dev command:
 
 ```bash
-CALENDARDIFF_MCP_DEFAULT_NOTIFY_EMAIL=you@example.com \
+CALENDARDIFF_MCP_DEFAULT_EMAIL=you@example.com \
 scripts/run_calendardiff_mcp.sh
 ```
 
@@ -86,7 +89,7 @@ This starts the MCP server over `stdio` by default.
 Optional alternate transport:
 
 ```bash
-CALENDARDIFF_MCP_DEFAULT_NOTIFY_EMAIL=you@example.com \
+CALENDARDIFF_MCP_DEFAULT_EMAIL=you@example.com \
 CALENDARDIFF_MCP_TRANSPORT=streamable-http \
 scripts/run_calendardiff_mcp.sh
 ```
@@ -157,14 +160,17 @@ python scripts/run_claw_mcp_smoke.py
 Currently executable through OpenClaw:
 
 - direct change decision proposals whose suggested action is `approve` or `reject`
+- proposal edit commit proposals whose payload becomes `proposal_edit_commit`
 - source recovery proposals whose payload becomes `run_source_sync`
+- low-risk family relink commit proposals whose payload becomes `family_relink_commit`
+- low-risk label-learning add-alias proposals whose payload becomes `label_learning_add_alias_commit`
 
 Still web-only:
 
 - reconnect Gmail
 - update source settings
-- edit-then-approve
-- family governance writes
+- canonical edit and broader free-form edit flows
+- broader family governance writes
 - manual writes
 
 ## Suggested first validation

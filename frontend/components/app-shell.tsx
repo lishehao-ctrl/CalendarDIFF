@@ -24,13 +24,16 @@ import { updateSettingsProfile } from "@/lib/api/settings";
 import { getBrowserTimeZone } from "@/lib/browser-timezone";
 import { withBasePath } from "@/lib/demo-mode";
 import { translate } from "@/lib/i18n/runtime";
+import { useLocale } from "@/lib/i18n/use-locale";
+import { useResponsiveTier } from "@/lib/use-responsive-tier";
 import type { OnboardingStage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { preloadWorkspaceLane } from "@/lib/workspace-preload";
 
 type SessionUser = {
   id: number;
-  notify_email: string;
+  email: string;
+  language_code: "en" | "zh-CN";
   timezone_name: string;
   timezone_source: "auto" | "manual";
   created_at: string;
@@ -73,20 +76,20 @@ function NavContentWithItems({
 }) {
   return (
     <>
-      <div className={cn("relative mb-6", collapsed ? "space-y-3" : "space-y-4")}>
-        <div className={cn("flex items-start", collapsed ? "flex-col items-center gap-3" : "justify-between gap-3")}>
+      <div className={cn("relative mb-4", collapsed ? "space-y-2" : "space-y-3")}>
+        <div className={cn("flex items-start", collapsed ? "flex-col items-center gap-2" : "justify-between gap-3")}>
           <div
             className={cn(
-              "rounded-[1.6rem] bg-[linear-gradient(135deg,rgba(31,94,255,0.18),rgba(215,90,45,0.12))] transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
-              collapsed ? "flex h-12 w-12 items-center justify-center rounded-[1.35rem]" : "flex flex-1 items-center gap-3 p-5"
+              "rounded-[1.3rem] border border-line/70 bg-[linear-gradient(135deg,rgba(31,94,255,0.1),rgba(215,90,45,0.08))] transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+              collapsed ? "flex h-11 w-11 items-center justify-center rounded-[1.1rem]" : "flex flex-1 items-center gap-3 px-4 py-3.5"
             )}
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ink text-paper">
-              <Sparkles className="h-5 w-5" />
+            <div className={cn("flex items-center justify-center rounded-[1rem] bg-ink text-paper", collapsed ? "h-8 w-8" : "h-9 w-9")}>
+              <Sparkles className="h-4 w-4" />
             </div>
             <div className={animatedTextBlock(collapsed, "max-w-[220px]")}>
-              <p className="text-xs uppercase tracking-[0.24em] text-[#425061]">{translate("shell.brand")}</p>
-              <h1 className="mt-1 text-2xl font-semibold">{translate("shell.title")}</h1>
+              <p className="text-[11px] uppercase tracking-[0.22em] text-[#5f6b79]">{translate("shell.brand")}</p>
+              <h1 className="mt-1 text-xl font-semibold leading-tight">{translate("shell.title")}</h1>
             </div>
           </div>
           {onToggleCollapse ? (
@@ -107,7 +110,7 @@ function NavContentWithItems({
           ) : null}
         </div>
       </div>
-      <nav className={cn("flex flex-1 flex-col", collapsed ? "gap-3" : "gap-2")}>
+      <nav className={cn("flex flex-1 flex-col", collapsed ? "gap-2.5" : "gap-1.5")}>
         {items.map(({ href, labelKey, icon: Icon, descriptionKey }) => {
           const label = translate(labelKey);
           const description = translate(descriptionKey);
@@ -124,8 +127,8 @@ function NavContentWithItems({
               className={cn(
                 "group relative transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
                 collapsed
-                  ? "flex h-12 w-12 items-center justify-center self-center rounded-2xl"
-                  : "rounded-[1.25rem] px-4 py-4",
+                  ? "flex h-11 w-11 items-center justify-center self-center rounded-[1rem]"
+                  : "rounded-[1.1rem] px-3.5 py-3",
                 active
                   ? "scale-[1.02] bg-ink text-paper shadow-[0_16px_32px_rgba(20,32,44,0.18)]"
                   : "text-[#314051] hover:bg-white/70 hover:scale-[1.02]",
@@ -135,7 +138,7 @@ function NavContentWithItems({
               <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-3")}>
                 <div
                   className={cn(
-                    "flex h-10 w-10 items-center justify-center rounded-2xl transition-all duration-300",
+                    "flex h-9 w-9 items-center justify-center rounded-[1rem] transition-all duration-300",
                     active ? "bg-white/12" : "bg-[rgba(20,32,44,0.06)]"
                   )}
                 >
@@ -143,7 +146,7 @@ function NavContentWithItems({
                 </div>
                 <div className={animatedTextBlock(collapsed, "max-w-[170px]")}>
                   <div className="text-sm font-medium">{label}</div>
-                  <div className={cn("mt-1 text-xs", active ? "text-white/70" : "text-[#7a8593]")}>{description}</div>
+                  <div className={cn("mt-0.5 text-[11px]", active ? "text-white/70" : "text-[#7a8593]")}>{description}</div>
                 </div>
               </div>
               {collapsed ? (
@@ -160,7 +163,7 @@ function NavContentWithItems({
           );
         })}
       </nav>
-      <div className={cn("mt-6", collapsed ? "flex justify-center" : "space-y-3")}>
+      <div className={cn("mt-5", collapsed ? "flex justify-center" : "space-y-3")}>
         <LogoutButton collapsed={collapsed} redirectTo={logoutRedirectTo} />
       </div>
     </>
@@ -177,6 +180,8 @@ export function AppShell({
   basePath?: string;
 }) {
   const pathname = usePathname();
+  const { locale, setLocale } = useLocale();
+  const { isMobile, isTablet } = useResponsiveTier();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [desktopNavCollapsed, setDesktopNavCollapsed] = useState(false);
   const [timezoneSynced, setTimezoneSynced] = useState(false);
@@ -233,6 +238,15 @@ export function AppShell({
   }, [sessionUser.timezone_name, sessionUser.timezone_source, timezoneSynced]);
 
   useEffect(() => {
+    if (basePath === "/preview") {
+      return;
+    }
+    if (locale !== sessionUser.language_code) {
+      setLocale(sessionUser.language_code);
+    }
+  }, [basePath, locale, sessionUser.language_code, setLocale]);
+
+  useEffect(() => {
     if (!onboardingReady || typeof window === "undefined") {
       return;
     }
@@ -255,11 +269,11 @@ export function AppShell({
   }, [basePath, onboardingReady, primeRoute]);
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-[1500px] gap-6 p-4 md:p-6">
+    <div className="mx-auto flex min-h-screen max-w-[1500px] gap-4 p-3 md:p-5 xl:gap-6 xl:p-6">
       <aside
         className={cn(
-          "hidden shrink-0 flex-col overflow-visible rounded-[1.7rem] border border-line/80 bg-card p-5 shadow-[var(--shadow-panel)] transition-[width,padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] xl:flex",
-          desktopNavCollapsed ? "w-[76px] p-3" : "w-80"
+          "hidden shrink-0 flex-col overflow-visible rounded-[1.45rem] border border-line/80 bg-card p-4 shadow-[var(--shadow-panel)] transition-[width,padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] xl:flex",
+          desktopNavCollapsed ? "w-[72px] p-3" : "w-[285px]"
         )}
       >
         <NavContentWithItems
@@ -271,11 +285,11 @@ export function AppShell({
           logoutRedirectTo={basePath ? withBasePath(basePath, "/") : "/login"}
         />
       </aside>
-      <div className="flex min-w-0 flex-1 flex-col gap-6">
-        <div className="flex items-center justify-between rounded-[1.45rem] border border-line/70 bg-card px-4 py-3 shadow-[var(--shadow-panel)] xl:hidden">
-          <div>
-            <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">{translate("shell.brand")}</p>
-            <p className="mt-1 text-lg font-semibold">{translate("shell.title")}</p>
+      <div className="flex min-w-0 flex-1 flex-col gap-5 xl:gap-6">
+        <div className="flex items-center justify-between gap-3 rounded-[1.2rem] border border-line/70 bg-card px-4 py-3 shadow-[var(--shadow-panel)] xl:hidden">
+          <div className="min-w-0">
+            <p className="text-[11px] uppercase tracking-[0.22em] text-[#6d7885]">{translate("shell.brand")}</p>
+            <p className="mt-1 text-base font-semibold">{translate("shell.title")}</p>
           </div>
           <div className="flex items-center gap-2">
             <LogoutButton redirectTo={basePath ? withBasePath(basePath, "/") : "/login"} />
@@ -287,7 +301,7 @@ export function AppShell({
               </Dialog.Trigger>
               <Dialog.Portal>
                 <Dialog.Overlay className="fixed inset-0 z-40 bg-[rgba(20,32,44,0.38)] backdrop-blur-sm" />
-                <Dialog.Content className="fixed inset-y-0 left-0 z-50 w-[88vw] max-w-sm border-r border-line bg-card p-5 shadow-[var(--shadow-panel)]">
+                <Dialog.Content className="nav-panel-content motion-surface fixed inset-y-0 left-0 z-50 w-[88vw] max-w-sm border-r border-line bg-card p-5 shadow-[var(--shadow-panel)]">
                   <Dialog.Title className="sr-only">{translate("shell.openNavigation")}</Dialog.Title>
                   <Dialog.Description className="sr-only">{translate("shell.navigateDescription")}</Dialog.Description>
                   <div className="mb-4 flex items-center justify-end">
@@ -309,15 +323,28 @@ export function AppShell({
             </Dialog.Root>
           </div>
         </div>
-        <div className="animate-surface-enter flex flex-col gap-3 rounded-[1.45rem] border border-line/70 bg-card px-4 py-4 shadow-[var(--shadow-panel)] md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">{translate("shell.workspaceStatus")}</p>
-          </div>
-          <div className="flex flex-wrap gap-2 text-sm text-[#314051]">
-            <span className="rounded-full border border-line/80 bg-white/80 px-3 py-1.5">{sessionUser.notify_email}</span>
-            <span className="rounded-full border border-line/80 bg-white/80 px-3 py-1.5">{sessionUser.timezone_name}</span>
+        <div
+          className={cn(
+            "animate-surface-enter rounded-[1.15rem] border border-line/70 bg-card px-4 py-3 shadow-[var(--shadow-panel)]",
+            isMobile ? "space-y-3" : "flex flex-col gap-2 md:flex-row md:items-center md:justify-between",
+          )}
+        >
+          <p className="text-[11px] uppercase tracking-[0.22em] text-[#6d7885]">{translate("shell.workspaceStatus")}</p>
+          <div
+            className={cn(
+              "text-xs text-[#314051]",
+              isMobile ? "grid grid-cols-2 gap-2" : "flex flex-wrap gap-2",
+            )}
+          >
+            <span className={cn("rounded-full border border-line/80 bg-white/80 px-3 py-1.5", isMobile ? "col-span-2 truncate" : "min-w-0")}>
+              {sessionUser.email}
+            </span>
+            <span className={cn("rounded-full border border-line/80 bg-white/80 px-3 py-1.5", isTablet ? "min-w-0" : null)}>
+              {sessionUser.timezone_name}
+            </span>
             <span className={cn(
               "inline-flex items-center gap-2 rounded-full border px-3 py-1.5",
+              isMobile ? "col-span-2 justify-center" : null,
               onboardingReady ? "border-[rgba(77,124,15,0.18)] bg-[rgba(77,124,15,0.08)] text-[#3f5f12]" : "border-[rgba(215,90,45,0.18)] bg-[rgba(215,90,45,0.08)] text-[#8a472d]",
             )}>
               <CircleAlert className="h-4 w-4" />
@@ -325,7 +352,9 @@ export function AppShell({
             </span>
           </div>
         </div>
-        {children}
+        <div key={`${basePath}:${pathname}`} className="motion-scene animate-scene-enter min-w-0 flex-1">
+          {children}
+        </div>
       </div>
     </div>
   );

@@ -27,7 +27,6 @@ from services.mcp_server.main import (
 def _create_user(db_session, *, email: str) -> User:
     user = User(
         email=email,
-        notify_email=email,
         password_hash="hash",
         timezone_name="America/Los_Angeles",
         onboarding_completed_at=datetime.now(timezone.utc),
@@ -142,7 +141,7 @@ class _FakeRequest:
 
 def test_settings_mcp_invocations_lists_recent_rows(client, db_session, auth_headers) -> None:
     user = _create_user(db_session, email="mcp-invocations-user@example.com")
-    get_workspace_context_impl(notify_email=user.notify_email)
+    get_workspace_context_impl(email=user.email)
 
     response = client.get("/settings/mcp-invocations", headers=auth_headers(client, user=user))
     assert response.status_code == 200
@@ -150,7 +149,7 @@ def test_settings_mcp_invocations_lists_recent_rows(client, db_session, auth_hea
     assert len(payload) == 1
     assert payload[0]["tool_name"] == "get_workspace_context"
     assert payload[0]["status"] == "succeeded"
-    assert payload[0]["auth_mode"] == "notify_email"
+    assert payload[0]["auth_mode"] == "email"
 
 
 def test_mcp_invocation_links_request_id_and_created_proposal(db_session) -> None:
@@ -172,7 +171,7 @@ def test_mcp_invocation_links_request_id_and_created_proposal(db_session) -> Non
     )
     ctx = Context(request_context=request_context, fastmcp=mcp)
 
-    proposal = create_change_decision_proposal_impl(change_id=change.id, notify_email=None, ctx=ctx)
+    proposal = create_change_decision_proposal_impl(change_id=change.id, email=None, ctx=ctx)
     row = db_session.query(McpToolInvocation).filter(McpToolInvocation.tool_name == "create_change_decision_proposal").one()
 
     assert proposal["origin_request_id"] == "req-audit-123"

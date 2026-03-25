@@ -107,7 +107,7 @@ def test_aggregate_llm_usage_summaries_rolls_up_tokens_cache_and_latency() -> No
                 "output_tokens": 300,
                 "reasoning_tokens": 100,
                 "total_tokens": 2100,
-                "api_modes": {"responses": 2},
+                "protocols": {"responses": 2},
                 "models": {"qwen3.5-plus": 2},
                 "task_counts": {"gmail_purpose_mode_classify": 2},
             },
@@ -122,7 +122,7 @@ def test_aggregate_llm_usage_summaries_rolls_up_tokens_cache_and_latency() -> No
                 "output_tokens": 50,
                 "reasoning_tokens": 0,
                 "total_tokens": 450,
-                "api_modes": {"chat_completions": 1},
+                "protocols": {"chat_completions": 1},
                 "models": {"qwen3.5-flash": 1},
                 "task_counts": {"calendar_semantic_extract": 1},
             },
@@ -137,7 +137,7 @@ def test_aggregate_llm_usage_summaries_rolls_up_tokens_cache_and_latency() -> No
     assert aggregate["avg_latency_ms"] == 400
     assert aggregate["latency_ms_max"] == 500
     assert aggregate["cache_hit_ratio"] == 0.5909
-    assert aggregate["api_modes"] == {"responses": 2, "chat_completions": 1}
+    assert aggregate["protocols"] == {"responses": 2, "chat_completions": 1}
 
 
 def test_start_replay_writes_initial_state_and_credentials(tmp_path: Path, monkeypatch) -> None:
@@ -187,7 +187,7 @@ def test_start_replay_writes_initial_state_and_credentials(tmp_path: Path, monke
         fake_provider_host="127.0.0.1",
         fake_provider_port=8765,
         start_fake_provider=True,
-        notify_email="timeline@example.com",
+        email="timeline@example.com",
         auth_password="password123",
     )
 
@@ -203,7 +203,7 @@ def test_start_replay_writes_initial_state_and_credentials(tmp_path: Path, monke
         {"source_id": 101, "request_id": "bootstrap-ics", "status": "SUCCEEDED", "elapsed_ms": 1234},
         {"source_id": 202, "request_id": "bootstrap-gmail", "status": "SUCCEEDED", "elapsed_ms": 2345},
     ]
-    assert creds["notify_email"] == "timeline@example.com"
+    assert creds["email"] == "timeline@example.com"
     assert primed_batches and primed_batches[0]["semester"] == 1 and primed_batches[0]["batch"] == 1
     assert (run_dir / replay.CHECKPOINTS_FILE).is_file()
 
@@ -217,7 +217,7 @@ def test_resume_replay_records_after_snapshot_and_diff(tmp_path: Path, monkeypat
         "public_api_base": "http://127.0.0.1:8200",
         "api_key": "test-api-key",
         "manifest_path": str(tmp_path / "manifest.json"),
-        "notify_email": "timeline@example.com",
+        "email": "timeline@example.com",
         "auth_password": "password123",
         "user_id": 55,
         "ics_source_id": 101,
@@ -316,7 +316,7 @@ def test_build_report_rolls_up_batch_llm_usage(tmp_path: Path) -> None:
             "run_id": "run-usage",
             "created_at": "2026-03-18T00:00:00+00:00",
             "user_id": 1,
-            "notify_email": "timeline@example.com",
+            "email": "timeline@example.com",
             "ics_source_id": 10,
             "gmail_source_id": 11,
             "awaiting_manual": True,
@@ -341,7 +341,7 @@ def test_build_report_rolls_up_batch_llm_usage(tmp_path: Path) -> None:
                         "output_tokens": 90,
                         "reasoning_tokens": 0,
                         "total_tokens": 990,
-                        "api_modes": {"chat_completions": 3},
+                        "protocols": {"chat_completions": 3},
                         "models": {"qwen3.5-flash": 3},
                         "task_counts": {"calendar_semantic_extract": 3},
                     },
@@ -367,7 +367,7 @@ def test_build_report_rolls_up_batch_llm_usage(tmp_path: Path) -> None:
                         "output_tokens": 70,
                         "reasoning_tokens": 0,
                         "total_tokens": 570,
-                        "api_modes": {"chat_completions": 1},
+                        "protocols": {"chat_completions": 1},
                         "models": {"qwen3.5-flash": 1},
                         "task_counts": {"calendar_semantic_extract": 1},
                     },
@@ -382,7 +382,7 @@ def test_build_report_rolls_up_batch_llm_usage(tmp_path: Path) -> None:
                         "output_tokens": 300,
                         "reasoning_tokens": 100,
                         "total_tokens": 2100,
-                        "api_modes": {"responses": 2},
+                        "protocols": {"responses": 2},
                         "models": {"qwen3.5-plus": 2},
                         "task_counts": {"gmail_purpose_mode_classify": 2},
                     },
@@ -453,7 +453,7 @@ def test_wait_for_source_bootstrap_sync_prefers_scheduler_request(monkeypatch) -
                         "latency_ms_total": 200,
                         "latency_ms_max": 120,
                         "usage_record_count": 2,
-                        "api_modes": {"chat_completions": 2},
+                        "protocols": {"chat_completions": 2},
                         "models": {"qwen3.5-flash": 2},
                         "task_counts": {"gmail_purpose_mode_classify": 2},
                     }
@@ -488,7 +488,7 @@ def test_wait_for_source_bootstrap_sync_prefers_scheduler_request(monkeypatch) -
                         "latency_ms_total": 200,
                         "latency_ms_max": 120,
                         "usage_record_count": 2,
-                        "api_modes": {"chat_completions": 2},
+                        "protocols": {"chat_completions": 2},
                         "models": {"qwen3.5-flash": 2},
                         "task_counts": {"gmail_purpose_mode_classify": 2},
                     },
@@ -513,7 +513,7 @@ def test_enrich_bootstrap_results_from_api_replaces_placeholder_rows(monkeypatch
     state = {
         "public_api_base": "http://127.0.0.1:8200",
         "api_key": "test-api-key",
-        "notify_email": "timeline@example.com",
+        "email": "timeline@example.com",
         "auth_password": "password123",
     }
     bootstrap_results = [
@@ -561,7 +561,7 @@ def test_enrich_bootstrap_results_from_api_replaces_placeholder_rows(monkeypatch
                     "latency_ms_total": 200,
                     "latency_ms_max": 120,
                     "usage_record_count": 2,
-                    "api_modes": {"chat_completions": 2},
+                    "protocols": {"chat_completions": 2},
                     "models": {"qwen3.5-flash": 2},
                     "task_counts": {"gmail_purpose_mode_classify": 2},
                 },
@@ -602,10 +602,10 @@ def test_ensure_authenticated_session_logs_in_existing_user_before_register(monk
     monkeypatch.setattr(
         replay,
         "request_json",
-        lambda client_obj, method, path, json_payload=None: {"user": {"id": 123, "notify_email": "timeline@example.com"}},
+        lambda client_obj, method, path, json_payload=None: {"user": {"id": 123, "email": "timeline@example.com"}},
     )
 
-    user = replay.ensure_authenticated_session(_Client(), notify_email="timeline@example.com", password="password123")
+    user = replay.ensure_authenticated_session(_Client(), email="timeline@example.com", password="password123")
 
     assert user["id"] == 123
     assert [path for _, path, _ in calls] == ["/auth/session", "/auth/login"]
@@ -632,10 +632,10 @@ def test_ensure_authenticated_session_registers_when_login_fails(monkeypatch) ->
     monkeypatch.setattr(
         replay,
         "request_json",
-        lambda client_obj, method, path, json_payload=None: {"user": {"id": 456, "notify_email": "timeline@example.com"}},
+        lambda client_obj, method, path, json_payload=None: {"user": {"id": 456, "email": "timeline@example.com"}},
     )
 
-    user = replay.ensure_authenticated_session(_Client(), notify_email="timeline@example.com", password="password123")
+    user = replay.ensure_authenticated_session(_Client(), email="timeline@example.com", password="password123")
 
     assert user["id"] == 456
     assert [path for _, path, _ in calls] == ["/auth/session", "/auth/login", "/auth/register"]

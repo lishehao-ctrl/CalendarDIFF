@@ -14,10 +14,9 @@ export async function getSettingsProfile() {
 }
 
 export async function updateSettingsProfile(payload: {
-  email?: string | null;
+  language_code?: "en" | "zh-CN" | null;
   timezone_name?: string | null;
   timezone_source?: string | null;
-  notify_email?: string | null;
   calendar_delay_seconds?: number | null;
 }) {
   return apiPatch<UserProfile>("/settings/profile", payload);

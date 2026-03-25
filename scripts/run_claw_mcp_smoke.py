@@ -29,6 +29,8 @@ from app.modules.common.course_identity import normalize_label_token
 from services.mcp_server.main import (
     create_approval_ticket_impl,
     create_change_decision_proposal_impl,
+    create_change_edit_commit_proposal_impl,
+    create_family_relink_commit_proposal_impl,
     create_family_relink_preview_proposal_impl,
     confirm_approval_ticket_impl,
     get_change_context_impl,
@@ -50,8 +52,8 @@ class SmokeStep:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a reproducible backend-side Claw/MCP smoke against the local CalendarDIFF codebase.")
-    parser.add_argument("--notify-email", default="agent-live-eval@example.com")
-    parser.add_argument("--other-notify-email", default="agent-live-eval-other@example.com")
+    parser.add_argument("--email", default="agent-live-eval@example.com")
+    parser.add_argument("--other-email", default="agent-live-eval-other@example.com")
     parser.add_argument("--password", default="password123")
     parser.add_argument("--database-url", default=None)
     parser.add_argument("--output-root", default=str(OUTPUT_ROOT))
@@ -66,8 +68,8 @@ def main() -> None:
     configure_smoke_database(database_url=str(args.database_url).strip() if args.database_url else None)
 
     fixture = seed_fixture(
-        notify_email=str(args.notify_email),
-        other_notify_email=str(args.other_notify_email),
+        email=str(args.email),
+        other_email=str(args.other_email),
         password=str(args.password),
     )
 
@@ -88,10 +90,10 @@ def main() -> None:
         return Context(request_context=request_context, fastmcp=None)  # type: ignore[arg-type]
 
     try:
-        recent_before = get_recent_agent_activity_impl(notify_email=fixture["notify_email"], limit=5, ctx=next_ctx("recent-before"))
+        recent_before = get_recent_agent_activity_impl(email=fixture["email"], limit=5, ctx=next_ctx("recent-before"))
         steps.append(SmokeStep("recent_activity_before", True, "Loaded recent agent activity.", {"count": len(recent_before.get("items") or [])}))
 
-        workspace = get_workspace_context_impl(notify_email=fixture["notify_email"], ctx=next_ctx("workspace"))
+        workspace = get_workspace_context_impl(email=fixture["email"], ctx=next_ctx("workspace"))
         steps.append(
             SmokeStep(
                 "workspace_context",
@@ -105,16 +107,16 @@ def main() -> None:
         )
 
         primary_change_id = int(fixture["pending_change_ids"][0])
-        change_context = get_change_context_impl(change_id=primary_change_id, notify_email=fixture["notify_email"], ctx=next_ctx("change-context"))
+        change_context = get_change_context_impl(change_id=primary_change_id, email=fixture["email"], ctx=next_ctx("change-context"))
         steps.append(SmokeStep("change_context", True, "Loaded pending change context.", {"change_id": change_context["change"]["id"]}))
 
-        proposal = create_change_decision_proposal_impl(change_id=primary_change_id, notify_email=fixture["notify_email"], ctx=next_ctx("change-proposal"))
+        proposal = create_change_decision_proposal_impl(change_id=primary_change_id, email=fixture["email"], ctx=next_ctx("change-proposal"))
         steps.append(SmokeStep("change_proposal", True, "Created change proposal.", {"proposal_id": proposal["proposal_id"], "origin_request_id": proposal.get("origin_request_id")}))
 
-        ticket = create_approval_ticket_impl(proposal_id=int(proposal["proposal_id"]), notify_email=fixture["notify_email"], ctx=next_ctx("ticket-create"))
+        ticket = create_approval_ticket_impl(proposal_id=int(proposal["proposal_id"]), email=fixture["email"], ctx=next_ctx("ticket-create"))
         steps.append(SmokeStep("approval_ticket_create", True, "Created approval ticket.", {"ticket_id": ticket["ticket_id"], "origin_request_id": ticket.get("origin_request_id")}))
 
-        confirmed = confirm_approval_ticket_impl(ticket_id=str(ticket["ticket_id"]), notify_email=fixture["notify_email"], ctx=next_ctx("ticket-confirm"))
+        confirmed = confirm_approval_ticket_impl(ticket_id=str(ticket["ticket_id"]), email=fixture["email"], ctx=next_ctx("ticket-confirm"))
         steps.append(
             SmokeStep(
                 "approval_ticket_confirm",
@@ -124,13 +126,92 @@ def main() -> None:
             )
         )
 
-        family_context = get_family_context_impl(family_id=int(fixture["family_id"]), notify_email=fixture["notify_email"], ctx=next_ctx("family-context"))
+        edit_change_id = int((fixture["pending_change_ids"] or [primary_change_id, primary_change_id])[1])
+        edit_proposal = create_change_edit_commit_proposal_impl(
+            change_id=edit_change_id,
+            patch={"due_date": "2026-03-30", "event_name": "Homework 3 Edited"},
+            email=fixture["email"],
+            ctx=next_ctx("edit-proposal"),
+        )
+        steps.append(
+            SmokeStep(
+                "change_edit_commit_proposal",
+                True,
+                "Created proposal edit commit proposal.",
+                {"proposal_id": edit_proposal["proposal_id"], "kind": edit_proposal["suggested_payload"]["kind"]},
+            )
+        )
+
+        edit_ticket = create_approval_ticket_impl(proposal_id=int(edit_proposal["proposal_id"]), email=fixture["email"], ctx=next_ctx("edit-ticket-create"))
+        steps.append(
+            SmokeStep(
+                "change_edit_commit_ticket_create",
+                True,
+                "Created proposal edit approval ticket.",
+                {"ticket_id": edit_ticket["ticket_id"]},
+            )
+        )
+
+        edit_confirmed = confirm_approval_ticket_impl(ticket_id=str(edit_ticket["ticket_id"]), email=fixture["email"], ctx=next_ctx("edit-ticket-confirm"))
+        steps.append(
+            SmokeStep(
+                "change_edit_commit_ticket_confirm",
+                True,
+                "Confirmed proposal edit approval ticket.",
+                {"ticket_id": edit_confirmed["ticket_id"], "result_kind": (edit_confirmed.get("executed_result") or {}).get("kind")},
+            )
+        )
+
+        family_context = get_family_context_impl(family_id=int(fixture["family_id"]), email=fixture["email"], ctx=next_ctx("family-context"))
         steps.append(
             SmokeStep(
                 "family_context",
                 True,
                 "Loaded family context.",
                 {"family_id": family_context["family"]["id"], "pending_suggestions": len(family_context.get("pending_raw_type_suggestions") or [])},
+            )
+        )
+
+        family_commit = create_family_relink_commit_proposal_impl(
+            raw_type_id=int(fixture["family_relink_raw_type_id"]),
+            family_id=int(fixture["family_relink_target_family_id"]),
+            email=fixture["email"],
+            ctx=next_ctx("family-commit-proposal"),
+        )
+        steps.append(
+            SmokeStep(
+                "family_relink_commit_proposal",
+                True,
+                "Created family relink commit proposal.",
+                {"proposal_id": family_commit["proposal_id"], "kind": family_commit["suggested_payload"]["kind"]},
+            )
+        )
+
+        family_commit_ticket = create_approval_ticket_impl(
+            proposal_id=int(family_commit["proposal_id"]),
+            email=fixture["email"],
+            ctx=next_ctx("family-commit-ticket-create"),
+        )
+        steps.append(
+            SmokeStep(
+                "family_relink_commit_ticket_create",
+                True,
+                "Created family relink approval ticket.",
+                {"ticket_id": family_commit_ticket["ticket_id"]},
+            )
+        )
+
+        family_commit_confirmed = confirm_approval_ticket_impl(
+            ticket_id=str(family_commit_ticket["ticket_id"]),
+            email=fixture["email"],
+            ctx=next_ctx("family-commit-ticket-confirm"),
+        )
+        steps.append(
+            SmokeStep(
+                "family_relink_commit_ticket_confirm",
+                True,
+                "Confirmed family relink approval ticket.",
+                {"ticket_id": family_commit_confirmed["ticket_id"], "result_kind": (family_commit_confirmed.get("executed_result") or {}).get("kind")},
             )
         )
 
@@ -141,7 +222,7 @@ def main() -> None:
         family_preview = create_family_relink_preview_proposal_impl(
             raw_type_id=raw_type_id,
             family_id=target_family_id,
-            notify_email=fixture["notify_email"],
+            email=fixture["email"],
             ctx=next_ctx("family-preview"),
         )
         steps.append(
@@ -157,7 +238,7 @@ def main() -> None:
             )
         )
 
-        recent_after = get_recent_agent_activity_impl(notify_email=fixture["notify_email"], limit=10, ctx=next_ctx("recent-after"))
+        recent_after = get_recent_agent_activity_impl(email=fixture["email"], limit=10, ctx=next_ctx("recent-after"))
         steps.append(SmokeStep("recent_activity_after", True, "Loaded recent agent activity after actions.", {"count": len(recent_after.get("items") or [])}))
 
         settings_audit = fetch_mcp_invocations(user_id=int(fixture["user_id"]))
@@ -187,14 +268,14 @@ def main() -> None:
     print(run_dir)
 
 
-def seed_fixture(*, notify_email: str, other_notify_email: str, password: str) -> dict[str, Any]:
+def seed_fixture(*, email: str, other_email: str, password: str) -> dict[str, Any]:
     command = [
         sys.executable,
         str(REPO_ROOT / "scripts" / "seed_agent_live_eval_fixture.py"),
-        "--notify-email",
-        notify_email,
-        "--other-notify-email",
-        other_notify_email,
+        "--email",
+        email,
+        "--other-email",
+        other_email,
         "--password",
         password,
     ]
@@ -320,7 +401,7 @@ def render_markdown(summary: dict[str, Any]) -> str:
         "",
         f"- Generated at: {summary['generated_at']}",
         f"- Success: {'yes' if summary['success'] else 'no'}",
-        f"- Notify email: {summary['fixture']['notify_email']}",
+        f"- Notify email: {summary['fixture']['email']}",
         "",
         "## Steps",
         "",

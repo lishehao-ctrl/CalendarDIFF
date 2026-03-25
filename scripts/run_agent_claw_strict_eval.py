@@ -25,8 +25,8 @@ from app.db.session import get_session_factory, reset_engine
 from scripts.run_claw_mcp_smoke import configure_smoke_database
 
 OUTPUT_ROOT = REPO_ROOT / "output"
-DEFAULT_NOTIFY_EMAIL = "agent-live-eval@example.com"
-DEFAULT_OTHER_NOTIFY_EMAIL = "agent-live-eval-other@example.com"
+DEFAULT_EMAIL = "agent-live-eval@example.com"
+DEFAULT_OTHER_EMAIL = "agent-live-eval-other@example.com"
 DEFAULT_PASSWORD = "password123"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8210
@@ -63,8 +63,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--database-url", default=None)
     parser.add_argument("--public-api-host", default=DEFAULT_HOST)
     parser.add_argument("--public-api-port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("--notify-email", default=DEFAULT_NOTIFY_EMAIL)
-    parser.add_argument("--other-notify-email", default=DEFAULT_OTHER_NOTIFY_EMAIL)
+    parser.add_argument("--email", default=DEFAULT_EMAIL)
+    parser.add_argument("--other-email", default=DEFAULT_OTHER_EMAIL)
     parser.add_argument("--password", default=DEFAULT_PASSWORD)
     return parser.parse_args()
 
@@ -95,10 +95,10 @@ def main() -> None:
             [
                 sys.executable,
                 "scripts/seed_agent_live_eval_fixture.py",
-                "--notify-email",
-                str(args.notify_email),
-                "--other-notify-email",
-                str(args.other_notify_email),
+                "--email",
+                str(args.email),
+                "--other-email",
+                str(args.other_email),
                 "--password",
                 str(args.password),
             ],
@@ -117,12 +117,12 @@ def main() -> None:
                         f"http://{args.public_api_host}:{args.public_api_port}",
                         "--api-key",
                         settings.app_api_key,
-                        "--notify-email",
-                        str(args.notify_email),
+                        "--email",
+                        str(args.email),
                         "--password",
                         str(args.password),
-                        "--cross-user-notify-email",
-                        str(args.other_notify_email),
+                        "--cross-user-email",
+                        str(args.other_email),
                         "--scenario-set",
                         "full",
                         "--output-root",
@@ -137,10 +137,10 @@ def main() -> None:
                 [
                     sys.executable,
                     "scripts/run_claw_mcp_smoke.py",
-                    "--notify-email",
-                    str(args.notify_email),
-                    "--other-notify-email",
-                    str(args.other_notify_email),
+                    "--email",
+                    str(args.email),
+                    "--other-email",
+                    str(args.other_email),
                     "--password",
                     str(args.password),
                     "--database-url",
@@ -182,7 +182,7 @@ def build_eval_env(*, database_url: str, app_api_key: str) -> dict[str, str]:
     env["REVIEW_SERVICE_ENABLE_APPLY_WORKER"] = "false"
     env["NOTIFICATION_SERVICE_ENABLE_WORKER"] = "false"
     env["LLM_SERVICE_ENABLE_WORKER"] = "false"
-    env["BOOTSTRAP_ADMIN_NOTIFY_EMAIL"] = ""
+    env["BOOTSTRAP_ADMIN_EMAIL"] = ""
     env["BOOTSTRAP_ADMIN_PASSWORD"] = ""
     return env
 
@@ -351,34 +351,66 @@ def build_final_report(
     live_eval_pass = bool(live_eval_summary and live_eval_summary.get("success_rate") == 1.0)
     claw_smoke_pass = bool(claw_smoke_summary and claw_smoke_summary.get("success") is True)
     steps = {row["name"]: row for row in (claw_smoke_summary or {}).get("steps", []) if isinstance(row, dict)}
+    live_eval_actions = dict((live_eval_summary or {}).get("executable_actions_exercised") or {})
     tool_families = {
         "read_context": all(name in steps and steps[name]["ok"] for name in ("recent_activity_before", "workspace_context", "change_context", "family_context")),
         "proposal": all(name in steps and steps[name]["ok"] for name in ("change_proposal", "family_relink_preview")),
         "approval": all(name in steps and steps[name]["ok"] for name in ("approval_ticket_create", "approval_ticket_confirm")),
     }
+    smoke_actions = {
+        "change_decision": all(name in steps and steps[name]["ok"] for name in ("change_proposal", "approval_ticket_create", "approval_ticket_confirm")),
+        "proposal_edit_commit": all(name in steps and steps[name]["ok"] for name in ("change_edit_commit_proposal", "change_edit_commit_ticket_create", "change_edit_commit_ticket_confirm")),
+        "family_low_risk_execute": all(name in steps and steps[name]["ok"] for name in ("family_relink_commit_proposal", "family_relink_commit_ticket_create", "family_relink_commit_ticket_confirm")),
+    }
     latest_tool_names = []
     if "settings_mcp_invocations" in steps:
         latest_tool_names = list((steps["settings_mcp_invocations"].get("payload") or {}).get("latest_tool_names") or [])
-    final_success = strict_pass and live_eval_pass and claw_smoke_pass
+    proposal_ticket_correlation_success = bool((db_audit or {}).get("proposal_ticket_correlation_success"))
+    family_relink_preview_non_executable = bool(
+        "family_relink_preview" in steps
+        and isinstance((steps["family_relink_preview"].get("payload") or {}), dict)
+        and (steps["family_relink_preview"]["payload"] or {}).get("can_create_ticket") is False
+    )
+    settings_mcp_invocations_visible = bool("settings_mcp_invocations" in steps and steps["settings_mcp_invocations"]["ok"])
+    live_eval_action_gate = all(
+        bool(live_eval_actions.get(name))
+        for name in (
+            "change_decision",
+            "proposal_edit_commit",
+            "run_source_sync",
+            "family_relink_commit",
+            "label_learning_add_alias_commit",
+        )
+    )
+    smoke_action_gate = all(smoke_actions.values())
+    final_success = (
+        strict_pass
+        and live_eval_pass
+        and claw_smoke_pass
+        and live_eval_action_gate
+        and smoke_action_gate
+        and proposal_ticket_correlation_success
+        and family_relink_preview_non_executable
+        and settings_mcp_invocations_visible
+    )
     return {
         "generated_at": datetime.now(UTC).isoformat(),
         "started_at": started_at.isoformat(),
         "success": final_success,
+        "passed": final_success,
         "layers": {
             "strict_pytests": strict_pass,
             "full_live_eval": live_eval_pass,
             "claw_smoke": claw_smoke_pass,
         },
         "tool_families_exercised": tool_families,
+        "smoke_actions_exercised": smoke_actions,
+        "executable_actions_exercised": live_eval_actions,
         "mcp_invocations_written": bool((db_audit or {}).get("mcp_invocation_count", 0)),
         "latest_tool_names_observed": latest_tool_names or (db_audit or {}).get("latest_tool_names") or [],
-        "proposal_ticket_correlation_success": bool((db_audit or {}).get("proposal_ticket_correlation_success")),
-        "family_relink_preview_non_executable": bool(
-            "family_relink_preview" in steps
-            and isinstance((steps["family_relink_preview"].get("payload") or {}), dict)
-            and (steps["family_relink_preview"]["payload"] or {}).get("can_create_ticket") is False
-        ),
-        "settings_mcp_invocations_visible": bool("settings_mcp_invocations" in steps and steps["settings_mcp_invocations"]["ok"]),
+        "proposal_ticket_correlation_success": proposal_ticket_correlation_success,
+        "family_relink_preview_non_executable": family_relink_preview_non_executable,
+        "settings_mcp_invocations_visible": settings_mcp_invocations_visible,
         "openapi_snapshot_refresh_deferred": True,
         "excluded_dirty_worktrees": excluded_dirty,
         "deferred_items": [
@@ -414,6 +446,9 @@ def write_final_report(run_dir: Path, report: dict[str, Any]) -> None:
         f"- Read/context exercised: {report['tool_families_exercised']['read_context']}",
         f"- Proposal exercised: {report['tool_families_exercised']['proposal']}",
         f"- Approval exercised: {report['tool_families_exercised']['approval']}",
+        f"- Smoke change decision exercised: {report['smoke_actions_exercised']['change_decision']}",
+        f"- Smoke proposal edit exercised: {report['smoke_actions_exercised']['proposal_edit_commit']}",
+        f"- Smoke family executable exercised: {report['smoke_actions_exercised']['family_low_risk_execute']}",
         "",
         "## Audit",
         "",
@@ -422,6 +457,14 @@ def write_final_report(run_dir: Path, report: dict[str, Any]) -> None:
         f"- Family relink preview stayed non-executable: {report['family_relink_preview_non_executable']}",
         f"- Settings MCP invocation surface visible: {report['settings_mcp_invocations_visible']}",
         f"- Latest tool names observed: {', '.join(report['latest_tool_names_observed']) if report['latest_tool_names_observed'] else 'none'}",
+        "",
+        "## Executable Actions",
+        "",
+        f"- Change decision exercised: {report['executable_actions_exercised'].get('change_decision')}",
+        f"- Proposal edit commit exercised: {report['executable_actions_exercised'].get('proposal_edit_commit')}",
+        f"- Source sync exercised: {report['executable_actions_exercised'].get('run_source_sync')}",
+        f"- Family relink commit exercised: {report['executable_actions_exercised'].get('family_relink_commit')}",
+        f"- Label learning commit exercised: {report['executable_actions_exercised'].get('label_learning_add_alias_commit')}",
         "",
         "## Deferred",
         "",

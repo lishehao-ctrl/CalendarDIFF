@@ -263,7 +263,7 @@ export type SyncUsageSummary = {
   total_tokens: number;
   cache_hit_ratio: number | null;
   avg_latency_ms: number | null;
-  api_modes: Record<string, number>;
+  protocols: Record<string, number>;
   models: Record<string, number>;
   task_counts: Record<string, number>;
   last_observed_at?: string | null;
@@ -642,8 +642,8 @@ export type ManualEventMutationResponse = {
 
 export type UserProfile = {
   id: number;
-  email: string | null;
-  notify_email: string | null;
+  email: string;
+  language_code: "en" | "zh-CN";
   timezone_name: string;
   timezone_source: "auto" | "manual";
   calendar_delay_seconds: number;
@@ -666,7 +666,12 @@ export type McpAccessTokenCreateResponse = McpAccessToken & {
 
 export type AgentRiskLevel = "low" | "medium" | "high";
 export type AgentConditionSeverity = "info" | "warning" | "blocking";
-export type AgentProposalType = "change_decision" | "source_recovery";
+export type AgentProposalType =
+  | "change_decision"
+  | "source_recovery"
+  | "family_relink_preview"
+  | "label_learning_commit"
+  | "proposal_edit_commit";
 export type AgentProposalStatus = "open" | "accepted" | "rejected" | "expired" | "superseded";
 export type ApprovalTicketStatus = "open" | "executed" | "canceled" | "expired" | "failed";
 
@@ -717,8 +722,19 @@ export type AgentSourceContext = {
   available_next_tools: string[];
 };
 
+export type AgentFamilyContext = {
+  generated_at: string;
+  family: CourseWorkItemFamily;
+  raw_types: CourseWorkItemRawType[];
+  pending_raw_type_suggestions: RawTypeSuggestionItem[];
+  recommended_next_action: AgentRecommendedAction;
+  blocking_conditions: AgentBlockingCondition[];
+  available_next_tools: string[];
+};
+
 export type AgentProposal = {
   proposal_id: number;
+  owner_user_id: number;
   proposal_type: AgentProposalType;
   status: AgentProposalStatus;
   target_kind: string;
@@ -730,6 +746,14 @@ export type AgentProposal = {
   risk_level: AgentRiskLevel;
   confidence: number;
   suggested_action: string;
+  origin_kind: string;
+  origin_label: string;
+  origin_request_id: string | null;
+  lifecycle_code: string;
+  execution_mode: "approval_ticket_required" | "web_only";
+  execution_mode_code: string;
+  next_step_code: string;
+  can_create_ticket: boolean;
   suggested_payload: Record<string, unknown>;
   context: Record<string, unknown>;
   target_snapshot: Record<string, unknown>;
@@ -741,6 +765,7 @@ export type AgentProposal = {
 export type ApprovalTicket = {
   ticket_id: string;
   proposal_id: number;
+  owner_user_id: number;
   channel: string;
   action_type: string;
   target_kind: string;
@@ -749,7 +774,20 @@ export type ApprovalTicket = {
   payload_hash: string;
   target_snapshot: Record<string, unknown>;
   risk_level: AgentRiskLevel;
+  origin_kind: string;
+  origin_label: string;
+  origin_request_id: string | null;
   status: ApprovalTicketStatus;
+  lifecycle_code: string;
+  next_step_code: string;
+  confirm_summary_code: string;
+  cancel_summary_code: string;
+  transition_message_code: string;
+  social_safe_cta_code: string | null;
+  can_confirm: boolean;
+  can_cancel: boolean;
+  last_transition_kind: string;
+  last_transition_label: string;
   executed_result: Record<string, unknown>;
   expires_at: string | null;
   confirmed_at: string | null;

@@ -93,7 +93,7 @@ def parse_args() -> argparse.Namespace:
     start.add_argument("--fake-provider-host", default=DEFAULT_FAKE_HOST)
     start.add_argument("--fake-provider-port", type=int, default=DEFAULT_FAKE_PORT)
     start.add_argument("--start-fake-provider", action=argparse.BooleanOptionalAction, default=True)
-    start.add_argument("--notify-email", default=None)
+    start.add_argument("--email", default=None)
     start.add_argument("--auth-password", default=os.getenv("SMOKE_AUTH_PASSWORD", "password123"))
 
     for name in ("status", "resume", "report"):
@@ -138,7 +138,7 @@ def start_replay(args: argparse.Namespace) -> Path:
     checkpoints = compute_monthly_twice_checkpoints(batches)
     if not checkpoints:
         raise ReplayFailure("no checkpoints generated from manifest")
-    replay_term_config = build_replay_term_config(batches)
+    replay_term_config = build_replay_monitoring_config(batches)
 
     started_at = datetime.now(UTC)
     run_dir = OUTPUT_ROOT / f"year-timeline-replay-{started_at.strftime('%Y%m%d-%H%M%S')}"
@@ -162,12 +162,12 @@ def start_replay(args: argparse.Namespace) -> Path:
         run_tag=run_dir.name,
     )
 
-    notify_email = str(args.notify_email or f"timeline-smoke-{uuid.uuid4().hex[:10]}@example.com")
+    email = str(args.email or f"timeline-smoke-{uuid.uuid4().hex[:10]}@example.com")
     auth_password = str(args.auth_password)
     client = build_api_client(public_api_base=public_api_base, api_key=api_key)
     session_user = ensure_authenticated_session(
         client,
-        notify_email=notify_email,
+        email=email,
         password=auth_password,
     )
     user_id = int(session_user["id"])
@@ -204,7 +204,7 @@ def start_replay(args: argparse.Namespace) -> Path:
         "manifest_path": str(Path(args.manifest).expanduser().resolve()),
         "email_bucket": str(args.email_bucket),
         "ics_derived_set": str(args.ics_derived_set),
-        "notify_email": notify_email,
+        "email": email,
         "auth_password": auth_password,
         "user_id": user_id,
         "ics_source_id": int(ics_source["source_id"]),
@@ -231,7 +231,7 @@ def start_replay(args: argparse.Namespace) -> Path:
         {
             "public_api_base": public_api_base,
             "api_key": api_key,
-            "notify_email": notify_email,
+            "email": email,
             "password": auth_password,
             "user_id": user_id,
             "ics_source_id": int(ics_source["source_id"]),
@@ -258,7 +258,7 @@ def resume_replay(run_dir: Path) -> Path:
     client = build_api_client(public_api_base=str(state["public_api_base"]), api_key=str(state["api_key"]))
     ensure_authenticated_session(
         client,
-        notify_email=str(state["notify_email"]),
+        email=str(state["email"]),
         password=str(state["auth_password"]),
     )
 
@@ -294,7 +294,7 @@ def advance_until_checkpoint(run_dir: Path) -> Path:
     client = build_api_client(public_api_base=str(state["public_api_base"]), api_key=str(state["api_key"]))
     ensure_authenticated_session(
         client,
-        notify_email=str(state["notify_email"]),
+        email=str(state["email"]),
         password=str(state["auth_password"]),
     )
     ensure_fake_provider_for_state(state)
@@ -500,7 +500,7 @@ def build_report(run_dir: Path) -> dict[str, Any]:
         "finished": bool(state.get("finished")),
         "awaiting_manual": bool(state.get("awaiting_manual")),
         "user_id": int(state["user_id"]),
-        "notify_email": state["notify_email"],
+        "email": state["email"],
         "ics_source_id": int(state["ics_source_id"]),
         "gmail_source_id": int(state["gmail_source_id"]),
         "checkpoints_completed": len(checkpoint_summaries),
@@ -558,7 +558,7 @@ def enrich_bootstrap_results_from_api(*, state: dict[str, Any], bootstrap_result
         login = client.post(
             "/auth/login",
             json={
-                "notify_email": str(state["notify_email"]),
+                "email": str(state["email"]),
                 "password": str(state["auth_password"]),
                 "timezone_name": "America/Los_Angeles",
             },
@@ -735,7 +735,7 @@ def aggregate_llm_usage_summaries(summaries: Any) -> dict[str, Any]:
         "output_tokens": 0,
         "reasoning_tokens": 0,
         "total_tokens": 0,
-        "api_modes": {},
+        "protocols": {},
         "models": {},
         "task_counts": {},
         "cache_hit_ratio": None,
@@ -758,7 +758,7 @@ def aggregate_llm_usage_summaries(summaries: Any) -> dict[str, Any]:
         ):
             aggregate[key] += max(int(item.get(key) or 0), 0)
         aggregate["latency_ms_max"] = max(aggregate["latency_ms_max"], max(int(item.get("latency_ms_max") or 0), 0))
-        for mapping_key in ("api_modes", "models", "task_counts"):
+        for mapping_key in ("protocols", "models", "task_counts"):
             mapping = item.get(mapping_key)
             if not isinstance(mapping, dict):
                 continue
@@ -883,16 +883,13 @@ def compute_monthly_twice_checkpoints(batches: list[BatchSpec]) -> list[Checkpoi
     return checkpoints
 
 
-def build_replay_term_config(batches: list[BatchSpec]) -> dict[str, str]:
+def build_replay_monitoring_config(batches: list[BatchSpec]) -> dict[str, str]:
     if not batches:
-        raise ReplayFailure("cannot build replay term config without batches")
+        raise ReplayFailure("cannot build replay monitoring config without batches")
     start_dates = [parse_iso(row.start_iso).date() for row in batches]
-    term_from = min(start_dates)
-    term_to = max(start_dates)
+    monitor_since = min(start_dates)
     return {
-        "term_key": f"{term_from.isoformat()}__{term_to.isoformat()}",
-        "term_from": term_from.isoformat(),
-        "term_to": term_to.isoformat(),
+        "monitor_since": monitor_since.isoformat(),
     }
 
 
@@ -904,19 +901,19 @@ def build_api_client(*, public_api_base: str, api_key: str) -> httpx.Client:
     )
 
 
-def ensure_authenticated_session(client: httpx.Client, *, notify_email: str, password: str) -> dict[str, Any]:
+def ensure_authenticated_session(client: httpx.Client, *, email: str, password: str) -> dict[str, Any]:
     session = client.get("/auth/session")
     if session.status_code == 200:
         session_payload = request_json(client, "GET", "/auth/session")
     else:
-        login_payload = {"notify_email": notify_email, "password": password, "timezone_name": "America/Los_Angeles"}
+        login_payload = {"email": email, "password": password, "timezone_name": "America/Los_Angeles"}
         login = client.post("/auth/login", json=login_payload)
         if login.status_code == 200:
             session_payload = request_json(client, "GET", "/auth/session")
         else:
             register = client.post(
                 "/auth/register",
-                json={"notify_email": notify_email, "password": password, "timezone_name": "America/Los_Angeles"},
+                json={"email": email, "password": password, "timezone_name": "America/Los_Angeles"},
             )
             if register.status_code not in {201, 409}:
                 raise ReplayFailure(f"auth register failed status={register.status_code} body={register.text[:800]}")

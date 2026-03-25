@@ -27,7 +27,9 @@ if str(REPO_ROOT) not in sys.path:
 import scripts.run_year_timeline_replay_smoke as replay
 from app.db.models.agents import ApprovalTicket, AgentProposal
 from app.db.models.review import Change, ReviewStatus
+from app.db.models.shared import CourseWorkItemLabelFamily, CourseWorkItemRawType
 from app.db.session import get_session_factory
+from app.modules.changes.label_learning_service import preview_label_learning
 from services.mcp_server.main import (
     CalendarDIFFTokenVerifier,
     confirm_approval_ticket_impl,
@@ -108,10 +110,10 @@ def parse_args() -> argparse.Namespace:
     run = subparsers.add_parser("run")
     run.add_argument("--public-api-base", required=True)
     run.add_argument("--api-key", required=True)
-    run.add_argument("--notify-email", required=True)
+    run.add_argument("--email", required=True)
     run.add_argument("--password", required=True)
     run.add_argument("--scenario-set", default="core", choices=["core", "expanded", "full"])
-    run.add_argument("--cross-user-notify-email", default=None)
+    run.add_argument("--cross-user-email", default=None)
     run.add_argument("--output-root", default=str(OUTPUT_ROOT))
 
     report = subparsers.add_parser("report")
@@ -139,10 +141,19 @@ class AgentLiveEvalRunner:
             "change_ticket_id": None,
             "cancel_ticket_id": None,
             "drift_ticket_id": None,
+            "change_edit_proposal_id": None,
+            "change_edit_ticket_id": None,
+            "change_edit_drift_ticket_id": None,
             "source_proposal_id": None,
             "source_ticket_id": None,
             "source_proposal_executable": None,
             "source_nonexec_proposal_id": None,
+            "family_relink_proposal_id": None,
+            "family_relink_ticket_id": None,
+            "family_relink_drift_ticket_id": None,
+            "label_learning_proposal_id": None,
+            "label_learning_ticket_id": None,
+            "label_learning_drift_ticket_id": None,
             "mcp_token_id": None,
             "mcp_token_plaintext": None,
             "mcp_token_access": None,
@@ -204,6 +215,18 @@ class AgentLiveEvalRunner:
         reviewed_change_id: int | None = None
         max_proposal_id = 0
         max_ticket_numeric_id = 0
+        baseline_change_id: int | None = None
+        primary_change_id: int | None = None
+        repeat_change_id: int | None = None
+        cancel_change_id: int | None = None
+        drift_change_id: int | None = None
+        label_learning_change_id: int | None = None
+        label_learning_drift_change_id: int | None = None
+        family_relink_raw_type_id: int | None = None
+        family_relink_drift_raw_type_id: int | None = None
+        family_relink_target_family_id: int | None = None
+        label_learning_family_id: int | None = None
+        label_learning_drift_family_id: int | None = None
         session_factory = get_session_factory()
         with session_factory() as db:
             reviewed_change_id = db.scalar(
@@ -212,6 +235,82 @@ class AgentLiveEvalRunner:
                 .order_by(Change.detected_at.desc(), Change.id.desc())
                 .limit(1)
             )
+            baseline_change_id = db.scalar(
+                select(Change.id)
+                .where(Change.user_id == user_id, Change.entity_uid == "agent-live-eval-baseline")
+                .limit(1)
+            )
+            primary_change_id = db.scalar(
+                select(Change.id)
+                .where(Change.user_id == user_id, Change.entity_uid == "agent-live-eval-replay")
+                .limit(1)
+            )
+            repeat_change_id = db.scalar(
+                select(Change.id)
+                .where(Change.user_id == user_id, Change.entity_uid == "agent-live-eval-repeat")
+                .limit(1)
+            )
+            cancel_change_id = db.scalar(
+                select(Change.id)
+                .where(Change.user_id == user_id, Change.entity_uid == "agent-live-eval-baseline")
+                .limit(1)
+            )
+            drift_change_id = db.scalar(
+                select(Change.id)
+                .where(Change.user_id == user_id, Change.entity_uid == "agent-live-eval-drift")
+                .limit(1)
+            )
+            label_learning_change_id = db.scalar(
+                select(Change.id)
+                .where(Change.user_id == user_id, Change.entity_uid == "agent-live-eval-label-learning")
+                .limit(1)
+            )
+            label_learning_drift_change_id = db.scalar(
+                select(Change.id)
+                .where(Change.user_id == user_id, Change.entity_uid == "agent-live-eval-label-learning-drift")
+                .limit(1)
+            )
+            family_relink_raw_type_id = db.scalar(
+                select(CourseWorkItemRawType.id)
+                .join(CourseWorkItemLabelFamily, CourseWorkItemRawType.family_id == CourseWorkItemLabelFamily.id)
+                .where(
+                    CourseWorkItemLabelFamily.user_id == user_id,
+                    CourseWorkItemRawType.raw_type == "write-up",
+                )
+                .limit(1)
+            )
+            family_relink_drift_raw_type_id = db.scalar(
+                select(CourseWorkItemRawType.id)
+                .join(CourseWorkItemLabelFamily, CourseWorkItemRawType.family_id == CourseWorkItemLabelFamily.id)
+                .where(
+                    CourseWorkItemLabelFamily.user_id == user_id,
+                    CourseWorkItemRawType.raw_type == "report",
+                )
+                .limit(1)
+            )
+            family_relink_target_family_id = db.scalar(
+                select(CourseWorkItemLabelFamily.id)
+                .where(CourseWorkItemLabelFamily.user_id == user_id, CourseWorkItemLabelFamily.canonical_label == "Project")
+                .limit(1)
+            )
+            if label_learning_change_id is not None:
+                preview = preview_label_learning(db, user_id=user_id, change_id=int(label_learning_change_id))
+                resolved_family_id = preview.get("resolved_family_id")
+                if isinstance(resolved_family_id, int) and resolved_family_id > 0:
+                    label_learning_family_id = resolved_family_id
+                else:
+                    families = preview.get("families") if isinstance(preview.get("families"), list) else []
+                    candidate = next((row for row in families if isinstance(row, dict) and isinstance(row.get("id"), int)), None)
+                    label_learning_family_id = int(candidate["id"]) if isinstance(candidate, dict) else None
+            if label_learning_drift_change_id is not None:
+                preview = preview_label_learning(db, user_id=user_id, change_id=int(label_learning_drift_change_id))
+                resolved_family_id = preview.get("resolved_family_id")
+                if isinstance(resolved_family_id, int) and resolved_family_id > 0:
+                    label_learning_drift_family_id = resolved_family_id
+                else:
+                    families = preview.get("families") if isinstance(preview.get("families"), list) else []
+                    candidate = next((row for row in families if isinstance(row, dict) and isinstance(row.get("id"), int)), None)
+                    label_learning_drift_family_id = int(candidate["id"]) if isinstance(candidate, dict) else None
             proposal_ids = db.scalars(select(AgentProposal.id).where(AgentProposal.user_id == user_id)).all()
             if proposal_ids:
                 max_proposal_id = max(int(value) for value in proposal_ids)
@@ -243,15 +342,22 @@ class AgentLiveEvalRunner:
             ),
             None,
         )
-        pending_ids = [int(value) for value in pending_change_ids]
         return {
-            "primary_change_id": pending_ids[0] if len(pending_ids) > 0 else None,
-            "repeat_change_id": pending_ids[1] if len(pending_ids) > 1 else None,
-            "cancel_change_id": pending_ids[2] if len(pending_ids) > 2 else None,
-            "drift_change_id": pending_ids[3] if len(pending_ids) > 3 else None,
+            "primary_change_id": int(primary_change_id) if primary_change_id is not None else None,
+            "repeat_change_id": int(repeat_change_id) if repeat_change_id is not None else None,
+            "cancel_change_id": int(cancel_change_id) if cancel_change_id is not None else None,
+            "drift_change_id": int(drift_change_id) if drift_change_id is not None else None,
+            "baseline_change_id": int(baseline_change_id) if baseline_change_id is not None else None,
             "reviewed_change_id": int(reviewed_change_id) if reviewed_change_id is not None else None,
             "executable_source_id": executable_source_id,
             "disconnected_gmail_source_id": disconnected_gmail_source_id,
+            "family_relink_raw_type_id": int(family_relink_raw_type_id) if family_relink_raw_type_id is not None else None,
+            "family_relink_drift_raw_type_id": int(family_relink_drift_raw_type_id) if family_relink_drift_raw_type_id is not None else None,
+            "family_relink_target_family_id": int(family_relink_target_family_id) if family_relink_target_family_id is not None else None,
+            "label_learning_change_id": int(label_learning_change_id) if label_learning_change_id is not None else None,
+            "label_learning_drift_change_id": int(label_learning_drift_change_id) if label_learning_drift_change_id is not None else None,
+            "label_learning_family_id": int(label_learning_family_id) if label_learning_family_id is not None else None,
+            "label_learning_drift_family_id": int(label_learning_drift_family_id) if label_learning_drift_family_id is not None else None,
             "missing_proposal_id": max(max_proposal_id + 1000, MISSING_ID_SENTINEL),
             "missing_ticket_id": f"missing-ticket-{max_ticket_numeric_id + 1000}",
         }
@@ -573,6 +679,148 @@ class AgentLiveEvalRunner:
             elapsed_ms=elapsed_ms,
             response_payload=payload,
             note="missing proposal safely rejected" if success else "missing proposal did not return 404",
+        )
+
+    def _run_change_edit_proposal_create(self, scenario: ScenarioSpec) -> ScenarioResult:
+        change_id = scenario.metadata.get("target_id")
+        if change_id is None:
+            return self._skipped_result(scenario, "no pending change available for proposal edit")
+        http_status, payload, elapsed_ms = self.request_json(
+            method="POST",
+            path="/agent/proposals/change-edit-commit",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[201],
+            json_body={"change_id": int(change_id), "patch": {"due_date": "2026-03-30", "event_name": "Homework 3 Edited"}},
+        )
+        success = (
+            http_status == 201
+            and isinstance(payload, dict)
+            and payload.get("proposal_id") is not None
+            and str((payload.get("suggested_payload") or {}).get("kind") or "") == "proposal_edit_commit"
+        )
+        if success:
+            self.runtime_state["change_edit_proposal_id"] = int(payload["proposal_id"])
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[201],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="proposal edit commit proposal persisted" if success else "proposal edit commit creation failed",
+        )
+
+    def _run_change_edit_ticket_create(self, scenario: ScenarioSpec) -> ScenarioResult:
+        proposal_id = self.runtime_state.get("change_edit_proposal_id")
+        if proposal_id is None:
+            return self._skipped_result(scenario, "proposal edit proposal missing")
+        http_status, payload, elapsed_ms = self.request_json(
+            method="POST",
+            path="/agent/approval-tickets",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[201],
+            json_body={"proposal_id": int(proposal_id), "channel": "live_eval"},
+        )
+        success = http_status == 201 and isinstance(payload, dict) and payload.get("ticket_id")
+        if success:
+            self.runtime_state["change_edit_ticket_id"] = str(payload["ticket_id"])
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[201],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="proposal edit approval ticket created" if success else "proposal edit ticket creation failed",
+        )
+
+    def _run_change_edit_ticket_confirm(self, scenario: ScenarioSpec) -> ScenarioResult:
+        ticket_id = self.runtime_state.get("change_edit_ticket_id")
+        if ticket_id is None:
+            return self._skipped_result(scenario, "proposal edit ticket missing")
+        http_status, payload, elapsed_ms = self.request_json(
+            method="POST",
+            path=f"/agent/approval-tickets/{ticket_id}/confirm",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[200],
+            json_body={},
+        )
+        executed_result = payload.get("executed_result") if isinstance(payload, dict) else {}
+        success = http_status == 200 and isinstance(executed_result, dict) and executed_result.get("kind") == "proposal_edit_commit"
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[200],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="proposal edit approval ticket executed" if success else "proposal edit ticket did not execute",
+        )
+
+    def _run_change_edit_ticket_drift_confirm(self, scenario: ScenarioSpec) -> ScenarioResult:
+        change_id = scenario.metadata.get("target_id")
+        if change_id is None:
+            return self._skipped_result(scenario, "no pending change available for proposal edit drift")
+        proposal_status, proposal_payload, proposal_elapsed = self.request_json(
+            method="POST",
+            path="/agent/proposals/change-edit-commit",
+            scenario_id=f"{scenario.scenario_id}.proposal",
+            expected_statuses=[201],
+            json_body={"change_id": int(change_id), "patch": {"due_date": "2026-03-31"}},
+        )
+        proposal_id = proposal_payload.get("proposal_id") if isinstance(proposal_payload, dict) else None
+        if proposal_status != 201 or proposal_id is None:
+            return build_http_result(
+                scenario,
+                success=False,
+                expected_statuses=[201],
+                http_status=proposal_status,
+                elapsed_ms=proposal_elapsed,
+                response_payload=proposal_payload,
+                note="proposal edit drift proposal creation failed",
+            )
+        ticket_status, ticket_payload, ticket_elapsed = self.request_json(
+            method="POST",
+            path="/agent/approval-tickets",
+            scenario_id=f"{scenario.scenario_id}.ticket",
+            expected_statuses=[201],
+            json_body={"proposal_id": int(proposal_id), "channel": "live_eval"},
+        )
+        ticket_id = ticket_payload.get("ticket_id") if isinstance(ticket_payload, dict) else None
+        if ticket_status != 201 or ticket_id is None:
+            return build_http_result(
+                scenario,
+                success=False,
+                expected_statuses=[201],
+                http_status=ticket_status,
+                elapsed_ms=round(proposal_elapsed + ticket_elapsed, 2),
+                response_payload={"proposal": proposal_payload, "ticket": ticket_payload},
+                note="proposal edit drift ticket creation failed",
+            )
+        session_factory = get_session_factory()
+        with session_factory() as db:
+            row = db.scalar(select(Change).where(Change.id == int(change_id), Change.user_id == int(self.user["id"])).limit(1))
+            if row is not None and isinstance(row.after_semantic_json, dict):
+                row.after_semantic_json = {**row.after_semantic_json, "due_date": "2026-04-01"}
+                db.commit()
+        confirm_status, confirm_payload, confirm_elapsed = self.request_json(
+            method="POST",
+            path=f"/agent/approval-tickets/{ticket_id}/confirm",
+            scenario_id=f"{scenario.scenario_id}.confirm",
+            expected_statuses=[409],
+            json_body={},
+        )
+        success = confirm_status == 409 and extract_error_code(confirm_payload) == "agents.approval.proposal_edit_state_drifted"
+        if success:
+            self.runtime_state["change_edit_drift_ticket_id"] = str(ticket_id)
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[409],
+            http_status=confirm_status,
+            elapsed_ms=round(proposal_elapsed + ticket_elapsed + confirm_elapsed, 2),
+            response_payload={"proposal": proposal_payload, "ticket": ticket_payload, "confirm": confirm_payload},
+            note="proposal edit drift was safely blocked" if success else "proposal edit drift did not return the expected conflict",
         )
 
     def _run_change_ticket_create(self, scenario: ScenarioSpec) -> ScenarioResult:
@@ -910,6 +1158,350 @@ class AgentLiveEvalRunner:
             note="non-executable source recovery proposal persisted" if success else "non-executable source recovery proposal creation failed",
         )
 
+    def _run_family_relink_commit_proposal_create(self, scenario: ScenarioSpec) -> ScenarioResult:
+        raw_type_id = scenario.metadata.get("raw_type_id")
+        family_id = scenario.metadata.get("family_id")
+        if raw_type_id is None or family_id is None:
+            return self._skipped_result(scenario, "family relink fixture missing")
+        http_status, payload, elapsed_ms = self.request_json(
+            method="POST",
+            path="/agent/proposals/family-relink-commit",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[201],
+            json_body={"raw_type_id": int(raw_type_id), "family_id": int(family_id)},
+        )
+        success = (
+            http_status == 201
+            and isinstance(payload, dict)
+            and payload.get("proposal_id") is not None
+            and str((payload.get("suggested_payload") or {}).get("kind") or "") == "family_relink_commit"
+        )
+        if success:
+            self.runtime_state["family_relink_proposal_id"] = int(payload["proposal_id"])
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[201],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="family relink commit proposal persisted" if success else "family relink commit proposal creation failed",
+        )
+
+    def _run_family_relink_ticket_create(self, scenario: ScenarioSpec) -> ScenarioResult:
+        proposal_id = self.runtime_state.get("family_relink_proposal_id")
+        if proposal_id is None:
+            return self._skipped_result(scenario, "family relink proposal missing")
+        http_status, payload, elapsed_ms = self.request_json(
+            method="POST",
+            path="/agent/approval-tickets",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[201],
+            json_body={"proposal_id": int(proposal_id), "channel": "live_eval"},
+        )
+        success = http_status == 201 and isinstance(payload, dict) and payload.get("ticket_id")
+        if success:
+            self.runtime_state["family_relink_ticket_id"] = str(payload["ticket_id"])
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[201],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="family relink approval ticket created" if success else "family relink ticket creation failed",
+        )
+
+    def _run_family_relink_ticket_confirm(self, scenario: ScenarioSpec) -> ScenarioResult:
+        ticket_id = self.runtime_state.get("family_relink_ticket_id")
+        if ticket_id is None:
+            return self._skipped_result(scenario, "family relink ticket missing")
+        http_status, payload, elapsed_ms = self.request_json(
+            method="POST",
+            path=f"/agent/approval-tickets/{ticket_id}/confirm",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[200],
+            json_body={},
+        )
+        executed_result = payload.get("executed_result") if isinstance(payload, dict) else {}
+        success = http_status == 200 and isinstance(executed_result, dict) and executed_result.get("kind") == "family_relink_commit"
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[200],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="family relink approval ticket executed" if success else "family relink ticket did not execute",
+        )
+
+    def _run_family_relink_ticket_drift_confirm(self, scenario: ScenarioSpec) -> ScenarioResult:
+        raw_type_id = scenario.metadata.get("raw_type_id")
+        family_id = scenario.metadata.get("family_id")
+        if raw_type_id is None or family_id is None:
+            return self._skipped_result(scenario, "family relink drift fixture missing")
+        proposal_status, proposal_payload, proposal_elapsed = self.request_json(
+            method="POST",
+            path="/agent/proposals/family-relink-commit",
+            scenario_id=f"{scenario.scenario_id}.proposal",
+            expected_statuses=[201],
+            json_body={"raw_type_id": int(raw_type_id), "family_id": int(family_id)},
+        )
+        proposal_id = proposal_payload.get("proposal_id") if isinstance(proposal_payload, dict) else None
+        if proposal_status != 201 or proposal_id is None:
+            return build_http_result(
+                scenario,
+                success=False,
+                expected_statuses=[201],
+                http_status=proposal_status,
+                elapsed_ms=proposal_elapsed,
+                response_payload=proposal_payload,
+                note="family relink drift proposal creation failed",
+            )
+        ticket_status, ticket_payload, ticket_elapsed = self.request_json(
+            method="POST",
+            path="/agent/approval-tickets",
+            scenario_id=f"{scenario.scenario_id}.ticket",
+            expected_statuses=[201],
+            json_body={"proposal_id": int(proposal_id), "channel": "live_eval"},
+        )
+        ticket_id = ticket_payload.get("ticket_id") if isinstance(ticket_payload, dict) else None
+        if ticket_status != 201 or ticket_id is None:
+            return build_http_result(
+                scenario,
+                success=False,
+                expected_statuses=[201],
+                http_status=ticket_status,
+                elapsed_ms=round(proposal_elapsed + ticket_elapsed, 2),
+                response_payload={"proposal": proposal_payload, "ticket": ticket_payload},
+                note="family relink drift ticket creation failed",
+            )
+        session_factory = get_session_factory()
+        with session_factory() as db:
+            row = db.scalar(
+                select(CourseWorkItemRawType)
+                .join(CourseWorkItemLabelFamily, CourseWorkItemRawType.family_id == CourseWorkItemLabelFamily.id)
+                .where(CourseWorkItemRawType.id == int(raw_type_id), CourseWorkItemLabelFamily.user_id == int(self.user["id"]))
+                .limit(1)
+            )
+            if row is not None:
+                row.family_id = int(family_id)
+                db.commit()
+        confirm_status, confirm_payload, confirm_elapsed = self.request_json(
+            method="POST",
+            path=f"/agent/approval-tickets/{ticket_id}/confirm",
+            scenario_id=f"{scenario.scenario_id}.confirm",
+            expected_statuses=[409],
+            json_body={},
+        )
+        success = confirm_status == 409 and extract_error_code(confirm_payload) == "agents.approval.family_relink_state_drifted"
+        if success:
+            self.runtime_state["family_relink_drift_ticket_id"] = str(ticket_id)
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[409],
+            http_status=confirm_status,
+            elapsed_ms=round(proposal_elapsed + ticket_elapsed + confirm_elapsed, 2),
+            response_payload={"proposal": proposal_payload, "ticket": ticket_payload, "confirm": confirm_payload},
+            note="family relink drift was safely blocked" if success else "family relink drift did not return the expected conflict",
+        )
+
+    def _run_label_learning_commit_proposal_create(self, scenario: ScenarioSpec) -> ScenarioResult:
+        change_id = scenario.metadata.get("target_id")
+        family_id = scenario.metadata.get("family_id")
+        if change_id is None:
+            return self._skipped_result(scenario, "label learning fixture missing")
+        preview_status, preview_payload, preview_elapsed = self.request_json(
+            method="POST",
+            path=f"/changes/{int(change_id)}/label-learning/preview",
+            scenario_id=f"{scenario.scenario_id}.preview",
+            expected_statuses=[200],
+        )
+        if preview_status != 200 or not isinstance(preview_payload, dict):
+            return build_http_result(
+                scenario,
+                success=False,
+                expected_statuses=[200],
+                http_status=preview_status,
+                elapsed_ms=preview_elapsed,
+                response_payload=preview_payload,
+                note="label learning preview failed",
+            )
+        resolved_family_id = preview_payload.get("resolved_family_id")
+        if isinstance(resolved_family_id, int) and resolved_family_id > 0:
+            family_id = resolved_family_id
+        if family_id is None:
+            families = preview_payload.get("families") if isinstance(preview_payload.get("families"), list) else []
+            candidate = next((row for row in families if isinstance(row, dict) and isinstance(row.get("id"), int)), None)
+            family_id = int(candidate["id"]) if isinstance(candidate, dict) else None
+        if family_id is None:
+            return self._skipped_result(scenario, "no compatible family available for label learning commit")
+        http_status, payload, elapsed_ms = self.request_json(
+            method="POST",
+            path="/agent/proposals/label-learning-commit",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[201],
+            json_body={"change_id": int(change_id), "family_id": int(family_id)},
+        )
+        success = (
+            http_status == 201
+            and isinstance(payload, dict)
+            and payload.get("proposal_id") is not None
+            and str((payload.get("suggested_payload") or {}).get("kind") or "") == "label_learning_add_alias_commit"
+        )
+        if success:
+            self.runtime_state["label_learning_proposal_id"] = int(payload["proposal_id"])
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[201],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="label learning commit proposal persisted" if success else "label learning proposal creation failed",
+        )
+
+    def _run_label_learning_ticket_create(self, scenario: ScenarioSpec) -> ScenarioResult:
+        proposal_id = self.runtime_state.get("label_learning_proposal_id")
+        if proposal_id is None:
+            return self._skipped_result(scenario, "label learning proposal missing")
+        http_status, payload, elapsed_ms = self.request_json(
+            method="POST",
+            path="/agent/approval-tickets",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[201],
+            json_body={"proposal_id": int(proposal_id), "channel": "live_eval"},
+        )
+        success = http_status == 201 and isinstance(payload, dict) and payload.get("ticket_id")
+        if success:
+            self.runtime_state["label_learning_ticket_id"] = str(payload["ticket_id"])
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[201],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="label learning approval ticket created" if success else "label learning ticket creation failed",
+        )
+
+    def _run_label_learning_ticket_confirm(self, scenario: ScenarioSpec) -> ScenarioResult:
+        ticket_id = self.runtime_state.get("label_learning_ticket_id")
+        if ticket_id is None:
+            return self._skipped_result(scenario, "label learning ticket missing")
+        http_status, payload, elapsed_ms = self.request_json(
+            method="POST",
+            path=f"/agent/approval-tickets/{ticket_id}/confirm",
+            scenario_id=scenario.scenario_id,
+            expected_statuses=[200],
+            json_body={},
+        )
+        executed_result = payload.get("executed_result") if isinstance(payload, dict) else {}
+        success = http_status == 200 and isinstance(executed_result, dict) and executed_result.get("kind") == "label_learning_add_alias_commit"
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[200],
+            http_status=http_status,
+            elapsed_ms=elapsed_ms,
+            response_payload=payload,
+            note="label learning approval ticket executed" if success else "label learning ticket did not execute",
+        )
+
+    def _run_label_learning_ticket_drift_confirm(self, scenario: ScenarioSpec) -> ScenarioResult:
+        change_id = scenario.metadata.get("target_id")
+        family_id = scenario.metadata.get("family_id")
+        if change_id is None:
+            return self._skipped_result(scenario, "label learning drift fixture missing")
+        preview_status, preview_payload, preview_elapsed = self.request_json(
+            method="POST",
+            path=f"/changes/{int(change_id)}/label-learning/preview",
+            scenario_id=f"{scenario.scenario_id}.preview",
+            expected_statuses=[200],
+        )
+        if preview_status != 200 or not isinstance(preview_payload, dict):
+            return build_http_result(
+                scenario,
+                success=False,
+                expected_statuses=[200],
+                http_status=preview_status,
+                elapsed_ms=preview_elapsed,
+                response_payload=preview_payload,
+                note="label learning drift preview failed",
+            )
+        resolved_family_id = preview_payload.get("resolved_family_id")
+        if isinstance(resolved_family_id, int) and resolved_family_id > 0:
+            family_id = resolved_family_id
+        if family_id is None:
+            families = preview_payload.get("families") if isinstance(preview_payload.get("families"), list) else []
+            candidate = next((row for row in families if isinstance(row, dict) and isinstance(row.get("id"), int)), None)
+            family_id = int(candidate["id"]) if isinstance(candidate, dict) else None
+        if family_id is None:
+            return self._skipped_result(scenario, "no compatible family available for label learning drift")
+        proposal_status, proposal_payload, proposal_elapsed = self.request_json(
+            method="POST",
+            path="/agent/proposals/label-learning-commit",
+            scenario_id=f"{scenario.scenario_id}.proposal",
+            expected_statuses=[201],
+            json_body={"change_id": int(change_id), "family_id": int(family_id)},
+        )
+        proposal_id = proposal_payload.get("proposal_id") if isinstance(proposal_payload, dict) else None
+        if proposal_status != 201 or proposal_id is None:
+            return build_http_result(
+                scenario,
+                success=False,
+                expected_statuses=[201],
+                http_status=proposal_status,
+                elapsed_ms=proposal_elapsed,
+                response_payload=proposal_payload,
+                note="label learning drift proposal creation failed",
+            )
+        ticket_status, ticket_payload, ticket_elapsed = self.request_json(
+            method="POST",
+            path="/agent/approval-tickets",
+            scenario_id=f"{scenario.scenario_id}.ticket",
+            expected_statuses=[201],
+            json_body={"proposal_id": int(proposal_id), "channel": "live_eval"},
+        )
+        ticket_id = ticket_payload.get("ticket_id") if isinstance(ticket_payload, dict) else None
+        if ticket_status != 201 or ticket_id is None:
+            return build_http_result(
+                scenario,
+                success=False,
+                expected_statuses=[201],
+                http_status=ticket_status,
+                elapsed_ms=round(proposal_elapsed + ticket_elapsed, 2),
+                response_payload={"proposal": proposal_payload, "ticket": ticket_payload},
+                note="label learning drift ticket creation failed",
+            )
+        session_factory = get_session_factory()
+        with session_factory() as db:
+            row = db.scalar(select(Change).where(Change.id == int(change_id), Change.user_id == int(self.user["id"])).limit(1))
+            if row is not None:
+                row.review_status = ReviewStatus.REJECTED
+                row.reviewed_at = datetime.now(UTC)
+                db.commit()
+        confirm_status, confirm_payload, confirm_elapsed = self.request_json(
+            method="POST",
+            path=f"/agent/approval-tickets/{ticket_id}/confirm",
+            scenario_id=f"{scenario.scenario_id}.confirm",
+            expected_statuses=[409],
+            json_body={},
+        )
+        success = confirm_status == 409 and extract_error_code(confirm_payload) == "agents.approval.change_state_drifted"
+        if success:
+            self.runtime_state["label_learning_drift_ticket_id"] = str(ticket_id)
+        return build_http_result(
+            scenario,
+            success=success,
+            expected_statuses=[409],
+            http_status=confirm_status,
+            elapsed_ms=round(proposal_elapsed + ticket_elapsed + confirm_elapsed, 2),
+            response_payload={"proposal": proposal_payload, "ticket": ticket_payload, "confirm": confirm_payload},
+            note="label learning drift was safely blocked" if success else "label learning drift did not return the expected conflict",
+        )
+
     def _run_source_ticket_guard_or_create(self, scenario: ScenarioSpec) -> ScenarioResult:
         proposal_id = self.runtime_state.get("source_proposal_id")
         if proposal_id is None:
@@ -1082,13 +1674,13 @@ class AgentLiveEvalRunner:
 
     def _run_mcp_workspace_context_scoped(self, scenario: ScenarioSpec) -> ScenarioResult:
         access = self.runtime_state.get("mcp_token_access")
-        other_email = scenario.metadata.get("cross_user_notify_email")
+        other_email = scenario.metadata.get("cross_user_email")
         if access is None:
             return self._skipped_result(scenario, "verified mcp access missing")
         started = time.monotonic()
-        payload = get_workspace_context_impl(notify_email=str(other_email) if other_email else None, ctx=self._build_mcp_context(access))
+        payload = get_workspace_context_impl(email=str(other_email) if other_email else None, ctx=self._build_mcp_context(access))
         elapsed_ms = round((time.monotonic() - started) * 1000.0, 2)
-        other_payload = get_workspace_context_impl(notify_email=str(other_email), ctx=None) if other_email else None
+        other_payload = get_workspace_context_impl(email=str(other_email), ctx=None) if other_email else None
         token_sources = int(((payload.get("summary") or {}).get("sources") or {}).get("active_count") or 0) if isinstance(payload, dict) else 0
         other_sources = int(((other_payload.get("summary") or {}).get("sources") or {}).get("active_count") or 0) if isinstance(other_payload, dict) else 0
         token_changes = int((payload.get("summary") or {}).get("changes_pending") or 0) if isinstance(payload, dict) else 0
@@ -1103,7 +1695,7 @@ class AgentLiveEvalRunner:
             action="get_workspace_context_impl",
             success=success,
             elapsed_ms=elapsed_ms,
-            request_payload={"notify_email": other_email},
+            request_payload={"email": other_email},
             response_payload={"token_scoped": payload, "other_user": other_payload},
         )
         return build_mcp_result(
@@ -1116,20 +1708,20 @@ class AgentLiveEvalRunner:
 
     def _run_mcp_list_pending_changes(self, scenario: ScenarioSpec) -> ScenarioResult:
         access = self.runtime_state.get("mcp_token_access")
-        other_email = scenario.metadata.get("cross_user_notify_email")
+        other_email = scenario.metadata.get("cross_user_email")
         if access is None:
             return self._skipped_result(scenario, "verified mcp access missing")
         started = time.monotonic()
-        payload = list_pending_changes_impl(notify_email=str(other_email) if other_email else None, limit=10, ctx=self._build_mcp_context(access))
+        payload = list_pending_changes_impl(email=str(other_email) if other_email else None, limit=10, ctx=self._build_mcp_context(access))
         elapsed_ms = round((time.monotonic() - started) * 1000.0, 2)
-        other_payload = list_pending_changes_impl(notify_email=str(other_email), limit=10, ctx=None) if other_email else []
+        other_payload = list_pending_changes_impl(email=str(other_email), limit=10, ctx=None) if other_email else []
         success = isinstance(payload, list) and len(payload) > len(other_payload)
         self._record_mcp_trace(
             scenario_id=scenario.scenario_id,
             action="list_pending_changes_impl",
             success=success,
             elapsed_ms=elapsed_ms,
-            request_payload={"notify_email": other_email, "limit": 10},
+            request_payload={"email": other_email, "limit": 10},
             response_payload={"token_scoped": payload, "other_user": other_payload},
         )
         return build_mcp_result(
@@ -1441,9 +2033,17 @@ def build_expanded_scenarios(snapshot: dict[str, Any]) -> list[ScenarioSpec]:
     repeat_change_id = snapshot.get("repeat_change_id")
     cancel_change_id = snapshot.get("cancel_change_id")
     drift_change_id = snapshot.get("drift_change_id")
+    baseline_change_id = snapshot.get("baseline_change_id")
     reviewed_change_id = snapshot.get("reviewed_change_id")
     selected_source_id = snapshot.get("executable_source_id") or snapshot.get("selected_source_id")
     disconnected_gmail_source_id = snapshot.get("disconnected_gmail_source_id")
+    family_relink_raw_type_id = snapshot.get("family_relink_raw_type_id")
+    family_relink_drift_raw_type_id = snapshot.get("family_relink_drift_raw_type_id")
+    family_relink_target_family_id = snapshot.get("family_relink_target_family_id")
+    label_learning_change_id = snapshot.get("label_learning_change_id")
+    label_learning_drift_change_id = snapshot.get("label_learning_drift_change_id")
+    label_learning_family_id = snapshot.get("label_learning_family_id")
+    label_learning_drift_family_id = snapshot.get("label_learning_drift_family_id")
     missing_change_id = int(snapshot["missing_change_id"])
     missing_source_id = int(snapshot["missing_source_id"])
     missing_proposal_id = int(snapshot["missing_proposal_id"])
@@ -1517,6 +2117,26 @@ def build_expanded_scenarios(snapshot: dict[str, Any]) -> list[ScenarioSpec]:
             "change_proposal",
             "change_proposal_fetch_missing",
             metadata={"target_kind": "proposal", "target_id": missing_proposal_id},
+        ),
+        ScenarioSpec(
+            "change.edit-proposal.create",
+            "Create proposal edit commit proposal",
+            "change_edit",
+            "change_edit_proposal_create",
+            enabled=repeat_change_id is not None,
+            skip_reason="no reusable pending change discovered for proposal edit" if repeat_change_id is None else None,
+            metadata={"target_kind": "change", "target_id": repeat_change_id},
+        ),
+        ScenarioSpec("change.edit-ticket.create", "Create approval ticket for proposal edit", "change_edit", "change_edit_ticket_create", metadata={"target_kind": "approval_ticket"}),
+        ScenarioSpec("change.edit-ticket.confirm", "Confirm proposal edit approval ticket", "change_edit", "change_edit_ticket_confirm", metadata={"target_kind": "approval_ticket"}),
+        ScenarioSpec(
+            "change.edit-ticket.drift-confirm",
+            "Proposal edit drift conflicts on confirm",
+            "change_edit",
+            "change_edit_ticket_drift_confirm",
+            enabled=cancel_change_id is not None or baseline_change_id is not None,
+            skip_reason="no pending change discovered for proposal edit drift" if cancel_change_id is None and baseline_change_id is None else None,
+            metadata={"target_kind": "change", "target_id": cancel_change_id if cancel_change_id is not None else baseline_change_id},
         ),
         ScenarioSpec("change.ticket.create", "Create approval ticket for change proposal", "change_ticket", "change_ticket_create", metadata={"target_kind": "approval_ticket"}),
         ScenarioSpec("change.ticket.get", "Fetch created change approval ticket", "change_ticket", "change_ticket_get", metadata={"target_kind": "approval_ticket"}),
@@ -1606,6 +2226,46 @@ def build_expanded_scenarios(snapshot: dict[str, Any]) -> list[ScenarioSpec]:
             metadata={"target_kind": "approval_ticket"},
         ),
         ScenarioSpec(
+            "family.relink-commit.proposal",
+            "Create family relink commit proposal",
+            "family_commit",
+            "family_relink_commit_proposal_create",
+            enabled=family_relink_raw_type_id is not None and family_relink_target_family_id is not None,
+            skip_reason="family relink fixture missing" if family_relink_raw_type_id is None or family_relink_target_family_id is None else None,
+            metadata={"target_kind": "family_relink", "raw_type_id": family_relink_raw_type_id, "family_id": family_relink_target_family_id},
+        ),
+        ScenarioSpec("family.relink-commit.ticket-create", "Create family relink approval ticket", "family_commit", "family_relink_ticket_create", metadata={"target_kind": "approval_ticket"}),
+        ScenarioSpec("family.relink-commit.ticket-confirm", "Confirm family relink approval ticket", "family_commit", "family_relink_ticket_confirm", metadata={"target_kind": "approval_ticket"}),
+        ScenarioSpec(
+            "family.relink-commit.ticket-drift-confirm",
+            "Family relink drift conflicts on confirm",
+            "family_commit",
+            "family_relink_ticket_drift_confirm",
+            enabled=family_relink_drift_raw_type_id is not None and family_relink_target_family_id is not None,
+            skip_reason="family relink drift fixture missing" if family_relink_drift_raw_type_id is None or family_relink_target_family_id is None else None,
+            metadata={"target_kind": "family_relink", "raw_type_id": family_relink_drift_raw_type_id, "family_id": family_relink_target_family_id},
+        ),
+        ScenarioSpec(
+            "label-learning.commit.proposal",
+            "Create label learning commit proposal",
+            "label_learning_commit",
+            "label_learning_commit_proposal_create",
+            enabled=label_learning_change_id is not None and label_learning_family_id is not None,
+            skip_reason="label learning fixture missing" if label_learning_change_id is None or label_learning_family_id is None else None,
+            metadata={"target_kind": "label_learning", "target_id": label_learning_change_id, "family_id": label_learning_family_id},
+        ),
+        ScenarioSpec("label-learning.commit.ticket-create", "Create label learning approval ticket", "label_learning_commit", "label_learning_ticket_create", metadata={"target_kind": "approval_ticket"}),
+        ScenarioSpec("label-learning.commit.ticket-confirm", "Confirm label learning approval ticket", "label_learning_commit", "label_learning_ticket_confirm", metadata={"target_kind": "approval_ticket"}),
+        ScenarioSpec(
+            "label-learning.commit.ticket-drift-confirm",
+            "Label learning drift conflicts on confirm",
+            "label_learning_commit",
+            "label_learning_ticket_drift_confirm",
+            enabled=label_learning_drift_change_id is not None and label_learning_drift_family_id is not None,
+            skip_reason="label learning drift fixture missing" if label_learning_drift_change_id is None or label_learning_drift_family_id is None else None,
+            metadata={"target_kind": "label_learning", "target_id": label_learning_drift_change_id, "family_id": label_learning_drift_family_id},
+        ),
+        ScenarioSpec(
             "ticket.missing-get",
             "Missing approval ticket fetch",
             "change_ticket",
@@ -1618,7 +2278,7 @@ def build_expanded_scenarios(snapshot: dict[str, Any]) -> list[ScenarioSpec]:
 
 def build_full_scenarios(snapshot: dict[str, Any]) -> list[ScenarioSpec]:
     scenarios = build_expanded_scenarios(snapshot)
-    cross_user_notify_email = snapshot.get("cross_user_notify_email")
+    cross_user_email = snapshot.get("cross_user_email")
     repeat_change_id = snapshot.get("repeat_change_id")
     scenarios.extend(
         [
@@ -1645,18 +2305,18 @@ def build_full_scenarios(snapshot: dict[str, Any]) -> list[ScenarioSpec]:
                 "MCP workspace context stays token-scoped",
                 "mcp_impl",
                 "mcp_workspace_context_scoped",
-                enabled=cross_user_notify_email is not None,
-                skip_reason="no cross-user notify email provided" if cross_user_notify_email is None else None,
-                metadata={"cross_user_notify_email": cross_user_notify_email},
+                enabled=cross_user_email is not None,
+                skip_reason="no cross-user notify email provided" if cross_user_email is None else None,
+                metadata={"cross_user_email": cross_user_email},
             ),
             ScenarioSpec(
                 "mcp.impl.list-pending",
                 "MCP pending change listing matches token user",
                 "mcp_impl",
                 "mcp_list_pending_changes",
-                enabled=cross_user_notify_email is not None,
-                skip_reason="no cross-user notify email provided" if cross_user_notify_email is None else None,
-                metadata={"cross_user_notify_email": cross_user_notify_email},
+                enabled=cross_user_email is not None,
+                skip_reason="no cross-user notify email provided" if cross_user_email is None else None,
+                metadata={"cross_user_email": cross_user_email},
             ),
             ScenarioSpec(
                 "mcp.impl.change-proposal",
@@ -1790,19 +2450,40 @@ def compute_summary(
     proposal_create_results = [
         row
         for row in executed
-        if row.operation in {"change_proposal_create", "source_proposal_create", "mcp_change_proposal_create"}
+        if row.operation in {
+            "change_proposal_create",
+            "change_edit_proposal_create",
+            "family_relink_commit_proposal_create",
+            "label_learning_commit_proposal_create",
+            "source_proposal_create",
+            "source_proposal_create_nonexec",
+            "mcp_change_proposal_create",
+        }
     ]
     ticket_create_results = [
         row
         for row in executed
-        if row.operation == "change_ticket_create"
-        or row.operation == "mcp_ticket_create"
+        if row.operation in {
+            "change_ticket_create",
+            "change_edit_ticket_create",
+            "family_relink_ticket_create",
+            "label_learning_ticket_create",
+            "mcp_ticket_create",
+        }
         or (row.operation == "source_ticket_guard_or_create" and row.expected_statuses == [201])
     ]
     ticket_confirm_results = [
         row
         for row in executed
-        if row.operation in {"change_ticket_confirm", "change_ticket_reconfirm", "source_ticket_confirm", "mcp_ticket_confirm"}
+        if row.operation in {
+            "change_ticket_confirm",
+            "change_ticket_reconfirm",
+            "change_edit_ticket_confirm",
+            "family_relink_ticket_confirm",
+            "label_learning_ticket_confirm",
+            "source_ticket_confirm",
+            "mcp_ticket_confirm",
+        }
     ]
     source_guard_failures = [
         row for row in results
@@ -1813,6 +2494,19 @@ def compute_summary(
 
     expected_proposal_count = _expected_created_proposal_count(results)
     expected_ticket_count = _expected_created_ticket_count(results)
+    executable_actions_exercised = {
+        "change_decision": any(row.operation == "change_ticket_confirm" and row.success for row in results),
+        "proposal_edit_commit": any(row.operation == "change_edit_ticket_confirm" and row.success for row in results),
+        "run_source_sync": any(row.operation == "source_ticket_confirm" and row.success for row in results),
+        "family_relink_commit": any(row.operation == "family_relink_ticket_confirm" and row.success for row in results),
+        "label_learning_add_alias_commit": any(row.operation == "label_learning_ticket_confirm" and row.success for row in results),
+    }
+    drift_guards_exercised = {
+        "change_decision": any(row.operation == "change_ticket_drift_confirm" and row.success for row in results),
+        "proposal_edit_commit": any(row.operation == "change_edit_ticket_drift_confirm" and row.success for row in results),
+        "family_relink_commit": any(row.operation == "family_relink_ticket_drift_confirm" and row.success for row in results),
+        "label_learning_add_alias_commit": any(row.operation == "label_learning_ticket_drift_confirm" and row.success for row in results),
+    }
     summary = {
         "generated_at": utc_now_iso(),
         "scenario_count": len(plan),
@@ -1837,6 +2531,8 @@ def compute_summary(
             "drifted_but_executed_count": 0,
             "non_executable_proposal_ticket_created_count": len(source_guard_failures),
         },
+        "executable_actions_exercised": executable_actions_exercised,
+        "drift_guards_exercised": drift_guards_exercised,
         "audit": {
             "proposal_rows": int(proposal_audit.get("count") or 0),
             "ticket_rows": int(ticket_audit.get("count") or 0),
@@ -1868,6 +2564,9 @@ def _expected_created_proposal_count(results: list[ScenarioResult]) -> int:
             continue
         if row.operation in {
             "change_proposal_create",
+            "change_edit_proposal_create",
+            "family_relink_commit_proposal_create",
+            "label_learning_commit_proposal_create",
             "source_proposal_create",
             "source_proposal_create_nonexec",
             "mcp_change_proposal_create",
@@ -1885,7 +2584,18 @@ def _expected_created_ticket_count(results: list[ScenarioResult]) -> int:
     for row in results:
         if not row.success:
             continue
-        if row.operation in {"change_ticket_create", "change_ticket_cancel", "change_ticket_drift_confirm", "mcp_ticket_create"}:
+        if row.operation in {
+            "change_ticket_create",
+            "change_ticket_cancel",
+            "change_ticket_drift_confirm",
+            "change_edit_ticket_create",
+            "change_edit_ticket_drift_confirm",
+            "family_relink_ticket_create",
+            "family_relink_ticket_drift_confirm",
+            "label_learning_ticket_create",
+            "label_learning_ticket_drift_confirm",
+            "mcp_ticket_create",
+        }:
             total += 1
         elif row.operation == "source_ticket_guard_or_create" and row.http_status == 201:
             total += 1
@@ -1942,7 +2652,7 @@ def run_eval(args: argparse.Namespace) -> Path:
     client = replay.build_api_client(public_api_base=str(args.public_api_base), api_key=str(args.api_key))
     user = replay.ensure_authenticated_session(
         client,
-        notify_email=str(args.notify_email),
+        email=str(args.email),
         password=str(args.password),
     )
     runner = AgentLiveEvalRunner(
@@ -1952,7 +2662,7 @@ def run_eval(args: argparse.Namespace) -> Path:
         started_at=started_at,
     )
     workspace_snapshot = runner.bootstrap_workspace_snapshot()
-    workspace_snapshot["cross_user_notify_email"] = str(args.cross_user_notify_email).strip() if args.cross_user_notify_email else None
+    workspace_snapshot["cross_user_email"] = str(args.cross_user_email).strip() if args.cross_user_email else None
     if str(args.scenario_set) == "expanded":
         plan = build_expanded_scenarios(workspace_snapshot)
     elif str(args.scenario_set) == "full":
@@ -1965,7 +2675,7 @@ def run_eval(args: argparse.Namespace) -> Path:
             "generated_at": utc_now_iso(),
             "scenario_set": str(args.scenario_set),
             "user_id": int(user["id"]),
-            "notify_email": str(user.get("notify_email") or args.notify_email),
+            "email": str(user.get("email") or args.email),
             "workspace_snapshot": {
                 "auth_session": workspace_snapshot["auth_session"],
                 "summary": workspace_snapshot["summary"],
@@ -1975,15 +2685,23 @@ def run_eval(args: argparse.Namespace) -> Path:
                 "repeat_change_id": workspace_snapshot["repeat_change_id"],
                 "cancel_change_id": workspace_snapshot["cancel_change_id"],
                 "drift_change_id": workspace_snapshot["drift_change_id"],
+                "baseline_change_id": workspace_snapshot["baseline_change_id"],
                 "reviewed_change_id": workspace_snapshot["reviewed_change_id"],
                 "selected_source_id": workspace_snapshot["selected_source_id"],
                 "executable_source_id": workspace_snapshot["executable_source_id"],
                 "disconnected_gmail_source_id": workspace_snapshot["disconnected_gmail_source_id"],
+                "family_relink_raw_type_id": workspace_snapshot["family_relink_raw_type_id"],
+                "family_relink_drift_raw_type_id": workspace_snapshot["family_relink_drift_raw_type_id"],
+                "family_relink_target_family_id": workspace_snapshot["family_relink_target_family_id"],
+                "label_learning_change_id": workspace_snapshot["label_learning_change_id"],
+                "label_learning_drift_change_id": workspace_snapshot["label_learning_drift_change_id"],
+                "label_learning_family_id": workspace_snapshot["label_learning_family_id"],
+                "label_learning_drift_family_id": workspace_snapshot["label_learning_drift_family_id"],
                 "missing_change_id": workspace_snapshot["missing_change_id"],
                 "missing_source_id": workspace_snapshot["missing_source_id"],
                 "missing_proposal_id": workspace_snapshot["missing_proposal_id"],
                 "missing_ticket_id": workspace_snapshot["missing_ticket_id"],
-                "cross_user_notify_email": workspace_snapshot["cross_user_notify_email"],
+                "cross_user_email": workspace_snapshot["cross_user_email"],
             },
             "scenarios": [row.to_dict() for row in plan],
         },

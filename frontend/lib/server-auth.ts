@@ -10,7 +10,8 @@ export type ServerSession = {
   authenticated: true;
   user: {
     id: number;
-    notify_email: string;
+    email: string;
+    language_code: "en" | "zh-CN";
     timezone_name: string;
     timezone_source: "auto" | "manual";
     created_at: string;

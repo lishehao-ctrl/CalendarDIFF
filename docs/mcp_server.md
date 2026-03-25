@@ -24,8 +24,8 @@ Default:
 
 Identity can come from:
 
-- `CALENDARDIFF_MCP_DEFAULT_NOTIFY_EMAIL`
-- or explicit `notify_email` tool arguments
+- `CALENDARDIFF_MCP_DEFAULT_EMAIL`
+- or explicit `email` tool arguments
 
 ### Public mode
 
@@ -39,7 +39,7 @@ In public mode:
 
 - the server expects Bearer token auth
 - the authenticated token determines the CalendarDIFF user
-- tool calls no longer rely on `notify_email`
+- tool calls no longer rely on `email`
 - resources remain best suited to local/dev mode unless a default user is configured
 
 Recommended public env:
@@ -57,11 +57,11 @@ The MCP server is user-scoped.
 
 Preferred setup in local mode:
 
-- set `CALENDARDIFF_MCP_DEFAULT_NOTIFY_EMAIL=<user notify email>`
+- set `CALENDARDIFF_MCP_DEFAULT_EMAIL=<user email>`
 
 If that env var is not set, tools that need a user can still receive:
 
-- `notify_email`
+- `email`
 
 ## Public user access tokens
 
@@ -100,8 +100,11 @@ Proposal tools:
 
 - `list_proposals`
 - `create_change_decision_proposal`
+- `create_change_edit_commit_proposal`
 - `create_source_recovery_proposal`
 - `create_family_relink_preview_proposal`
+- `create_family_relink_commit_proposal`
+- `create_label_learning_commit_proposal`
 - `get_proposal`
 
 Approval tools:
@@ -129,14 +132,17 @@ The MCP server only exposes currently safe agent execution paths.
 Currently executable through approval tickets:
 
 - direct change decision proposals whose action is `approve` or `reject`
+- proposal edit commit proposals whose action is `proposal_edit_commit`
 - source recovery proposals whose action is `run_source_sync`
+- low-risk family relink commit proposals whose action is `family_relink_commit`
+- low-risk label-learning add-alias proposals whose action is `label_learning_add_alias_commit`
 
 Not executable yet:
 
 - reconnect Gmail
 - ICS/settings update flows
-- edit-then-approve
-- family governance writes
+- canonical edit flows and broader free-form proposal edits
+- broader family governance writes beyond low-risk relink commit
 - manual event writes
 
 ## OpenClaw / QClaw Integration Shape
@@ -144,7 +150,7 @@ Not executable yet:
 Recommended pattern:
 
 1. configure CalendarDIFF MCP as a fixed MCP server in OpenClaw
-2. in local mode, set `CALENDARDIFF_MCP_DEFAULT_NOTIFY_EMAIL`
+2. in local mode, set `CALENDARDIFF_MCP_DEFAULT_EMAIL`
 3. in public mode, configure an MCP Bearer token instead
 4. use an OpenClaw skill to teach:
    - inspect recent agent activity when resuming work

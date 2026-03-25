@@ -17,7 +17,7 @@ It validates the exact backend-side workflow that Claw is expected to follow.
 1. Start the MCP server
 
 ```bash
-CALENDARDIFF_MCP_DEFAULT_NOTIFY_EMAIL=agent-live-eval@example.com \
+CALENDARDIFF_MCP_DEFAULT_EMAIL=agent-live-eval@example.com \
 scripts/run_calendardiff_mcp.sh
 ```
 
@@ -96,7 +96,8 @@ These should not be forced through approval-ticket execution:
 
 - reconnect Gmail
 - source settings updates
-- family governance execution
+- broader family governance execution beyond low-risk relink commit
+- canonical edit flows
 - manual writes
 
 If Claw reaches one of these, it should stop at preview/proposal and direct the user back to the web app.
@@ -115,16 +116,6 @@ The script should:
 - execute the MCP-side workflow
 - fetch Settings-side MCP audit
 - write results under `output/`
-
-## Closeout rule
-
-If the strict closeout eval passes, the Claw contract is considered closed for this phase.
-
-Use:
-
-```bash
-python scripts/run_agent_claw_strict_eval.py
-```
 
 ## Closeout rule
 

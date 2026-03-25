@@ -14,8 +14,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.db.models.input import IngestTriggerType, SyncRequest, SyncRequestStage, SyncRequestStatus
-from app.db.models.review import Change, ChangeIntakePhase, ChangeOrigin, ChangeReviewBucket, ChangeSourceRef, ChangeType, ReviewStatus
-from app.db.models.shared import CourseWorkItemLabelFamily, User
+from app.db.models.review import Change, ChangeIntakePhase, ChangeOrigin, ChangeReviewBucket, ChangeSourceRef, ChangeType, ReviewStatus, SourceEventObservation
+from app.db.models.shared import CourseWorkItemLabelFamily, CourseWorkItemRawType, User
 from app.db.session import get_session_factory
 from app.modules.auth.service import register_user
 from app.modules.common.course_identity import normalize_label_token, normalized_course_identity_key, parse_course_display
@@ -23,16 +23,16 @@ from app.modules.sources.schemas import InputSourceCreateRequest
 from app.modules.sources.sources_service import create_input_source
 
 
-DEFAULT_NOTIFY_EMAIL = "agent-live-eval@example.com"
-DEFAULT_OTHER_NOTIFY_EMAIL = "agent-live-eval-other@example.com"
+DEFAULT_EMAIL = "agent-live-eval@example.com"
+DEFAULT_OTHER_EMAIL = "agent-live-eval-other@example.com"
 DEFAULT_PASSWORD = "password123"
 DEFAULT_TIMEZONE = "America/Los_Angeles"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Seed a repeatable local fixture user for agent live eval runs.")
-    parser.add_argument("--notify-email", default=DEFAULT_NOTIFY_EMAIL)
-    parser.add_argument("--other-notify-email", default=DEFAULT_OTHER_NOTIFY_EMAIL)
+    parser.add_argument("--email", default=DEFAULT_EMAIL)
+    parser.add_argument("--other-email", default=DEFAULT_OTHER_EMAIL)
     parser.add_argument("--password", default=DEFAULT_PASSWORD)
     parser.add_argument("--timezone", default=DEFAULT_TIMEZONE)
     parser.add_argument("--course", default="CSE 160 WI26")
@@ -44,8 +44,8 @@ def main() -> None:
     args = parse_args()
     session_factory = get_session_factory()
     with session_factory() as db:
-        user = db.scalar(select(User).where(User.notify_email == args.notify_email).limit(1))
-        other_user = db.scalar(select(User).where(User.notify_email == args.other_notify_email).limit(1))
+        user = db.scalar(select(User).where(User.email == args.email).limit(1))
+        other_user = db.scalar(select(User).where(User.email == args.other_email).limit(1))
         if user is not None and bool(args.reset):
             db.delete(user)
             db.commit()
@@ -57,14 +57,14 @@ def main() -> None:
         if user is None:
             user = register_user(
                 db,
-                notify_email=str(args.notify_email),
+                email=str(args.email),
                 password=str(args.password),
                 timezone_name=str(args.timezone),
             )
         if other_user is None:
             other_user = register_user(
                 db,
-                notify_email=str(args.other_notify_email),
+                email=str(args.other_email),
                 password=str(args.password),
                 timezone_name=str(args.timezone),
             )
@@ -100,21 +100,50 @@ def main() -> None:
             course_display=str(args.course),
             canonical_label="Homework",
         )
+        family_relink_target_family = create_family(
+            db,
+            user_id=user.id,
+            course_display=str(args.course),
+            canonical_label="Project",
+        )
+        relink_raw_type = create_raw_type(
+            db,
+            family_id=family.id,
+            raw_type="write-up",
+        )
+        relink_drift_raw_type = create_raw_type(
+            db,
+            family_id=family.id,
+            raw_type="report",
+        )
         seed_changes(db, user_id=user.id, source_id=source.id, family_id=family.id)
+        label_learning_change_id, label_learning_drift_change_id = seed_label_learning_changes(
+            db,
+            user_id=user.id,
+            source_id=source.id,
+            course_display=str(args.course),
+            family_id=family.id,
+        )
         seed_failed_sync(db, source_id=source.id)
         db.refresh(user)
         db.refresh(source)
         db.refresh(disconnected_gmail_source)
         payload = {
             "user_id": user.id,
-            "notify_email": user.notify_email,
+            "email": user.email,
             "other_user_id": other_user.id,
-            "other_notify_email": other_user.notify_email,
+            "other_email": other_user.email,
             "password": args.password,
             "timezone_name": user.timezone_name,
             "source_id": source.id,
             "disconnected_gmail_source_id": disconnected_gmail_source.id,
             "family_id": family.id,
+            "family_relink_target_family_id": family_relink_target_family.id,
+            "family_relink_raw_type_id": relink_raw_type.id,
+            "family_relink_drift_raw_type_id": relink_drift_raw_type.id,
+            "label_learning_family_id": family.id,
+            "label_learning_change_id": label_learning_change_id,
+            "label_learning_drift_change_id": label_learning_drift_change_id,
             "pending_change_ids": [
                 row.id
                 for row in db.scalars(
@@ -166,6 +195,19 @@ def create_family(db, *, user_id: int, course_display: str, canonical_label: str
     db.commit()
     db.refresh(family)
     return family
+
+
+def create_raw_type(db, *, family_id: int, raw_type: str) -> CourseWorkItemRawType:
+    row = CourseWorkItemRawType(
+        family_id=family_id,
+        raw_type=raw_type,
+        normalized_raw_type=normalize_label_token(raw_type),
+        metadata_json={},
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
 
 
 def seed_changes(db, *, user_id: int, source_id: int, family_id: int) -> None:
@@ -391,6 +433,97 @@ def seed_changes(db, *, user_id: int, source_id: int, family_id: int) -> None:
         ]
     )
     db.commit()
+
+
+def seed_label_learning_changes(
+    db,
+    *,
+    user_id: int,
+    source_id: int,
+    course_display: str,
+    family_id: int,
+) -> tuple[int, int]:
+    parsed = parse_course_display(course_display)
+    now = datetime.now(UTC)
+    entity_specs = [
+        ("agent-live-eval-label-learning", "worksheet", "Worksheet 6", now - timedelta(minutes=6)),
+        ("agent-live-eval-label-learning-drift", "checklist", "Checklist 7", now - timedelta(minutes=7)),
+    ]
+    change_ids: list[int] = []
+    for entity_uid, raw_label, event_name, detected_at in entity_specs:
+        external_event_id = f"evt-{entity_uid}"
+        semantic_event = {
+            "uid": entity_uid,
+            "course_dept": parsed["course_dept"],
+            "course_number": parsed["course_number"],
+            "course_suffix": parsed["course_suffix"],
+            "course_quarter": parsed["course_quarter"],
+            "course_year2": parsed["course_year2"],
+            "family_name": raw_label,
+            "raw_type": raw_label,
+            "event_name": event_name,
+            "ordinal": 1,
+            "due_date": "2026-03-29",
+            "due_time": "23:59:00",
+            "time_precision": "datetime",
+        }
+        db.add(
+            SourceEventObservation(
+                user_id=user_id,
+                source_id=source_id,
+                source_kind="calendar",
+                provider="ics",
+                external_event_id=external_event_id,
+                entity_uid=entity_uid,
+                event_payload={
+                    "source_facts": {
+                        "external_event_id": external_event_id,
+                        "source_title": event_name,
+                        "source_dtstart_utc": "2026-03-29T23:59:00+00:00",
+                        "source_dtend_utc": "2026-03-30T00:59:00+00:00",
+                    },
+                    "semantic_event": semantic_event,
+                    "link_signals": {},
+                    "kind_resolution": {
+                        "status": "unresolved",
+                        "reason_code": "missing_course_identity",
+                    },
+                },
+                event_hash=("2" if raw_label == "HW" else "3") * 64,
+                observed_at=detected_at,
+                is_active=True,
+            )
+        )
+        change = Change(
+            user_id=user_id,
+            entity_uid=entity_uid,
+            change_origin=ChangeOrigin.INGEST_PROPOSAL,
+            change_type=ChangeType.CREATED,
+            intake_phase=ChangeIntakePhase.REPLAY,
+            review_bucket=ChangeReviewBucket.CHANGES,
+            detected_at=detected_at,
+            after_semantic_json={
+                **semantic_event,
+                "family_id": family_id,
+                "family_name": "Homework",
+            },
+            source_refs=[
+                ChangeSourceRef(
+                    position=0,
+                    source_id=source_id,
+                    source_kind="calendar",
+                    provider="ics",
+                    external_event_id=external_event_id,
+                    confidence=0.95,
+                )
+            ],
+            review_status=ReviewStatus.PENDING,
+        )
+        db.add(change)
+        db.flush()
+        change_ids.append(int(change.id))
+    db.commit()
+    return change_ids[0], change_ids[1]
 
 
 def seed_failed_sync(db, *, source_id: int) -> None:

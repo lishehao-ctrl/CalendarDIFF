@@ -134,7 +134,7 @@ def test_build_client_from_run_rejects_user_id_drift(tmp_path: Path, monkeypatch
             {
                 "public_api_base": "http://127.0.0.1:8200",
                 "api_key": "test-api-key",
-                "notify_email": "timeline@example.com",
+                "email": "timeline@example.com",
                 "password": "password123",
                 "user_id": 7,
             }
@@ -145,7 +145,7 @@ def test_build_client_from_run_rejects_user_id_drift(tmp_path: Path, monkeypatch
     monkeypatch.setattr(
         acceptance.replay,
         "ensure_authenticated_session",
-        lambda *args, **kwargs: {"id": 9, "notify_email": "timeline@example.com"},
+        lambda *args, **kwargs: {"id": 9, "email": "timeline@example.com"},
     )
 
     try:

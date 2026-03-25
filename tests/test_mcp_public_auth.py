@@ -17,7 +17,6 @@ from services.mcp_server.main import CalendarDIFFTokenVerifier, get_workspace_co
 def _create_user(db_session, *, email: str) -> User:
     user = User(
         email=email,
-        notify_email=email,
         password_hash="hash",
         timezone_name="America/Los_Angeles",
         onboarding_completed_at=datetime.now(timezone.utc),
@@ -43,7 +42,7 @@ def test_calendar_diff_token_verifier_accepts_valid_token(db_session) -> None:
     assert "calendardiff" in access.scopes
 
 
-def test_mcp_impl_prefers_authenticated_context_user_over_notify_email(db_session) -> None:
+def test_mcp_impl_prefers_authenticated_context_user_over_email(db_session) -> None:
     owner = _create_user(db_session, email="owner@example.com")
     other = _create_user(db_session, email="other@example.com")
     _row, plaintext = create_mcp_access_token(db_session, user=owner, label="QClaw", expires_in_days=30)
@@ -60,6 +59,6 @@ def test_mcp_impl_prefers_authenticated_context_user_over_notify_email(db_sessio
     )
     ctx = Context(request_context=request_context, fastmcp=mcp)
 
-    payload = get_workspace_context_impl(notify_email=other.notify_email, ctx=ctx)
+    payload = get_workspace_context_impl(email=other.email, ctx=ctx)
     assert payload["summary"]["changes_pending"] == 0
     assert payload["summary"]["sources"]["active_count"] == 0

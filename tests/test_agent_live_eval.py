@@ -34,10 +34,17 @@ def test_build_expanded_scenarios_marks_optional_targets_as_skipped() -> None:
             "repeat_change_id": None,
             "cancel_change_id": None,
             "drift_change_id": None,
+            "baseline_change_id": None,
             "reviewed_change_id": None,
             "executable_source_id": 21,
             "selected_source_id": 21,
             "disconnected_gmail_source_id": None,
+            "family_relink_raw_type_id": None,
+            "family_relink_drift_raw_type_id": None,
+            "family_relink_target_family_id": None,
+            "label_learning_change_id": None,
+            "label_learning_drift_change_id": None,
+            "label_learning_family_id": None,
             "missing_change_id": 999001,
             "missing_source_id": 999002,
             "missing_proposal_id": 999003,
@@ -46,11 +53,14 @@ def test_build_expanded_scenarios_marks_optional_targets_as_skipped() -> None:
     )
 
     by_id = {row.scenario_id: row for row in plan}
-    assert len(plan) == 26
+    assert len(plan) == 38
     assert by_id["change.context.primary"].enabled is True
     assert by_id["change.proposal.repeat"].enabled is False
     assert by_id["change.ticket.cancel"].enabled is False
     assert by_id["change.ticket.drift-confirm"].enabled is False
+    assert by_id["change.edit-proposal.create"].enabled is False
+    assert by_id["family.relink-commit.proposal"].enabled is False
+    assert by_id["label-learning.commit.proposal"].enabled is False
     assert by_id["source.context.disconnected-gmail"].enabled is False
     assert by_id["source.proposal.create-nonexec"].enabled is False
     assert by_id["change.proposal.missing-fetch"].metadata["target_id"] == 999003
@@ -64,25 +74,35 @@ def test_build_full_scenarios_adds_mcp_matrix() -> None:
             "repeat_change_id": 12,
             "cancel_change_id": 13,
             "drift_change_id": 14,
+            "baseline_change_id": 16,
             "reviewed_change_id": 15,
             "executable_source_id": 21,
             "selected_source_id": 21,
             "disconnected_gmail_source_id": 22,
+            "family_relink_raw_type_id": 31,
+            "family_relink_drift_raw_type_id": 32,
+            "family_relink_target_family_id": 41,
+            "label_learning_change_id": 51,
+            "label_learning_drift_change_id": 52,
+            "label_learning_family_id": 61,
+            "label_learning_drift_family_id": 62,
             "missing_change_id": 999001,
             "missing_source_id": 999002,
             "missing_proposal_id": 999003,
             "missing_ticket_id": "missing-ticket-1000",
-            "cross_user_notify_email": "other@example.com",
+            "cross_user_email": "other@example.com",
         }
     )
 
     by_id = {row.scenario_id: row for row in plan}
-    assert len(plan) == 36
+    assert len(plan) == 48
     assert by_id["mcp.token.create"].enabled is True
     assert by_id["mcp.impl.workspace-scoped"].enabled is True
-    assert by_id["mcp.impl.workspace-scoped"].metadata["cross_user_notify_email"] == "other@example.com"
+    assert by_id["mcp.impl.workspace-scoped"].metadata["cross_user_email"] == "other@example.com"
     assert by_id["mcp.impl.change-proposal"].metadata["target_id"] == 12
     assert by_id["mcp.auth.verify-revoked"].enabled is True
+    assert by_id["family.relink-commit.proposal"].metadata["raw_type_id"] == 31
+    assert by_id["label-learning.commit.proposal"].metadata["family_id"] == 61
 
 
 def test_compute_summary_counts_failures_and_guard_violations() -> None:
@@ -151,6 +171,7 @@ def test_compute_summary_counts_failures_and_guard_violations() -> None:
     assert summary["latency_ms"]["overall"]["p50"] == 180.0
     assert summary["reliability"]["proposal_success_rate"] == 1.0
     assert summary["reliability"]["ticket_create_success_rate"] is None
+    assert summary["executable_actions_exercised"]["change_decision"] is False
 
 
 def test_report_eval_rebuilds_summary_from_saved_artifacts(tmp_path: Path) -> None:

@@ -7,7 +7,7 @@ from typing import Any
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import Context, FastMCP
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -15,23 +15,29 @@ from app.db.models.agents import McpAccessToken
 from app.db.models.shared import User
 from app.db.schema_guard import ensure_schema_ready
 from app.db.session import get_engine, get_session_factory
-from app.modules.agents.approval_service import (
-    ApprovalTicketError,
-    cancel_approval_ticket,
-    confirm_approval_ticket,
-    create_approval_ticket,
-    get_approval_ticket,
-)
-from app.modules.agents.proposal_service import (
-    AgentProposalInvalidStateError,
+from app.modules.agents.approval_service import ApprovalTicketError
+from app.modules.agents.gateway import (
+    AgentGatewayOrigin,
+    cancel_approval_ticket_for_user,
+    confirm_approval_ticket_for_user,
+    create_approval_ticket_for_proposal,
     create_change_decision_proposal,
-    create_change_decision_proposal_with_origin,
+    create_change_edit_commit_proposal,
+    create_family_relink_commit_proposal,
     create_family_relink_preview_proposal,
-    create_family_relink_preview_proposal_with_origin,
+    create_label_learning_commit_proposal,
     create_source_recovery_proposal,
-    create_source_recovery_proposal_with_origin,
-    get_agent_proposal,
+    get_approval_ticket_for_user,
+    get_change_context,
+    get_family_context,
+    get_proposal,
+    get_recent_activity,
+    get_source_context,
+    get_workspace_context,
+    list_approval_tickets_for_user,
+    list_proposals,
 )
+from app.modules.agents.proposal_service import AgentProposalInvalidStateError
 from app.modules.agents.schemas import (
     AgentChangeContextResponse,
     AgentFamilyContextResponse,
@@ -40,10 +46,7 @@ from app.modules.agents.schemas import (
     AgentSourceContextResponse,
     AgentWorkspaceContextResponse,
     ApprovalTicketResponse,
-    serialize_approval_ticket,
-    serialize_agent_proposal,
 )
-from app.modules.agents.activity_service import build_recent_agent_activity, list_agent_proposals, list_approval_tickets
 from app.modules.agents.mcp_audit_service import (
     create_mcp_tool_invocation,
     list_mcp_tool_invocations,
@@ -53,10 +56,6 @@ from app.modules.agents.mcp_audit_service import (
 )
 from app.modules.agents.service import (
     AgentContextNotFoundError,
-    build_change_agent_context,
-    build_family_agent_context,
-    build_source_agent_context,
-    build_workspace_agent_context,
 )
 from app.modules.changes.change_listing_service import list_changes
 from app.modules.changes.schemas import ChangeItemResponse
@@ -174,17 +173,17 @@ def _build_mcp_server() -> FastMCP:
 mcp = _build_mcp_server()
 
 
-def _default_notify_email() -> str | None:
-    value = os.getenv("CALENDARDIFF_MCP_DEFAULT_NOTIFY_EMAIL", "").strip()
+def _default_email() -> str | None:
+    value = os.getenv("CALENDARDIFF_MCP_DEFAULT_EMAIL", "").strip()
     return value or None
 
 
-def _resolved_notify_email(notify_email: str | None) -> str:
-    resolved = (notify_email or _default_notify_email() or "").strip()
+def _resolved_email(email: str | None) -> str:
+    resolved = (email or _default_email() or "").strip()
     if resolved:
         return resolved
     raise MCPUserResolutionError(
-        "Missing user identity. Pass notify_email explicitly or set CALENDARDIFF_MCP_DEFAULT_NOTIFY_EMAIL."
+        "Missing user identity. Pass email explicitly or set CALENDARDIFF_MCP_DEFAULT_EMAIL."
     )
 
 
@@ -221,7 +220,7 @@ def _user_id_from_context(ctx: Context | None) -> int | None:
         return None
 
 
-def _resolve_user(db: Session, *, notify_email: str | None, ctx: Context | None) -> User:
+def _resolve_user(db: Session, *, email: str | None, ctx: Context | None) -> User:
     user_id = _user_id_from_context(ctx)
     if user_id is not None:
         user = db.scalar(select(User).where(User.id == user_id).limit(1))
@@ -230,12 +229,8 @@ def _resolve_user(db: Session, *, notify_email: str | None, ctx: Context | None)
         if user.onboarding_completed_at is None:
             raise MCPUserResolutionError(f"User id '{user_id}' has not completed onboarding yet.")
         return user
-    resolved = _resolved_notify_email(notify_email)
-    user = db.scalar(
-        select(User)
-        .where(or_(User.notify_email == resolved, User.email == resolved))
-        .limit(1)
-    )
+    resolved = _resolved_email(email)
+    user = db.scalar(select(User).where(User.email == resolved).limit(1))
     if user is None:
         raise MCPUserResolutionError(f"No CalendarDIFF user found for '{resolved}'.")
     if user.onboarding_completed_at is None:
@@ -269,20 +264,20 @@ def _ctx_request_id(ctx: Context | None) -> str | None:
     return request_id if isinstance(request_id, str) and request_id.strip() else None
 
 
-def _auth_mode(notify_email: str | None, ctx: Context | None) -> str:
+def _auth_mode(email: str | None, ctx: Context | None) -> str:
     if _user_id_from_context(ctx) is not None:
         return "bearer_token"
-    if isinstance(notify_email, str) and notify_email.strip():
-        return "notify_email"
-    if _default_notify_email():
+    if isinstance(email, str) and email.strip():
+        return "email"
+    if _default_email():
         return "default_user"
     return "unknown"
 
 
-def _run_with_user(notify_email: str | None, fn, *, ctx: Context | None = None):
+def _run_with_user(email: str | None, fn, *, ctx: Context | None = None):
     try:
         with _db_session() as db:
-            user = _resolve_user(db, notify_email=notify_email, ctx=ctx)
+            user = _resolve_user(db, email=email, ctx=ctx)
             return fn(db, user)
     except Exception as exc:  # pragma: no cover - exercised via tools/resources
         raise _normalize_error(exc) from exc
@@ -292,19 +287,19 @@ def _run_with_user_audited(
     *,
     tool_name: str,
     input_payload: dict[str, Any],
-    notify_email: str | None,
+    email: str | None,
     ctx: Context | None,
     fn,
 ):
     try:
         with _db_session() as db:
-            user = _resolve_user(db, notify_email=notify_email, ctx=ctx)
+            user = _resolve_user(db, email=email, ctx=ctx)
             invocation = create_mcp_tool_invocation(
                 db,
                 user_id=user.id,
                 tool_name=tool_name,
                 transport=_transport_mode(),
-                auth_mode=_auth_mode(notify_email, ctx),
+                auth_mode=_auth_mode(email, ctx),
                 transport_request_id=_ctx_request_id(ctx),
                 input_payload=input_payload,
             )
@@ -329,30 +324,30 @@ def _run_with_user_audited(
         raise _normalize_error(exc) from exc
 
 
-def get_workspace_context_impl(*, notify_email: str | None = None, ctx: Context | None = None) -> dict:
+def get_workspace_context_impl(*, email: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="get_workspace_context",
         input_payload={},
-        notify_email=notify_email,
+        email=email,
         ctx=ctx,
-        fn=lambda db, user: build_workspace_agent_context(db=db, user_id=user.id),
+        fn=lambda db, user: get_workspace_context(db=db, user_id=user.id),
     )
 
 
-def get_recent_agent_activity_impl(*, notify_email: str | None = None, limit: int = 10, ctx: Context | None = None) -> dict:
+def get_recent_agent_activity_impl(*, email: str | None = None, limit: int = 10, ctx: Context | None = None) -> dict:
     safe_limit = max(1, min(limit, 50))
     return _run_with_user_audited(
         tool_name="get_recent_agent_activity",
         input_payload={"limit": safe_limit},
-        notify_email=notify_email,
+        email=email,
         ctx=ctx,
-        fn=lambda db, user: build_recent_agent_activity(db=db, user_id=user.id, limit=safe_limit),
+        fn=lambda db, user: get_recent_activity(db=db, user_id=user.id, limit=safe_limit),
     )
 
 
 def list_pending_changes_impl(
     *,
-    notify_email: str | None = None,
+    email: str | None = None,
     limit: int = 10,
     review_bucket: str = "all",
     intake_phase: str = "all",
@@ -362,7 +357,7 @@ def list_pending_changes_impl(
     return _run_with_user_audited(
         tool_name="list_pending_changes",
         input_payload={"limit": safe_limit, "review_bucket": review_bucket, "intake_phase": intake_phase},
-        notify_email=notify_email,
+        email=email,
         ctx=ctx,
         fn=lambda db, user: list_changes(
             db,
@@ -377,80 +372,106 @@ def list_pending_changes_impl(
     )
 
 
-def list_sources_impl(*, notify_email: str | None = None, status: str = "active", ctx: Context | None = None) -> list[dict]:
+def list_sources_impl(*, email: str | None = None, status: str = "active", ctx: Context | None = None) -> list[dict]:
     return _run_with_user_audited(
         tool_name="list_sources",
         input_payload={"status": status},
-        notify_email=notify_email,
+        email=email,
         ctx=ctx,
         fn=lambda db, user: [build_source_read_payload(db, source=row) for row in list_input_sources(db, user_id=user.id, status=status)],
     )
 
 
-def get_change_context_impl(*, change_id: int, notify_email: str | None = None, ctx: Context | None = None) -> dict:
+def get_change_context_impl(*, change_id: int, email: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="get_change_context",
         input_payload={"change_id": change_id},
-        notify_email=notify_email,
+        email=email,
         ctx=ctx,
-        fn=lambda db, user: build_change_agent_context(db=db, user_id=user.id, change_id=change_id),
+        fn=lambda db, user: get_change_context(db=db, user_id=user.id, change_id=change_id),
     )
 
 
-def get_source_context_impl(*, source_id: int, notify_email: str | None = None, ctx: Context | None = None) -> dict:
+def get_source_context_impl(*, source_id: int, email: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="get_source_context",
         input_payload={"source_id": source_id},
-        notify_email=notify_email,
+        email=email,
         ctx=ctx,
-        fn=lambda db, user: build_source_agent_context(db=db, user_id=user.id, source_id=source_id),
+        fn=lambda db, user: get_source_context(db=db, user_id=user.id, source_id=source_id),
     )
 
 
-def get_family_context_impl(*, family_id: int, notify_email: str | None = None, ctx: Context | None = None) -> dict:
+def get_family_context_impl(*, family_id: int, email: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="get_family_context",
         input_payload={"family_id": family_id},
-        notify_email=notify_email,
+        email=email,
         ctx=ctx,
-        fn=lambda db, user: build_family_agent_context(db=db, user_id=user.id, family_id=family_id),
+        fn=lambda db, user: get_family_context(db=db, user_id=user.id, family_id=family_id),
     )
 
 
-def create_change_decision_proposal_impl(*, change_id: int, notify_email: str | None = None, ctx: Context | None = None) -> dict:
+def create_change_decision_proposal_impl(*, change_id: int, email: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="create_change_decision_proposal",
         input_payload={"change_id": change_id},
-        notify_email=notify_email,
+        email=email,
         ctx=ctx,
-        fn=lambda db, user: serialize_agent_proposal(
-            create_change_decision_proposal_with_origin(
-                db=db,
-                user_id=user.id,
-                change_id=change_id,
-                origin_kind="mcp",
-                origin_label="create_change_decision_proposal",
-                origin_request_id=_ctx_request_id(ctx),
-            )
+        fn=lambda db, user: create_change_decision_proposal(
+            db=db,
+            user_id=user.id,
+            change_id=change_id,
+            origin=AgentGatewayOrigin(
+                kind="mcp",
+                label="create_change_decision_proposal",
+                request_id=_ctx_request_id(ctx),
+            ),
         ),
     )
 
 
-def create_source_recovery_proposal_impl(*, source_id: int, notify_email: str | None = None, ctx: Context | None = None) -> dict:
+def create_source_recovery_proposal_impl(*, source_id: int, email: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="create_source_recovery_proposal",
         input_payload={"source_id": source_id},
-        notify_email=notify_email,
+        email=email,
         ctx=ctx,
-        fn=lambda db, user: serialize_agent_proposal(
-            create_source_recovery_proposal_with_origin(
-                db=db,
-                user_id=user.id,
-                source_id=source_id,
-                origin_kind="mcp",
-                origin_label="create_source_recovery_proposal",
-                origin_request_id=_ctx_request_id(ctx),
-            )
+        fn=lambda db, user: create_source_recovery_proposal(
+            db=db,
+            user_id=user.id,
+            source_id=source_id,
+            origin=AgentGatewayOrigin(
+                kind="mcp",
+                label="create_source_recovery_proposal",
+                request_id=_ctx_request_id(ctx),
+            ),
+        ),
+    )
+
+
+def create_change_edit_commit_proposal_impl(
+    *,
+    change_id: int,
+    patch: dict[str, Any],
+    email: str | None = None,
+    ctx: Context | None = None,
+) -> dict:
+    return _run_with_user_audited(
+        tool_name="create_change_edit_commit_proposal",
+        input_payload={"change_id": change_id, "patch": patch},
+        email=email,
+        ctx=ctx,
+        fn=lambda db, user: create_change_edit_commit_proposal(
+            db=db,
+            user_id=user.id,
+            change_id=change_id,
+            patch=patch,
+            origin=AgentGatewayOrigin(
+                kind="mcp",
+                label="create_change_edit_commit_proposal",
+                request_id=_ctx_request_id(ctx),
+            ),
         ),
     )
 
@@ -459,151 +480,197 @@ def create_family_relink_preview_proposal_impl(
     *,
     raw_type_id: int,
     family_id: int,
-    notify_email: str | None = None,
+    email: str | None = None,
     ctx: Context | None = None,
 ) -> dict:
     return _run_with_user_audited(
         tool_name="create_family_relink_preview_proposal",
         input_payload={"raw_type_id": raw_type_id, "family_id": family_id},
-        notify_email=notify_email,
+        email=email,
         ctx=ctx,
-        fn=lambda db, user: serialize_agent_proposal(
-            create_family_relink_preview_proposal_with_origin(
-                db=db,
-                user_id=user.id,
-                raw_type_id=raw_type_id,
-                family_id=family_id,
-                origin_kind="mcp",
-                origin_label="create_family_relink_preview_proposal",
-                origin_request_id=_ctx_request_id(ctx),
-            )
+        fn=lambda db, user: create_family_relink_preview_proposal(
+            db=db,
+            user_id=user.id,
+            raw_type_id=raw_type_id,
+            family_id=family_id,
+            origin=AgentGatewayOrigin(
+                kind="mcp",
+                label="create_family_relink_preview_proposal",
+                request_id=_ctx_request_id(ctx),
+            ),
         ),
     )
 
 
-def get_proposal_impl(*, proposal_id: int, notify_email: str | None = None, ctx: Context | None = None) -> dict:
+def create_family_relink_commit_proposal_impl(
+    *,
+    raw_type_id: int,
+    family_id: int,
+    email: str | None = None,
+    ctx: Context | None = None,
+) -> dict:
+    return _run_with_user_audited(
+        tool_name="create_family_relink_commit_proposal",
+        input_payload={"raw_type_id": raw_type_id, "family_id": family_id},
+        email=email,
+        ctx=ctx,
+        fn=lambda db, user: create_family_relink_commit_proposal(
+            db=db,
+            user_id=user.id,
+            raw_type_id=raw_type_id,
+            family_id=family_id,
+            origin=AgentGatewayOrigin(
+                kind="mcp",
+                label="create_family_relink_commit_proposal",
+                request_id=_ctx_request_id(ctx),
+            ),
+        ),
+    )
+
+
+def create_label_learning_commit_proposal_impl(
+    *,
+    change_id: int,
+    family_id: int,
+    email: str | None = None,
+    ctx: Context | None = None,
+) -> dict:
+    return _run_with_user_audited(
+        tool_name="create_label_learning_commit_proposal",
+        input_payload={"change_id": change_id, "family_id": family_id},
+        email=email,
+        ctx=ctx,
+        fn=lambda db, user: create_label_learning_commit_proposal(
+            db=db,
+            user_id=user.id,
+            change_id=change_id,
+            family_id=family_id,
+            origin=AgentGatewayOrigin(
+                kind="mcp",
+                label="create_label_learning_commit_proposal",
+                request_id=_ctx_request_id(ctx),
+            ),
+        ),
+    )
+
+
+def get_proposal_impl(*, proposal_id: int, email: str | None = None, ctx: Context | None = None) -> dict:
     def _load(db: Session, user: User) -> dict:
-        proposal = get_agent_proposal(db=db, user_id=user.id, proposal_id=proposal_id)
+        proposal = get_proposal(db=db, user_id=user.id, proposal_id=proposal_id)
         if proposal is None:
             raise RuntimeError("Agent proposal not found.")
-        return serialize_agent_proposal(proposal)
+        return proposal
 
     return _run_with_user_audited(
         tool_name="get_proposal",
         input_payload={"proposal_id": proposal_id},
-        notify_email=notify_email,
+        email=email,
         ctx=ctx,
         fn=_load,
     )
 
 
-def list_proposals_impl(*, notify_email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> list[dict]:
+def list_proposals_impl(*, email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> list[dict]:
     safe_limit = max(1, min(limit, 50))
     return _run_with_user_audited(
         tool_name="list_proposals",
         input_payload={"status": status, "limit": safe_limit},
-        notify_email=notify_email,
+        email=email,
         ctx=ctx,
-        fn=lambda db, user: [serialize_agent_proposal(row) for row in list_agent_proposals(db=db, user_id=user.id, status=status, limit=safe_limit)],
+        fn=lambda db, user: list_proposals(db=db, user_id=user.id, status=status, limit=safe_limit),
     )
 
 
-def create_approval_ticket_impl(*, proposal_id: int, notify_email: str | None = None, channel: str = "mcp", ctx: Context | None = None) -> dict:
+def create_approval_ticket_impl(*, proposal_id: int, email: str | None = None, channel: str = "mcp", ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="create_approval_ticket",
         input_payload={"proposal_id": proposal_id, "channel": channel},
-        notify_email=notify_email,
+        email=email,
         ctx=ctx,
-        fn=lambda db, user: serialize_approval_ticket(
-            create_approval_ticket(
-                db=db,
-                user_id=user.id,
-                proposal_id=proposal_id,
-                channel=channel,
-                origin_kind="mcp",
-                origin_label="create_approval_ticket",
-                origin_request_id=_ctx_request_id(ctx),
-            )
+        fn=lambda db, user: create_approval_ticket_for_proposal(
+            db=db,
+            user_id=user.id,
+            proposal_id=proposal_id,
+            channel=channel,
+            origin=AgentGatewayOrigin(
+                kind="mcp",
+                label="create_approval_ticket",
+                request_id=_ctx_request_id(ctx),
+            ),
         ),
     )
 
 
-def get_approval_ticket_impl(*, ticket_id: str, notify_email: str | None = None, ctx: Context | None = None) -> dict:
+def get_approval_ticket_impl(*, ticket_id: str, email: str | None = None, ctx: Context | None = None) -> dict:
     def _load(db: Session, user: User) -> dict:
-        ticket = get_approval_ticket(db=db, user_id=user.id, ticket_id=ticket_id)
+        ticket = get_approval_ticket_for_user(db=db, user_id=user.id, ticket_id=ticket_id)
         if ticket is None:
             raise RuntimeError("Approval ticket not found.")
-        return serialize_approval_ticket(ticket)
+        return ticket
 
     return _run_with_user_audited(
         tool_name="get_approval_ticket",
         input_payload={"ticket_id": ticket_id},
-        notify_email=notify_email,
+        email=email,
         ctx=ctx,
         fn=_load,
     )
 
 
-def list_approval_tickets_impl(*, notify_email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> list[dict]:
+def list_approval_tickets_impl(*, email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> list[dict]:
     safe_limit = max(1, min(limit, 50))
     return _run_with_user_audited(
         tool_name="list_approval_tickets",
         input_payload={"status": status, "limit": safe_limit},
-        notify_email=notify_email,
+        email=email,
         ctx=ctx,
-        fn=lambda db, user: [serialize_approval_ticket(row) for row in list_approval_tickets(db=db, user_id=user.id, status=status, limit=safe_limit)],
+        fn=lambda db, user: list_approval_tickets_for_user(db=db, user_id=user.id, status=status, limit=safe_limit),
     )
 
 
-def confirm_approval_ticket_impl(*, ticket_id: str, notify_email: str | None = None, ctx: Context | None = None) -> dict:
+def confirm_approval_ticket_impl(*, ticket_id: str, email: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="confirm_approval_ticket",
         input_payload={"ticket_id": ticket_id},
-        notify_email=notify_email,
+        email=email,
         ctx=ctx,
-        fn=lambda db, user: serialize_approval_ticket(
-            confirm_approval_ticket(
-                db=db,
-                user_id=user.id,
-                ticket_id=ticket_id,
-                transition_kind="mcp",
-                transition_label="confirm_approval_ticket",
-            )[0]
+        fn=lambda db, user: confirm_approval_ticket_for_user(
+            db=db,
+            user_id=user.id,
+            ticket_id=ticket_id,
+            origin=AgentGatewayOrigin(kind="mcp", label="confirm_approval_ticket"),
         ),
     )
 
 
-def cancel_approval_ticket_impl(*, ticket_id: str, notify_email: str | None = None, ctx: Context | None = None) -> dict:
+def cancel_approval_ticket_impl(*, ticket_id: str, email: str | None = None, ctx: Context | None = None) -> dict:
     return _run_with_user_audited(
         tool_name="cancel_approval_ticket",
         input_payload={"ticket_id": ticket_id},
-        notify_email=notify_email,
+        email=email,
         ctx=ctx,
-        fn=lambda db, user: serialize_approval_ticket(
-            cancel_approval_ticket(
-                db=db,
-                user_id=user.id,
-                ticket_id=ticket_id,
-                transition_kind="mcp",
-                transition_label="cancel_approval_ticket",
-            )[0]
+        fn=lambda db, user: cancel_approval_ticket_for_user(
+            db=db,
+            user_id=user.id,
+            ticket_id=ticket_id,
+            origin=AgentGatewayOrigin(kind="mcp", label="cancel_approval_ticket"),
         ),
     )
 
 
 @mcp.tool(name="get_workspace_context", description="Get the aggregated CalendarDIFF workspace context for a user.", structured_output=True)
-def get_workspace_context_tool(notify_email: str | None = None, ctx: Context | None = None) -> AgentWorkspaceContextResponse:
-    return AgentWorkspaceContextResponse.model_validate(get_workspace_context_impl(notify_email=notify_email, ctx=ctx))
+def get_workspace_context_tool(email: str | None = None, ctx: Context | None = None) -> AgentWorkspaceContextResponse:
+    return AgentWorkspaceContextResponse.model_validate(get_workspace_context_impl(email=email, ctx=ctx))
 
 
 @mcp.tool(name="get_recent_agent_activity", description="Get recent agent proposals, approval tickets, and transitions for a user.", structured_output=True)
-def get_recent_agent_activity_tool(notify_email: str | None = None, limit: int = 10, ctx: Context | None = None) -> AgentRecentActivityResponse:
-    return AgentRecentActivityResponse.model_validate(get_recent_agent_activity_impl(notify_email=notify_email, limit=limit, ctx=ctx))
+def get_recent_agent_activity_tool(email: str | None = None, limit: int = 10, ctx: Context | None = None) -> AgentRecentActivityResponse:
+    return AgentRecentActivityResponse.model_validate(get_recent_agent_activity_impl(email=email, limit=limit, ctx=ctx))
 
 
 @mcp.tool(name="list_pending_changes", description="List pending changes for a user.", structured_output=True)
 def list_pending_changes_tool(
-    notify_email: str | None = None,
+    email: str | None = None,
     limit: int = 10,
     review_bucket: str = "all",
     intake_phase: str = "all",
@@ -612,7 +679,7 @@ def list_pending_changes_tool(
     return PendingChangesResult.model_validate(
         {
             "items": list_pending_changes_impl(
-                notify_email=notify_email,
+                email=email,
                 limit=limit,
                 review_bucket=review_bucket,
                 intake_phase=intake_phase,
@@ -623,36 +690,53 @@ def list_pending_changes_tool(
 
 
 @mcp.tool(name="list_sources", description="List sources with current read-model projections for a user.", structured_output=True)
-def list_sources_tool(notify_email: str | None = None, status: str = "active", ctx: Context | None = None) -> SourcesListResult:
-    return SourcesListResult.model_validate({"items": list_sources_impl(notify_email=notify_email, status=status, ctx=ctx)})
+def list_sources_tool(email: str | None = None, status: str = "active", ctx: Context | None = None) -> SourcesListResult:
+    return SourcesListResult.model_validate({"items": list_sources_impl(email=email, status=status, ctx=ctx)})
 
 
 @mcp.tool(name="get_change_context", description="Get agent context for a specific change.", structured_output=True)
-def get_change_context_tool(change_id: int, notify_email: str | None = None, ctx: Context | None = None) -> AgentChangeContextResponse:
-    return AgentChangeContextResponse.model_validate(get_change_context_impl(change_id=change_id, notify_email=notify_email, ctx=ctx))
+def get_change_context_tool(change_id: int, email: str | None = None, ctx: Context | None = None) -> AgentChangeContextResponse:
+    return AgentChangeContextResponse.model_validate(get_change_context_impl(change_id=change_id, email=email, ctx=ctx))
 
 
 @mcp.tool(name="get_source_context", description="Get agent context for a specific source.", structured_output=True)
-def get_source_context_tool(source_id: int, notify_email: str | None = None, ctx: Context | None = None) -> AgentSourceContextResponse:
-    return AgentSourceContextResponse.model_validate(get_source_context_impl(source_id=source_id, notify_email=notify_email, ctx=ctx))
+def get_source_context_tool(source_id: int, email: str | None = None, ctx: Context | None = None) -> AgentSourceContextResponse:
+    return AgentSourceContextResponse.model_validate(get_source_context_impl(source_id=source_id, email=email, ctx=ctx))
 
 
 @mcp.tool(name="get_family_context", description="Get agent context for a specific family.", structured_output=True)
-def get_family_context_tool(family_id: int, notify_email: str | None = None, ctx: Context | None = None) -> AgentFamilyContextResponse:
-    return AgentFamilyContextResponse.model_validate(get_family_context_impl(family_id=family_id, notify_email=notify_email, ctx=ctx))
+def get_family_context_tool(family_id: int, email: str | None = None, ctx: Context | None = None) -> AgentFamilyContextResponse:
+    return AgentFamilyContextResponse.model_validate(get_family_context_impl(family_id=family_id, email=email, ctx=ctx))
 
 
 @mcp.tool(name="create_change_decision_proposal", description="Create a persisted change-decision proposal.", structured_output=True)
-def create_change_decision_proposal_tool(change_id: int, notify_email: str | None = None, ctx: Context | None = None) -> AgentProposalResponse:
+def create_change_decision_proposal_tool(change_id: int, email: str | None = None, ctx: Context | None = None) -> AgentProposalResponse:
     return AgentProposalResponse.model_validate(
-        create_change_decision_proposal_impl(change_id=change_id, notify_email=notify_email, ctx=ctx)
+        create_change_decision_proposal_impl(change_id=change_id, email=email, ctx=ctx)
     )
 
 
 @mcp.tool(name="create_source_recovery_proposal", description="Create a persisted source-recovery proposal.", structured_output=True)
-def create_source_recovery_proposal_tool(source_id: int, notify_email: str | None = None, ctx: Context | None = None) -> AgentProposalResponse:
+def create_source_recovery_proposal_tool(source_id: int, email: str | None = None, ctx: Context | None = None) -> AgentProposalResponse:
     return AgentProposalResponse.model_validate(
-        create_source_recovery_proposal_impl(source_id=source_id, notify_email=notify_email, ctx=ctx)
+        create_source_recovery_proposal_impl(source_id=source_id, email=email, ctx=ctx)
+    )
+
+
+@mcp.tool(name="create_change_edit_commit_proposal", description="Create an executable proposal-edit commit proposal for a pending change.", structured_output=True)
+def create_change_edit_commit_proposal_tool(
+    change_id: int,
+    patch: dict[str, Any],
+    email: str | None = None,
+    ctx: Context | None = None,
+) -> AgentProposalResponse:
+    return AgentProposalResponse.model_validate(
+        create_change_edit_commit_proposal_impl(
+            change_id=change_id,
+            patch=patch,
+            email=email,
+            ctx=ctx,
+        )
     )
 
 
@@ -660,62 +744,96 @@ def create_source_recovery_proposal_tool(source_id: int, notify_email: str | Non
 def create_family_relink_preview_proposal_tool(
     raw_type_id: int,
     family_id: int,
-    notify_email: str | None = None,
+    email: str | None = None,
     ctx: Context | None = None,
 ) -> AgentProposalResponse:
     return AgentProposalResponse.model_validate(
         create_family_relink_preview_proposal_impl(
             raw_type_id=raw_type_id,
             family_id=family_id,
-            notify_email=notify_email,
+            email=email,
+            ctx=ctx,
+        )
+    )
+
+
+@mcp.tool(name="create_family_relink_commit_proposal", description="Create an executable family relink commit proposal.", structured_output=True)
+def create_family_relink_commit_proposal_tool(
+    raw_type_id: int,
+    family_id: int,
+    email: str | None = None,
+    ctx: Context | None = None,
+) -> AgentProposalResponse:
+    return AgentProposalResponse.model_validate(
+        create_family_relink_commit_proposal_impl(
+            raw_type_id=raw_type_id,
+            family_id=family_id,
+            email=email,
+            ctx=ctx,
+        )
+    )
+
+
+@mcp.tool(name="create_label_learning_commit_proposal", description="Create an executable label-learning add-alias proposal.", structured_output=True)
+def create_label_learning_commit_proposal_tool(
+    change_id: int,
+    family_id: int,
+    email: str | None = None,
+    ctx: Context | None = None,
+) -> AgentProposalResponse:
+    return AgentProposalResponse.model_validate(
+        create_label_learning_commit_proposal_impl(
+            change_id=change_id,
+            family_id=family_id,
+            email=email,
             ctx=ctx,
         )
     )
 
 
 @mcp.tool(name="get_proposal", description="Fetch a persisted agent proposal.", structured_output=True)
-def get_proposal_tool(proposal_id: int, notify_email: str | None = None, ctx: Context | None = None) -> AgentProposalResponse:
-    return AgentProposalResponse.model_validate(get_proposal_impl(proposal_id=proposal_id, notify_email=notify_email, ctx=ctx))
+def get_proposal_tool(proposal_id: int, email: str | None = None, ctx: Context | None = None) -> AgentProposalResponse:
+    return AgentProposalResponse.model_validate(get_proposal_impl(proposal_id=proposal_id, email=email, ctx=ctx))
 
 
 @mcp.tool(name="list_proposals", description="List recent persisted agent proposals.", structured_output=True)
-def list_proposals_tool(notify_email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> ProposalListResult:
-    return ProposalListResult.model_validate({"items": list_proposals_impl(notify_email=notify_email, status=status, limit=limit, ctx=ctx)})
+def list_proposals_tool(email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> ProposalListResult:
+    return ProposalListResult.model_validate({"items": list_proposals_impl(email=email, status=status, limit=limit, ctx=ctx)})
 
 
 @mcp.tool(name="create_approval_ticket", description="Create an approval ticket from an executable proposal.", structured_output=True)
 def create_approval_ticket_tool(
     proposal_id: int,
-    notify_email: str | None = None,
+    email: str | None = None,
     channel: str = "mcp",
     ctx: Context | None = None,
 ) -> ApprovalTicketResponse:
     return ApprovalTicketResponse.model_validate(
-        create_approval_ticket_impl(proposal_id=proposal_id, notify_email=notify_email, channel=channel, ctx=ctx)
+        create_approval_ticket_impl(proposal_id=proposal_id, email=email, channel=channel, ctx=ctx)
     )
 
 
 @mcp.tool(name="get_approval_ticket", description="Fetch an approval ticket.", structured_output=True)
-def get_approval_ticket_tool(ticket_id: str, notify_email: str | None = None, ctx: Context | None = None) -> ApprovalTicketResponse:
-    return ApprovalTicketResponse.model_validate(get_approval_ticket_impl(ticket_id=ticket_id, notify_email=notify_email, ctx=ctx))
+def get_approval_ticket_tool(ticket_id: str, email: str | None = None, ctx: Context | None = None) -> ApprovalTicketResponse:
+    return ApprovalTicketResponse.model_validate(get_approval_ticket_impl(ticket_id=ticket_id, email=email, ctx=ctx))
 
 
 @mcp.tool(name="list_approval_tickets", description="List recent approval tickets.", structured_output=True)
-def list_approval_tickets_tool(notify_email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> ApprovalTicketListResult:
-    return ApprovalTicketListResult.model_validate({"items": list_approval_tickets_impl(notify_email=notify_email, status=status, limit=limit, ctx=ctx)})
+def list_approval_tickets_tool(email: str | None = None, status: str = "all", limit: int = 10, ctx: Context | None = None) -> ApprovalTicketListResult:
+    return ApprovalTicketListResult.model_validate({"items": list_approval_tickets_impl(email=email, status=status, limit=limit, ctx=ctx)})
 
 
 @mcp.tool(name="confirm_approval_ticket", description="Confirm and execute an approval ticket.", structured_output=True)
-def confirm_approval_ticket_tool(ticket_id: str, notify_email: str | None = None, ctx: Context | None = None) -> ApprovalTicketResponse:
+def confirm_approval_ticket_tool(ticket_id: str, email: str | None = None, ctx: Context | None = None) -> ApprovalTicketResponse:
     return ApprovalTicketResponse.model_validate(
-        confirm_approval_ticket_impl(ticket_id=ticket_id, notify_email=notify_email, ctx=ctx)
+        confirm_approval_ticket_impl(ticket_id=ticket_id, email=email, ctx=ctx)
     )
 
 
 @mcp.tool(name="cancel_approval_ticket", description="Cancel an open approval ticket.", structured_output=True)
-def cancel_approval_ticket_tool(ticket_id: str, notify_email: str | None = None, ctx: Context | None = None) -> ApprovalTicketResponse:
+def cancel_approval_ticket_tool(ticket_id: str, email: str | None = None, ctx: Context | None = None) -> ApprovalTicketResponse:
     return ApprovalTicketResponse.model_validate(
-        cancel_approval_ticket_impl(ticket_id=ticket_id, notify_email=notify_email, ctx=ctx)
+        cancel_approval_ticket_impl(ticket_id=ticket_id, email=email, ctx=ctx)
     )
 
 
@@ -725,7 +843,7 @@ def cancel_approval_ticket_tool(ticket_id: str, notify_email: str | None = None,
     description="Workspace context for the configured default CalendarDIFF user.",
 )
 def workspace_resource() -> dict:
-    return get_workspace_context_impl(notify_email=None)
+    return get_workspace_context_impl(email=None)
 
 
 @mcp.resource(
@@ -734,7 +852,7 @@ def workspace_resource() -> dict:
     description="Pending changes for the configured default CalendarDIFF user.",
 )
 def pending_changes_resource() -> list[dict]:
-    return list_pending_changes_impl(notify_email=None, limit=10)
+    return list_pending_changes_impl(email=None, limit=10)
 
 
 @mcp.resource(
@@ -743,7 +861,7 @@ def pending_changes_resource() -> list[dict]:
     description="Source list for the configured default CalendarDIFF user.",
 )
 def sources_resource() -> list[dict]:
-    return list_sources_impl(notify_email=None, status="active")
+    return list_sources_impl(email=None, status="active")
 
 
 def main() -> None:

@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     start.add_argument("--fake-provider-host", default=replay.DEFAULT_FAKE_HOST)
     start.add_argument("--fake-provider-port", type=int, default=replay.DEFAULT_FAKE_PORT)
     start.add_argument("--start-fake-provider", action=argparse.BooleanOptionalAction, default=True)
-    start.add_argument("--notify-email", default=None)
+    start.add_argument("--email", default=None)
     start.add_argument("--auth-password", default="password123")
     start.add_argument("--time-budget-seconds", type=int, default=DEFAULT_TIME_BUDGET_SECONDS)
     start.add_argument("--max-checkpoints", type=int, default=None)
@@ -114,8 +114,8 @@ def start_acceptance(args: argparse.Namespace) -> Path:
         command.append("--start-fake-provider")
     else:
         command.append("--no-start-fake-provider")
-    if args.notify_email:
-        command.extend(["--notify-email", str(args.notify_email)])
+    if args.email:
+        command.extend(["--email", str(args.email)])
 
     completed = subprocess.run(command, cwd=str(REPO_ROOT), capture_output=True, text=True)
     if completed.returncode != 0:
@@ -769,7 +769,7 @@ def build_client_from_run(run_dir: Path) -> httpx.Client:
     client = replay.build_api_client(public_api_base=str(creds["public_api_base"]), api_key=str(creds["api_key"]))
     user = replay.ensure_authenticated_session(
         client,
-        notify_email=str(creds["notify_email"]),
+        email=str(creds["email"]),
         password=str(creds["password"]),
     )
     expected_user_id = creds.get("user_id")

@@ -171,8 +171,8 @@ function createInitialDemoState(): DemoState {
   return {
     user: {
       id: 9001,
-      email: null,
-      notify_email: "demo@calendardiff.app",
+      email: "demo@calendardiff.app",
+      language_code: "en" as const,
       timezone_name: "America/Los_Angeles",
       timezone_source: "manual",
       calendar_delay_seconds: 120,
@@ -326,7 +326,7 @@ function createInitialDemoState(): DemoState {
     mcpTokens: [
       {
         token_id: "mcp_tok_active_1",
-        label: "QClaw laptop",
+        label: "OpenClaw laptop",
         scopes: ["calendar.read", "changes.write"],
         last_used_at: "2026-03-17T21:35:00.000Z",
         expires_at: "2026-06-16T00:00:00.000Z",
@@ -335,7 +335,7 @@ function createInitialDemoState(): DemoState {
       },
       {
         token_id: "mcp_tok_revoked_1",
-        label: "OpenClaw trial",
+        label: "OpenClaw desktop",
         scopes: ["calendar.read"],
         last_used_at: "2026-03-12T19:00:00.000Z",
         expires_at: "2026-04-15T00:00:00.000Z",
@@ -916,7 +916,7 @@ function getDemoWorkspaceSummary(): ChangesWorkbenchSummary {
           : workspacePhase === "initial_review"
             ? {
                 lane: "initial_review",
-                label: "Open Initial Review",
+                label: "Open Baseline Review",
                 reason: baselinePending === 1 ? "1 baseline item still needs review." : `${baselinePending} baseline items still need review.`,
               }
             : workspacePhase === "attention_required"
@@ -1056,14 +1056,15 @@ function buildDemoSourceAgentContext(sourceId: number): AgentSourceContext {
     recommended_next_action: {
       lane: "sources",
       label:
-        nextAction === "retry_sync"
+        observability.source_recovery?.next_action_label ||
+        (nextAction === "retry_sync"
           ? "Run another sync"
           : nextAction === "reconnect_gmail"
             ? "Reconnect source"
             : nextAction === "update_ics"
               ? "Open connection flow"
-              : "Wait for runtime",
-      reason: observability.operator_guidance?.message || observability.source_recovery?.impact_summary || "",
+              : "Wait for runtime"),
+      reason: observability.source_recovery?.impact_summary || observability.operator_guidance?.message || "",
       reason_code: "demo.agent.source.next_action",
       reason_params: {},
       risk_level:
@@ -1106,6 +1107,7 @@ function createDemoChangeProposal(changeId: number): AgentProposal {
         : { kind: "web_only_high_risk_change_review", change_id: changeId };
   const proposal: AgentProposal = {
     proposal_id: nextProposalId(),
+    owner_user_id: 1,
     proposal_type: "change_decision",
     status: "open",
     target_kind: "change",
@@ -1124,6 +1126,21 @@ function createDemoChangeProposal(changeId: number): AgentProposal {
     risk_level: context.recommended_next_action.risk_level,
     confidence: action === "review_carefully" ? 0.56 : action === "edit" ? 0.78 : 0.92,
     suggested_action: action,
+    origin_kind: "web",
+    origin_label: "embedded_agent",
+    origin_request_id: null,
+    lifecycle_code: "agents.proposal.lifecycle.open",
+    execution_mode:
+      payload.kind === "change_decision" ? "approval_ticket_required" : "web_only",
+    execution_mode_code:
+      payload.kind === "change_decision"
+        ? "agents.proposal.execution_mode.approval_ticket_required"
+        : "agents.proposal.execution_mode.web_only",
+    next_step_code:
+      payload.kind === "change_decision"
+        ? "agents.proposal.next_step.create_ticket"
+        : "agents.proposal.next_step.open_web_flow",
+    can_create_ticket: payload.kind === "change_decision",
     suggested_payload: payload,
     context: { recommended_next_action: context.recommended_next_action, blocking_conditions: context.blocking_conditions },
     target_snapshot: {
@@ -1154,6 +1171,7 @@ function createDemoSourceProposal(sourceId: number): AgentProposal {
           : { kind: "wait_for_runtime", source_id: sourceId };
   const proposal: AgentProposal = {
     proposal_id: nextProposalId(),
+    owner_user_id: 1,
     proposal_type: "source_recovery",
     status: "open",
     target_kind: "source",
@@ -1172,6 +1190,20 @@ function createDemoSourceProposal(sourceId: number): AgentProposal {
     risk_level: context.recommended_next_action.risk_level,
     confidence: action === "retry_sync" ? 0.82 : action === "wait" ? 0.62 : 0.74,
     suggested_action: action,
+    origin_kind: "web",
+    origin_label: "embedded_agent",
+    origin_request_id: null,
+    lifecycle_code: "agents.proposal.lifecycle.open",
+    execution_mode: payload.kind === "run_source_sync" ? "approval_ticket_required" : "web_only",
+    execution_mode_code:
+      payload.kind === "run_source_sync"
+        ? "agents.proposal.execution_mode.approval_ticket_required"
+        : "agents.proposal.execution_mode.web_only",
+    next_step_code:
+      payload.kind === "run_source_sync"
+        ? "agents.proposal.next_step.create_ticket"
+        : "agents.proposal.next_step.open_web_flow",
+    can_create_ticket: payload.kind === "run_source_sync",
     suggested_payload: payload,
     context: { recommended_next_action: context.recommended_next_action, blocking_conditions: context.blocking_conditions },
     target_snapshot: {
@@ -1193,6 +1225,7 @@ function nextApprovalTicket(proposal: AgentProposal): ApprovalTicket {
   return {
     ticket_id: `demo-ticket-${Date.now()}`,
     proposal_id: proposal.proposal_id,
+    owner_user_id: proposal.owner_user_id,
     channel: "web",
     action_type: String(proposal.suggested_payload.kind || proposal.suggested_action),
     target_kind: proposal.target_kind,
@@ -1201,7 +1234,20 @@ function nextApprovalTicket(proposal: AgentProposal): ApprovalTicket {
     payload_hash: `demo-hash-${proposal.proposal_id}`,
     target_snapshot: proposal.target_snapshot,
     risk_level: proposal.risk_level,
+    origin_kind: proposal.origin_kind,
+    origin_label: "create_approval_ticket",
+    origin_request_id: proposal.origin_request_id,
     status: "open",
+    lifecycle_code: "agents.ticket.lifecycle.open",
+    next_step_code: "agents.ticket.next_step.confirm_or_cancel",
+    confirm_summary_code: `agents.ticket.confirm.${String(proposal.suggested_payload.kind || proposal.suggested_action)}.summary`,
+    cancel_summary_code: `agents.ticket.cancel.${String(proposal.suggested_payload.kind || proposal.suggested_action)}.summary`,
+    transition_message_code: `agents.ticket.transition.${String(proposal.suggested_payload.kind || proposal.suggested_action)}.waiting_confirm`,
+    social_safe_cta_code: proposal.risk_level === "low" ? "agents.ticket.cta.confirm" : null,
+    can_confirm: true,
+    can_cancel: true,
+    last_transition_kind: "web",
+    last_transition_label: "create_approval_ticket",
     executed_result: {},
     expires_at: proposal.expires_at,
     confirmed_at: null,
@@ -1242,7 +1288,8 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     return clone({
       user: {
         id: 9001,
-        notify_email: demoState.user.notify_email || "demo@calendardiff.app",
+        email: demoState.user.email || "demo@calendardiff.app",
+        language_code: demoState.user.language_code,
         timezone_name: demoState.user.timezone_name,
         timezone_source: demoState.user.timezone_source,
         created_at: demoState.user.created_at || nowIso,
@@ -1258,7 +1305,8 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     return clone({
       user: {
         id: 9001,
-        notify_email: demoState.user.notify_email || "demo@calendardiff.app",
+        email: demoState.user.email || "demo@calendardiff.app",
+        language_code: demoState.user.language_code,
         timezone_name: demoState.user.timezone_name,
         timezone_source: demoState.user.timezone_source,
         created_at: demoState.user.created_at || nowIso,
