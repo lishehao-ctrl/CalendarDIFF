@@ -8,6 +8,7 @@ from app.modules.agents.generation_gateway import (
     AgentProposalDraftRequest,
     generate_agent_proposal_draft,
 )
+from app.modules.agents.language_context import AgentLanguageContext
 from app.modules.llm_gateway import LlmGatewayError, LlmInvokeResult
 
 
@@ -28,6 +29,12 @@ def _draft_request(*, proposal_kind: str = "change_decision", target_kind: str =
             payload_json={"kind": "change_decision", "change_id": 42, "decision": "approve"},
             context_json={"change_id": 42, "review_status": "pending"},
             target_snapshot_json={"change_id": 42, "review_status": "pending"},
+        ),
+        language_context=AgentLanguageContext(
+            effective_language_code="en",
+            input_language_code=None,
+            system_language_code="en",
+            resolution_source="default",
         ),
     )
 
@@ -95,6 +102,55 @@ def test_generation_gateway_falls_back_when_llm_errors(monkeypatch) -> None:
     monkeypatch.setattr(generation_gateway, "invoke_llm_json", _raise_gateway_error)
 
     draft_request = _draft_request(proposal_kind="source_recovery", target_kind="source", target_id="24")
+    result = generate_agent_proposal_draft(None, draft_request=draft_request)  # type: ignore[arg-type]
+
+    assert result == draft_request.deterministic_draft
+
+
+def test_generation_gateway_falls_back_when_output_language_mismatches(monkeypatch) -> None:
+    def _english_invoke(db, *, invoke_request):  # type: ignore[no-untyped-def]
+        del db
+        return LlmInvokeResult(
+            json_object={
+                "summary": "Approve this replay change now.",
+                "reason": "The due date moved and the current evidence stays internally consistent.",
+            },
+            provider_id="agent-env-default",
+            protocol="chat_completions",
+            model="qwen3.5-plus",
+            latency_ms=8,
+            raw_usage={},
+        )
+
+    monkeypatch.setattr(generation_gateway, "get_settings", lambda: SimpleNamespace(agent_generation_mode="llm_assisted"))
+    monkeypatch.setattr(generation_gateway, "invoke_llm_json", _english_invoke)
+
+    draft_request = _draft_request()
+    draft_request = AgentProposalDraftRequest(
+        proposal_kind=draft_request.proposal_kind,
+        target_kind=draft_request.target_kind,
+        target_id=draft_request.target_id,
+        origin_request_id=draft_request.origin_request_id,
+        deterministic_draft=AgentProposalDraft(
+            summary="在回放审核中通过这条变更。",
+            summary_code=draft_request.deterministic_draft.summary_code,
+            reason="当前变更风险较低，可以直接通过。",
+            reason_code=draft_request.deterministic_draft.reason_code,
+            risk_level=draft_request.deterministic_draft.risk_level,
+            confidence=draft_request.deterministic_draft.confidence,
+            suggested_action=draft_request.deterministic_draft.suggested_action,
+            payload_json=draft_request.deterministic_draft.payload_json,
+            context_json=draft_request.deterministic_draft.context_json,
+            target_snapshot_json=draft_request.deterministic_draft.target_snapshot_json,
+        ),
+        language_context=AgentLanguageContext(
+            effective_language_code="zh-CN",
+            input_language_code="zh-CN",
+            system_language_code="en",
+            resolution_source="detected_input",
+        ),
+    )
+
     result = generate_agent_proposal_draft(None, draft_request=draft_request)  # type: ignore[arg-type]
 
     assert result == draft_request.deterministic_draft
