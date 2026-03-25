@@ -683,8 +683,7 @@ def test_gmail_fetcher_emits_tail_progress_for_small_remaining_window(monkeypatc
 
 def test_known_course_tokens_for_source_include_recent_family_mappings(db_session) -> None:
     user = User(
-        email=None,
-        notify_email="tokens@example.com",
+        email="tokens@example.com",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
@@ -748,8 +747,7 @@ def test_known_course_tokens_for_source_include_recent_family_mappings(db_sessio
 
 def test_known_course_tokens_for_source_uses_recent_entities_to_scope_mappings(db_session) -> None:
     user = User(
-        email=None,
-        notify_email="tokens-entities@example.com",
+        email="tokens-entities@example.com",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
@@ -822,8 +820,7 @@ def test_known_course_tokens_for_source_uses_recent_entities_to_scope_mappings(d
 
 def test_gmail_fetcher_bootstrap_uses_monitoring_window_course_mapping_tokens(monkeypatch, db_session) -> None:
     user = User(
-        email=None,
-        notify_email="tokens-bootstrap@example.com",
+        email="tokens-bootstrap@example.com",
         timezone_name="America/Los_Angeles",
         onboarding_completed_at=datetime.now(timezone.utc),
     )

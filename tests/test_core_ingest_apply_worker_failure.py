@@ -13,7 +13,6 @@ def test_core_apply_worker_marks_sync_request_failed_on_apply_exception(db_sessi
     now = datetime.now(timezone.utc)
     user = User(
         email="worker-owner@example.com",
-        notify_email="worker-owner@example.com",
         onboarding_completed_at=now,
     )
     db_session.add(user)

@@ -58,7 +58,7 @@ def _seed_calendar_job(
     workflow_stage: str,
     job_status: IngestJobStatus,
 ) -> tuple[InputSource, SyncRequest, IngestJob]:
-    user = User(email=f"{request_id}@example.com", notify_email=f"{request_id}@example.com")
+    user = User(email=f"{request_id}@example.com")
     db.add(user)
     db.flush()
     source = InputSource(

@@ -84,7 +84,6 @@ def test_year_timeline_email_export_writes_bucket_artifacts() -> None:
     catalog = json.loads(Path("tests/fixtures/private/email_pool/library_catalog.json").read_text())
     assert "year_timeline_gmail" in catalog["buckets"]
     assert "year_timeline_full_sim" in catalog["buckets"]
-    assert Path("archive/generated/year_timeline_variety_prefilter_20260318/archive_manifest.json").is_file()
 
 
 def test_year_timeline_ics_and_mixed_export_writes_scenarios_and_derived_sets() -> None:

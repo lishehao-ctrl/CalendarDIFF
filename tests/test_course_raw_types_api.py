@@ -8,8 +8,7 @@ from app.modules.common.course_identity import parse_course_display
 
 def _create_user(db_session) -> User:
     user = User(
-        email=None,
-        notify_email="rawtype-user@example.com",
+        email="rawtype-user@example.com",
         password_hash="hash",
         onboarding_completed_at=datetime.now(timezone.utc),
     )

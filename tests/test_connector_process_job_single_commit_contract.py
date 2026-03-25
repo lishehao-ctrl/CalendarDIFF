@@ -13,7 +13,7 @@ from app.modules.runtime.connectors.connector_types import ConnectorFetchOutcome
 
 
 def _seed_claimed_job(db: Session, *, request_id: str, provider: str = "gmail") -> tuple[IngestJob, SyncRequest]:
-    user = User(email=f"{request_id}@example.com", notify_email=f"{request_id}@example.com")
+    user = User(email=f"{request_id}@example.com")
     db.add(user)
     db.flush()
     source = InputSource(

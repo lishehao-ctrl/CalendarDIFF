@@ -11,7 +11,7 @@ from app.modules.runtime.connectors.connector_dispatch import dispatch_pending_l
 
 
 def _seed_pending_enqueue_job(db: Session, *, request_id: str, dispatch_attempt: int = 0) -> tuple[IngestJob, SyncRequest]:
-    user = User(email=f"{request_id}@example.com", notify_email=f"{request_id}@example.com")
+    user = User(email=f"{request_id}@example.com")
     db.add(user)
     db.flush()
     source = InputSource(

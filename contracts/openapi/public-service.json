@@ -80,8 +80,202 @@
         "title": "AgentChangeDecisionProposalRequest",
         "type": "object"
       },
+      "AgentChangeEditCommitPatchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "due_time": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Time"
+          },
+          "event_name": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Name"
+          },
+          "time_precision": {
+            "anyOf": [
+              {
+                "enum": [
+                  "date_only",
+                  "datetime"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Precision"
+          }
+        },
+        "title": "AgentChangeEditCommitPatchRequest",
+        "type": "object"
+      },
+      "AgentChangeEditCommitProposalRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "change_id": {
+            "minimum": 1.0,
+            "title": "Change Id",
+            "type": "integer"
+          },
+          "patch": {
+            "$ref": "#/components/schemas/AgentChangeEditCommitPatchRequest"
+          }
+        },
+        "required": [
+          "change_id",
+          "patch"
+        ],
+        "title": "AgentChangeEditCommitProposalRequest",
+        "type": "object"
+      },
+      "AgentFamilyContextResponse": {
+        "properties": {
+          "available_next_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Available Next Tools",
+            "type": "array"
+          },
+          "blocking_conditions": {
+            "items": {
+              "$ref": "#/components/schemas/AgentBlockingConditionResponse"
+            },
+            "title": "Blocking Conditions",
+            "type": "array"
+          },
+          "family": {
+            "$ref": "#/components/schemas/CourseWorkItemFamilyResponse"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "pending_raw_type_suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/RawTypeSuggestionItemResponse"
+            },
+            "title": "Pending Raw Type Suggestions",
+            "type": "array"
+          },
+          "raw_types": {
+            "items": {
+              "$ref": "#/components/schemas/CourseRawTypeResponse"
+            },
+            "title": "Raw Types",
+            "type": "array"
+          },
+          "recommended_next_action": {
+            "$ref": "#/components/schemas/AgentRecommendedActionResponse"
+          }
+        },
+        "required": [
+          "generated_at",
+          "family",
+          "recommended_next_action"
+        ],
+        "title": "AgentFamilyContextResponse",
+        "type": "object"
+      },
+      "AgentFamilyRelinkCommitProposalRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "family_id": {
+            "minimum": 1.0,
+            "title": "Family Id",
+            "type": "integer"
+          },
+          "raw_type_id": {
+            "minimum": 1.0,
+            "title": "Raw Type Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "raw_type_id",
+          "family_id"
+        ],
+        "title": "AgentFamilyRelinkCommitProposalRequest",
+        "type": "object"
+      },
+      "AgentFamilyRelinkPreviewProposalRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "family_id": {
+            "minimum": 1.0,
+            "title": "Family Id",
+            "type": "integer"
+          },
+          "raw_type_id": {
+            "minimum": 1.0,
+            "title": "Raw Type Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "raw_type_id",
+          "family_id"
+        ],
+        "title": "AgentFamilyRelinkPreviewProposalRequest",
+        "type": "object"
+      },
+      "AgentLabelLearningCommitProposalRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "change_id": {
+            "minimum": 1.0,
+            "title": "Change Id",
+            "type": "integer"
+          },
+          "family_id": {
+            "minimum": 1.0,
+            "title": "Family Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "change_id",
+          "family_id"
+        ],
+        "title": "AgentLabelLearningCommitProposalRequest",
+        "type": "object"
+      },
       "AgentProposalResponse": {
         "properties": {
+          "can_create_ticket": {
+            "title": "Can Create Ticket",
+            "type": "boolean"
+          },
           "confidence": {
             "title": "Confidence",
             "type": "number"
@@ -96,6 +290,18 @@
             "title": "Created At",
             "type": "string"
           },
+          "execution_mode": {
+            "enum": [
+              "approval_ticket_required",
+              "web_only"
+            ],
+            "title": "Execution Mode",
+            "type": "string"
+          },
+          "execution_mode_code": {
+            "title": "Execution Mode Code",
+            "type": "string"
+          },
           "expires_at": {
             "anyOf": [
               {
@@ -108,6 +314,37 @@
             ],
             "title": "Expires At"
           },
+          "lifecycle_code": {
+            "title": "Lifecycle Code",
+            "type": "string"
+          },
+          "next_step_code": {
+            "title": "Next Step Code",
+            "type": "string"
+          },
+          "origin_kind": {
+            "title": "Origin Kind",
+            "type": "string"
+          },
+          "origin_label": {
+            "title": "Origin Label",
+            "type": "string"
+          },
+          "origin_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin Request Id"
+          },
+          "owner_user_id": {
+            "title": "Owner User Id",
+            "type": "integer"
+          },
           "proposal_id": {
             "title": "Proposal Id",
             "type": "integer"
@@ -115,7 +352,10 @@
           "proposal_type": {
             "enum": [
               "change_decision",
-              "source_recovery"
+              "source_recovery",
+              "family_relink_preview",
+              "label_learning_commit",
+              "proposal_edit_commit"
             ],
             "title": "Proposal Type",
             "type": "string"
@@ -186,6 +426,7 @@
         },
         "required": [
           "proposal_id",
+          "owner_user_id",
           "proposal_type",
           "status",
           "target_kind",
@@ -197,10 +438,321 @@
           "risk_level",
           "confidence",
           "suggested_action",
+          "origin_kind",
+          "origin_label",
+          "lifecycle_code",
+          "execution_mode",
+          "execution_mode_code",
+          "next_step_code",
+          "can_create_ticket",
           "created_at",
           "updated_at"
         ],
         "title": "AgentProposalResponse",
+        "type": "object"
+      },
+      "AgentRecentActivityItemResponse": {
+        "properties": {
+          "action_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Type"
+          },
+          "activity_id": {
+            "title": "Activity Id",
+            "type": "string"
+          },
+          "can_cancel": {
+            "default": false,
+            "title": "Can Cancel",
+            "type": "boolean"
+          },
+          "can_confirm": {
+            "default": false,
+            "title": "Can Confirm",
+            "type": "boolean"
+          },
+          "can_create_ticket": {
+            "default": false,
+            "title": "Can Create Ticket",
+            "type": "boolean"
+          },
+          "cancel_summary_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Summary Code"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "confirm_summary_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm Summary Code"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "detail_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Code"
+          },
+          "execution_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "approval_ticket_required",
+                  "web_only"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Mode"
+          },
+          "execution_mode_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Mode Code"
+          },
+          "item_kind": {
+            "enum": [
+              "proposal",
+              "ticket"
+            ],
+            "title": "Item Kind",
+            "type": "string"
+          },
+          "last_transition_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Transition Kind"
+          },
+          "last_transition_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Transition Label"
+          },
+          "lifecycle_code": {
+            "title": "Lifecycle Code",
+            "type": "string"
+          },
+          "next_step_code": {
+            "title": "Next Step Code",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "origin_kind": {
+            "title": "Origin Kind",
+            "type": "string"
+          },
+          "origin_label": {
+            "title": "Origin Label",
+            "type": "string"
+          },
+          "origin_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin Request Id"
+          },
+          "owner_user_id": {
+            "title": "Owner User Id",
+            "type": "integer"
+          },
+          "proposal_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Id"
+          },
+          "risk_level": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Risk Level",
+            "type": "string"
+          },
+          "social_safe_cta_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Social Safe Cta Code"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "suggested_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Action"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "summary_code": {
+            "title": "Summary Code",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_kind": {
+            "title": "Target Kind",
+            "type": "string"
+          },
+          "ticket_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Id"
+          },
+          "transition_message_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transition Message Code"
+          }
+        },
+        "required": [
+          "item_kind",
+          "activity_id",
+          "occurred_at",
+          "owner_user_id",
+          "status",
+          "lifecycle_code",
+          "next_step_code",
+          "risk_level",
+          "target_kind",
+          "target_id",
+          "summary",
+          "summary_code",
+          "origin_kind",
+          "origin_label"
+        ],
+        "title": "AgentRecentActivityItemResponse",
+        "type": "object"
+      },
+      "AgentRecentActivityResponse": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AgentRecentActivityItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at"
+        ],
+        "title": "AgentRecentActivityResponse",
         "type": "object"
       },
       "AgentRecommendedActionResponse": {
@@ -407,6 +959,18 @@
             "title": "Action Type",
             "type": "string"
           },
+          "can_cancel": {
+            "title": "Can Cancel",
+            "type": "boolean"
+          },
+          "can_confirm": {
+            "title": "Can Confirm",
+            "type": "boolean"
+          },
+          "cancel_summary_code": {
+            "title": "Cancel Summary Code",
+            "type": "string"
+          },
           "canceled_at": {
             "anyOf": [
               {
@@ -421,6 +985,10 @@
           },
           "channel": {
             "title": "Channel",
+            "type": "string"
+          },
+          "confirm_summary_code": {
+            "title": "Confirm Summary Code",
             "type": "string"
           },
           "confirmed_at": {
@@ -469,6 +1037,45 @@
             ],
             "title": "Expires At"
           },
+          "last_transition_kind": {
+            "title": "Last Transition Kind",
+            "type": "string"
+          },
+          "last_transition_label": {
+            "title": "Last Transition Label",
+            "type": "string"
+          },
+          "lifecycle_code": {
+            "title": "Lifecycle Code",
+            "type": "string"
+          },
+          "next_step_code": {
+            "title": "Next Step Code",
+            "type": "string"
+          },
+          "origin_kind": {
+            "title": "Origin Kind",
+            "type": "string"
+          },
+          "origin_label": {
+            "title": "Origin Label",
+            "type": "string"
+          },
+          "origin_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin Request Id"
+          },
+          "owner_user_id": {
+            "title": "Owner User Id",
+            "type": "integer"
+          },
           "payload": {
             "additionalProperties": true,
             "title": "Payload",
@@ -490,6 +1097,17 @@
             ],
             "title": "Risk Level",
             "type": "string"
+          },
+          "social_safe_cta_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Social Safe Cta Code"
           },
           "status": {
             "enum": [
@@ -519,6 +1137,10 @@
             "title": "Ticket Id",
             "type": "string"
           },
+          "transition_message_code": {
+            "title": "Transition Message Code",
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -528,13 +1150,25 @@
         "required": [
           "ticket_id",
           "proposal_id",
+          "owner_user_id",
           "channel",
           "action_type",
           "target_kind",
           "target_id",
           "payload_hash",
           "risk_level",
+          "origin_kind",
+          "origin_label",
           "status",
+          "lifecycle_code",
+          "next_step_code",
+          "confirm_summary_code",
+          "cancel_summary_code",
+          "transition_message_code",
+          "can_confirm",
+          "can_cancel",
+          "last_transition_kind",
+          "last_transition_label",
           "created_at",
           "updated_at"
         ],
@@ -544,6 +1178,12 @@
       "AuthLoginRequest": {
         "additionalProperties": false,
         "properties": {
+          "email": {
+            "maxLength": 255,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          },
           "language_code": {
             "anyOf": [
               {
@@ -558,12 +1198,6 @@
               }
             ],
             "title": "Language Code"
-          },
-          "notify_email": {
-            "maxLength": 255,
-            "minLength": 3,
-            "title": "Notify Email",
-            "type": "string"
           },
           "password": {
             "maxLength": 128,
@@ -585,7 +1219,7 @@
           }
         },
         "required": [
-          "notify_email",
+          "email",
           "password"
         ],
         "title": "AuthLoginRequest",
@@ -607,6 +1241,12 @@
       "AuthRegisterRequest": {
         "additionalProperties": false,
         "properties": {
+          "email": {
+            "maxLength": 255,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          },
           "language_code": {
             "anyOf": [
               {
@@ -621,12 +1261,6 @@
               }
             ],
             "title": "Language Code"
-          },
-          "notify_email": {
-            "maxLength": 255,
-            "minLength": 3,
-            "title": "Notify Email",
-            "type": "string"
           },
           "password": {
             "maxLength": 128,
@@ -648,7 +1282,7 @@
           }
         },
         "required": [
-          "notify_email",
+          "email",
           "password"
         ],
         "title": "AuthRegisterRequest",
@@ -679,6 +1313,10 @@
             "title": "Created At",
             "type": "string"
           },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
           "first_source_id": {
             "anyOf": [
               {
@@ -703,10 +1341,6 @@
             "title": "Language Code",
             "type": "string"
           },
-          "notify_email": {
-            "title": "Notify Email",
-            "type": "string"
-          },
           "onboarding_stage": {
             "enum": [
               "needs_user",
@@ -729,7 +1363,7 @@
         },
         "required": [
           "id",
-          "notify_email",
+          "email",
           "timezone_name",
           "timezone_source",
           "created_at",
@@ -2212,6 +2846,338 @@
           "generated_at"
         ],
         "title": "ChangesWorkbenchSummaryResponse",
+        "type": "object"
+      },
+      "ChannelAccountCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "account_label": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Account Label",
+            "type": "string"
+          },
+          "channel_type": {
+            "enum": [
+              "telegram",
+              "slack",
+              "wechat",
+              "wecom"
+            ],
+            "title": "Channel Type",
+            "type": "string"
+          },
+          "external_user_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External User Id"
+          },
+          "external_workspace_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Workspace Id"
+          }
+        },
+        "required": [
+          "channel_type",
+          "account_label"
+        ],
+        "title": "ChannelAccountCreateRequest",
+        "type": "object"
+      },
+      "ChannelAccountResponse": {
+        "properties": {
+          "account_label": {
+            "title": "Account Label",
+            "type": "string"
+          },
+          "channel_type": {
+            "enum": [
+              "telegram",
+              "slack",
+              "wechat",
+              "wecom"
+            ],
+            "title": "Channel Type",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "external_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External User Id"
+          },
+          "external_workspace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Workspace Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "paused",
+              "revoked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "verification_status": {
+            "enum": [
+              "pending",
+              "verified",
+              "revoked"
+            ],
+            "title": "Verification Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "channel_type",
+          "account_label",
+          "status",
+          "verification_status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ChannelAccountResponse",
+        "type": "object"
+      },
+      "ChannelDeliveryResponse": {
+        "properties": {
+          "acknowledged_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acknowledged At"
+          },
+          "attempt_count": {
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "channel_account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Account Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "cta_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cta Code"
+          },
+          "delivery_id": {
+            "title": "Delivery Id",
+            "type": "string"
+          },
+          "delivery_kind": {
+            "title": "Delivery Kind",
+            "type": "string"
+          },
+          "detail_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Code"
+          },
+          "error_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Text"
+          },
+          "external_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Message Id"
+          },
+          "failed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed At"
+          },
+          "origin_kind": {
+            "title": "Origin Kind",
+            "type": "string"
+          },
+          "origin_label": {
+            "title": "Origin Label",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "proposal_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Id"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "sent",
+              "acknowledged",
+              "failed",
+              "canceled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Code"
+          },
+          "ticket_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Id"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delivery_id",
+          "delivery_kind",
+          "status",
+          "attempt_count",
+          "origin_kind",
+          "origin_label",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ChannelDeliveryResponse",
         "type": "object"
       },
       "CourseIdentityResponse": {
@@ -3835,6 +4801,255 @@
         "title": "LabelLearningPreviewResponse",
         "type": "object"
       },
+      "LlmInvocationLogResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "http_status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Http Status"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "profile_family": {
+            "title": "Profile Family",
+            "type": "string"
+          },
+          "protocol": {
+            "title": "Protocol",
+            "type": "string"
+          },
+          "provider_id": {
+            "title": "Provider Id",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "response_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Id"
+          },
+          "retryable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retryable"
+          },
+          "route_id": {
+            "title": "Route Id",
+            "type": "string"
+          },
+          "route_index": {
+            "title": "Route Index",
+            "type": "integer"
+          },
+          "session_cache_enabled": {
+            "title": "Session Cache Enabled",
+            "type": "boolean"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "task_name": {
+            "title": "Task Name",
+            "type": "string"
+          },
+          "upstream_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upstream Request Id"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage"
+          },
+          "vendor": {
+            "title": "Vendor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_name",
+          "profile_family",
+          "route_id",
+          "route_index",
+          "provider_id",
+          "vendor",
+          "protocol",
+          "model",
+          "session_cache_enabled",
+          "success",
+          "created_at"
+        ],
+        "title": "LlmInvocationLogResponse",
+        "type": "object"
+      },
+      "LlmInvocationSummaryResponse": {
+        "properties": {
+          "avg_latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Latency Ms"
+          },
+          "cache_creation_input_tokens": {
+            "default": 0,
+            "title": "Cache Creation Input Tokens",
+            "type": "integer"
+          },
+          "cached_input_tokens": {
+            "default": 0,
+            "title": "Cached Input Tokens",
+            "type": "integer"
+          },
+          "failure_count": {
+            "title": "Failure Count",
+            "type": "integer"
+          },
+          "input_tokens": {
+            "default": 0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "model_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Model Counts",
+            "type": "object"
+          },
+          "output_tokens": {
+            "default": 0,
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "protocol_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Protocol Counts",
+            "type": "object"
+          },
+          "reasoning_tokens": {
+            "default": 0,
+            "title": "Reasoning Tokens",
+            "type": "integer"
+          },
+          "success_count": {
+            "title": "Success Count",
+            "type": "integer"
+          },
+          "task_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Task Counts",
+            "type": "object"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          },
+          "total_tokens": {
+            "default": 0,
+            "title": "Total Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_count",
+          "success_count",
+          "failure_count"
+        ],
+        "title": "LlmInvocationSummaryResponse",
+        "type": "object"
+      },
       "ManualEventMutationResponse": {
         "properties": {
           "applied": {
@@ -4328,6 +5543,144 @@
         "title": "McpAccessTokenResponse",
         "type": "object"
       },
+      "McpToolInvocationResponse": {
+        "properties": {
+          "auth_mode": {
+            "title": "Auth Mode",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Text"
+          },
+          "invocation_id": {
+            "title": "Invocation Id",
+            "type": "string"
+          },
+          "output_summary": {
+            "additionalProperties": true,
+            "title": "Output Summary",
+            "type": "object"
+          },
+          "proposal_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Id"
+          },
+          "status": {
+            "enum": [
+              "started",
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Code"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "target_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Kind"
+          },
+          "ticket_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Id"
+          },
+          "tool_name": {
+            "title": "Tool Name",
+            "type": "string"
+          },
+          "transport": {
+            "title": "Transport",
+            "type": "string"
+          },
+          "transport_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transport Request Id"
+          }
+        },
+        "required": [
+          "invocation_id",
+          "tool_name",
+          "transport",
+          "auth_mode",
+          "status",
+          "created_at"
+        ],
+        "title": "McpToolInvocationResponse",
+        "type": "object"
+      },
       "OAuthSessionCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4486,15 +5839,15 @@
       "OnboardingRegisterRequest": {
         "additionalProperties": false,
         "properties": {
-          "notify_email": {
+          "email": {
             "maxLength": 255,
             "minLength": 3,
-            "title": "Notify Email",
+            "title": "Email",
             "type": "string"
           }
         },
         "required": [
-          "notify_email"
+          "email"
         ],
         "title": "OnboardingRegisterRequest",
         "type": "object"
@@ -5296,6 +6649,42 @@
         "title": "SourceHealthSummaryResponse",
         "type": "object"
       },
+      "SourceLlmInvocationsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LlmInvocationLogResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "integer"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/LlmInvocationSummaryResponse"
+          }
+        },
+        "required": [
+          "source_id",
+          "items",
+          "summary"
+        ],
+        "title": "SourceLlmInvocationsResponse",
+        "type": "object"
+      },
       "SourceObservabilityResponse": {
         "properties": {
           "active": {
@@ -5833,6 +7222,31 @@
         "title": "SyncRequestCreateResponse",
         "type": "object"
       },
+      "SyncRequestLlmInvocationsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LlmInvocationLogResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/LlmInvocationSummaryResponse"
+          }
+        },
+        "required": [
+          "request_id",
+          "items",
+          "summary"
+        ],
+        "title": "SyncRequestLlmInvocationsResponse",
+        "type": "object"
+      },
       "SyncRequestStatusResponse": {
         "properties": {
           "applied": {
@@ -6102,15 +7516,8 @@
             "type": "string"
           },
           "email": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Email"
+            "title": "Email",
+            "type": "string"
           },
           "id": {
             "title": "Id",
@@ -6125,17 +7532,6 @@
             "title": "Language Code",
             "type": "string"
           },
-          "notify_email": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notify Email"
-          },
           "timezone_name": {
             "title": "Timezone Name",
             "type": "string"
@@ -6148,7 +7544,6 @@
         "required": [
           "id",
           "email",
-          "notify_email",
           "timezone_name",
           "timezone_source",
           "calendar_delay_seconds",
@@ -6173,18 +7568,6 @@
             ],
             "title": "Calendar Delay Seconds"
           },
-          "email": {
-            "anyOf": [
-              {
-                "maxLength": 255,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Email"
-          },
           "language_code": {
             "anyOf": [
               {
@@ -6199,18 +7582,6 @@
               }
             ],
             "title": "Language Code"
-          },
-          "notify_email": {
-            "anyOf": [
-              {
-                "maxLength": 255,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notify Email"
           },
           "timezone_name": {
             "anyOf": [
@@ -6452,7 +7823,137 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/agent/activity/recent": {
+      "get": {
+        "operationId": "get_recent_agent_activity_route_agent_activity_recent_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRecentActivityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Recent Agent Activity Route",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
     "/agent/approval-tickets": {
+      "get": {
+        "operationId": "get_approval_tickets_route_agent_approval_tickets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "title": "Status Filter",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApprovalTicketResponse"
+                  },
+                  "title": "Response Get Approval Tickets Route Agent Approval Tickets Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Approval Tickets Route",
+        "tags": [
+          "agents"
+        ]
+      },
       "post": {
         "operationId": "post_approval_ticket_agent_approval_tickets_post",
         "parameters": [
@@ -6763,6 +8264,64 @@
         ]
       }
     },
+    "/agent/context/families/{family_id}": {
+      "get": {
+        "operationId": "get_agent_family_context_agent_context_families__family_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "family_id",
+            "required": true,
+            "schema": {
+              "title": "Family Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentFamilyContextResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Family Context",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
     "/agent/context/sources/{source_id}": {
       "get": {
         "operationId": "get_agent_source_context_agent_context_sources__source_id__get",
@@ -6870,6 +8429,79 @@
         ]
       }
     },
+    "/agent/proposals": {
+      "get": {
+        "operationId": "get_agent_proposals_route_agent_proposals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "title": "Status Filter",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentProposalResponse"
+                  },
+                  "title": "Response Get Agent Proposals Route Agent Proposals Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Proposals Route",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
     "/agent/proposals/change-decision": {
       "post": {
         "operationId": "post_agent_change_decision_proposal_agent_proposals_change_decision_post",
@@ -6924,6 +8556,242 @@
           }
         },
         "summary": "Post Agent Change Decision Proposal",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/agent/proposals/change-edit-commit": {
+      "post": {
+        "operationId": "post_agent_change_edit_commit_proposal_agent_proposals_change_edit_commit_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentChangeEditCommitProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Agent Change Edit Commit Proposal",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/agent/proposals/family-relink-commit": {
+      "post": {
+        "operationId": "post_agent_family_relink_commit_proposal_agent_proposals_family_relink_commit_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentFamilyRelinkCommitProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Agent Family Relink Commit Proposal",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/agent/proposals/family-relink-preview": {
+      "post": {
+        "operationId": "post_agent_family_relink_preview_proposal_agent_proposals_family_relink_preview_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentFamilyRelinkPreviewProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Agent Family Relink Preview Proposal",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/agent/proposals/label-learning-commit": {
+      "post": {
+        "operationId": "post_agent_label_learning_commit_proposal_agent_proposals_label_learning_commit_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentLabelLearningCommitProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Agent Label Learning Commit Proposal",
         "tags": [
           "agents"
         ]
@@ -9497,6 +11365,300 @@
         ]
       }
     },
+    "/settings/channel-accounts": {
+      "get": {
+        "operationId": "get_channel_accounts_settings_channel_accounts_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChannelAccountResponse"
+                  },
+                  "title": "Response Get Channel Accounts Settings Channel Accounts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Channel Accounts",
+        "tags": [
+          "settings"
+        ]
+      },
+      "post": {
+        "operationId": "post_channel_account_settings_channel_accounts_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelAccountCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelAccountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Channel Account",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/settings/channel-accounts/{account_id}": {
+      "delete": {
+        "operationId": "delete_channel_account_settings_channel_accounts__account_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelAccountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Channel Account",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/settings/channel-deliveries": {
+      "get": {
+        "operationId": "get_channel_deliveries_settings_channel_deliveries_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChannelDeliveryResponse"
+                  },
+                  "title": "Response Get Channel Deliveries Settings Channel Deliveries Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Channel Deliveries",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/settings/mcp-invocations": {
+      "get": {
+        "operationId": "get_mcp_invocations_settings_mcp_invocations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/McpToolInvocationResponse"
+                  },
+                  "title": "Response Get Mcp Invocations Settings Mcp Invocations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Mcp Invocations",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
     "/settings/mcp-tokens": {
       "get": {
         "operationId": "get_mcp_tokens_settings_mcp_tokens_get",
@@ -10019,6 +12181,92 @@
         ]
       }
     },
+    "/sources/{source_id}/llm-invocations": {
+      "get": {
+        "operationId": "get_source_llm_invocations_sources__source_id__llm_invocations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "request_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Request Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceLlmInvocationsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Source Llm Invocations",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
     "/sources/{source_id}/oauth-sessions": {
       "post": {
         "operationId": "create_oauth_session_sources__source_id__oauth_sessions_post",
@@ -10435,6 +12683,74 @@
           }
         },
         "summary": "Get Sync Request",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/sync-requests/{request_id}/llm-invocations": {
+      "get": {
+        "operationId": "get_sync_request_llm_invocations_sync_requests__request_id__llm_invocations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncRequestLlmInvocationsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Sync Request Llm Invocations",
         "tags": [
           "sources"
         ]

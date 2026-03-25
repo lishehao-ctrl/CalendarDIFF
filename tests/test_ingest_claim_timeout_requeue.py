@@ -17,7 +17,7 @@ def _seed_claimed_job(
     request_id: str,
     attempt: int,
 ) -> tuple[IngestJob, SyncRequest]:
-    user = User(email=f"{request_id}@example.com", notify_email=f"{request_id}@example.com")
+    user = User(email=f"{request_id}@example.com")
     db.add(user)
     db.flush()
     source = InputSource(

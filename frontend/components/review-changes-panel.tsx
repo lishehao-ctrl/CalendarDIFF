@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
+import { EmptyState, ErrorState } from "@/components/data-states";
 import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { WorkbenchLoadingShell } from "@/components/workbench-loading-shell";
 import {
@@ -28,7 +28,7 @@ import {
 import { listSources, sourceListCacheKey } from "@/lib/api/sources";
 import { withBasePath } from "@/lib/demo-mode";
 import { useResponsiveTier } from "@/lib/use-responsive-tier";
-import { workbenchQueueRowClassName } from "@/lib/workbench-styles";
+import { workbenchQueueRowClassName, workbenchStateSurfaceClassName, workbenchSupportPanelClassName } from "@/lib/workbench-styles";
 import {
   formatDateTime,
   formatSemanticDue,
@@ -111,7 +111,7 @@ function ChangeSummarySourceCard({
   const sourceKind = sourceKindDescriptor(summary?.source_kind);
 
   return (
-    <div className="rounded-[1.1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
+    <div className={workbenchSupportPanelClassName("default", "p-4 text-sm text-[#314051]")}>
       <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{title}</p>
       <p className="mt-2 font-medium text-ink">{sourceLabel}</p>
       {sourceKind ? <p className="mt-1 text-xs text-[#6d7885]">{sourceKind}</p> : null}
@@ -168,7 +168,7 @@ function EvidenceSummary({ evidence }: { evidence: LoadedEvidence }) {
     return (
       <div className="space-y-3">
         {structuredItems.map((item, index) => (
-          <div key={`${item.uid || "gmail"}-${index}`} className="rounded-[1.15rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
+          <div key={`${item.uid || "gmail"}-${index}`} className={workbenchSupportPanelClassName("default", "p-4 text-sm text-[#314051]")}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -187,7 +187,7 @@ function EvidenceSummary({ evidence }: { evidence: LoadedEvidence }) {
               <EvidenceField label={translate("changes.workspace.thread")} value={item.thread_id} />
             </div>
             {item.snippet ? (
-              <div className="mt-4 rounded-[1rem] border border-line/70 bg-white/80 p-3">
+              <div className={workbenchSupportPanelClassName("quiet", "mt-4 p-3")}>
                 <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.mailSummary")}</p>
                 <p className="mt-2 whitespace-pre-wrap leading-6 text-[#596270]">{item.snippet}</p>
               </div>
@@ -201,7 +201,7 @@ function EvidenceSummary({ evidence }: { evidence: LoadedEvidence }) {
   return (
     <div className="space-y-3">
       {structuredItems.map((item, index) => (
-        <div key={`${item.uid || "event"}-${index}`} className="rounded-[1.15rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
+        <div key={`${item.uid || "event"}-${index}`} className={workbenchSupportPanelClassName("default", "p-4 text-sm text-[#314051]")}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex flex-wrap items-center gap-2">
@@ -586,7 +586,7 @@ function DecisionWorkspaceMain({
               : translate("changes.workspace.noEvidence")}
         </p>
       ) : null}
-      <div className="inline-flex flex-wrap gap-2 rounded-full border border-line/80 bg-white/60 p-2">
+      <div className={workbenchSupportPanelClassName("quiet", "inline-flex flex-wrap gap-2 p-2")}>
         <Button size="sm" variant={evidenceView === "summary" ? "primary" : "ghost"} onClick={() => onEvidenceViewChange("summary")}>
           {translate("changes.workspace.summary")}
         </Button>
@@ -594,7 +594,7 @@ function DecisionWorkspaceMain({
           {translate("changes.workspace.raw")}
         </Button>
       </div>
-      <div className="rounded-[1.2rem] border border-line/80 bg-[#f2ebe1] p-4">
+      <div className={workbenchSupportPanelClassName("quiet", "p-4")}>
         {evidence ? (
           evidenceView === "summary" ? (
             <EvidenceSummary evidence={evidence} />
@@ -610,11 +610,11 @@ function DecisionWorkspaceMain({
 
   const canonicalBody = (
     <div className="space-y-3">
-      <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+      <div className={workbenchSupportPanelClassName("default", "p-4")}>
         <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.family")}</p>
         <p className="mt-2 text-sm font-medium text-ink">{canonicalDisplayLabel(editContext, selected)}</p>
       </div>
-      <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+      <div className={workbenchSupportPanelClassName("default", "p-4")}>
         <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.canonicalEvent")}</p>
         <p className="mt-2 text-sm font-medium text-ink">
           {editContextError
@@ -657,27 +657,27 @@ function DecisionWorkspaceMain({
             </div>
           </div>
           <div className={`mt-4 grid gap-3 ${compact ? "sm:grid-cols-1" : "md:grid-cols-2"}`}>
-            <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+            <div className={workbenchSupportPanelClassName("default", "p-4")}>
               <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.whySeeingThis")}</p>
               <p className="mt-2 text-sm leading-6 text-[#314051]">{decisionSupport.why_now}</p>
             </div>
-            <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+            <div className={workbenchSupportPanelClassName("default", "p-4")}>
               <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.suggestedAction")}</p>
               <p className="mt-2 text-sm font-medium text-ink">{suggestedActionLabel(decisionSupport.suggested_action)}</p>
               <p className="mt-2 text-sm leading-6 text-[#314051]">{decisionSupport.suggested_action_reason}</p>
             </div>
-            <div className={`rounded-[1.15rem] border border-line/80 bg-white/72 p-4 ${compact ? "" : "md:col-span-2"}`}>
+            <div className={workbenchSupportPanelClassName("default", `p-4 ${compact ? "" : "md:col-span-2"}`)}>
               <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.risk")}</p>
               <p className="mt-2 text-sm font-medium text-ink">{formatStatusLabel(decisionSupport.risk_level)}</p>
               <p className="mt-2 text-sm leading-6 text-[#314051]">{decisionSupport.risk_summary}</p>
             </div>
           </div>
           {decisionSupport.key_facts.length > 0 ? (
-            <div className="mt-4 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+            <div className={workbenchSupportPanelClassName("quiet", "mt-4 p-4")}>
               <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.keyFacts")}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {decisionSupport.key_facts.map((fact) => (
-                  <span key={fact} className="rounded-full border border-line/80 bg-white/80 px-3 py-1.5 text-sm text-[#314051]">
+                  <span key={fact} className="rounded-full border border-line/80 bg-[var(--surface-support)] px-3 py-1.5 text-sm text-[#314051]">
                     {fact}
                   </span>
                 ))}
@@ -690,19 +690,19 @@ function DecisionWorkspaceMain({
       <Card className={compact ? "p-4" : "p-5"}>
         <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changes.workspace.whatChanged")}</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+          <div className={workbenchSupportPanelClassName("default", "p-4")}>
             <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.before")}</p>
             <p className="mt-2 text-sm font-medium text-ink">{beforeDue}</p>
           </div>
-          <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+          <div className={workbenchSupportPanelClassName("default", "p-4")}>
             <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.after")}</p>
             <p className="mt-2 text-sm font-medium text-ink">{afterDue}</p>
           </div>
-          <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+          <div className={workbenchSupportPanelClassName("default", "p-4")}>
             <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.detected")}</p>
             <p className="mt-2 text-sm font-medium text-ink">{formatDateTime(selected.detected_at)}</p>
           </div>
-          <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+          <div className={workbenchSupportPanelClassName("default", "p-4")}>
             <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.primarySource")}</p>
             <p className="mt-2 text-sm font-medium text-ink">{selected.primary_source ? sourceDescriptor(selected.primary_source) : translate("changes.needsSourceConfirmation")}</p>
           </div>

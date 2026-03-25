@@ -11,7 +11,7 @@ from app.modules.runtime.apply.pending_change_outbox import emit_change_pending_
 
 def _seed_user_and_changes(db_session) -> tuple[User, list[Change]]:
     now = datetime.now(timezone.utc)
-    user = User(email="pending-outbox@example.com", notify_email="pending-outbox@example.com")
+    user = User(email="pending-outbox@example.com")
     db_session.add(user)
     db_session.flush()
 

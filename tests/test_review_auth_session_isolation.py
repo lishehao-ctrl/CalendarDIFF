@@ -8,8 +8,8 @@ from app.db.models.shared import User
 
 
 def test_review_summary_is_scoped_to_authenticated_user(client, db_session, authenticate_client) -> None:
-    user_a = User(notify_email="a@example.com", password_hash="hash", onboarding_completed_at=datetime.now(timezone.utc))
-    user_b = User(notify_email="b@example.com", password_hash="hash", onboarding_completed_at=datetime.now(timezone.utc))
+    user_a = User(email="a@example.com", password_hash="hash", onboarding_completed_at=datetime.now(timezone.utc))
+    user_b = User(email="b@example.com", password_hash="hash", onboarding_completed_at=datetime.now(timezone.utc))
     db_session.add_all([user_a, user_b])
     db_session.flush()
 

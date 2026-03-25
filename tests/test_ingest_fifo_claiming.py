@@ -58,7 +58,7 @@ def _seed_request_and_job(
 
 
 def test_claim_jobs_enforces_same_source_fifo(db_session: Session) -> None:
-    user = User(email="fifo@example.com", notify_email="fifo@example.com")
+    user = User(email="fifo@example.com")
     db_session.add(user)
     db_session.flush()
 
@@ -102,7 +102,7 @@ def test_claim_jobs_enforces_same_source_fifo(db_session: Session) -> None:
 
 
 def test_claim_jobs_respects_existing_claimed_head(db_session: Session) -> None:
-    user = User(email="fifo2@example.com", notify_email="fifo2@example.com")
+    user = User(email="fifo2@example.com")
     db_session.add(user)
     db_session.flush()
 
@@ -136,7 +136,7 @@ def test_claim_jobs_respects_existing_claimed_head(db_session: Session) -> None:
 
 
 def test_claim_jobs_does_not_block_newer_source_job_on_sleeping_retry_head(db_session: Session) -> None:
-    user = User(email="fifo3@example.com", notify_email="fifo3@example.com")
+    user = User(email="fifo3@example.com")
     db_session.add(user)
     db_session.flush()
 

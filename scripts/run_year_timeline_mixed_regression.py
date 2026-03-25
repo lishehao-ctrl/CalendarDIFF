@@ -45,7 +45,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bundle-parallel", type=int, default=4)
     parser.add_argument("--email-parallel", type=int, default=12)
     parser.add_argument("--ics-parallel", type=int, default=12)
-    parser.add_argument("--api-mode", choices=["responses", "chat_completions"], default="chat_completions")
+    parser.add_argument("--provider-id", default="qwen_us_main")
     parser.add_argument("--cache-mode", choices=["enable", "disable"], default="enable")
     parser.add_argument("--source-id", type=int, default=2)
     parser.add_argument("--list-bundles", action="store_true")
@@ -71,7 +71,7 @@ def main() -> None:
         "bundle_parallel": int(args.bundle_parallel),
         "email_parallel": int(args.email_parallel),
         "ics_parallel": int(args.ics_parallel),
-        "api_mode": args.api_mode,
+        "provider_id": args.provider_id,
         "cache_mode": args.cache_mode,
         "source_id": int(args.source_id),
         "bundle_count": len(bundles),

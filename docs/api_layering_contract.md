@@ -2,10 +2,10 @@
 
 ## Purpose
 
-This document defines the shortest stable contract for deciding which CalendarDIFF API a caller should treat as authoritative for each lane.
+This document defines the shortest stable contract for deciding which CalendarDIFF API a caller should treat as authoritative for each product surface.
 
 It is not an endpoint inventory.
-It is a lane-to-endpoint ownership map for:
+It is a surface-ownership map for:
 
 - frontend page design
 - embedded agent/copilot entry points
@@ -16,11 +16,11 @@ If two endpoints can both answer a question, this document says which one is the
 
 ## Core rules
 
-1. Product truth stays in the product lane APIs.
+1. Product truth stays in the product APIs.
 2. Aggregated posture stays in backend-built summary/context APIs.
 3. Agent execution never bypasses product truth writes.
 4. MCP must reuse the agent layer, not call arbitrary truth writes directly.
-5. UI should not reconstruct a lane by stitching together lower-level endpoints when a backend-built lane contract already exists.
+5. UI should not reconstruct a product surface by stitching together lower-level endpoints when a backend-built contract already exists.
 
 ## Layer model
 
@@ -68,7 +68,7 @@ This is the external transport wrapper around the agent layer:
 
 It must not become a second business API.
 
-## Lane contracts
+## Surface contracts
 
 ## Overview
 
@@ -80,7 +80,7 @@ Use this as the main Overview posture contract.
 It already owns:
 
 - workspace posture
-- backend-chosen recommended lane
+- backend-chosen recommended surface
 - source rollup
 - family attention
 - manual lane summary
@@ -103,7 +103,7 @@ It is not the canonical source for the rest of the Overview screen layout.
 
 - `GET /sources`
 
-This is the canonical source for the Sources lane list.
+This is the canonical source for the Sources surface list.
 It already carries product-facing projections such as:
 
 - `operator_guidance`
@@ -223,15 +223,16 @@ Approval tickets are the bounded execution path for agent/social-confirmable act
 Families now has:
 
 - read-only context: `GET /agent/context/families/{family_id}`
-- preview-only proposal: `POST /agent/proposals/family-relink-preview`
+- preview proposal: `POST /agent/proposals/family-relink-preview`
+- low-risk executable relink commit: `POST /agent/proposals/family-relink-commit` -> approval ticket -> confirm
+- low-risk label learning alias commit: `POST /agent/proposals/label-learning-commit` -> approval ticket -> confirm
 
-There is still no executable Families agent surface.
-Families remains web-first for actual mutation.
+Families remains web-first for broader mutation such as create/rename/merge/batch governance.
 
 ### Do not
 
 - do not use `/changes/{change_id}/label-learning` as the primary Families lane index
-- do not route Families writes through `/agent/*`
+- do not route broader Families writes through `/agent/*`
 - do not treat family preview proposals as executable actions
 
 ## Manual
@@ -369,8 +370,8 @@ Rules:
 
 ## Current “do this, not that” summary
 
-- Overview posture: use `GET /changes/summary`, not client-side lane reconstruction.
-- Overview agent brief: use `GET /agent/context/workspace`, not raw lane calls.
+- Overview posture: use `GET /changes/summary`, not client-side surface reconstruction.
+- Overview agent brief: use `GET /agent/context/workspace`, not raw surface calls.
 - Sources list: use `GET /sources`, not `/sync-requests/*`.
 - Source detail: use `/sources/{id}/observability` and `/sources/{id}/sync-history`; use `/sync-requests/{id}` only for deep drill-down.
 - Changes queue: use `GET /changes`; do not rebuild queue semantics locally.

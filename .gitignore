@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 *.egg-info/
+.DS_Store
 .pytest_cache/
 .venv/
 .env
@@ -31,5 +32,6 @@ frontend/tsconfig.typecheck.tsbuildinfo
 .cache/
 frontend/.next-dev/
 frontend/.next-prod/
+frontend_smoke.cookies
 archive/generated/
 training/gmail_secondary_filter/output/

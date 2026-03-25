@@ -29,7 +29,6 @@ def _create_source(
     now = datetime.now(timezone.utc)
     user = User(
         email=f"{provider}-owner@example.com",
-        notify_email=f"{provider}-owner@example.com",
         onboarding_completed_at=now,
     )
     db_session.add(user)

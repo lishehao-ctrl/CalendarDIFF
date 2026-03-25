@@ -29,8 +29,7 @@ class _FakeGmailClient:
 
 def test_oauth_callback_preserves_existing_refresh_token_and_reactivates_source(db_session) -> None:
     user = User(
-        email=None,
-        notify_email="gmail-owner@example.com",
+        email="gmail-owner@example.com",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
@@ -102,8 +101,7 @@ def test_oauth_callback_preserves_existing_refresh_token_and_reactivates_source(
 
 def test_oauth_callback_without_monitoring_window_keeps_source_inactive_and_skips_sync(db_session) -> None:
     user = User(
-        email=None,
-        notify_email="gmail-no-term@example.com",
+        email="gmail-no-term@example.com",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)

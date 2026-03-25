@@ -15,7 +15,6 @@ from app.modules.runtime.apply.entity_resolution import resolve_entity_uid
 def _create_user_source_family(db_session: Session) -> tuple[User, InputSource, CourseWorkItemLabelFamily]:
     user = User(
         email="entity-resolution@example.com",
-        notify_email="entity-resolution@example.com",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)

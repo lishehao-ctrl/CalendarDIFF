@@ -39,7 +39,6 @@ from tests.support.payload_builders import build_course_parse, build_event_parts
 def _create_user(db_session, *, email: str) -> User:
     user = User(
         email=email,
-        notify_email=email,
         timezone_name="America/Los_Angeles",
         onboarding_completed_at=datetime.now(timezone.utc),
     )

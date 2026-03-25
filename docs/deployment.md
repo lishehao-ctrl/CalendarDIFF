@@ -19,7 +19,8 @@ Shared-host rule:
 
 - CalendarDIFF owns `cal.shehao.app`
 - RPG owns `rpg.shehao.app`
-- CalendarDIFF runs on `127.0.0.1:3000` and `127.0.0.1:8000`
+- local/dev uses frontend `127.0.0.1:3000` and backend `127.0.0.1:8200`
+- the AWS host runs `frontend` on `127.0.0.1:3000` and `public-service` on `127.0.0.1:8000`
 - CalendarDIFF MCP runs on `127.0.0.1:8766`
 - RPG currently remains separate on `/srv/rpg-demo` with its own backend port `127.0.0.1:8010`
 
@@ -58,14 +59,29 @@ Minimum runtime settings:
 - `APP_SECRET_KEY`
 - `DATABASE_URL`
 - `REDIS_URL`
-- `INGESTION_LLM_MODEL`
-- `INGESTION_LLM_API_KEY`
+- `INGESTION_LLM_PROVIDER_ID`
+- `AGENT_LLM_PROVIDER_ID`
 
-LLM endpoint settings:
-- `INGESTION_LLM_API_MODE`
-- `INGESTION_LLM_CHAT_BASE_URL` for `chat_completions`
-- `INGESTION_LLM_RESPONSES_BASE_URL` for `responses`
-- `INGESTION_LLM_BASE_URL` remains a legacy fallback when you intentionally use one shared root for both modes
+Canonical LLM settings:
+- `INGESTION_LLM_PROVIDER_ID`
+- `AGENT_LLM_PROVIDER_ID`
+- `LLM_PROVIDER_<ID>_VENDOR`
+- `LLM_PROVIDER_<ID>_PROTOCOL`
+- `LLM_PROVIDER_<ID>_MODEL`
+- `LLM_PROVIDER_<ID>_BASE_URL`
+- `LLM_PROVIDER_<ID>_API_KEY`
+- optional `LLM_PROVIDER_<ID>_CHAT_BASE_URL`
+- optional `LLM_PROVIDER_<ID>_RESPONSES_BASE_URL`
+- optional `LLM_PROVIDER_<ID>_FALLBACK_PROVIDER_IDS`
+
+Optional bounded agent-generation settings:
+- `AGENT_GENERATION_MODE=deterministic|llm_assisted`
+- `AGENT_LLM_PROVIDER_ID`
+
+Operational rule:
+- keep the Claw / approval / MCP contract deterministic
+- `AGENT_GENERATION_MODE=llm_assisted` may rewrite proposal summary/reason copy only
+- action selection, payload kind, execution boundary, and approval safety checks must remain deterministic
 
 Optional OAuth/SMTP settings still apply when those integrations are enabled.
 
@@ -139,15 +155,44 @@ python scripts/update_openapi_snapshots.py
 ```
 
 ## Verification
-After deploy, verify:
+After deploy, verify the public host mapping through nginx:
 
 ```bash
-curl http://127.0.0.1:8200/health
+curl https://cal.shehao.app/health
 ```
 
-and, for local stack verification:
+For local stack verification, use:
 
 ```bash
 ./scripts/dev_stack.sh up
 ./scripts/dev_stack.sh status
 ```
+
+## Full local validation
+
+Canonical local validation entrypoint:
+
+```bash
+python scripts/run_full_repo_validation.py
+```
+
+The validation runner executes:
+
+1. preflight
+2. backend `pytest -q`
+3. frontend `typecheck/lint/build`
+4. `scripts/run_agent_claw_strict_eval.py`
+5. `scripts/run_year_timeline_replay_smoke.py`
+
+Local infra expectation:
+
+- PostgreSQL on `127.0.0.1:5432`
+- Redis on `127.0.0.1:6379`
+
+Validation-specific Redis DB indexes:
+
+- pytest: `/15`
+- strict eval: `/14`
+- replay: `/13`
+
+Docker daemon is optional for local validation if PostgreSQL and Redis are already reachable.

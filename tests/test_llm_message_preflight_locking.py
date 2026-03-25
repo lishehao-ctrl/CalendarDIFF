@@ -11,7 +11,7 @@ from app.modules.runtime.kernel.parse_task_queue import ParseTaskMessage
 
 
 def test_prepare_message_for_processing_does_not_mutate_running_state_for_generic_task(db_session) -> None:
-    user = User(email="preflight@example.com", notify_email="preflight@example.com")
+    user = User(email="preflight@example.com")
     db_session.add(user)
     db_session.flush()
 
@@ -74,7 +74,7 @@ def test_prepare_message_for_processing_does_not_mutate_running_state_for_generi
 
 
 def test_prepare_message_for_processing_leaves_shared_job_untouched_for_calendar_component(db_session) -> None:
-    user = User(email="preflight-calendar@example.com", notify_email="preflight-calendar@example.com")
+    user = User(email="preflight-calendar@example.com")
     db_session.add(user)
     db_session.flush()
 

@@ -12,7 +12,7 @@ from app.modules.runtime.llm import transitions as llm_transitions
 
 
 def _seed_claimed_context(db: Session, *, request_id: str) -> tuple[IngestJob, SyncRequest]:
-    user = User(email=f"{request_id}@example.com", notify_email=f"{request_id}@example.com")
+    user = User(email=f"{request_id}@example.com")
     db.add(user)
     db.flush()
 

@@ -23,8 +23,11 @@ The Claw-facing MCP surface is frozen to these tools:
 - `list_proposals`
 - `get_proposal`
 - `create_change_decision_proposal`
+- `create_change_edit_commit_proposal`
 - `create_source_recovery_proposal`
 - `create_family_relink_preview_proposal`
+- `create_family_relink_commit_proposal`
+- `create_label_learning_commit_proposal`
 
 ### Approval
 
@@ -36,19 +39,29 @@ The Claw-facing MCP surface is frozen to these tools:
 
 Do not add more MCP tools in this phase.
 
+Optional internal implementation note:
+
+- `AGENT_GENERATION_MODE=llm_assisted` is allowed only as an internal proposal-copy rewrite path
+- it must not change MCP tool names, suggested action, payload kind, execution mode, or approval semantics
+
 ## Frozen execution boundaries
 
 Currently executable through approval tickets:
 
 - direct change decision proposals whose action becomes `approve` or `reject`
+- proposal edit commit proposals whose payload becomes `proposal_edit_commit`
 - source recovery proposals whose payload becomes `run_source_sync`
+- family relink commit proposals whose payload becomes `family_relink_commit`
+- label-learning add-alias proposals whose payload becomes `label_learning_add_alias_commit`
 
 Still web-only:
 
 - reconnect Gmail
 - source settings update flows
-- edit-then-approve
-- family governance execution
+- canonical edit / broader edit-then-approve flows outside pending proposal edit commit
+- family relink preview
+- broader family governance execution
+- create-family label learning
 - manual writes
 
 ## Required audit surfaces
@@ -73,17 +86,7 @@ The following are intentionally out of scope:
 - Telegram / Slack / WeChat transport adapters
 - channel webhook / callback productization
 - unrelated `frontend/*` dirty worktree changes
-- unrelated `llm_gateway/*` dirty worktree changes
 - unrelated `sources/*` dirty worktree changes
-- OpenAPI snapshot refresh while unrelated dirty backend work exists
-
-## OpenAPI note
-
-`contracts/openapi/public-service.json` is intentionally deferred in this closeout.
-
-Do not refresh or commit the snapshot as part of the Claw closeout while unrelated backend work is still dirty.
-
-OpenAPI contract sync is a separate pass after those unrelated worktrees are committed or removed.
 
 ## Acceptance rule
 

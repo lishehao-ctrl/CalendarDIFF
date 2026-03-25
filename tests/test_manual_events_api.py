@@ -12,7 +12,6 @@ from app.modules.common.course_identity import normalize_label_token, normalized
 def _create_user(db_session) -> User:
     user = User(
         email="manual-events@example.com",
-        notify_email="manual-events@example.com",
         password_hash="hash",
         onboarding_completed_at=datetime.now(timezone.utc),
     )

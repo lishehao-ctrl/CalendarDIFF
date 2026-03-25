@@ -24,7 +24,6 @@ def _create_calendar_source(db_session: Session) -> InputSource:
     now = datetime.now(timezone.utc)
     user = User(
         email="calendar-delta-owner@example.com",
-        notify_email="calendar-delta-owner@example.com",
         onboarding_completed_at=now,
     )
     db_session.add(user)

@@ -13,7 +13,7 @@ from tests.support.payload_builders import build_calendar_payload, build_course_
 
 
 def _create_user(db_session) -> User:
-    user = User(email="entity-approved@example.com", notify_email="entity-approved@example.com")
+    user = User(email="entity-approved@example.com")
     db_session.add(user)
     db_session.flush()
     return user

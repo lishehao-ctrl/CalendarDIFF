@@ -24,7 +24,6 @@ def _create_user_source_and_family(db_session) -> tuple[User, InputSource, Cours
     now = datetime.now(timezone.utc)
     user = User(
         email="gmail-dispatch-smoke@example.com",
-        notify_email="gmail-dispatch-smoke@example.com",
         onboarding_completed_at=now,
     )
     db_session.add(user)

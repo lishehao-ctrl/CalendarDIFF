@@ -4,7 +4,6 @@ import argparse
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-import shutil
 import sys
 from typing import Any
 
@@ -12,8 +11,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.modules.ingestion.ics_delta.diff import build_ics_delta
-from app.modules.ingestion.ics_delta.parser import parse_ics_snapshot
+from app.modules.runtime.connectors.ics_delta.diff import build_ics_delta
+from app.modules.runtime.connectors.ics_delta.parser import parse_ics_snapshot
 from tools.datasets.year_timeline_background_stream import (
     DEFAULT_BACKGROUND_SEED,
     build_background_email_samples,
@@ -36,8 +35,6 @@ from tools.datasets.year_timeline_scenarios import build_year_timeline_manifest
 EMAIL_ROOT = REPO_ROOT / "tests" / "fixtures" / "private" / "email_pool"
 ICS_ROOT = REPO_ROOT / "tests" / "fixtures" / "private" / "ics_timeline"
 MIXED_ROOT = REPO_ROOT / "tests" / "fixtures" / "private" / "year_timeline_mixed"
-ARCHIVE_ROOT = REPO_ROOT / "archive" / "generated" / "year_timeline_variety_prefilter_20260318"
-ARCHIVE_SENTINEL = ARCHIVE_ROOT / "archive_manifest.json"
 
 EMAIL_BUCKET = "year_timeline_gmail"
 EMAIL_DERIVED_SMOKE = "year_timeline_smoke_24"
@@ -105,45 +102,7 @@ def load_or_build_manifest(path: Path) -> dict[str, Any]:
     return manifest.to_dict()
 
 
-def archive_existing_generated_year_timeline_outputs() -> Path:
-    if ARCHIVE_SENTINEL.exists():
-        return ARCHIVE_ROOT
-
-    mappings = [
-        (REPO_ROOT / "data" / "synthetic" / "year_timeline_demo", ARCHIVE_ROOT / "data" / "synthetic" / "year_timeline_demo"),
-        (EMAIL_ROOT / "year_timeline_gmail", ARCHIVE_ROOT / "tests" / "fixtures" / "private" / "email_pool" / "year_timeline_gmail"),
-        (EMAIL_ROOT / "year_timeline_full_sim", ARCHIVE_ROOT / "tests" / "fixtures" / "private" / "email_pool" / "year_timeline_full_sim"),
-        (ICS_ROOT / "scenarios" / "year-timeline-wi26", ARCHIVE_ROOT / "tests" / "fixtures" / "private" / "ics_timeline" / "scenarios" / "year-timeline-wi26"),
-        (ICS_ROOT / "scenarios" / "year-timeline-sp26", ARCHIVE_ROOT / "tests" / "fixtures" / "private" / "ics_timeline" / "scenarios" / "year-timeline-sp26"),
-        (ICS_ROOT / "scenarios" / "year-timeline-su26", ARCHIVE_ROOT / "tests" / "fixtures" / "private" / "ics_timeline" / "scenarios" / "year-timeline-su26"),
-        (ICS_ROOT / "scenarios" / "year-timeline-fa26", ARCHIVE_ROOT / "tests" / "fixtures" / "private" / "ics_timeline" / "scenarios" / "year-timeline-fa26"),
-        (REPO_ROOT / "tests" / "fixtures" / "private" / "year_timeline_mixed", ARCHIVE_ROOT / "tests" / "fixtures" / "private" / "year_timeline_mixed"),
-    ]
-
-    archived: list[str] = []
-    for source, destination in mappings:
-        if not source.exists():
-            continue
-        if source.is_dir():
-            shutil.copytree(source, destination, dirs_exist_ok=True)
-        else:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)
-        archived.append(str(source.relative_to(REPO_ROOT)))
-
-    write_json(
-        ARCHIVE_SENTINEL,
-        {
-            "archive_root": str(ARCHIVE_ROOT.relative_to(REPO_ROOT)),
-            "archived_at": now_utc_iso(),
-            "sources": archived,
-        },
-    )
-    return ARCHIVE_ROOT
-
-
 def export_email_pool(manifest: dict[str, Any]) -> None:
-    archive_existing_generated_year_timeline_outputs()
     samples = build_email_samples(manifest)
     write_email_bucket(
         bucket=EMAIL_BUCKET,
@@ -283,7 +242,6 @@ def write_email_bucket(
 
 
 def export_ics_timeline(manifest: dict[str, Any]) -> None:
-    archive_existing_generated_year_timeline_outputs()
     scenarios_root = ICS_ROOT / "scenarios"
     scenarios_root.mkdir(parents=True, exist_ok=True)
     scenario_summaries: list[dict[str, Any]] = []
@@ -399,7 +357,6 @@ def export_ics_timeline(manifest: dict[str, Any]) -> None:
 
 
 def export_mixed_derived_sets(manifest: dict[str, Any]) -> None:
-    archive_existing_generated_year_timeline_outputs()
     derived_root = MIXED_ROOT / "derived_sets"
     derived_root.mkdir(parents=True, exist_ok=True)
     bundles: list[dict[str, Any]] = []

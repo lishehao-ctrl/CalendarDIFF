@@ -38,7 +38,7 @@ def _semantic_payload(
 
 
 def _seed_source(db_session) -> InputSource:
-    user = User(email="rebuild@example.com", notify_email="rebuild@example.com")
+    user = User(email="rebuild@example.com")
     db_session.add(user)
     db_session.flush()
     source = InputSource(

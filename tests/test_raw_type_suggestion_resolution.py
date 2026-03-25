@@ -10,7 +10,7 @@ from tests.support.payload_builders import build_course_parse, build_semantic_pa
 
 
 def test_resolve_kind_resolution_prefers_new_family_over_inline_suggestion_generation(db_session, monkeypatch) -> None:
-    user = User(email=None, notify_email="suggest-user@example.com", password_hash="hash", onboarding_completed_at=datetime.now(timezone.utc))
+    user = User(email="suggest-user@example.com", password_hash="hash", onboarding_completed_at=datetime.now(timezone.utc))
     db_session.add(user)
     db_session.commit()
     db_session.refresh(user)
