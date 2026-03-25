@@ -11,7 +11,6 @@ from app.modules.common.course_identity import normalize_label_token, normalized
 def _create_user_and_source(db_session) -> tuple[User, InputSource]:
     user = User(
         email="summary-owner@example.com",
-        notify_email="summary-owner@example.com",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)

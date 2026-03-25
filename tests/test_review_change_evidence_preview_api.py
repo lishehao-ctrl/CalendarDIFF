@@ -3,15 +3,15 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.db.models.input import InputSource, SourceKind
-from app.db.models.review import Change, ChangeOrigin, ChangeType, ReviewStatus
-from app.db.models.shared import User
+from app.db.models.review import Change, ChangeOrigin, ChangeSourceRef, ChangeType, ReviewStatus
+from app.db.models.shared import CourseWorkItemLabelFamily, User
+from app.modules.common.course_identity import normalize_label_token, normalized_course_identity_key
 from app.modules.common.change_evidence import freeze_observation_evidence
 
 
 def _create_user_with_source(db_session, *, provider: str, source_kind: SourceKind) -> tuple[User, InputSource]:
     user = User(
         email=f"{provider}-preview@example.com",
-        notify_email=f"{provider}-preview@example.com",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
@@ -136,10 +136,30 @@ def test_review_change_after_preview_returns_frozen_gmail_evidence(client, db_se
 
 def test_change_listing_exposes_frozen_evidence_availability(client, db_session, auth_headers) -> None:
     user, _source = _create_user_with_source(db_session, provider="ics", source_kind=SourceKind.CALENDAR)
+    family = CourseWorkItemLabelFamily(
+        user_id=user.id,
+        course_dept="CSE",
+        course_number=100,
+        course_suffix=None,
+        course_quarter=None,
+        course_year2=None,
+        normalized_course_identity=normalized_course_identity_key(
+            course_dept="CSE",
+            course_number=100,
+            course_suffix=None,
+            course_quarter=None,
+            course_year2=None,
+        ),
+        canonical_label="Quiz",
+        normalized_canonical_label=normalize_label_token("Quiz"),
+    )
+    db_session.add(family)
+    db_session.flush()
     before_payload = {
         "uid": "ent-before-only",
         "course_dept": "CSE",
         "course_number": 100,
+        "family_id": family.id,
         "family_name": "Quiz",
         "event_name": "Quiz 2",
         "ordinal": 2,
@@ -170,6 +190,16 @@ def test_change_listing_exposes_frozen_evidence_availability(client, db_session,
             detected_at=datetime.now(timezone.utc),
             before_semantic_json=before_payload,
             after_semantic_json=None,
+            source_refs=[
+                ChangeSourceRef(
+                    position=0,
+                    source_id=_source.id,
+                    source_kind=_source.source_kind,
+                    provider=_source.provider,
+                    external_event_id="evt-before-only",
+                    confidence=0.95,
+                )
+            ],
             before_evidence_json=before_evidence.model_dump(mode="json") if before_evidence is not None else None,
             after_evidence_json=None,
             review_status=ReviewStatus.PENDING,

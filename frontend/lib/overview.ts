@@ -30,12 +30,12 @@ export type OverviewSurfaceVM = {
   cards: OverviewCardVM[];
 };
 
-function laneHref(lane: OverviewHeroVM["ctaHref"] extends never ? never : string) {
-  switch (lane) {
+function surfaceHref(surface: OverviewHeroVM["ctaHref"] extends never ? never : string) {
+  switch (surface) {
     case "sources":
       return "/sources";
     case "initial_review":
-      return "/initial-review";
+      return "/changes?bucket=initial_review";
     case "changes":
       return "/changes";
     case "families":
@@ -49,7 +49,7 @@ function laneHref(lane: OverviewHeroVM["ctaHref"] extends never ? never : string
 
 function buildHero(summary: ChangesWorkbenchSummary): OverviewHeroVM {
   const { workspace_posture: posture } = summary;
-  const nextActionHref = laneHref(posture.next_action.lane);
+  const nextActionHref = surfaceHref(posture.next_action.lane);
   const initialReview = posture.initial_review;
   const monitoring = posture.monitoring;
 

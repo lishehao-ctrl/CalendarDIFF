@@ -22,8 +22,8 @@ export const SheetContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof Dialog.Content> & { side?: "right" | "bottom" }
 >(function SheetContent({ className, children, side = "right", ...props }, ref) {
   const sideClassName = side === "bottom"
-    ? "sheet-content--bottom fixed inset-x-0 bottom-0 z-50 max-h-[85vh] rounded-t-[1.7rem] border-t border-line bg-card p-5 shadow-[var(--shadow-panel)]"
-    : "sheet-content--right fixed inset-y-0 right-0 z-50 h-full w-full max-w-2xl border-l border-line bg-card p-5 shadow-[var(--shadow-panel)]";
+    ? "sheet-content--bottom motion-surface fixed inset-x-0 bottom-0 z-50 max-h-[85vh] rounded-t-[1.7rem] border-t border-line bg-card p-5 shadow-[var(--shadow-panel)]"
+    : "sheet-content--right motion-surface fixed inset-y-0 right-0 z-50 h-full w-full max-w-2xl border-l border-line bg-card p-5 shadow-[var(--shadow-panel)]";
   return (
     <Dialog.Portal>
       <SheetOverlay />

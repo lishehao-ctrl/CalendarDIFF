@@ -21,7 +21,6 @@ def _create_sources(db_session) -> tuple[User, InputSource, InputSource]:
     now = datetime.now(timezone.utc)
     user = User(
         email="merge-owner@example.com",
-        notify_email="merge-owner@example.com",
         onboarding_completed_at=now,
     )
     db_session.add(user)

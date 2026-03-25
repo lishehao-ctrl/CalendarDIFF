@@ -1,12 +1,12 @@
 import dynamic from "next/dynamic";
 import { LocalizedPageHeader } from "@/components/localized-page-header";
-import { PanelLoadingPlaceholder } from "@/components/panel-loading-placeholder";
+import { WorkbenchLoadingShell } from "@/components/workbench-loading-shell";
 import { requireReadyServerSession } from "@/lib/server-auth";
 
 const DeferredCanvasIcsSetupPanel = dynamic(
   () => import("@/components/canvas-ics-setup-panel").then((mod) => mod.CanvasIcsSetupPanel),
   {
-    loading: () => <PanelLoadingPlaceholder rows={2} />,
+    loading: () => <WorkbenchLoadingShell variant="source-connect" />,
   },
 );
 

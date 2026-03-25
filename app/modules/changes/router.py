@@ -65,7 +65,7 @@ def get_changes_summary_route(
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> ChangesWorkbenchSummaryResponse:
-    payload = get_changes_workbench_summary(db=db, user_id=user.id)
+    payload = get_changes_workbench_summary(db=db, user_id=user.id, language_code=user.language_code)
     return ChangesWorkbenchSummaryResponse(**payload)
 
 
@@ -108,6 +108,7 @@ def get_changes(
         source_id=source_id,
         limit=limit,
         offset=offset,
+        language_code=user.language_code,
     )
     return [ChangeItemResponse(**row) for row in rows]
 
@@ -118,7 +119,7 @@ def get_change_item(
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> ChangeItemResponse:
-    row = get_change(db, user_id=user.id, change_id=change_id)
+    row = get_change(db, user_id=user.id, change_id=change_id, language_code=user.language_code)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review change not found")
     return ChangeItemResponse(**row)
@@ -156,7 +157,7 @@ def patch_change_view(
         )
     except ChangeNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    refreshed = get_change(db, user_id=user.id, change_id=row.id)
+    refreshed = get_change(db, user_id=user.id, change_id=row.id, language_code=user.language_code)
     if refreshed is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review change not found")
     return ChangeItemResponse(**refreshed)

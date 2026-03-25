@@ -187,7 +187,7 @@ function preloadManualLane() {
 export function preloadWorkspaceLane(href: string) {
   const pathname = normalizeWorkspacePath(href);
 
-  if (pathname === "/" || pathname.startsWith("/initial-review")) {
+  if (pathname === "/") {
     preloadOverviewLane();
     return;
   }

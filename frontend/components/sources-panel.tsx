@@ -6,16 +6,19 @@ import { ArchiveRestore, CalendarSync, ChevronRight, Mailbox, RefreshCw, Trash2 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
+import { EmptyState, ErrorState } from "@/components/data-states";
 import { SourceSyncProgress } from "@/components/source-sync-progress";
 import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { WorkbenchLoadingShell } from "@/components/workbench-loading-shell";
 import { startOnboardingGmailOAuth } from "@/lib/api/onboarding";
 import { createOAuthSession, createSyncRequest, deleteSource as deleteSourceRequest, getSyncRequest, listSources, sourceListCacheKey, updateSource } from "@/lib/api/sources";
 import { withBasePath } from "@/lib/demo-mode";
 import { translate } from "@/lib/i18n/runtime";
 import { invalidateSourceCaches } from "@/lib/source-cache";
+import { useResponsiveTier } from "@/lib/use-responsive-tier";
 import { useApiResource } from "@/lib/use-api-resource";
 import { useSourceObservabilityMap } from "@/lib/use-source-observability-map";
+import { workbenchPanelClassName, workbenchStateSurfaceClassName, workbenchSupportPanelClassName } from "@/lib/workbench-styles";
 import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
 import type { SourceObservabilityResponse, SourceRecovery, SourceRow, SyncStatus } from "@/lib/types";
 
@@ -25,22 +28,6 @@ type Banner = {
   tone: "info" | "error";
   text: string;
 } | null;
-
-function useSourceToolsSheetSide() {
-  const [side, setSide] = useState<"right" | "bottom">("right");
-
-  useEffect(() => {
-    function update() {
-      setSide(window.innerWidth < 1024 ? "bottom" : "right");
-    }
-
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-
-  return side;
-}
 
 function sourceNeedsAttention(source: SourceRow) {
   return Boolean(source.last_error_message) || source.runtime_state === "rebind_pending" || source.config_state === "rebind_pending" || source.oauth_connection_status === "not_connected";
@@ -166,7 +153,7 @@ function ConnectSourceCard({
   iconShellClassName: string;
 }) {
   return (
-    <div className="rounded-[1rem] border border-line/70 bg-white/60 p-3.5">
+    <div className={workbenchSupportPanelClassName("default", "p-3.5")}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <div className={iconShellClassName}>{icon}</div>
@@ -231,7 +218,7 @@ function ConnectedSourceCard({
       </Button>
     ) : productPhase === "needs_initial_review" ? (
       <Button asChild className="w-full justify-center">
-        <Link href={withBasePath(basePath, "/initial-review")}>{translate("sources.openInitialReview")}</Link>
+        <Link href={withBasePath(basePath, "/changes?bucket=initial_review")}>{translate("sources.openInitialReview")}</Link>
       </Button>
     ) : (
       <Button asChild className="w-full justify-center">
@@ -240,7 +227,12 @@ function ConnectedSourceCard({
     );
 
   return (
-    <Card className={needsAttention ? "animate-surface-enter interactive-lift border-[rgba(215,90,45,0.28)] bg-white p-5" : "animate-surface-enter interactive-lift bg-white p-5"}>
+    <Card
+      className={workbenchPanelClassName(
+        needsAttention ? "primary" : "secondary",
+        "animate-surface-enter interactive-lift p-5",
+      )}
+    >
       <div className="min-w-0">
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -252,20 +244,19 @@ function ConnectedSourceCard({
               </div>
               <p className="mt-2 text-sm text-[#596270]">{formatSourceSubtitle(source)}</p>
             </div>
-            <div className="grid w-full shrink-0 gap-2 sm:grid-cols-2 lg:w-[340px]">
+            <div className="flex w-full shrink-0 flex-wrap gap-2 lg:w-[360px] lg:justify-end">
               {primaryAction}
-              <Button asChild variant="ghost" className="w-full justify-center">
+              <Button asChild variant="ghost" className="min-w-[9rem] justify-center">
                 <Link href={detailHref}>{translate("sources.openDetails")}</Link>
               </Button>
-              <div className="hidden sm:block" />
-              <Button variant="ghost" className="w-full justify-center" onClick={() => onDelete(source.source_id, source.provider)} disabled={busyDelete === source.source_id}>
+              <Button variant="ghost" className="min-w-[9rem] justify-center" onClick={() => onDelete(source.source_id, source.provider)} disabled={busyDelete === source.source_id}>
                 <Trash2 className="mr-2 h-4 w-4" />
                 {busyDelete === source.source_id ? translate("sources.archiving") : translate("sources.archive")}
               </Button>
             </div>
           </div>
 
-          <div className="rounded-[1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
+          <div className={workbenchSupportPanelClassName("quiet", "p-4 text-sm text-[#314051]")}>
             <p className="font-medium text-ink">{recovery?.impact_summary || buildSourceInsight(source).title}</p>
             {!recovery?.impact_summary && buildSourceInsight(source).detail ? (
               <p className="mt-2 text-[#596270]">{buildSourceInsight(source).detail}</p>
@@ -291,7 +282,7 @@ function ArchivedSourceCard({
   basePath: string;
 }) {
   return (
-    <Card className="animate-surface-enter interactive-lift bg-white/80 p-4">
+    <Card className={workbenchPanelClassName("secondary", "animate-surface-enter interactive-lift p-4")}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="font-medium text-ink">{formatSourceTitle(source)}</p>
@@ -312,6 +303,7 @@ function ArchivedSourceCard({
 }
 
 export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
+  const { isMobile, isTablet, isDesktop } = useResponsiveTier();
   const active = useApiResource<SourceRow[]>(() => listSources({ status: "active" }), [], null, {
     cacheKey: sourceListCacheKey("active"),
   });
@@ -326,7 +318,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [observabilityRefreshNonce, setObservabilityRefreshNonce] = useState(0);
   const oauthQueryHandled = useRef(false);
-  const toolsSheetSide = useSourceToolsSheetSide();
+  const toolsSheetSide = isDesktop ? "right" : "bottom";
 
   const activeSources = useMemo(
     () =>
@@ -583,39 +575,83 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
     }
   }
 
-  if ((active.loading && !active.data) || (archived.loading && !archived.data)) return <LoadingState label={translate("common.loadingLabels.sources")} />;
+  if ((active.loading && !active.data) || (archived.loading && !archived.data)) return <WorkbenchLoadingShell variant="sources" />;
   if (active.error) return <ErrorState message={active.error} />;
   if (archived.error) return <ErrorState message={archived.error} />;
   if (observabilityMap.error) return <ErrorState message={observabilityMap.error} />;
 
-  return (
-    <div className="space-y-5">
-      <Card className="animate-surface-enter relative overflow-hidden p-6 md:p-7">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.13),transparent_36%),radial-gradient(circle_at_84%_20%,rgba(215,90,45,0.11),transparent_24%)]" />
-        <div className="relative space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="max-w-3xl">
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.heroEyebrow")}</p>
-              <h2 className="mt-3 text-3xl font-semibold text-ink">{translate("sources.heroTitle")}</h2>
-              <p className="mt-3 text-sm text-[#596270]">{translate("sources.heroSummary")}</p>
+  const postureCard = (
+    <Card className={workbenchPanelClassName("secondary", "p-4")}>
+      <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.needsAttention")}</p>
+      <h3 className="mt-2 text-base font-semibold text-ink">{translate("sources.currentPostureTitle")}</h3>
+      <div className="mt-4 space-y-3">
+        {attentionSources.length > 0 ? (
+          attentionSources.slice(0, 3).map((source) => (
+            <div key={source.source_id} className={workbenchSupportPanelClassName("default", "p-3")}>
+              <p className="font-medium text-ink">{formatSourceTitle(source)}</p>
+              <p className="mt-1 text-sm text-[#596270]">{resolveRecovery(source, observabilityMap.data[source.source_id])?.impact_summary || source.last_error_message}</p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Badge tone={attentionSources.length > 0 ? "pending" : "approved"}>{translate("sources.counts.attention", { count: attentionSources.length })}</Badge>
-              <Badge tone="info">{translate("sources.counts.connected", { count: activeSources.length })}</Badge>
-              <Badge tone="info">{translate("sources.counts.archived", { count: archivedSources.length })}</Badge>
-            </div>
-          </div>
+          ))
+        ) : (
+          <p className="text-sm text-[#596270]">{translate("sources.healthy")}</p>
+        )}
+      </div>
+    </Card>
+  );
+
+  const toolsCard = (
+    <Card className={workbenchPanelClassName("secondary", "p-4")}>
+      <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.toolsTitle")}</p>
+      <h3 className="mt-2 text-base font-semibold text-ink">{translate("sources.connectRecoverTitle")}</h3>
+      <p className="mt-2 text-sm leading-6 text-[#596270]">{translate("sources.toolsSummary")}</p>
+      <div className="mt-4 grid gap-3">
+        <ConnectSourceCard
+          provider="Canvas ICS"
+          title={translate("sources.connectCanvas")}
+          detail={translate("sources.connectCanvasDetail")}
+          connected={activeProviders.has("ics")}
+          attention={activeSources.some((source) => source.provider === "ics" && sourceNeedsAttention(source))}
+          href={withBasePath(basePath, "/sources/connect/canvas-ics")}
+          icon={<CalendarSync className="h-5 w-5" />}
+          iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(31,94,255,0.1)] text-cobalt"
+        />
+        <ConnectSourceCard
+          provider="Gmail"
+          title={translate("sources.connectGmail")}
+          detail={translate("sources.connectGmailDetail")}
+          connected={activeProviders.has("gmail")}
+          attention={activeSources.some((source) => source.provider === "gmail" && sourceNeedsAttention(source))}
+          href={withBasePath(basePath, "/sources/connect/gmail")}
+          icon={<Mailbox className="h-5 w-5" />}
+          iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(215,90,45,0.12)] text-ember"
+        />
+      </div>
+      {archivedSources.length > 0 ? (
+        <div className="mt-4">
+          <Button size="sm" variant="ghost" onClick={() => setToolsOpen(true)}>
+            {translate("sources.archivedTitle")}
+          </Button>
         </div>
-      </Card>
+      ) : null}
+    </Card>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="px-1">
+        <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.heroEyebrow")}</p>
+        <h2 className="mt-1 text-2xl font-semibold text-ink">{translate("sources.heroTitle")}</h2>
+        <p className="mt-2 text-sm leading-6 text-[#596270]">{translate("sources.heroSummary")}</p>
+      </div>
 
       {banner ? (
-        <Card className={banner.tone === "error" ? "border-[#efc4b5] bg-[#fff3ef] p-4" : "border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] p-4"}>
+        <Card className={workbenchStateSurfaceClassName(banner.tone === "error" ? "error" : "info", "p-4")}>
           <p className="text-sm text-[#314051]">{banner.text}</p>
         </Card>
       ) : null}
 
       {initialReviewReady.length > 0 ? (
-        <Card className="animate-surface-enter border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] p-4">
+        <Card className={workbenchStateSurfaceClassName("info", "animate-surface-enter p-4")}>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.introEyebrow")}</p>
@@ -626,14 +662,14 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
               </p>
             </div>
             <Button asChild size="sm">
-              <Link href={withBasePath(basePath, "/initial-review")}>{translate("sources.introOpen")}</Link>
+              <Link href={withBasePath(basePath, "/changes?bucket=initial_review")}>{translate("sources.introOpen")}</Link>
             </Button>
           </div>
         </Card>
       ) : null}
 
       {initialReviewReady.length === 0 && baselineRunning.length > 0 ? (
-        <Card className="animate-surface-enter border border-line/80 bg-white/80 p-4">
+        <Card className={workbenchStateSurfaceClassName("neutral", "animate-surface-enter p-4")}>
           <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.baselineEyebrow")}</p>
           <p className="mt-1 text-sm font-medium text-ink">
             {baselineRunning.length === 1
@@ -643,14 +679,25 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
         </Card>
       ) : null}
 
-      <div className="space-y-4">
-        <Card className="animate-surface-enter animate-surface-delay-1 p-5">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-4">
+        <Card className={workbenchPanelClassName("secondary", "animate-surface-enter p-5")}>
           <div className="flex items-start justify-between gap-4">
-            <div>
+            <div className="max-w-2xl">
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.listEyebrow")}</p>
               <h3 className="mt-1 text-lg font-semibold text-ink">{translate("sources.listTitle")}</h3>
+              <p className="mt-2 text-sm leading-6 text-[#596270]">
+                {attentionSources.length > 0
+                  ? translate("sources.attentionSummary", { count: attentionSources.length })
+                  : translate("sources.noBlockingReview")}
+              </p>
             </div>
-            <Badge tone="info">{activeSources.length}</Badge>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone={attentionSources.length > 0 ? "pending" : "approved"}>
+                {translate("sources.counts.attention", { count: attentionSources.length })}
+              </Badge>
+              <Badge tone="info">{translate("sources.counts.connected", { count: activeSources.length })}</Badge>
+            </div>
           </div>
 
           <div className="mt-4 space-y-3">
@@ -719,6 +766,31 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
             </div>
           ) : null}
         </Card>
+          {isMobile ? (
+            <Card className={workbenchPanelClassName("secondary", "p-4")}>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.toolsTitle")}</p>
+              <p className="mt-2 text-sm leading-6 text-[#596270]">
+                {attentionSources.length > 0
+                  ? translate("sources.attentionSummary", { count: attentionSources.length })
+                  : translate("sources.noBlockingReview")}
+              </p>
+              <div className="mt-4">
+                <Button size="sm" variant="ghost" onClick={() => setToolsOpen(true)}>
+                  {translate("sources.openSourceTools")}
+                </Button>
+              </div>
+            </Card>
+          ) : null}
+
+          {isTablet ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              {postureCard}
+              {toolsCard}
+            </div>
+          ) : null}
+        </div>
+
+        {isDesktop ? <div className="space-y-4">{postureCard}{toolsCard}</div> : null}
       </div>
 
       <Sheet open={toolsOpen} onOpenChange={setToolsOpen}>
@@ -778,7 +850,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
               </div>
 
               {archivedSources.length === 0 ? (
-                <div className="rounded-[1.1rem] border border-dashed border-line/80 bg-white/40 p-5 text-sm text-[#596270]">{translate("sources.noArchived")}</div>
+                <div className={workbenchSupportPanelClassName("quiet", "border-dashed p-5 text-sm text-[#596270]")}>{translate("sources.noArchived")}</div>
               ) : (
                 archivedSources.map((source) => (
                   <ArchivedSourceCard

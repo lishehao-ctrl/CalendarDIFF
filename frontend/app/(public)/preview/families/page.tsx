@@ -1,19 +1,11 @@
 import dynamic from "next/dynamic";
 import { LocalizedPageIntro } from "@/components/localized-page-intro";
-import { PanelLoadingPlaceholder } from "@/components/panel-loading-placeholder";
-import { translate } from "@/lib/i18n/runtime";
+import { WorkbenchLoadingShell } from "@/components/workbench-loading-shell";
 
 const DeferredFamilyManagementPanel = dynamic(
   () => import("@/components/family-management-panel").then((mod) => mod.FamilyManagementPanel),
   {
-    loading: () => (
-      <PanelLoadingPlaceholder
-        eyebrow={translate("families.heroEyebrow")}
-        title={translate("families.heroTitle")}
-        summary={translate("families.heroSummary")}
-        rows={3}
-      />
-    ),
+    loading: () => <WorkbenchLoadingShell variant="families" />,
   },
 );
 

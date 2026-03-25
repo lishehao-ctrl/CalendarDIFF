@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
 import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { WorkbenchLoadingShell } from "@/components/workbench-loading-shell";
 import {
   applyChangeLabelLearning,
   batchDecideChanges,
@@ -26,6 +27,8 @@ import {
 } from "@/lib/api/changes";
 import { listSources, sourceListCacheKey } from "@/lib/api/sources";
 import { withBasePath } from "@/lib/demo-mode";
+import { useResponsiveTier } from "@/lib/use-responsive-tier";
+import { workbenchQueueRowClassName } from "@/lib/workbench-styles";
 import {
   formatDateTime,
   formatSemanticDue,
@@ -230,25 +233,13 @@ function EvidenceSummary({ evidence }: { evidence: LoadedEvidence }) {
 }
 
 function useWorkspaceLayout() {
-  const [layout, setLayout] = useState<{ side: "right" | "bottom"; isDesktop: boolean }>({
-    side: "right",
-    isDesktop: false,
-  });
-
-  useEffect(() => {
-    function update() {
-      setLayout({
-        side: window.innerWidth < 1024 ? "bottom" : "right",
-        isDesktop: window.innerWidth >= 1280,
-      });
-    }
-
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-
-  return layout;
+  const { isMobile, isDesktop } = useResponsiveTier();
+  return {
+    side: (isMobile ? "bottom" : "right") as "right" | "bottom",
+    isDesktop,
+    isMobile,
+    showInlineWorkspace: !isMobile,
+  };
 }
 
 function changeTypeTone(changeType: string | null | undefined) {
@@ -422,9 +413,11 @@ function ChangeInboxRow({
 
   return (
     <div
-      className={`animate-surface-enter interactive-lift rounded-[1.15rem] border p-4 transition-all duration-300 ${
-        selected ? "border-[rgba(31,94,255,0.3)] bg-white shadow-[0_16px_32px_rgba(20,32,44,0.08)]" : "border-line/80 bg-white/72 hover:bg-white"
-      }`}
+      className={workbenchQueueRowClassName({
+        selected,
+        checked,
+        className: "animate-surface-enter p-4",
+      })}
     >
       <div className="flex items-start gap-3">
         {showSelection ? (
@@ -485,33 +478,7 @@ function ChangeInboxRow({
   );
 }
 
-function DecisionWorkspace({
-  selected,
-  currentEvidenceSide,
-  evidenceView,
-  evidence,
-  previewBusy,
-  labelLearning,
-  labelLearningBusy,
-  labelLearningError,
-  learningOpen,
-  newFamilyLabel,
-  editContext,
-  editContextBusy,
-  editContextError,
-  decisionBusy,
-  onMarkViewed,
-  onEvidenceSideChange,
-  onEvidenceViewChange,
-  onDecide,
-  onLearningToggle,
-  onApproveAndLearnExisting,
-  onApproveAndLearnCreate,
-  onNewFamilyLabelChange,
-  onRetryLearningContext,
-  basePath = "",
-  compact = false,
-}: {
+type DecisionWorkspaceProps = {
   selected: ChangeItem;
   currentEvidenceSide: "before" | "after";
   evidenceView: EvidenceViewMode;
@@ -537,25 +504,42 @@ function DecisionWorkspace({
   onRetryLearningContext: () => void;
   basePath?: string;
   compact?: boolean;
-}) {
+};
+
+function DecisionWorkspaceMain({
+  selected,
+  currentEvidenceSide,
+  evidenceView,
+  evidence,
+  previewBusy,
+  editContext,
+  editContextBusy,
+  editContextError,
+  onEvidenceSideChange,
+  onEvidenceViewChange,
+  basePath = "",
+  compact = false,
+}: Pick<
+  DecisionWorkspaceProps,
+  | "selected"
+  | "currentEvidenceSide"
+  | "evidenceView"
+  | "evidence"
+  | "previewBusy"
+  | "editContext"
+  | "editContextBusy"
+  | "editContextError"
+  | "onEvidenceSideChange"
+  | "onEvidenceViewChange"
+  | "basePath"
+  | "compact"
+>) {
   const summary = summarizeChange(selected);
   const selectedEvidenceAvailability = getEvidenceAvailability(selected);
   const beforeDue = formatSemanticDue((selected.before_event || {}) as Record<string, unknown>, translate("changes.noPreviousTime"));
   const afterDue = formatSemanticDue((selected.after_event || {}) as Record<string, unknown>, translate("changes.noNewTime"));
-  const pending = selected.review_status === "pending";
-  const learningAvailable = pending && labelLearning?.status === "unresolved";
   const canonicalTimeline = canonicalTimelineLabel(editContext);
   const decisionSupport = selected.decision_support;
-  const mappingFamily =
-    labelLearning?.resolved_canonical_label ||
-    (labelLearning?.status === "resolved" ? canonicalDisplayLabel(editContext, selected) : null);
-  const mappingLine = labelLearning
-    ? translate("changes.mapping.contextLine", {
-        course: labelLearning.course_display || translate("common.labels.unknown"),
-        label: labelLearning.raw_label || translate("common.labels.unknown"),
-        ordinal: labelLearning.ordinal ?? "N/A",
-      })
-    : null;
   const [expandedSections, setExpandedSections] = useState<Record<CompactWorkspaceSection, boolean>>({
     evidence: false,
     match: false,
@@ -570,21 +554,88 @@ function DecisionWorkspace({
     });
   }, [selected.id]);
 
-  function sectionVisible(section: "change" | "evidence" | "match" | "decision") {
-    if (!compact) {
-      return true;
-    }
-    return section === "change" || section === "decision";
-  }
+  const evidenceSummary = `${selected.proposal_sources.length} source${selected.proposal_sources.length === 1 ? "" : "s"} · ${confidenceLabel(selected)}`;
+  const evidenceBody = (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant={currentEvidenceSide === "before" ? "secondary" : "ghost"}
+          onClick={() => onEvidenceSideChange("before")}
+          disabled={!selectedEvidenceAvailability.before}
+        >
+          <FileSearch className="mr-2 h-4 w-4" />
+          {previewBusy === "before" ? translate("changes.loading") : translate("changes.workspace.previewBefore")}
+        </Button>
+        <Button
+          size="sm"
+          variant={currentEvidenceSide === "after" ? "secondary" : "ghost"}
+          onClick={() => onEvidenceSideChange("after")}
+          disabled={!selectedEvidenceAvailability.after}
+        >
+          <CalendarRange className="mr-2 h-4 w-4" />
+          {previewBusy === "after" ? translate("changes.loading") : translate("changes.workspace.previewAfter")}
+        </Button>
+      </div>
+      {!selectedEvidenceAvailability.before || !selectedEvidenceAvailability.after ? (
+        <p className="text-xs text-[#6d7885]">
+          {selectedEvidenceAvailability.before && !selectedEvidenceAvailability.after
+            ? translate("changes.workspace.onlyBeforeEvidence")
+            : !selectedEvidenceAvailability.before && selectedEvidenceAvailability.after
+              ? translate("changes.workspace.onlyAfterEvidence")
+              : translate("changes.workspace.noEvidence")}
+        </p>
+      ) : null}
+      <div className="inline-flex flex-wrap gap-2 rounded-full border border-line/80 bg-white/60 p-2">
+        <Button size="sm" variant={evidenceView === "summary" ? "primary" : "ghost"} onClick={() => onEvidenceViewChange("summary")}>
+          {translate("changes.workspace.summary")}
+        </Button>
+        <Button size="sm" variant={evidenceView === "raw" ? "primary" : "ghost"} onClick={() => onEvidenceViewChange("raw")}>
+          {translate("changes.workspace.raw")}
+        </Button>
+      </div>
+      <div className="rounded-[1.2rem] border border-line/80 bg-[#f2ebe1] p-4">
+        {evidence ? (
+          evidenceView === "summary" ? (
+            <EvidenceSummary evidence={evidence} />
+          ) : (
+            <pre className="whitespace-pre-wrap text-xs leading-6 text-[#314051]">{evidence.payload.preview_text || evidence.summaryFallback}</pre>
+          )
+        ) : (
+          <p className="text-sm text-[#596270]">{translate("changes.workspace.chooseEvidence")}</p>
+        )}
+      </div>
+    </div>
+  );
+
+  const canonicalBody = (
+    <div className="space-y-3">
+      <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+        <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.family")}</p>
+        <p className="mt-2 text-sm font-medium text-ink">{canonicalDisplayLabel(editContext, selected)}</p>
+      </div>
+      <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+        <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.canonicalEvent")}</p>
+        <p className="mt-2 text-sm font-medium text-ink">
+          {editContextError
+            ? translate("changes.workspace.canonicalUnavailable")
+            : canonicalTimeline || (editContextBusy ? translate("changes.workspace.canonicalLoading") : translate("changes.workspace.canonicalMissing"))}
+        </p>
+        {editContextError ? <p className="mt-2 text-xs leading-5 text-[#7f3d2a]">{editContextError}</p> : null}
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
-      {!compact ? (
-      <Card className="p-5">
+      <Card className={compact ? "p-4" : "p-5"}>
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
+          <div className="max-w-3xl">
             <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changes.workspace.title")}</p>
-            <h2 className="mt-2 text-2xl font-semibold text-ink">{summary.title}</h2>
+            <h2 className={`mt-2 font-semibold text-ink ${compact ? "text-xl" : "text-2xl"}`}>{summary.title}</h2>
+            <p className="mt-2 text-sm leading-6 text-[#596270]">
+              {selected.primary_source ? sourceDescriptor(selected.primary_source) : translate("changes.needsSourceConfirmation")} · {confidenceLabel(selected)}
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge tone={selected.review_status}>{formatStatusLabel(selected.review_status)}</Badge>
@@ -593,54 +644,31 @@ function DecisionWorkspace({
           </div>
         </div>
       </Card>
-      ) : null}
-
-      {sectionVisible("change") ? (
-      <Card className="p-5">
-        <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changes.workspace.whatChanged")}</p>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.before")}</p>
-            <p className="mt-2 text-sm font-medium text-ink">{beforeDue}</p>
-          </div>
-          <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.after")}</p>
-            <p className="mt-2 text-sm font-medium text-ink">{afterDue}</p>
-          </div>
-          <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.detected")}</p>
-            <p className="mt-2 text-sm font-medium text-ink">{formatDateTime(selected.detected_at)}</p>
-          </div>
-          <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.primarySource")}</p>
-            <p className="mt-2 text-sm font-medium text-ink">{selected.primary_source ? sourceDescriptor(selected.primary_source) : translate("changes.needsSourceConfirmation")}</p>
-          </div>
-        </div>
-      </Card>
-      ) : null}
 
       {decisionSupport ? (
-        <Card className="p-5">
-          <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changes.workspace.decisionSupport")}</p>
-          <div className="mt-4 grid gap-3 xl:grid-cols-3">
+        <Card className={compact ? "p-4" : "p-5"}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changes.workspace.decisionSupport")}</p>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone={suggestedActionTone(decisionSupport.suggested_action)}>
+                {suggestedActionLabel(decisionSupport.suggested_action)}
+              </Badge>
+              <Badge tone={riskTone(decisionSupport.risk_level)}>{formatStatusLabel(decisionSupport.risk_level)}</Badge>
+            </div>
+          </div>
+          <div className={`mt-4 grid gap-3 ${compact ? "sm:grid-cols-1" : "md:grid-cols-2"}`}>
             <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
               <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.whySeeingThis")}</p>
               <p className="mt-2 text-sm leading-6 text-[#314051]">{decisionSupport.why_now}</p>
             </div>
             <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.suggestedAction")}</p>
-                <Badge tone={suggestedActionTone(decisionSupport.suggested_action)}>
-                  {suggestedActionLabel(decisionSupport.suggested_action)}
-                </Badge>
-              </div>
+              <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.suggestedAction")}</p>
+              <p className="mt-2 text-sm font-medium text-ink">{suggestedActionLabel(decisionSupport.suggested_action)}</p>
               <p className="mt-2 text-sm leading-6 text-[#314051]">{decisionSupport.suggested_action_reason}</p>
             </div>
-            <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.risk")}</p>
-                <Badge tone={riskTone(decisionSupport.risk_level)}>{formatStatusLabel(decisionSupport.risk_level)}</Badge>
-              </div>
+            <div className={`rounded-[1.15rem] border border-line/80 bg-white/72 p-4 ${compact ? "" : "md:col-span-2"}`}>
+              <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.risk")}</p>
+              <p className="mt-2 text-sm font-medium text-ink">{formatStatusLabel(decisionSupport.risk_level)}</p>
               <p className="mt-2 text-sm leading-6 text-[#314051]">{decisionSupport.risk_summary}</p>
             </div>
           </div>
@@ -659,7 +687,270 @@ function DecisionWorkspace({
         </Card>
       ) : null}
 
-      <ChangeAgentCard changeId={selected.id} basePath={basePath} />
+      <Card className={compact ? "p-4" : "p-5"}>
+        <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changes.workspace.whatChanged")}</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.before")}</p>
+            <p className="mt-2 text-sm font-medium text-ink">{beforeDue}</p>
+          </div>
+          <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.after")}</p>
+            <p className="mt-2 text-sm font-medium text-ink">{afterDue}</p>
+          </div>
+          <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.detected")}</p>
+            <p className="mt-2 text-sm font-medium text-ink">{formatDateTime(selected.detected_at)}</p>
+          </div>
+          <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.primarySource")}</p>
+            <p className="mt-2 text-sm font-medium text-ink">{selected.primary_source ? sourceDescriptor(selected.primary_source) : translate("changes.needsSourceConfirmation")}</p>
+          </div>
+        </div>
+        <div className={`mt-4 grid gap-3 ${compact ? "sm:grid-cols-1" : "xl:grid-cols-2"}`}>
+          <ChangeSummarySourceCard
+            title={translate("changes.workspace.before")}
+            emptyLabel={translate("changes.noPreviousTime")}
+            summary={selected.change_summary?.old}
+          />
+          <ChangeSummarySourceCard
+            title={translate("changes.workspace.after")}
+            emptyLabel={translate("changes.noNewTime")}
+            summary={selected.change_summary?.new}
+          />
+        </div>
+      </Card>
+      {compact ? (
+        <CompactSection
+          title={decisionSupport ? translate("changes.workspace.evidence") : translate("changes.workspace.evidenceFallbackTitle")}
+          summary={evidenceSummary}
+          open={expandedSections.evidence}
+          onToggle={() => setExpandedSections((current) => ({ ...current, evidence: !current.evidence }))}
+        >
+          {evidenceBody}
+        </CompactSection>
+      ) : (
+        <Card className="p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">
+                {decisionSupport ? translate("changes.workspace.evidence") : translate("changes.workspace.evidenceFallbackTitle")}
+              </p>
+              <p className="mt-2 text-sm text-[#596270]">{evidenceSummary}</p>
+            </div>
+          </div>
+          <div className="mt-4">{evidenceBody}</div>
+        </Card>
+      )}
+
+      {compact ? (
+        <CompactSection
+          title={translate("changes.workspace.canonicalMatch")}
+          summary={canonicalDisplayLabel(editContext, selected)}
+          open={expandedSections.match}
+          onToggle={() => setExpandedSections((current) => ({ ...current, match: !current.match }))}
+        >
+          {canonicalBody}
+        </CompactSection>
+      ) : (
+        <Card className="p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changes.workspace.canonicalMatch")}</p>
+              <p className="mt-2 text-sm text-[#596270]">{canonicalDisplayLabel(editContext, selected)}</p>
+            </div>
+          </div>
+          <div className="mt-4">{canonicalBody}</div>
+        </Card>
+      )}
+
+      {compact ? (
+        <CompactSection
+          title={translate("changes.workspace.technicalDetails")}
+          summary={translate("changes.workspace.technicalCompactSummary")}
+          open={expandedSections.extras}
+          onToggle={() => setExpandedSections((current) => ({ ...current, extras: !current.extras }))}
+        >
+          <div className="flex flex-wrap gap-2">
+            <Button asChild size="sm" variant="ghost">
+              <Link href={withBasePath(basePath, `/changes/${selected.id}/canonical`)}>
+                <SquarePen className="mr-2 h-4 w-4" />
+                {translate("changes.editThenApprove")}
+              </Link>
+            </Button>
+            {selected.change_type !== "removed" ? (
+              <Button asChild size="sm" variant="ghost">
+                <Link href={withBasePath(basePath, `/changes/${selected.id}/proposal`)}>
+                  <PencilLine className="mr-2 h-4 w-4" />
+                  {translate("changeEdit.proposalEdit")}
+                </Link>
+              </Button>
+            ) : null}
+          </div>
+        </CompactSection>
+      ) : null}
+    </div>
+  );
+}
+
+function DecisionWorkspaceRail({
+  selected,
+  labelLearning,
+  labelLearningBusy,
+  labelLearningError,
+  learningOpen,
+  newFamilyLabel,
+  editContext,
+  decisionBusy,
+  onMarkViewed,
+  onDecide,
+  onLearningToggle,
+  onApproveAndLearnExisting,
+  onApproveAndLearnCreate,
+  onNewFamilyLabelChange,
+  onRetryLearningContext,
+  basePath = "",
+  compact = false,
+}: Pick<
+  DecisionWorkspaceProps,
+  | "selected"
+  | "labelLearning"
+  | "labelLearningBusy"
+  | "labelLearningError"
+  | "learningOpen"
+  | "newFamilyLabel"
+  | "editContext"
+  | "decisionBusy"
+  | "onMarkViewed"
+  | "onDecide"
+  | "onLearningToggle"
+  | "onApproveAndLearnExisting"
+  | "onApproveAndLearnCreate"
+  | "onNewFamilyLabelChange"
+  | "onRetryLearningContext"
+  | "basePath"
+  | "compact"
+>) {
+  const pending = selected.review_status === "pending";
+  const decisionSupport = selected.decision_support;
+  const learningAvailable = pending && labelLearning?.status === "unresolved";
+  const mappingFamily =
+    labelLearning?.resolved_canonical_label ||
+    (labelLearning?.status === "resolved" ? canonicalDisplayLabel(editContext, selected) : null);
+  const mappingLine = labelLearning
+    ? translate("changes.mapping.contextLine", {
+        course: labelLearning.course_display || translate("common.labels.unknown"),
+        label: labelLearning.raw_label || translate("common.labels.unknown"),
+        ordinal: labelLearning.ordinal ?? "N/A",
+      })
+    : null;
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changes.workspace.decision")}</p>
+            <p className="mt-2 text-sm text-[#596270]">
+              {pending ? translate("changes.needsDecision") : translate("changes.reviewed")}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {decisionSupport ? (
+              <>
+                <Badge tone={suggestedActionTone(decisionSupport.suggested_action)}>
+                  {suggestedActionLabel(decisionSupport.suggested_action)}
+                </Badge>
+                <Badge tone={riskTone(decisionSupport.risk_level)}>{formatStatusLabel(decisionSupport.risk_level)}</Badge>
+              </>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          <div
+            className={`rounded-[1.15rem] border p-3 ${
+              decisionSupport?.suggested_action === "approve" ? "border-[rgba(31,94,255,0.24)] bg-[rgba(31,94,255,0.06)]" : "border-line/80 bg-white/72"
+            }`}
+          >
+            <Button className="w-full" onClick={() => onDecide("approve")} disabled={!pending || decisionBusy !== null}>
+              <CheckCheck className="mr-2 h-4 w-4" />
+              {decisionBusy === "approve" ? translate("changes.approving") : translate("changes.approve")}
+            </Button>
+            <p className="mt-2 text-xs leading-5 text-[#596270]">{actionPreviewText(selected, "approve")}</p>
+          </div>
+          <div
+            className={`rounded-[1.15rem] border p-3 ${
+              decisionSupport?.suggested_action === "reject" ? "border-[rgba(215,90,45,0.24)] bg-[#fff4ee]" : "border-line/80 bg-white/72"
+            }`}
+          >
+            <Button className="w-full" variant="danger" onClick={() => onDecide("reject")} disabled={!pending || decisionBusy !== null}>
+              <XCircle className="mr-2 h-4 w-4" />
+              {decisionBusy === "reject" ? translate("changes.rejecting") : translate("changes.reject")}
+            </Button>
+            <p className="mt-2 text-xs leading-5 text-[#596270]">{actionPreviewText(selected, "reject")}</p>
+          </div>
+          <div
+            className={`rounded-[1.15rem] border p-3 ${
+              decisionSupport?.suggested_action === "edit" ? "border-[rgba(215,162,45,0.26)] bg-[#fff8e8]" : "border-line/80 bg-white/72"
+            }`}
+          >
+            <Button asChild className="w-full" variant="ghost">
+              <Link href={withBasePath(basePath, `/changes/${selected.id}/canonical`)}>
+                <SquarePen className="mr-2 h-4 w-4" />
+                {translate("changes.editThenApprove")}
+              </Link>
+            </Button>
+            <p className="mt-2 text-xs leading-5 text-[#596270]">{actionPreviewText(selected, "edit")}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button variant="ghost" onClick={onMarkViewed} disabled={Boolean(selected.viewed_at)}>
+            <Eye className="mr-2 h-4 w-4" />
+            {selected.viewed_at ? translate("changes.viewed") : translate("changes.markViewed")}
+          </Button>
+          <Button variant="ghost" onClick={onLearningToggle} disabled={!learningAvailable || labelLearningBusy === "preview"}>
+            <Sparkles className="mr-2 h-4 w-4" />
+            {translate("changes.approveAndLearn")}
+          </Button>
+          {selected.change_type !== "removed" ? (
+            <Button asChild variant="ghost">
+              <Link href={withBasePath(basePath, `/changes/${selected.id}/proposal`)}>
+                <PencilLine className="mr-2 h-4 w-4" />
+                {translate("changeEdit.proposalEdit")}
+              </Link>
+            </Button>
+          ) : null}
+        </div>
+
+        {!pending ? (
+          <div className="mt-4 rounded-[1.1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#596270]">
+            {translate("changes.alreadyReviewedState", {
+              status: formatStatusLabel(selected.review_status).toLowerCase(),
+            })}
+          </div>
+        ) : null}
+      </Card>
+
+      {pending && labelLearningBusy === "preview" ? (
+        <Card className="p-5 text-sm text-[#596270]">
+          <p className="font-medium text-ink">{translate("changes.approveAndLearn")}</p>
+          <p className="mt-2 leading-6">{translate("changes.loading")}</p>
+        </Card>
+      ) : null}
+
+      {pending && labelLearningError ? (
+        <Card className="border-[#efc4b5] bg-[#fff3ef] p-5 text-sm text-[#7f3d2a]">
+          <p className="font-medium text-ink">{translate("changes.approveAndLearn")}</p>
+          <p className="mt-2 leading-6">{labelLearningError}</p>
+          <div className="mt-3">
+            <Button size="sm" variant="ghost" onClick={onRetryLearningContext}>
+              {translate("changes.retryLearningContext")}
+            </Button>
+          </div>
+        </Card>
+      ) : null}
 
       {labelLearning ? (
         <Card className="p-5">
@@ -672,7 +963,7 @@ function DecisionWorkspace({
               <Link href={withBasePath(basePath, "/families")}>{translate("changes.mapping.openFamilies")}</Link>
             </Button>
           </div>
-          <div className="mt-4 grid gap-3 xl:grid-cols-2">
+          <div className="mt-4 grid gap-3">
             <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
               <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.mapping.observedLabel")}</p>
               <p className="mt-2 text-sm font-medium text-ink">{labelLearning.raw_label || translate("common.labels.unknown")}</p>
@@ -687,264 +978,136 @@ function DecisionWorkspace({
               ? translate("changes.mapping.explanationResolved")
               : translate("changes.mapping.explanationUnresolved")}
           </p>
+          {labelLearning.status === "resolved" ? (
+            <p className="mt-3 text-sm leading-6 text-[#314051]">
+              {translate("changes.mapping.alreadyResolvesTo", {
+                label: labelLearning.resolved_canonical_label || canonicalDisplayLabel(editContext, selected),
+              })}
+            </p>
+          ) : null}
+          {learningAvailable ? (
+            <div className="mt-4 space-y-4">
+              {!learningOpen ? (
+                <Button size="sm" variant="ghost" onClick={onLearningToggle}>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  {translate("changes.approveAndLearn")}
+                </Button>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    {labelLearning.families.map((family) => (
+                      <Button
+                        key={family.id}
+                        size="sm"
+                        variant="ghost"
+                        disabled={labelLearningBusy === "apply"}
+                        onClick={() => onApproveAndLearnExisting(family.id, labelLearning.raw_label || "label", family.canonical_label)}
+                      >
+                        {translate("changes.mapping.learnAs", { label: family.canonical_label })}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <Input
+                      className="max-w-sm"
+                      value={newFamilyLabel}
+                      onChange={(event) => onNewFamilyLabelChange(event.target.value)}
+                      placeholder={translate("changes.newFamilyPlaceholder")}
+                    />
+                    <Button size="sm" disabled={labelLearningBusy === "apply" || !newFamilyLabel.trim()} onClick={onApproveAndLearnCreate}>
+                      {translate("changes.createFamilyAndApprove")}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : null}
         </Card>
       ) : null}
 
-      <CompactSection
-        title={decisionSupport ? translate("changes.workspace.evidence") : translate("changes.workspace.evidenceFallbackTitle")}
-        summary={`${selected.proposal_sources.length} source${selected.proposal_sources.length === 1 ? "" : "s"} · ${confidenceLabel(selected)}`}
-        open={expandedSections.evidence}
-        onToggle={() => setExpandedSections((current) => ({ ...current, evidence: !current.evidence }))}
-      >
-        <div className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant={currentEvidenceSide === "before" ? "secondary" : "ghost"}
-              onClick={() => onEvidenceSideChange("before")}
-              disabled={!selectedEvidenceAvailability.before}
-            >
-              <FileSearch className="mr-2 h-4 w-4" />
-              {previewBusy === "before" ? translate("changes.loading") : translate("changes.workspace.previewBefore")}
-            </Button>
-            <Button
-              size="sm"
-              variant={currentEvidenceSide === "after" ? "secondary" : "ghost"}
-              onClick={() => onEvidenceSideChange("after")}
-              disabled={!selectedEvidenceAvailability.after}
-            >
-              <CalendarRange className="mr-2 h-4 w-4" />
-              {previewBusy === "after" ? translate("changes.loading") : translate("changes.workspace.previewAfter")}
-            </Button>
-          </div>
-          {!selectedEvidenceAvailability.before || !selectedEvidenceAvailability.after ? (
-            <p className="text-xs text-[#6d7885]">
-              {selectedEvidenceAvailability.before && !selectedEvidenceAvailability.after
-                ? translate("changes.workspace.onlyBeforeEvidence")
-                : !selectedEvidenceAvailability.before && selectedEvidenceAvailability.after
-                  ? translate("changes.workspace.onlyAfterEvidence")
-                  : translate("changes.workspace.noEvidence")}
-            </p>
-          ) : null}
-          <div className="inline-flex flex-wrap gap-2 rounded-full border border-line/80 bg-white/60 p-2">
-            <Button size="sm" variant={evidenceView === "summary" ? "primary" : "ghost"} onClick={() => onEvidenceViewChange("summary")}>
-              {translate("changes.workspace.summary")}
-            </Button>
-            <Button size="sm" variant={evidenceView === "raw" ? "primary" : "ghost"} onClick={() => onEvidenceViewChange("raw")}>
-              {translate("changes.workspace.raw")}
-            </Button>
-          </div>
-          <div className="rounded-[1.2rem] border border-line/80 bg-[#f2ebe1] p-4">
-            {evidence ? (
-              evidenceView === "summary" ? (
-                <EvidenceSummary evidence={evidence} />
-              ) : (
-                <pre className="whitespace-pre-wrap text-xs leading-6 text-[#314051]">{evidence.payload.preview_text || evidence.summaryFallback}</pre>
-              )
-            ) : (
-              <p className="text-sm text-[#596270]">{translate("changes.workspace.chooseEvidence")}</p>
-            )}
-          </div>
-        </div>
-      </CompactSection>
-      
-
-      <CompactSection
-        title={translate("changes.workspace.canonicalMatch")}
-        summary={canonicalDisplayLabel(editContext, selected)}
-        open={expandedSections.match}
-        onToggle={() => setExpandedSections((current) => ({ ...current, match: !current.match }))}
-      >
-        <div className="space-y-3">
-          <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.family")}</p>
-            <p className="mt-2 text-sm font-medium text-ink">{canonicalDisplayLabel(editContext, selected)}</p>
-          </div>
-          <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.canonicalEvent")}</p>
-            <p className="mt-2 text-sm font-medium text-ink">
-              {editContextError ? translate("changes.workspace.canonicalUnavailable") : canonicalTimeline || (editContextBusy ? translate("changes.workspace.canonicalLoading") : translate("changes.workspace.canonicalMissing"))}
-            </p>
-            {editContextError ? <p className="mt-2 text-xs leading-5 text-[#7f3d2a]">{editContextError}</p> : null}
-          </div>
-        </div>
-      </CompactSection>
+      <ChangeAgentCard changeId={selected.id} basePath={basePath} />
 
       <Card className="p-5">
-        <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changes.workspace.decision")}</p>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <div className={`rounded-[1.15rem] border p-3 ${decisionSupport?.suggested_action === "approve" ? "border-[rgba(31,94,255,0.24)] bg-[rgba(31,94,255,0.06)]" : "border-line/80 bg-white/72"}`}>
-            <Button className="w-full" onClick={() => onDecide("approve")} disabled={!pending || decisionBusy !== null}>
-              <CheckCheck className="mr-2 h-4 w-4" />
-              {decisionBusy === "approve" ? translate("changes.approving") : translate("changes.approve")}
-            </Button>
-            <p className="mt-2 text-xs leading-5 text-[#596270]">{actionPreviewText(selected, "approve")}</p>
+        <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changes.workspace.technicalDetails")}</p>
+        <div className="mt-4 grid gap-3">
+          <div className="rounded-[1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
+            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.reviewBucket")}</p>
+            <p className="mt-2 font-medium text-ink">{formatStatusLabel(selected.review_bucket)}</p>
+            <p className="mt-3 text-xs text-[#6d7885]">Intake phase: {formatStatusLabel(selected.intake_phase)}</p>
           </div>
-          <div className={`rounded-[1.15rem] border p-3 ${decisionSupport?.suggested_action === "reject" ? "border-[rgba(215,90,45,0.24)] bg-[#fff4ee]" : "border-line/80 bg-white/72"}`}>
-            <Button className="w-full" variant="danger" onClick={() => onDecide("reject")} disabled={!pending || decisionBusy !== null}>
-              <XCircle className="mr-2 h-4 w-4" />
-              {decisionBusy === "reject" ? translate("changes.rejecting") : translate("changes.reject")}
-            </Button>
-            <p className="mt-2 text-xs leading-5 text-[#596270]">{actionPreviewText(selected, "reject")}</p>
+          <div className="rounded-[1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
+            <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.sourceReferences")}</p>
+            <p className="mt-2 font-medium text-ink">
+              {selected.primary_source ? sourceDescriptor(selected.primary_source) : translate("changes.noPrimarySource")}
+            </p>
+            <p className="mt-3 text-xs text-[#6d7885]">
+              {selected.proposal_sources.length} proposal source{selected.proposal_sources.length === 1 ? "" : "s"} · {confidenceLabel(selected)}
+            </p>
           </div>
-          <div className={`rounded-[1.15rem] border p-3 ${decisionSupport?.suggested_action === "edit" ? "border-[rgba(215,162,45,0.26)] bg-[#fff8e8]" : "border-line/80 bg-white/72"}`}>
-            <Button asChild className="w-full" variant="ghost">
-              <Link href={withBasePath(basePath, `/changes/${selected.id}/canonical`)}>
-                <SquarePen className="mr-2 h-4 w-4" />
-                {translate("changes.editThenApprove")}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button asChild size="sm" variant="ghost">
+            <Link href={withBasePath(basePath, `/changes/${selected.id}/canonical`)}>
+              <SquarePen className="mr-2 h-4 w-4" />
+              {translate("changes.editThenApprove")}
+            </Link>
+          </Button>
+          {selected.change_type !== "removed" ? (
+            <Button asChild size="sm" variant="ghost">
+              <Link href={withBasePath(basePath, `/changes/${selected.id}/proposal`)}>
+                <PencilLine className="mr-2 h-4 w-4" />
+                {translate("changeEdit.proposalEdit")}
               </Link>
             </Button>
-            <p className="mt-2 text-xs leading-5 text-[#596270]">{actionPreviewText(selected, "edit")}</p>
-          </div>
+          ) : null}
         </div>
-
-        <div className="mt-4 flex flex-wrap gap-3">
-          <Button variant="ghost" onClick={onMarkViewed} disabled={Boolean(selected.viewed_at)}>
-            <Eye className="mr-2 h-4 w-4" />
-            {selected.viewed_at ? translate("changes.viewed") : translate("changes.markViewed")}
-          </Button>
-          <Button variant="ghost" onClick={onLearningToggle} disabled={!learningAvailable || labelLearningBusy === "preview"}>
-            <Sparkles className="mr-2 h-4 w-4" />
-            {translate("changes.approveAndLearn")}
-          </Button>
-        </div>
-
-        {!pending ? (
-          <div className="mt-4 rounded-[1.1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#596270]">
-            This change is already {formatStatusLabel(selected.review_status).toLowerCase()}.
-          </div>
-        ) : null}
-
-        {pending && labelLearningBusy === "preview" ? (
-          <div className="mt-4 rounded-[1.1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#596270]">
-            <p className="font-medium text-ink">{translate("changes.approveAndLearn")}</p>
-            <p className="mt-2 leading-6">{translate("changes.loading")}</p>
-          </div>
-        ) : null}
-
-        {pending && labelLearningError ? (
-          <div className="mt-4 rounded-[1.1rem] border border-[#efc4b5] bg-[#fff3ef] p-4 text-sm text-[#7f3d2a]">
-            <p className="font-medium text-ink">{translate("changes.approveAndLearn")}</p>
-            <p className="mt-2 leading-6">{labelLearningError}</p>
-            <div className="mt-3">
-              <Button size="sm" variant="ghost" onClick={onRetryLearningContext}>
-                {translate("changes.retryLearningContext")}
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
-        {pending && labelLearning && learningOpen ? (
-          <div className="mt-4 rounded-[1.1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#596270]">
-            <p className="font-medium text-ink">{translate("changes.approveAndLearn")}</p>
-            <p className="mt-2 leading-6">
-              {labelLearning.course_display || translate("common.labels.unknown")} · {labelLearning.raw_label || translate("common.labels.unknown")} · {labelLearning.ordinal ?? "N/A"}
-            </p>
-            {labelLearning.status === "resolved" ? (
-              <p className="mt-3 text-[#314051]">{translate("changes.mapping.alreadyResolvesTo", { label: labelLearning.resolved_canonical_label || canonicalDisplayLabel(editContext, selected) })}</p>
-            ) : (
-              <>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {labelLearning.families.map((family) => (
-                    <Button
-                      key={family.id}
-                      size="sm"
-                      variant="ghost"
-                      disabled={labelLearningBusy === "apply"}
-                      onClick={() =>
-                        onApproveAndLearnExisting(family.id, labelLearning.raw_label || "label", family.canonical_label)
-                      }
-                    >
-                      {translate("changes.mapping.learnAs", { label: family.canonical_label })}
-                    </Button>
-                  ))}
-                </div>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <Input
-                    className="max-w-sm"
-                    value={newFamilyLabel}
-                    onChange={(event) => onNewFamilyLabelChange(event.target.value)}
-                    placeholder={translate("changes.newFamilyPlaceholder")}
-                  />
-                  <Button size="sm" disabled={labelLearningBusy === "apply" || !newFamilyLabel.trim()} onClick={onApproveAndLearnCreate}>
-                    {translate("changes.createFamilyAndApprove")}
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
-        ) : null}
-
-        {!compact && pending && selected.change_type !== "removed" ? (
-          <div className="mt-4">
-            <CompactSection
-              title={translate("changes.workspace.technicalDetails")}
-              summary={translate("changes.workspace.technicalEvidenceSummary")}
-              open={expandedSections.extras}
-              onToggle={() => setExpandedSections((current) => ({ ...current, extras: !current.extras }))}
-            >
-              <div className="space-y-4">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-[1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
-                    <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.reviewBucket")}</p>
-                    <p className="mt-2 font-medium text-ink">{formatStatusLabel(selected.review_bucket)}</p>
-                    <p className="mt-3 text-xs text-[#6d7885]">Intake phase: {formatStatusLabel(selected.intake_phase)}</p>
-                  </div>
-                  <div className="rounded-[1rem] border border-line/80 bg-white/75 p-4 text-sm text-[#314051]">
-                    <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.sourceReferences")}</p>
-                    <p className="mt-2 font-medium text-ink">{selected.primary_source ? sourceDescriptor(selected.primary_source) : translate("changes.noPrimarySource")}</p>
-                    <p className="mt-3 text-xs text-[#6d7885]">{selected.proposal_sources.length} proposal source{selected.proposal_sources.length === 1 ? "" : "s"} · {confidenceLabel(selected)}</p>
-                  </div>
-                </div>
-                <Button asChild size="sm" variant="ghost">
-                  <Link href={withBasePath(basePath, `/changes/${selected.id}/proposal`)}>
-                    <PencilLine className="mr-2 h-4 w-4" />
-                    {translate("changeEdit.proposalEdit")}
-                  </Link>
-                </Button>
-              </div>
-            </CompactSection>
-          </div>
-        ) : null}
-
-        {compact ? (
-          <div className="mt-4">
-            <CompactSection
-              title={translate("changes.workspace.technicalDetails")}
-              summary={translate("changes.workspace.technicalCompactSummary")}
-              open={expandedSections.extras}
-              onToggle={() => setExpandedSections((current) => ({ ...current, extras: !current.extras }))}
-            >
-              <div className="flex flex-wrap gap-2">
-                <Button asChild size="sm" variant="ghost">
-                  <Link href={withBasePath(basePath, `/changes/${selected.id}/canonical`)}>
-                    <SquarePen className="mr-2 h-4 w-4" />
-                    {translate("changes.editThenApprove")}
-                  </Link>
-                </Button>
-                {selected.change_type !== "removed" ? (
-                  <Button asChild size="sm" variant="ghost">
-                    <Link href={withBasePath(basePath, `/changes/${selected.id}/proposal`)}>
-                      <PencilLine className="mr-2 h-4 w-4" />
-                      {translate("changeEdit.proposalEdit")}
-                    </Link>
-                  </Button>
-                ) : null}
-              </div>
-            </CompactSection>
-          </div>
-        ) : null}
       </Card>
     </div>
   );
 }
 
+function DecisionWorkspace(props: DecisionWorkspaceProps) {
+  return (
+    <div className="space-y-4">
+      <DecisionWorkspaceMain {...props} />
+      <DecisionWorkspaceRail {...props} />
+    </div>
+  );
+}
+
+function DecisionWorkspacePlaceholder({
+  reviewBucket,
+  initialReviewComplete,
+  basePath = "",
+}: {
+  reviewBucket: "changes" | "initial_review";
+  initialReviewComplete: boolean;
+  basePath?: string;
+}) {
+  if (reviewBucket === "initial_review" && initialReviewComplete) {
+    return (
+      <Card className="animate-surface-enter p-6">
+        <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changes.initialReview")}</p>
+        <h3 className="mt-2 text-xl font-semibold text-ink">{translate("changes.empty.initialCompleteTitle")}</h3>
+        <p className="mt-3 text-sm leading-6 text-[#596270]">{translate("changes.empty.initialCompleteDescription")}</p>
+        <div className="mt-5">
+          <Button asChild size="sm">
+            <Link href={withBasePath(basePath, "/changes")}>{translate("changes.openReplayReview")}</Link>
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
+  return <Card className="animate-surface-enter p-6 text-sm text-[#596270]">{translate("changes.selectChange")}</Card>;
+}
+
 export function ChangeItemsPanel({
   basePath = "",
-  lane = "changes",
+  reviewBucket = "changes",
 }: {
   basePath?: string;
-  lane?: "changes" | "initial_review";
+  reviewBucket?: "changes" | "initial_review";
 }) {
   const [statusFilter, setStatusFilter] = useState<(typeof statusOptions)[number]>("pending");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
@@ -969,11 +1132,11 @@ export function ChangeItemsPanel({
   const [editContextError, setEditContextError] = useState<string | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const { side: drawerSide, isDesktop } = useWorkspaceLayout();
+  const { side: drawerSide, isDesktop, isMobile, showInlineWorkspace } = useWorkspaceLayout();
   const changeQuery: Parameters<typeof listChanges>[0] = {
     review_status: statusFilter,
-    review_bucket: lane === "initial_review" ? "initial_review" : "changes",
-    intake_phase: lane === "initial_review" ? "baseline" : undefined,
+    review_bucket: reviewBucket,
+    intake_phase: reviewBucket === "initial_review" ? "baseline" : undefined,
     limit: 50,
     source_id: sourceFilter === "all" ? null : Number(sourceFilter),
   };
@@ -986,7 +1149,7 @@ export function ChangeItemsPanel({
 
   const { data, loading, error, refresh, setData } = useApiResource<ChangeItem[]>(
     () => listChanges(changeQuery),
-    [lane, sourceFilter, statusFilter],
+    [reviewBucket, sourceFilter, statusFilter],
     null,
     { cacheKey: changesListCacheKey(changeQuery) },
   );
@@ -1286,48 +1449,44 @@ export function ChangeItemsPanel({
   function openChange(changeId: number) {
     setSelectedChangeId(changeId);
     setCurrentEvidenceSide("after");
-    if (!isDesktop) {
+    if (isMobile) {
       setMobileDetailOpen(true);
     }
   }
 
-  if (loading || summary.loading) return <LoadingState label={lane === "initial_review" ? translate("common.loadingLabels.initialReview") : translate("common.loadingLabels.changes")} />;
+  if (loading || summary.loading) return <WorkbenchLoadingShell variant="changes" />;
   if (error) return <ReviewInboxError message={error} basePath={basePath} />;
   if (summary.error) return <ErrorState message={`${translate("changes.banners.changesSummaryFailed")} ${summary.error}`} />;
   if (!summary.data) return <ErrorState message={translate("changes.banners.changesSummaryUnavailable")} />;
 
   const summaryData = summary.data;
   const initialReviewProgress = summaryData.workspace_posture.initial_review;
-  const initialReviewComplete = lane === "initial_review" && initialReviewProgress.pending_count === 0;
+  const initialReviewComplete = reviewBucket === "initial_review" && initialReviewProgress.pending_count === 0;
 
   return (
     <div className="space-y-5">
-      <Card className="animate-surface-enter relative overflow-hidden p-6 md:p-7">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.14),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(215,90,45,0.12),transparent_28%)]" />
-        <div className="relative space-y-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+      <Card className="animate-surface-enter p-5 md:p-6">
+        <div className="space-y-5">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div className="max-w-3xl">
-              <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">{lane === "initial_review" ? translate("changes.initialReview") : translate("changes.replayReview")}</p>
-              <h3 className="mt-3 text-3xl font-semibold text-ink">
-                {lane === "initial_review"
+              <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">{reviewBucket === "initial_review" ? translate("changes.initialReview") : translate("changes.replayReview")}</p>
+              <h3 className="mt-2 text-2xl font-semibold text-ink">
+                {reviewBucket === "initial_review"
                   ? initialReviewComplete
                     ? translate("changes.hero.initialReviewCompleteTitle")
                     : translate("changes.hero.initialReviewPendingTitle")
                   : translate("changes.hero.replayTitle")}
               </h3>
-              <p className="mt-3 hidden text-sm text-[#596270] md:block">
-                {lane === "initial_review"
+              <p className="mt-2 text-sm leading-6 text-[#596270]">
+                {reviewBucket === "initial_review"
                   ? initialReviewComplete
                     ? translate("changes.hero.initialReviewCompleteSummary")
                     : translate("changes.hero.initialReviewPendingSummary")
                   : translate("changes.hero.replaySummary")}
               </p>
-              {lane === "changes" ? (
-                <p className="mt-2 text-sm text-[#596270] md:hidden">{translate("changes.dailyReviewOnly")}</p>
-              ) : null}
-              {lane === "initial_review" ? (
-                <div className="mt-5 max-w-xl space-y-3">
-                  <div className="flex flex-wrap gap-2">
+              {reviewBucket === "initial_review" ? (
+                <div className="mt-4 max-w-xl space-y-3 rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+                  <div className="flex flex-wrap gap-2 text-sm">
                     <Badge tone={initialReviewComplete ? "approved" : "pending"}>
                       {translate("changes.hero.pending", { count: initialReviewProgress.pending_count })}
                     </Badge>
@@ -1365,8 +1524,8 @@ export function ChangeItemsPanel({
                 </div>
               ) : null}
             </div>
-            <div className="w-full md:w-auto">
-              <div className="hidden w-max gap-2 md:flex">
+            <div className="w-full xl:w-auto">
+              <div className="hidden w-max flex-wrap gap-2 md:flex xl:justify-end">
                 {statusOptions.map((status) => (
                   <Button key={status} variant={statusFilter === status ? "primary" : "ghost"} size="sm" onClick={() => setStatusFilter(status)}>
                     {formatStatusLabel(status)}
@@ -1387,9 +1546,8 @@ export function ChangeItemsPanel({
             </Card>
           ) : null}
 
-          {lane === "changes" && summaryData.baseline_review_pending > 0 ? (
-            <>
-            <Card className="hidden border-[rgba(215,90,45,0.18)] bg-[#fff8f4] p-4 md:block">
+          {reviewBucket === "changes" && summaryData.baseline_review_pending > 0 ? (
+            <div className="rounded-[1.15rem] border border-[rgba(215,90,45,0.18)] bg-[#fff8f4] p-4">
               <p className="text-sm font-medium text-ink">
                 {summaryData.baseline_review_pending === 1
                   ? translate("changes.baselineWaitingOne")
@@ -1400,29 +1558,17 @@ export function ChangeItemsPanel({
               </p>
               <div className="mt-4">
                 <Button asChild size="sm">
-                  <Link href={withBasePath(basePath, "/initial-review")}>{translate("changes.openInitialReviewShort")}</Link>
+                  <Link href={withBasePath(basePath, "/changes?bucket=initial_review")}>{translate("changes.openInitialReviewShort")}</Link>
                 </Button>
               </div>
-            </Card>
-            <div className="flex items-center justify-between gap-3 rounded-[1rem] border border-[rgba(215,90,45,0.18)] bg-[#fff8f4] px-4 py-3 text-sm md:hidden">
-              <span className="text-[#314051]">
-                {summaryData.baseline_review_pending === 1
-                  ? translate("changes.baselineWaitingOne")
-                  : translate("changes.baselineWaitingMany", { count: summaryData.baseline_review_pending })}
-              </span>
-              <Button asChild size="sm">
-                <Link href={withBasePath(basePath, "/initial-review")}>{translate("changes.openInitialReviewShort")}</Link>
-              </Button>
             </div>
-            </>
           ) : null}
 
-          <div className="flex flex-col gap-3 text-sm text-[#596270] md:flex-row md:flex-wrap md:items-center">
-            <div className="flex items-center gap-3">
-              <Badge tone="info">{lane === "initial_review" ? translate("changes.initialReviewLane") : translate("changes.laneBadge", { status: formatStatusLabel(statusFilter) })}</Badge>
-              <span className="hidden md:inline">{translate("changes.visibleChanges", { count: rows.length })}</span>
-              <span className="hidden md:inline">•</span>
-              <span className="hidden md:inline">{translate("changes.courseGroups", { count: groups.length })}</span>
+          <div className="flex flex-col gap-3 text-sm text-[#596270] lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="info">{reviewBucket === "initial_review" ? translate("changes.initialReviewLane") : translate("changes.laneBadge", { status: formatStatusLabel(statusFilter) })}</Badge>
+              <Badge tone="info">{translate("changes.visibleChanges", { count: rows.length })}</Badge>
+              <Badge tone="info">{translate("changes.courseGroups", { count: groups.length })}</Badge>
             </div>
             <label className="hidden items-center gap-2 rounded-full border border-line/80 bg-white/75 px-3 py-1.5 text-sm text-[#314051] md:flex">
               <span className="text-[#6d7885]">{translate("changes.source")}</span>
@@ -1444,8 +1590,16 @@ export function ChangeItemsPanel({
         </div>
       </Card>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(360px,0.92fr)_minmax(0,1.08fr)]">
-        <Card className="p-5">
+      <div
+        className={`grid gap-5 ${
+          isMobile
+            ? ""
+            : isDesktop
+              ? "xl:grid-cols-[minmax(300px,0.64fr)_minmax(0,1.36fr)]"
+              : "grid-cols-[minmax(280px,0.72fr)_minmax(0,1.28fr)]"
+        }`}
+      >
+        <Card className="self-start p-5">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changes.inboxEyebrow")}</p>
@@ -1477,14 +1631,14 @@ export function ChangeItemsPanel({
             {rows.length === 0 ? (
               <EmptyState
                 title={
-                  lane === "initial_review"
+                  reviewBucket === "initial_review"
                     ? initialReviewComplete
                       ? translate("changes.empty.initialCompleteTitle")
                       : translate("changes.empty.initialLaneEmptyTitle")
                     : translate("changes.empty.replayLaneEmptyTitle")
                 }
                 description={
-                  lane === "initial_review"
+                  reviewBucket === "initial_review"
                     ? initialReviewComplete
                       ? translate("changes.empty.initialCompleteDescription")
                       : translate("changes.empty.initialLaneEmptyDescription")
@@ -1522,118 +1676,171 @@ export function ChangeItemsPanel({
           </div>
         </Card>
 
-        <div className="hidden xl:block">
+        <div className={showInlineWorkspace ? "block" : "hidden"}>
           {selected ? (
-            <DecisionWorkspace
-              selected={selected}
-              currentEvidenceSide={currentEvidenceSide}
-              evidenceView={evidenceView}
-              evidence={evidence}
-              previewBusy={previewBusy}
-              labelLearning={labelLearning}
-              labelLearningBusy={labelLearningBusy}
-              labelLearningError={labelLearningError}
-              learningOpen={learningOpen}
-              newFamilyLabel={newFamilyLabel}
-              editContext={editContext}
-              editContextBusy={editContextBusy}
-              editContextError={editContextError}
-              decisionBusy={decisionBusy}
-              onMarkViewed={() => void markViewed(selected)}
-              onEvidenceSideChange={(side) => void openEvidence(selected, side)}
-              onEvidenceViewChange={setEvidenceView}
-              onDecide={(decision) => void decide(decision)}
-              onLearningToggle={() => setLearningOpen((current) => !current)}
-              onApproveAndLearnExisting={(familyId, rawLabel, canonicalLabel) =>
-                void approveAndLearn({
-                  mode: "add_alias",
-                  family_id: familyId,
-                  successText: translate("changes.learnedExisting", { rawLabel, canonicalLabel }),
-                })
-              }
-              onApproveAndLearnCreate={() =>
-                void approveAndLearn({
-                  mode: "create_family",
-                  canonical_label: newFamilyLabel.trim(),
-                  successText: translate("changes.learnedCreated", { label: newFamilyLabel.trim() }),
-                })
-              }
-              onNewFamilyLabelChange={setNewFamilyLabel}
-              onRetryLearningContext={() => setLabelLearningReloadNonce((current) => current + 1)}
-              basePath={basePath}
-              compact={false}
-            />
-          ) : (
-            <Card className="animate-surface-enter p-6 text-sm text-[#596270]">{translate("changes.selectChange")}</Card>
-          )}
-        </div>
-      </div>
-
-      <Sheet
-        open={mobileDetailOpen && selected !== null}
-        onOpenChange={(open) => {
-          setMobileDetailOpen(open);
-        }}
-      >
-        <SheetContent side={drawerSide} className="overflow-y-auto xl:hidden">
-          {selected ? (
-            <>
-              <SheetHeader>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">{translate("changes.workspace.title")}</p>
-                  <SheetTitle className="mt-3 leading-tight">{summarizeChange(selected).title}</SheetTitle>
-                  <SheetDescription>{translate("changes.focusedSections")}</SheetDescription>
-                </div>
-                <div className="flex items-center gap-3">
-                  <SheetDismissButton />
-                </div>
-              </SheetHeader>
-
-              <div className="mt-6">
-                <DecisionWorkspace
+            isDesktop ? (
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
+                <DecisionWorkspaceMain
                   selected={selected}
                   currentEvidenceSide={currentEvidenceSide}
                   evidenceView={evidenceView}
                   evidence={evidence}
                   previewBusy={previewBusy}
-                  labelLearning={labelLearning}
-                  labelLearningBusy={labelLearningBusy}
-                  labelLearningError={labelLearningError}
-                  learningOpen={learningOpen}
-                  newFamilyLabel={newFamilyLabel}
                   editContext={editContext}
                   editContextBusy={editContextBusy}
                   editContextError={editContextError}
-                  decisionBusy={decisionBusy}
-                  onMarkViewed={() => void markViewed(selected)}
                   onEvidenceSideChange={(side) => void openEvidence(selected, side)}
                   onEvidenceViewChange={setEvidenceView}
-                  onDecide={(decision) => void decide(decision)}
-                  onLearningToggle={() => setLearningOpen((current) => !current)}
-                  onApproveAndLearnExisting={(familyId, rawLabel, canonicalLabel) =>
-                    void approveAndLearn({
-                      mode: "add_alias",
-                      family_id: familyId,
-                      successText: translate("changes.learnedExisting", { rawLabel, canonicalLabel }),
-                    })
-                  }
-                  onApproveAndLearnCreate={() =>
-                    void approveAndLearn({
-                      mode: "create_family",
-                      canonical_label: newFamilyLabel.trim(),
-                      successText: translate("changes.learnedCreated", { label: newFamilyLabel.trim() }),
-                    })
-                  }
-                  onNewFamilyLabelChange={setNewFamilyLabel}
-                  onRetryLearningContext={() => setLabelLearningReloadNonce((current) => current + 1)}
                   basePath={basePath}
-                  compact
+                  compact={false}
                 />
+                <div className="self-start xl:sticky xl:top-24">
+                  <DecisionWorkspaceRail
+                    selected={selected}
+                    labelLearning={labelLearning}
+                    labelLearningBusy={labelLearningBusy}
+                    labelLearningError={labelLearningError}
+                    learningOpen={learningOpen}
+                    newFamilyLabel={newFamilyLabel}
+                    editContext={editContext}
+                    decisionBusy={decisionBusy}
+                    onMarkViewed={() => void markViewed(selected)}
+                    onDecide={(decision) => void decide(decision)}
+                    onLearningToggle={() => setLearningOpen((current) => !current)}
+                    onApproveAndLearnExisting={(familyId, rawLabel, canonicalLabel) =>
+                      void approveAndLearn({
+                        mode: "add_alias",
+                        family_id: familyId,
+                        successText: translate("changes.learnedExisting", { rawLabel, canonicalLabel }),
+                      })
+                    }
+                    onApproveAndLearnCreate={() =>
+                      void approveAndLearn({
+                        mode: "create_family",
+                        canonical_label: newFamilyLabel.trim(),
+                        successText: translate("changes.learnedCreated", { label: newFamilyLabel.trim() }),
+                      })
+                    }
+                    onNewFamilyLabelChange={setNewFamilyLabel}
+                    onRetryLearningContext={() => setLabelLearningReloadNonce((current) => current + 1)}
+                    basePath={basePath}
+                  />
+                </div>
               </div>
-            </>
-          ) : null}
-        </SheetContent>
-      </Sheet>
+            ) : (
+              <DecisionWorkspace
+                selected={selected}
+                currentEvidenceSide={currentEvidenceSide}
+                evidenceView={evidenceView}
+                evidence={evidence}
+                previewBusy={previewBusy}
+                labelLearning={labelLearning}
+                labelLearningBusy={labelLearningBusy}
+                labelLearningError={labelLearningError}
+                learningOpen={learningOpen}
+                newFamilyLabel={newFamilyLabel}
+                editContext={editContext}
+                editContextBusy={editContextBusy}
+                editContextError={editContextError}
+                decisionBusy={decisionBusy}
+                onMarkViewed={() => void markViewed(selected)}
+                onEvidenceSideChange={(side) => void openEvidence(selected, side)}
+                onEvidenceViewChange={setEvidenceView}
+                onDecide={(decision) => void decide(decision)}
+                onLearningToggle={() => setLearningOpen((current) => !current)}
+                onApproveAndLearnExisting={(familyId, rawLabel, canonicalLabel) =>
+                  void approveAndLearn({
+                    mode: "add_alias",
+                    family_id: familyId,
+                    successText: translate("changes.learnedExisting", { rawLabel, canonicalLabel }),
+                  })
+                }
+                onApproveAndLearnCreate={() =>
+                  void approveAndLearn({
+                    mode: "create_family",
+                    canonical_label: newFamilyLabel.trim(),
+                    successText: translate("changes.learnedCreated", { label: newFamilyLabel.trim() }),
+                  })
+                }
+                onNewFamilyLabelChange={setNewFamilyLabel}
+                onRetryLearningContext={() => setLabelLearningReloadNonce((current) => current + 1)}
+                basePath={basePath}
+                compact
+              />
+            )
+          ) : (
+            <DecisionWorkspacePlaceholder reviewBucket={reviewBucket} initialReviewComplete={initialReviewComplete} basePath={basePath} />
+          )}
+        </div>
+      </div>
+
+      {isMobile ? (
+        <Sheet
+          open={mobileDetailOpen && selected !== null}
+          onOpenChange={(open) => {
+            setMobileDetailOpen(open);
+          }}
+        >
+          <SheetContent side={drawerSide} className="overflow-y-auto">
+            {selected ? (
+              <>
+                <SheetHeader>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">{translate("changes.workspace.title")}</p>
+                    <SheetTitle className="mt-3 leading-tight">{summarizeChange(selected).title}</SheetTitle>
+                    <SheetDescription>{translate("changes.focusedSections")}</SheetDescription>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <SheetDismissButton />
+                  </div>
+                </SheetHeader>
+
+                <div className="mt-6">
+                  <DecisionWorkspace
+                    selected={selected}
+                    currentEvidenceSide={currentEvidenceSide}
+                    evidenceView={evidenceView}
+                    evidence={evidence}
+                    previewBusy={previewBusy}
+                    labelLearning={labelLearning}
+                    labelLearningBusy={labelLearningBusy}
+                    labelLearningError={labelLearningError}
+                    learningOpen={learningOpen}
+                    newFamilyLabel={newFamilyLabel}
+                    editContext={editContext}
+                    editContextBusy={editContextBusy}
+                    editContextError={editContextError}
+                    decisionBusy={decisionBusy}
+                    onMarkViewed={() => void markViewed(selected)}
+                    onEvidenceSideChange={(side) => void openEvidence(selected, side)}
+                    onEvidenceViewChange={setEvidenceView}
+                    onDecide={(decision) => void decide(decision)}
+                    onLearningToggle={() => setLearningOpen((current) => !current)}
+                    onApproveAndLearnExisting={(familyId, rawLabel, canonicalLabel) =>
+                      void approveAndLearn({
+                        mode: "add_alias",
+                        family_id: familyId,
+                        successText: translate("changes.learnedExisting", { rawLabel, canonicalLabel }),
+                      })
+                    }
+                    onApproveAndLearnCreate={() =>
+                      void approveAndLearn({
+                        mode: "create_family",
+                        canonical_label: newFamilyLabel.trim(),
+                        successText: translate("changes.learnedCreated", { label: newFamilyLabel.trim() }),
+                      })
+                    }
+                    onNewFamilyLabelChange={setNewFamilyLabel}
+                    onRetryLearningContext={() => setLabelLearningReloadNonce((current) => current + 1)}
+                    basePath={basePath}
+                    compact
+                  />
+                </div>
+              </>
+            ) : null}
+          </SheetContent>
+        </Sheet>
+      ) : null}
 
       <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
         <SheetContent side="bottom" className="overflow-y-auto md:hidden">

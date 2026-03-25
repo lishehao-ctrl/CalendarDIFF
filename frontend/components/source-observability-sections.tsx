@@ -2,8 +2,9 @@
 
 import { Badge } from "@/components/ui/badge";
 import { translate } from "@/lib/i18n/runtime";
+import { workbenchSupportPanelClassName } from "@/lib/workbench-styles";
 import { cn } from "@/lib/utils";
-import { formatElapsedMs, formatUsageSummary } from "@/lib/source-observability";
+import { formatElapsedMs } from "@/lib/source-observability";
 import { formatStatusLabel } from "@/lib/presenters";
 import type { SourceObservabilityView } from "@/lib/types";
 
@@ -26,7 +27,7 @@ function MetricBlock({
   detail: string;
 }) {
   return (
-    <div className="rounded-[1rem] border border-line/80 bg-white/72 p-4">
+    <div className={workbenchSupportPanelClassName("default", "p-4")}>
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{label}</p>
         {tone ? <Badge tone={tone}>{formatStatusLabel(tone === "approved" ? "ok" : tone)}</Badge> : null}
@@ -44,8 +45,6 @@ export function SourceObservabilitySections({
   observability: SourceObservabilityView;
   className?: string;
 }) {
-  const bootstrapUsage = formatUsageSummary(observability.bootstrap_usage);
-  const replayUsage = formatUsageSummary(observability.replay_usage);
   const latestSyncHeadline = observability.latest_sync_label || translate("sources.observability.noLiveSync");
   const latestSyncDetail = observability.latest_sync_detail || translate("sources.observability.runToSample");
 
@@ -70,11 +69,6 @@ export function SourceObservabilitySections({
         detail={formatElapsedMs(observability.latest_replay_elapsed_ms)}
       />
       <MetricBlock label={translate("sources.observability.latestSync")} headline={latestSyncHeadline} detail={latestSyncDetail} />
-      <MetricBlock
-        label={translate("sources.observability.llmCost")}
-        headline={replayUsage.headline === "Unavailable" ? bootstrapUsage.headline : replayUsage.headline}
-        detail={replayUsage.headline === "Unavailable" ? bootstrapUsage.detail : replayUsage.detail}
-      />
     </div>
   );
 }

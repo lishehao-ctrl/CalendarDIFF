@@ -7,6 +7,7 @@ type UseApiResourceOptions = {
   cacheKey?: string;
   staleMs?: number;
   readCachedSnapshot?: boolean;
+  resetOnKeyChange?: boolean;
 };
 
 export function useApiResource<T>(
@@ -16,6 +17,8 @@ export function useApiResource<T>(
   options?: UseApiResourceOptions,
 ) {
   const readCachedSnapshot = options?.readCachedSnapshot !== false;
+  const resetOnKeyChange = options?.resetOnKeyChange !== false;
+  const resourceKey = options?.cacheKey || null;
   const initialSnapshot = useMemo(
     () => (readCachedSnapshot && options?.cacheKey ? getCachedResourceSnapshot<T>(options.cacheKey, options.staleMs) : null),
     [readCachedSnapshot, options?.cacheKey, options?.staleMs],
@@ -26,6 +29,7 @@ export function useApiResource<T>(
   const loaderRef = useRef(loader);
   const dataRef = useRef<T | null>(initialData ?? initialSnapshot?.data ?? null);
   const optionsRef = useRef<UseApiResourceOptions | undefined>(options);
+  const resourceKeyRef = useRef<string | null>(resourceKey);
 
   useEffect(() => {
     loaderRef.current = loader;
@@ -34,6 +38,24 @@ export function useApiResource<T>(
   useEffect(() => {
     optionsRef.current = options;
   }, [options]);
+
+  useEffect(() => {
+    if (!resetOnKeyChange) {
+      resourceKeyRef.current = resourceKey;
+      return;
+    }
+    if (resourceKeyRef.current === resourceKey) {
+      return;
+    }
+
+    resourceKeyRef.current = resourceKey;
+    const cached = resourceKey && readCachedSnapshot ? getCachedResourceSnapshot<T>(resourceKey, options?.staleMs) : null;
+    const nextData = initialData ?? cached?.data ?? null;
+    dataRef.current = nextData;
+    setDataState(nextData);
+    setError(cached?.error || null);
+    setLoading(nextData === null);
+  }, [initialData, options?.staleMs, readCachedSnapshot, resetOnKeyChange, resourceKey]);
 
   const applyData = useCallback((value: SetStateAction<T | null>) => {
     setDataState((previous) => {

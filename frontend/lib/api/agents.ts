@@ -1,6 +1,7 @@
 import { apiGet, apiPost } from "@/lib/api/client";
 import type {
   AgentChangeContext,
+  AgentFamilyContext,
   AgentProposal,
   AgentSourceContext,
   AgentWorkspaceContext,
@@ -23,6 +24,10 @@ export function agentProposalCacheKey(proposalId: number) {
   return `agent:proposal:${proposalId}`;
 }
 
+export function agentFamilyContextCacheKey(familyId: number) {
+  return `agent:context:family:${familyId}`;
+}
+
 export function approvalTicketCacheKey(ticketId: string) {
   return `agent:approval-ticket:${ticketId}`;
 }
@@ -39,12 +44,40 @@ export async function getAgentSourceContext(sourceId: number) {
   return apiGet<AgentSourceContext>(`/agent/context/sources/${sourceId}`);
 }
 
+export async function getAgentFamilyContext(familyId: number) {
+  return apiGet<AgentFamilyContext>(`/agent/context/families/${familyId}`);
+}
+
 export async function createChangeDecisionProposal(changeId: number) {
   return apiPost<AgentProposal>("/agent/proposals/change-decision", { change_id: changeId });
 }
 
+export async function createChangeEditCommitProposal(
+  changeId: number,
+  patch: {
+    due_date?: string;
+    due_time?: string;
+    time_precision?: "date_only" | "datetime";
+    event_name?: string;
+  },
+) {
+  return apiPost<AgentProposal>("/agent/proposals/change-edit-commit", { change_id: changeId, patch });
+}
+
 export async function createSourceRecoveryProposal(sourceId: number) {
   return apiPost<AgentProposal>("/agent/proposals/source-recovery", { source_id: sourceId });
+}
+
+export async function createFamilyRelinkPreviewProposal(rawTypeId: number, familyId: number) {
+  return apiPost<AgentProposal>("/agent/proposals/family-relink-preview", { raw_type_id: rawTypeId, family_id: familyId });
+}
+
+export async function createFamilyRelinkCommitProposal(rawTypeId: number, familyId: number) {
+  return apiPost<AgentProposal>("/agent/proposals/family-relink-commit", { raw_type_id: rawTypeId, family_id: familyId });
+}
+
+export async function createLabelLearningCommitProposal(changeId: number, familyId: number) {
+  return apiPost<AgentProposal>("/agent/proposals/label-learning-commit", { change_id: changeId, family_id: familyId });
 }
 
 export async function getAgentProposal(proposalId: number) {

@@ -53,6 +53,22 @@ function humanizeErrorPayload(path: string, status: number, payload: unknown) {
       ? (payload as { detail?: unknown }).detail
       : payload;
 
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const entry = item as { loc?: unknown; msg?: unknown };
+        const msg = typeof entry.msg === "string" ? entry.msg.trim() : "";
+        if (!msg) return null;
+        const loc = Array.isArray(entry.loc) ? entry.loc[entry.loc.length - 1] : null;
+        return typeof loc === "string" && loc ? `${loc}: ${msg}` : msg;
+      })
+      .filter((value): value is string => Boolean(value));
+    if (messages.length > 0) {
+      return messages.join("; ");
+    }
+  }
+
   if (typeof detail === "string" && detail.trim()) {
     return detail.trim();
   }

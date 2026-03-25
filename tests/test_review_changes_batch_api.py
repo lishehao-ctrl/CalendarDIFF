@@ -12,7 +12,6 @@ from app.db.models.shared import User
 def _create_onboarded_user(db_session) -> User:
     user = User(
         email="batch@example.com",
-        notify_email="batch@example.com",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)

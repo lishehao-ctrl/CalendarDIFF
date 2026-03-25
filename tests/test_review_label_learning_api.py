@@ -13,7 +13,6 @@ from app.modules.families.family_service import create_course_work_item_family
 def _create_user_with_calendar_source(db_session) -> tuple[User, InputSource]:
     user = User(
         email="learn@example.com",
-        notify_email="learn@example.com",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)

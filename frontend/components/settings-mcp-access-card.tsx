@@ -11,6 +11,7 @@ import { createMcpToken, getMcpTokens, revokeMcpToken, settingsMcpTokensCacheKey
 import { translate } from "@/lib/i18n/runtime";
 import { formatDateTime } from "@/lib/presenters";
 import { useApiResource } from "@/lib/use-api-resource";
+import { workbenchStateSurfaceClassName, workbenchSupportPanelClassName } from "@/lib/workbench-styles";
 import type { McpAccessToken, McpAccessTokenCreateResponse } from "@/lib/types";
 
 const expiryOptions = [7, 30, 90, 365] as const;
@@ -214,14 +215,14 @@ export function SettingsMcpAccessCard() {
       </div>
 
       {banner ? (
-        <div className={banner.tone === "error" ? "mt-5 rounded-[1.15rem] border border-[#efc4b5] bg-[#fff3ef] px-4 py-3 text-sm text-[#7f3d2a]" : "mt-5 rounded-[1.15rem] border border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] px-4 py-3 text-sm text-[#314051]"}>
+        <div className={workbenchStateSurfaceClassName(banner.tone === "error" ? "error" : "info", "mt-5 px-4 py-3 text-sm text-[#314051]")}>
           {banner.text}
         </div>
       ) : null}
 
-      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+      <div className="mt-5 space-y-5">
         <div className="space-y-5">
-          <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+          <div className={workbenchSupportPanelClassName("default", "p-4")}>
             <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("settings.mcp.createTitle")}</p>
             <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
               <div>
@@ -262,7 +263,7 @@ export function SettingsMcpAccessCard() {
           </div>
 
           {revealPanel ? (
-            <div className="rounded-[1.15rem] border border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] p-4">
+            <div className={workbenchStateSurfaceClassName("info", "p-4")}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("settings.mcp.oneTimeRevealEyebrow")}</p>
@@ -272,7 +273,7 @@ export function SettingsMcpAccessCard() {
                   {translate("common.actions.close")}
                 </Button>
               </div>
-              <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/85 p-4">
+              <div className={workbenchSupportPanelClassName("quiet", "mt-4 p-4")}>
                 <code className="block break-all text-sm text-ink">{revealPanel.token}</code>
               </div>
               <div className="mt-4 flex flex-wrap gap-3">
@@ -282,12 +283,11 @@ export function SettingsMcpAccessCard() {
                 </Button>
               </div>
               <p className="mt-4 text-sm leading-6 text-[#596270]">{translate("settings.mcp.oneTimeRevealWarning")}</p>
-              <p className="mt-3 text-sm leading-6 text-[#596270]">{translate("settings.mcp.usageHint")}</p>
             </div>
           ) : null}
         </div>
 
-        <div className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
+        <div className={workbenchSupportPanelClassName("default", "p-4")}>
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("settings.mcp.listEyebrow")}</p>
@@ -305,7 +305,7 @@ export function SettingsMcpAccessCard() {
                 const scopesSummary = token.scopes.length > 0 ? token.scopes.join(", ") : translate("common.labels.notAvailable");
 
                 return (
-                  <div key={token.token_id} className="rounded-[1rem] border border-line/80 bg-white/85 p-4">
+                  <div key={token.token_id} className={workbenchSupportPanelClassName("quiet", "p-4")}>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -328,7 +328,7 @@ export function SettingsMcpAccessCard() {
                     </div>
 
                     {revokeConfirmId === token.token_id ? (
-                      <div className="mt-4 rounded-[1rem] border border-[#efc4b5] bg-[#fff8f4] p-4">
+                      <div className={workbenchStateSurfaceClassName("error", "mt-4 p-4")}>
                         <p className="text-sm font-medium text-ink">{translate("settings.mcp.revokeConfirmTitle")}</p>
                         <p className="mt-2 text-sm leading-6 text-[#596270]">{translate("settings.mcp.revokeConfirmBody")}</p>
                         <div className="mt-4 flex flex-wrap gap-3">

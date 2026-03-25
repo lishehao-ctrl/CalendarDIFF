@@ -25,7 +25,6 @@ from app.db.models.shared import (
 def _create_user_with_source(db_session, *, email: str) -> tuple[User, InputSource]:
     user = User(
         email=email,
-        notify_email=email,
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)

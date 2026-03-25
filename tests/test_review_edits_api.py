@@ -13,7 +13,6 @@ from app.modules.common.course_identity import normalize_label_token, normalized
 def _create_user(db_session) -> User:
     user = User(
         email="review-edit@example.com",
-        notify_email="review-edit@example.com",
         timezone_name="America/Los_Angeles",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
@@ -230,8 +229,8 @@ def test_review_edit_canonical_preview_accepts_change_id_target(client, db_sessi
     assert preview_response.status_code == 200
     preview_payload = preview_response.json()
     assert preview_payload["entity_uid"] == entity_uid
-    assert preview_payload["candidate_after"]["event_name"] == "HW3 Updated"
     assert preview_payload["candidate_after"]["due_date"] == "2026-03-14"
+    assert preview_payload["candidate_after"]["event_display"]["family_name"] == "Homework"
 
     apply_response = client.post(
         "/changes/edits",

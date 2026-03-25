@@ -4,11 +4,13 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Mailbox, Trash2 } from "lucide-react";
+import { SourceRecoveryAgentCard } from "@/components/source-recovery-agent-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { EmptyState, ErrorState, LoadingState } from "@/components/data-states";
+import { EmptyState, ErrorState } from "@/components/data-states";
 import { PanelLoadingPlaceholder } from "@/components/panel-loading-placeholder";
+import { WorkbenchLoadingShell } from "@/components/workbench-loading-shell";
 import { SourceSyncProgress } from "@/components/source-sync-progress";
 import { withBasePath } from "@/lib/demo-mode";
 import { startOnboardingGmailOAuth } from "@/lib/api/onboarding";
@@ -17,6 +19,7 @@ import { buildSourceObservabilityViews } from "@/lib/source-observability";
 import { invalidateSourceCaches } from "@/lib/source-cache";
 import { createOAuthSession, deleteSource, getSyncRequest, listSources, sourceListCacheKey } from "@/lib/api/sources";
 import { useApiResource } from "@/lib/use-api-resource";
+import { workbenchPanelClassName, workbenchStateSurfaceClassName, workbenchSupportPanelClassName } from "@/lib/workbench-styles";
 import type { SourceRow, SyncStatus } from "@/lib/types";
 
 const DeferredSourceObservabilitySections = dynamic(
@@ -119,7 +122,7 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
     }
   }
 
-  if (loading) return <LoadingState label="gmail setup" />;
+  if (loading) return <WorkbenchLoadingShell variant="source-connect" />;
   if (error) return <ErrorState message={error} />;
   if (!data) return <EmptyState title={translate("sourceConnect.gmailPanel.stateUnavailableTitle")} description={translate("sourceConnect.gmailPanel.stateUnavailableDescription")} />;
 
@@ -140,14 +143,10 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
           </Button>
         </div>
 
-        {banner ? (
-          <div className={banner.tone === "error" ? "mt-5 rounded-[1.15rem] border border-[#efc4b5] bg-[#fff3ef] px-4 py-3 text-sm text-[#7f3d2a]" : "mt-5 rounded-[1.15rem] border border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] px-4 py-3 text-sm text-[#314051]"}>
-            {banner.text}
-          </div>
-        ) : null}
+        {banner ? <div className={workbenchStateSurfaceClassName(banner.tone === "error" ? "error" : "info", "mt-5 px-4 py-3 text-sm text-[#314051]")}>{banner.text}</div> : null}
 
         {observability ? (
-          <Card className="mt-6 bg-white/60 p-5">
+          <Card className={workbenchPanelClassName("secondary", "mt-6 p-5")}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sourceConnect.postureTitle")}</p>
@@ -159,8 +158,9 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
           </Card>
         ) : null}
 
-        <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_0.95fr]">
-          <Card className="bg-white/60 p-5">
+        <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-5">
+          <Card className={workbenchPanelClassName("secondary", "p-5")}>
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(215,90,45,0.12)] text-ember">
                 <Mailbox className="h-5 w-5" />
@@ -170,7 +170,7 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
                 <h4 className="mt-2 text-lg font-semibold text-ink">{source ? translate("sourceConnect.gmailPanel.configured") : translate("sourceConnect.gmailPanel.missing")}</h4>
               </div>
             </div>
-            <div className="mt-5 rounded-[1.15rem] border border-line/80 bg-white/70 p-4 text-sm text-[#314051]">
+            <div className={workbenchSupportPanelClassName("default", "mt-5 p-4 text-sm text-[#314051]")}>
               <p>{translate("sourceConnect.gmailPanel.status")}: {currentMailboxStatus}</p>
               <p className="mt-2">{translate("sourceConnect.gmailPanel.source")}: {source ? `#${source.source_id}` : translate("sourceConnect.gmailPanel.sourceWillBeCreated")}</p>
               <p className="mt-2">{translate("sourceConnect.gmailPanel.label")}: INBOX</p>
@@ -187,7 +187,7 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
               </div>
             ) : null}
           </Card>
-          <Card className="bg-white/60 p-5">
+          <Card className={workbenchPanelClassName("secondary", "p-5")}>
             <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sourceConnect.gmailPanel.connectionFlow")}</p>
             <h4 className="mt-3 text-lg font-semibold text-ink">{translate("sourceConnect.gmailPanel.connectionFlowTitle")}</h4>
             <p className="mt-2 text-sm leading-6 text-[#596270]">{translate("sourceConnect.gmailPanel.connectionFlowSummary")}</p>
@@ -197,6 +197,10 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
               </Button>
             </div>
           </Card>
+          </div>
+          <div className="space-y-4">
+            {source ? <SourceRecoveryAgentCard sourceId={source.source_id} basePath={basePath} /> : null}
+          </div>
         </div>
       </Card>
     </div>

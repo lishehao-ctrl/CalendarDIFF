@@ -49,8 +49,8 @@
 - `auth.user_onboarding_incomplete`
   - 英文默认：由后端 onboarding status message 填充
   - params: `{}`
-- `auth.notify_email_exists`
-  - 英文默认：`notify_email already exists`
+- `auth.email_exists`
+  - 英文默认：`email already exists`
   - params: `{}`
 - `auth.validation_error`
   - 英文默认：具体 validation message
@@ -69,9 +69,6 @@
 
 ### Settings/API error detail codes
 
-- `settings.notify_email_cannot_be_cleared`
-  - 英文默认：`notify_email cannot be cleared`
-  - params: `{}`
 - `settings.validation_error`
   - 英文默认：具体 validation message
   - params: `{}`
@@ -295,7 +292,7 @@ params currently:
 
 ## B. Onboarding/API error detail codes
 
-- `onboarding.notify_email_managed_by_auth`
+- `onboarding.email_managed_by_auth`
 - `onboarding.canvas_required_before_monitoring_window`
 - `onboarding.canvas_ics.validation_error`
 - `onboarding.gmail_oauth.unavailable`

@@ -1,19 +1,12 @@
 import dynamic from "next/dynamic";
 import { notFound } from "next/navigation";
 import { LocalizedPageIntro } from "@/components/localized-page-intro";
-import { PanelLoadingPlaceholder } from "@/components/panel-loading-placeholder";
+import { WorkbenchLoadingShell } from "@/components/workbench-loading-shell";
 
 const DeferredSourceDetailPanel = dynamic(
   () => import("@/components/source-detail-panel").then((mod) => mod.SourceDetailPanel),
   {
-    loading: () => (
-      <PanelLoadingPlaceholder
-        eyebrow="Source detail"
-        title="Source posture"
-        summary="Load source identity and posture first, then fill in observability and replay history."
-        rows={3}
-      />
-    ),
+    loading: () => <WorkbenchLoadingShell variant="source-detail" />,
   },
 );
 

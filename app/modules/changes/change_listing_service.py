@@ -23,6 +23,7 @@ def list_changes(
     source_id: int | None,
     limit: int,
     offset: int,
+    language_code: str | None = None,
 ) -> list[dict]:
     stmt = _base_change_query(user_id=user_id)
     if review_status == "pending":
@@ -44,7 +45,13 @@ def list_changes(
 
     stmt = stmt.order_by(Change.detected_at.desc(), Change.id.desc()).offset(offset).limit(limit)
     rows = db.execute(stmt).all()
-    return _serialize_rows(db=db, user_id=user_id, rows=rows, now=datetime.now(timezone.utc))
+    return _serialize_rows(
+        db=db,
+        user_id=user_id,
+        rows=rows,
+        now=datetime.now(timezone.utc),
+        language_code=language_code,
+    )
 
 
 def get_change(
@@ -52,11 +59,18 @@ def get_change(
     *,
     user_id: int,
     change_id: int,
+    language_code: str | None = None,
 ) -> dict | None:
     row = db.execute(_base_change_query(user_id=user_id).where(Change.id == change_id).limit(1)).first()
     if row is None:
         return None
-    items = _serialize_rows(db=db, user_id=user_id, rows=[row], now=datetime.now(timezone.utc))
+    items = _serialize_rows(
+        db=db,
+        user_id=user_id,
+        rows=[row],
+        now=datetime.now(timezone.utc),
+        language_code=language_code,
+    )
     return items[0] if items else None
 
 
@@ -81,6 +95,7 @@ def _serialize_rows(
     user_id: int,
     rows: list[tuple[Change, Notification | None]],
     now: datetime,
+    language_code: str | None = None,
 ) -> list[dict]:
     changes = [change for change, _notification in rows]
     projection = build_change_projection_context(db, user_id=user_id, changes=changes)
@@ -110,6 +125,7 @@ def _serialize_rows(
             change=change,
             primary_source=primary_source,
             change_summary=change_summary,
+            language_code=language_code,
         )
         before_family_name_override = _resolve_family_name_override(
             payload=before_payload,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session
@@ -77,6 +77,8 @@ class ChangeProjectionContext:
         observed_at = None
         if isinstance(source_ref.external_event_id, str) and source_ref.external_event_id.strip():
             observed_at = self.observed_at_by_source_ref.get((source_ref.source_id, source_ref.external_event_id.strip()))
+            if isinstance(observed_at, datetime):
+                observed_at = observed_at.astimezone(timezone.utc)
         return ChangeSummaryPayloadSide(
             source_label=_build_source_label(source=source, provider=source_ref.provider, source_kind=source_ref.source_kind),
             source_kind=_resolve_source_kind(source_kind=source_ref.source_kind, provider=source_ref.provider, source=source),

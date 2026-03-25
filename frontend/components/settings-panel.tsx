@@ -229,7 +229,7 @@ export function SettingsPanel() {
   return (
     <div className="space-y-4">
       {banner ? (
-        <Card className={banner.tone === "error" ? "border-[#efc4b5] bg-[#fff3ef] p-4" : "border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] p-4"}>
+        <Card className={workbenchStateSurfaceClassName(banner.tone === "error" ? "error" : "info", "p-4")}>
           <p className="text-sm text-[#314051]">{banner.text}</p>
         </Card>
       ) : null}

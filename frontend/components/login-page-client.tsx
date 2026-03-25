@@ -8,10 +8,12 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { login, register } from "@/lib/api/auth";
 import { translate } from "@/lib/i18n/runtime";
+import { useLocale } from "@/lib/i18n/use-locale";
 
 export function LoginPageClient({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
-  const [notifyEmail, setNotifyEmail] = useState("");
+  const { locale } = useLocale();
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -25,9 +27,9 @@ export function LoginPageClient({ mode }: { mode: "login" | "register" }) {
         throw new Error(translate("auth.passwordsDoNotMatch"));
       }
       if (mode === "login") {
-        await login({ notify_email: notifyEmail, password });
+        await login({ email, password, language_code: locale });
       } else {
-        await register({ notify_email: notifyEmail, password });
+        await register({ email, password, language_code: locale });
       }
       router.replace("/onboarding");
       router.refresh();
@@ -67,10 +69,10 @@ export function LoginPageClient({ mode }: { mode: "login" | "register" }) {
             ) : null}
             <div className="mt-6 space-y-4">
               <div>
-                <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="notify-email-auth">
-                  {translate("auth.notifyEmail")}
+                <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="email-auth">
+                  {translate("auth.email")}
                 </label>
-                <Input id="notify-email-auth" value={notifyEmail} onChange={(event) => setNotifyEmail(event.target.value)} placeholder={translate("auth.notifyPlaceholder")} />
+                <Input id="email-auth" value={email} onChange={(event) => setEmail(event.target.value)} placeholder={translate("auth.emailPlaceholder")} />
               </div>
               <div>
                 <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="password-auth">
@@ -92,7 +94,7 @@ export function LoginPageClient({ mode }: { mode: "login" | "register" }) {
                   <Input id="password-confirm-auth" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder={translate("auth.confirmPasswordPlaceholder")} />
                 </div>
               ) : null}
-              <Button className="w-full" disabled={submitting || !notifyEmail || !password || (mode === "register" && !confirmPassword)} onClick={() => void submit()}>
+              <Button className="w-full" disabled={submitting || !email || !password || (mode === "register" && !confirmPassword)} onClick={() => void submit()}>
                 {submitting
                   ? (mode === "login" ? translate("auth.signInBusy") : translate("auth.createAccountBusy"))
                   : (mode === "login" ? translate("auth.signIn") : translate("auth.createAccountEyebrow"))}

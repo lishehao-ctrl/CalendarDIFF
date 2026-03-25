@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from app.modules.common.structured_copy import render_structured_text
+
 
 def build_workspace_posture(
     *,
@@ -16,66 +18,126 @@ def build_workspace_posture(
     source_product_phases: list[str],
     monitoring_live_since: datetime | None,
     replay_active: bool,
+    language_code: str | None = None,
 ) -> dict:
     if int(sources_summary.get("blocking_count") or 0) > 0 or int(sources_summary.get("active_count") or 0) == 0:
         phase = "attention_required"
+        reason_code = "workspace_posture.next_action.sources_attention_required"
+        reason_params = {
+            "message": str(sources_summary.get("message") or "Source attention is required before relying on live monitoring."),
+        }
         next_action = {
             "lane": "sources",
-            "label": "Open Sources",
-            "reason": str(sources_summary.get("message") or "Source attention is required before relying on live monitoring."),
-            "reason_code": "workspace_posture.next_action.sources_attention_required",
-            "reason_params": {},
+            "label": render_structured_text(
+                code=f"{reason_code}.label",
+                language_code=language_code,
+                fallback="Open Sources",
+            ),
+            "reason": render_structured_text(
+                code=f"{reason_code}.reason",
+                language_code=language_code,
+                params=reason_params,
+                fallback=reason_params["message"],
+            ),
+            "reason_code": reason_code,
+            "reason_params": reason_params,
         }
     elif "importing_baseline" in source_product_phases:
         phase = "baseline_import"
+        reason_code = "workspace_posture.next_action.baseline_import_running"
         next_action = {
             "lane": "sources",
-            "label": "Open Sources",
-            "reason": "At least one source is still building its baseline import.",
-            "reason_code": "workspace_posture.next_action.baseline_import_running",
+            "label": render_structured_text(code=f"{reason_code}.label", language_code=language_code, fallback="Open Sources"),
+            "reason": render_structured_text(
+                code=f"{reason_code}.reason",
+                language_code=language_code,
+                fallback="At least one source is still building its baseline import.",
+            ),
+            "reason_code": reason_code,
             "reason_params": {},
         }
     elif baseline_review_pending > 0 or "needs_initial_review" in source_product_phases:
         phase = "initial_review"
+        reason_code = "workspace_posture.next_action.initial_review_pending"
+        reason_params = {"pending_count": baseline_review_pending}
         next_action = {
             "lane": "initial_review",
-            "label": "Open Initial Review",
-            "reason": f"{baseline_review_pending} baseline items still need review before monitoring is fully live.",
-            "reason_code": "workspace_posture.next_action.initial_review_pending",
-            "reason_params": {"pending_count": baseline_review_pending},
+            "label": render_structured_text(
+                code=f"{reason_code}.label",
+                language_code=language_code,
+                fallback="Open Baseline Review",
+            ),
+            "reason": render_structured_text(
+                code=f"{reason_code}.reason",
+                language_code=language_code,
+                params=reason_params,
+                fallback=f"{baseline_review_pending} baseline items still need review before monitoring is fully live.",
+            ),
+            "reason_code": reason_code,
+            "reason_params": reason_params,
         }
     else:
         phase = "monitoring_live"
         if changes_pending > 0:
+            reason_code = "workspace_posture.next_action.replay_changes_pending"
+            reason_params = {"pending_count": changes_pending}
             next_action = {
                 "lane": "changes",
-                "label": "Open Replay Review",
-                "reason": f"{changes_pending} replay changes are waiting for review decisions.",
-                "reason_code": "workspace_posture.next_action.replay_changes_pending",
-                "reason_params": {"pending_count": changes_pending},
+                "label": render_structured_text(
+                    code=f"{reason_code}.label",
+                    language_code=language_code,
+                    fallback="Open Replay Review",
+                ),
+                "reason": render_structured_text(
+                    code=f"{reason_code}.reason",
+                    language_code=language_code,
+                    params=reason_params,
+                    fallback=f"{changes_pending} replay changes are waiting for review decisions.",
+                ),
+                "reason_code": reason_code,
+                "reason_params": reason_params,
             }
         elif families_attention_count > 0:
+            reason_code = "workspace_posture.next_action.families_attention_required"
+            reason_params = {"attention_count": families_attention_count}
             next_action = {
                 "lane": "families",
-                "label": "Open Families",
-                "reason": "Naming governance still needs attention.",
-                "reason_code": "workspace_posture.next_action.families_attention_required",
-                "reason_params": {"attention_count": families_attention_count},
+                "label": render_structured_text(code=f"{reason_code}.label", language_code=language_code, fallback="Open Families"),
+                "reason": render_structured_text(
+                    code=f"{reason_code}.reason",
+                    language_code=language_code,
+                    params=reason_params,
+                    fallback="Naming governance still needs attention.",
+                ),
+                "reason_code": reason_code,
+                "reason_params": reason_params,
             }
         elif manual_active_count > 0:
+            reason_code = "workspace_posture.next_action.manual_repairs_active"
+            reason_params = {"active_event_count": manual_active_count}
             next_action = {
                 "lane": "manual",
-                "label": "Open Manual",
-                "reason": "Fallback manual repairs are still active.",
-                "reason_code": "workspace_posture.next_action.manual_repairs_active",
-                "reason_params": {"active_event_count": manual_active_count},
+                "label": render_structured_text(code=f"{reason_code}.label", language_code=language_code, fallback="Open Manual"),
+                "reason": render_structured_text(
+                    code=f"{reason_code}.reason",
+                    language_code=language_code,
+                    params=reason_params,
+                    fallback="Fallback manual repairs are still active.",
+                ),
+                "reason_code": reason_code,
+                "reason_params": reason_params,
             }
         else:
+            reason_code = "workspace_posture.next_action.monitoring_live_default"
             next_action = {
                 "lane": "changes",
-                "label": "Open Replay Review",
-                "reason": "Monitoring is live. Replay Review is the main daily workspace.",
-                "reason_code": "workspace_posture.next_action.monitoring_live_default",
+                "label": render_structured_text(code=f"{reason_code}.label", language_code=language_code, fallback="Open Replay Review"),
+                "reason": render_structured_text(
+                    code=f"{reason_code}.reason",
+                    language_code=language_code,
+                    fallback="Monitoring is live. Replay Review is the main daily workspace.",
+                ),
+                "reason_code": reason_code,
                 "reason_params": {},
             }
 

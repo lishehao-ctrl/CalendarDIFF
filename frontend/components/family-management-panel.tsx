@@ -10,6 +10,7 @@ import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader,
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, ErrorState } from "@/components/data-states";
 import { PanelLoadingPlaceholder } from "@/components/panel-loading-placeholder";
+import { WorkbenchLoadingShell } from "@/components/workbench-loading-shell";
 import {
   createFamily,
   decideFamilyRawTypeSuggestion,
@@ -28,7 +29,9 @@ import {
 } from "@/lib/api/families";
 import { listManualEvents, manualEventsCacheKey } from "@/lib/api/manual";
 import { translate } from "@/lib/i18n/runtime";
+import { useResponsiveTier } from "@/lib/use-responsive-tier";
 import { useApiResource } from "@/lib/use-api-resource";
+import { workbenchQueueRowClassName, workbenchStateSurfaceClassName, workbenchSupportPanelClassName } from "@/lib/workbench-styles";
 import { formatDateTime, formatSemanticDue } from "@/lib/presenters";
 import type {
   CourseIdentity,
@@ -205,6 +208,7 @@ function PaginationControls({
 
 export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) {
   void basePath;
+  const { isMobile, isTablet, isDesktop } = useResponsiveTier();
   const families = useApiResource<CourseWorkItemFamily[]>(() => listFamilies(), [], [], {
     cacheKey: familiesListCacheKey(),
   });
@@ -224,10 +228,11 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
     cacheKey: manualEventsCacheKey(),
   });
 
-  const [workspaceArea, setWorkspaceArea] = useState<WorkspaceArea>("families");
+  const [workspaceArea, setWorkspaceArea] = useState<WorkspaceArea>("raw-types");
   const [query, setQuery] = useState("");
   const [selectedCourse, setSelectedCourse] = useState<string>("all");
   const [selectedFamilyId, setSelectedFamilyId] = useState<number | null>(null);
+  const [selectedRawTypeId, setSelectedRawTypeId] = useState<number | null>(null);
   const [familyChooserOpen, setFamilyChooserOpen] = useState(false);
   const [familyPage, setFamilyPage] = useState(1);
   const [rawTypePage, setRawTypePage] = useState(1);
@@ -245,6 +250,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
   const [newRawTypesInput, setNewRawTypesInput] = useState("");
   const [rawTypeTargets, setRawTypeTargets] = useState<Record<number, string>>({});
   const [relinkPreview, setRelinkPreview] = useState<{ rawTypeId: number; targetFamilyId: number } | null>(null);
+  const [observedDetailOpen, setObservedDetailOpen] = useState(false);
 
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
   const familyRows = useMemo(() => [...(families.data || [])].sort(compareFamilies), [families.data]);
@@ -290,6 +296,23 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
   }, [deferredQuery, selectedCourse, workspaceArea]);
 
   useEffect(() => {
+    if (workspaceArea !== "raw-types") {
+      setObservedDetailOpen(false);
+      setRelinkPreview(null);
+    }
+  }, [workspaceArea]);
+
+  useEffect(() => {
+    if (visibleRawTypes.length === 0) {
+      setSelectedRawTypeId(null);
+      return;
+    }
+    if (!selectedRawTypeId || !visibleRawTypes.some((row) => row.id === selectedRawTypeId)) {
+      setSelectedRawTypeId(visibleRawTypes[0].id);
+    }
+  }, [selectedRawTypeId, visibleRawTypes]);
+
+  useEffect(() => {
     if (visibleFamilies.length === 0) {
       setSelectedFamilyId(null);
       return;
@@ -303,21 +326,29 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
     () => visibleFamilies.find((family) => family.id === selectedFamilyId) || visibleFamilies[0] || null,
     [selectedFamilyId, visibleFamilies],
   );
+  const activeRawType = useMemo(
+    () => visibleRawTypes.find((rawType) => rawType.id === selectedRawTypeId) || visibleRawTypes[0] || null,
+    [selectedRawTypeId, visibleRawTypes],
+  );
+  const activeWorkbenchFamily = useMemo(
+    () => (activeRawType ? familyRows.find((family) => family.id === activeRawType.family_id) || null : selectedFamily),
+    [activeRawType, familyRows, selectedFamily],
+  );
   const selectedFamilyRawTypes = useMemo(
     () =>
-      selectedFamily
+      activeWorkbenchFamily
         ? (rawTypes.data || [])
-            .filter((rawType) => rawType.family_id === selectedFamily.id)
+            .filter((rawType) => rawType.family_id === activeWorkbenchFamily.id)
             .sort((left, right) => left.raw_type.localeCompare(right.raw_type))
         : [],
-    [rawTypes.data, selectedFamily],
+    [activeWorkbenchFamily, rawTypes.data],
   );
   const selectedFamilyEvents = useMemo(
     () =>
-      selectedFamily
-        ? [...((manualEvents.data || []).filter((event) => event.family_id === selectedFamily.id))].sort(compareManualEvents)
+      activeWorkbenchFamily
+        ? [...((manualEvents.data || []).filter((event) => event.family_id === activeWorkbenchFamily.id))].sort(compareManualEvents)
         : [],
-    [manualEvents.data, selectedFamily],
+    [activeWorkbenchFamily, manualEvents.data],
   );
   const eventCountByFamilyId = useMemo(() => {
     const counts = new Map<number, number>();
@@ -365,12 +396,12 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
   }, [suggestions.data]);
 
   useEffect(() => {
-    if (!selectedFamily) {
+    if (!activeWorkbenchFamily) {
       setDraftLabel("");
       return;
     }
-    setDraftLabel(selectedFamily.canonical_label);
-  }, [selectedFamily]);
+    setDraftLabel(activeWorkbenchFamily.canonical_label);
+  }, [activeWorkbenchFamily]);
 
   useEffect(() => {
     setEventPage(1);
@@ -425,23 +456,39 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
     const key = `${relinkPreviewRawType.course_display}::${relinkPreviewRawType.raw_type}`;
     return suggestionCountByObservedLabel.get(key) || 0;
   }, [relinkPreviewRawType, suggestionCountByObservedLabel]);
+  const activeRawTypeSuggestions = useMemo(() => {
+    if (!activeRawType) return [];
+    return (suggestions.data || []).filter(
+      (suggestion) =>
+        suggestion.course_display === activeRawType.course_display &&
+        (suggestion.source_raw_type === activeRawType.raw_type || suggestion.suggested_raw_type === activeRawType.raw_type),
+    );
+  }, [activeRawType, suggestions.data]);
 
   async function refreshAll() {
     await Promise.all([families.refresh(), status.refresh(), courses.refresh(), rawTypes.refresh(), suggestions.refresh(), manualEvents.refresh()]);
   }
 
+  function selectRawType(rawType: CourseWorkItemRawType) {
+    setSelectedRawTypeId(rawType.id);
+    setSelectedFamilyId(rawType.family_id);
+    if (isMobile) {
+      setObservedDetailOpen(true);
+    }
+  }
+
   async function saveSelectedFamily() {
-    if (!selectedFamily) return;
+    if (!activeWorkbenchFamily) return;
     const canonicalLabel = draftLabel.trim();
     if (!canonicalLabel) {
       setBanner({ tone: "error", text: translate("families.banners.familyLabelRequired") });
       return;
     }
 
-    setBusyFamilyId(selectedFamily.id);
+    setBusyFamilyId(activeWorkbenchFamily.id);
     setBanner(null);
     try {
-      await updateFamily(selectedFamily.id, {
+      await updateFamily(activeWorkbenchFamily.id, {
         canonical_label: canonicalLabel,
         raw_types: selectedFamilyRawTypes.map((rawType) => rawType.raw_type),
       });
@@ -531,7 +578,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
   }
 
   if (families.loading || status.loading || courses.loading || rawTypes.loading || suggestions.loading) {
-    return <PanelLoadingPlaceholder rows={3} />;
+    return <WorkbenchLoadingShell variant="families" />;
   }
   if (families.error) return <ErrorState message={`Families failed to load. ${families.error}`} />;
   if (status.error) return <ErrorState message={`Families status failed to load. ${status.error}`} />;
@@ -539,22 +586,188 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
   if (rawTypes.error) return <ErrorState message={`Observed labels failed to load. ${rawTypes.error}`} />;
   if (suggestions.error) return <ErrorState message={`Suggestions failed to load. ${suggestions.error}`} />;
 
+  const isObservedMobileWorkbench = isMobile && workspaceArea === "raw-types";
+  const inlineRelinkPreview =
+    isObservedMobileWorkbench && relinkPreviewRawType && relinkPreviewTargetFamily ? (
+      <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/72 p-4">
+        <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.observed.reviewImpact")}</p>
+        <div className="mt-3 space-y-3 text-sm text-[#314051]">
+          <p>
+            {translate("families.labels.observedLabel")}: <span className="font-medium text-ink">{relinkPreviewRawType.raw_type}</span>
+          </p>
+          <p>
+            {translate("families.observed.currentFamily", {
+              label: relinkPreviewCurrentFamily?.canonical_label || translate("families.labels.unavailable"),
+            })}
+          </p>
+          <p>
+            {translate("families.labels.canonicalFamily")}: <span className="font-medium text-ink">{relinkPreviewTargetFamily.canonical_label}</span>
+          </p>
+          <p>{translate("families.observed.pendingChangesGap")}</p>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-[0.95rem] border border-line/80 bg-white/80 p-3 text-sm text-[#314051]">
+            <p className="font-medium text-ink">{translate("families.labels.activeEvents")}</p>
+            <p className="mt-2">{relinkPreviewEvents.length}</p>
+          </div>
+          <div className="rounded-[0.95rem] border border-line/80 bg-white/80 p-3 text-sm text-[#314051]">
+            <p className="font-medium text-ink">{translate("families.areas.suggestions")}</p>
+            <p className="mt-2">{relinkPreviewSuggestionCount}</p>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Button disabled={busyRawTypeId === relinkPreviewRawType.id} onClick={() => void confirmMoveRawType()}>
+            {busyRawTypeId === relinkPreviewRawType.id
+              ? translate("families.observed.previewing")
+              : translate("families.observed.confirmMove", { label: relinkPreviewTargetFamily.canonical_label })}
+          </Button>
+          <Button variant="ghost" onClick={() => setRelinkPreview(null)}>
+            {translate("families.observed.keepInFamily", {
+              label: relinkPreviewCurrentFamily?.canonical_label || translate("families.labels.canonicalFamily"),
+            })}
+          </Button>
+        </div>
+      </div>
+    ) : null;
+
+  const rawTypeFamilyPanel = (
+    <Card className="animate-surface-enter p-5">
+      {activeWorkbenchFamily ? (
+        <div>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.labels.canonicalFamily")}</p>
+              <h3 className="mt-1 text-lg font-semibold text-ink">{activeWorkbenchFamily.canonical_label}</h3>
+              <p className="mt-2 text-sm text-[#596270]">{activeWorkbenchFamily.course_display}</p>
+            </div>
+            <Badge tone="info">{translate("families.labels.observedLabel")}: {selectedFamilyRawTypes.length}</Badge>
+          </div>
+
+          <div className="mt-5 rounded-[1rem] border border-line/80 bg-white/72 p-4">
+            <div className="flex items-start justify-between gap-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.list.canonicalRename")}</p>
+              <Button size="sm" onClick={() => void saveSelectedFamily()} disabled={busyFamilyId === activeWorkbenchFamily.id}>
+                {busyFamilyId === activeWorkbenchFamily.id ? translate("families.list.savingFamily") : translate("families.list.saveFamily")}
+              </Button>
+            </div>
+            <Input className="mt-4" value={draftLabel} onChange={(event) => setDraftLabel(event.target.value)} placeholder={translate("families.list.canonicalLabelPlaceholder")} />
+          </div>
+
+          <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/72 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.list.observedLabels")}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {selectedFamilyRawTypes.map((rawType) => (
+                <Badge key={rawType.id} tone={activeRawType?.id === rawType.id ? "pending" : "info"}>
+                  {rawType.raw_type}
+                </Badge>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/72 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.list.eventPreview")}</p>
+            <div className="mt-4 space-y-3">
+              {selectedFamilyEvents.slice(0, 3).length > 0 ? (
+                selectedFamilyEvents.slice(0, 3).map((event) => (
+                  <div key={event.entity_uid} className="rounded-[0.95rem] border border-line/80 bg-white/80 p-3">
+                    <p className="font-medium text-ink">{familyEventTitle(event)}</p>
+                    <p className="mt-1 text-sm text-[#596270]">
+                      {formatSemanticDue(
+                        event.event as unknown as Record<string, unknown>,
+                        formatSemanticDue(event as unknown as Record<string, unknown>, translate("common.labels.notAvailable")),
+                      )}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-[#596270]">{translate("families.list.noEvents")}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <EmptyState title={translate("families.list.noFamilySelected")} description={translate("families.list.noFamilySelectedDescription")} />
+      )}
+    </Card>
+  );
+
+  const rawTypeImpactPanel = (
+    <Card className="animate-surface-enter p-5">
+      <div>
+        <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.observed.reviewImpact")}</p>
+        <h3 className="mt-1 text-lg font-semibold text-ink">{activeRawType?.raw_type || translate("families.observed.title")}</h3>
+        <p className="mt-2 text-sm leading-6 text-[#596270]">
+          {activeRawType ? translate("families.observed.futureImports") : translate("families.observed.summary")}
+        </p>
+      </div>
+
+      {activeRawType ? (
+        <>
+          <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/72 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.labels.canonicalFamily")}</p>
+            <select
+              aria-label={translate("families.list.canonicalRename")}
+              className="mt-3 h-11 w-full rounded-2xl border border-line bg-white/85 px-4 text-sm text-ink outline-none transition focus:border-cobalt focus:bg-white"
+              value={rawTypeTargets[activeRawType.id] || String(activeRawType.family_id)}
+              onChange={(event) => setRawTypeTargets((current) => ({ ...current, [activeRawType.id]: event.target.value }))}
+            >
+              {familyRows
+                .filter((family) => family.course_display === activeRawType.course_display)
+                .map((family) => (
+                  <option key={family.id} value={String(family.id)}>
+                    {family.canonical_label}
+                  </option>
+                ))}
+            </select>
+            <div className="mt-3">
+              <Button
+                size="sm"
+                disabled={
+                  busyRawTypeId === activeRawType.id ||
+                  (rawTypeTargets[activeRawType.id] || String(activeRawType.family_id)) === String(activeRawType.family_id)
+                }
+                onClick={() => previewMoveRawType(activeRawType)}
+              >
+                {busyRawTypeId === activeRawType.id ? translate("families.observed.previewing") : translate("families.observed.previewMove")}
+              </Button>
+            </div>
+          </div>
+
+          {inlineRelinkPreview}
+
+          {activeRawTypeSuggestions.length > 0 ? (
+            <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/72 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.areas.suggestions")}</p>
+              <div className="mt-3 space-y-3">
+                {activeRawTypeSuggestions.slice(0, 3).map((suggestion) => (
+                  <div key={suggestion.id} className="rounded-[0.95rem] border border-line/80 bg-white/80 p-3">
+                    <p className="text-sm font-medium text-ink">
+                      {suggestion.source_family_name || translate("families.suggestions.unknownFamily")} → {suggestion.suggested_family_name || translate("families.suggestions.suggestedFamily")}
+                    </p>
+                    <p className="mt-1 text-xs text-[#6d7885]">{suggestion.evidence || translate("families.suggestions.summary")}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </Card>
+  );
+
   return (
     <div className="space-y-5">
-      <Card className="animate-surface-enter relative overflow-hidden p-6 md:p-7">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.13),transparent_36%),radial-gradient(circle_at_84%_20%,rgba(215,90,45,0.11),transparent_24%)]" />
-        <div className="relative space-y-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="max-w-3xl">
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.heroEyebrow")}</p>
-              <h2 className="mt-3 text-3xl font-semibold text-ink">{translate("families.heroTitle")}</h2>
-              <p className="mt-3 text-sm text-[#596270]">{translate("families.heroSummary")}</p>
-            </div>
+      <Card className="animate-surface-enter p-5">
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
               <Badge tone="info">{translate("families.counts.families", { count: familyRows.length })}</Badge>
               <Badge tone="info">{translate("families.counts.observedLabels", { count: (rawTypes.data || []).length })}</Badge>
-              <Badge tone={visibleSuggestions.length > 0 ? "pending" : "approved"}>{translate("families.counts.suggestions", { count: visibleSuggestions.length })}</Badge>
+              <Badge tone={visibleSuggestions.length > 0 ? "pending" : "approved"}>
+                {translate("families.counts.suggestions", { count: visibleSuggestions.length })}
+              </Badge>
             </div>
+            <Badge tone="info">{translate("families.lastRebuild", { time: formatDateTime(status.data?.last_rebuilt_at, translate("sources.detail.never")) })}</Badge>
           </div>
 
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px]">
@@ -592,7 +805,6 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
             <Button size="sm" variant={workspaceArea === "suggestions" ? "secondary" : "ghost"} onClick={() => setWorkspaceArea("suggestions")}>
               {translate("families.areas.suggestions")}
             </Button>
-            <Badge tone="info">{translate("families.lastRebuild", { time: formatDateTime(status.data?.last_rebuilt_at, translate("sources.detail.never")) })}</Badge>
           </div>
         </div>
       </Card>
@@ -604,7 +816,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
       ) : null}
 
       {workspaceArea === "families" ? (
-        <div className="grid gap-4 xl:grid-cols-[minmax(340px,0.9fr)_minmax(0,1.1fr)]">
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(340px,0.9fr)_minmax(0,1.1fr)]">
           <Card className="order-2 animate-surface-enter p-5 xl:order-1">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -660,11 +872,10 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                     key={family.id}
                     type="button"
                     onClick={() => setSelectedFamilyId(family.id)}
-                    className={`block w-full rounded-[1.15rem] border p-4 text-left transition-all duration-300 ${
-                      selectedFamily?.id === family.id
-                        ? "border-[rgba(31,94,255,0.24)] bg-white shadow-[0_16px_32px_rgba(20,32,44,0.08)]"
-                        : "border-line/80 bg-white/72 hover:-translate-y-0.5 hover:bg-white"
-                    }`}
+                    className={workbenchQueueRowClassName({
+                      selected: selectedFamily?.id === family.id,
+                      className: "block w-full p-4 text-left",
+                    })}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -700,7 +911,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                     <p className="mt-2 text-sm text-[#596270]">{selectedFamily.course_display}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="ghost" className="xl:hidden" onClick={() => setFamilyChooserOpen(true)}>
+                    <Button size="sm" variant="ghost" className="md:hidden" onClick={() => setFamilyChooserOpen(true)}>
                       {translate("families.chooseFamily")}
                     </Button>
                     <Badge tone={selectedFamilyRawTypes.length >= 3 ? "pending" : "info"}>{translate("families.labels.observedLabel")}: {selectedFamilyRawTypes.length}</Badge>
@@ -743,15 +954,15 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                   <p className="mt-2 text-sm text-[#596270]">{translate("families.list.eventPreviewSummary")}</p>
                   <div className="mt-4 space-y-3">
                     {manualEvents.loading && !manualEvents.data ? (
-                      <div className="rounded-[1rem] border border-dashed border-line/80 bg-white/65 p-4 text-sm text-[#596270]">
+                      <div className={workbenchSupportPanelClassName("quiet", "border-dashed p-4 text-sm text-[#596270]")}>
                         {translate("common.labels.loading", { label: translate("families.list.activeEvents") })}
                       </div>
                     ) : manualEvents.error ? (
-                      <div className="rounded-[1rem] border border-[#efc4b5] bg-[#fff3ef] p-4 text-sm text-[#7f3d2a]">
+                      <div className={workbenchStateSurfaceClassName("error", "p-4 text-sm text-[#7f3d2a]")}>
                         Event preview is unavailable right now. {manualEvents.error}
                       </div>
                     ) : pagedEvents.rows.length === 0 ? (
-                      <div className="rounded-[1rem] border border-dashed border-line/80 bg-white/65 p-4 text-sm text-[#596270]">
+                      <div className={workbenchSupportPanelClassName("quiet", "border-dashed p-4 text-sm text-[#596270]")}>
                         {translate("families.list.noEvents")}
                       </div>
                     ) : (
@@ -790,7 +1001,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
       ) : null}
 
       <Sheet open={familyChooserOpen} onOpenChange={setFamilyChooserOpen}>
-        <SheetContent side="bottom" className="overflow-y-auto xl:hidden">
+        <SheetContent side="bottom" className="overflow-y-auto md:hidden">
           <SheetHeader>
             <div>
               <SheetTitle>{translate("families.chooseFamily")}</SheetTitle>
@@ -807,11 +1018,10 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                   setSelectedFamilyId(family.id);
                   setFamilyChooserOpen(false);
                 }}
-                className={`block w-full rounded-[1.15rem] border p-4 text-left transition-all duration-300 ${
-                  selectedFamily?.id === family.id
-                    ? "border-[rgba(31,94,255,0.24)] bg-white shadow-[0_16px_32px_rgba(20,32,44,0.08)]"
-                    : "border-line/80 bg-white/72 hover:bg-white"
-                }`}
+                className={workbenchQueueRowClassName({
+                  selected: selectedFamily?.id === family.id,
+                  className: "block w-full p-4 text-left",
+                })}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -827,69 +1037,94 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
       </Sheet>
 
       {workspaceArea === "raw-types" ? (
-        <Card className="animate-surface-enter p-5">
+        <div
+          className={`grid items-start gap-4 ${
+            isObservedMobileWorkbench
+              ? ""
+              : isDesktop
+                ? "xl:grid-cols-[320px_minmax(0,1fr)_320px]"
+                : "md:grid-cols-[320px_minmax(0,1fr)]"
+          }`}
+        >
+          <Card className="animate-surface-enter p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.areas.observedLabels")}</p>
               <h3 className="mt-1 text-lg font-semibold text-ink">{translate("families.observed.title")}</h3>
-              <p className="mt-2 text-sm text-[#596270]">{translate("families.observed.summary")}</p>
             </div>
             <Badge tone="info">{translate("families.counts.observedLabels", { count: visibleRawTypes.length })}</Badge>
           </div>
+            <p className="mt-2 hidden text-sm leading-6 text-[#596270] md:block">{translate("families.observed.summary")}</p>
 
-          <div className="mt-4 space-y-3">
-            {pagedRawTypes.rows.length === 0 ? (
-              <EmptyState title={translate("families.observed.noRows")} description={translate("families.observed.noRowsDescription")} />
+            <div className="mt-4 space-y-3">
+              {pagedRawTypes.rows.length === 0 ? (
+                <EmptyState title={translate("families.observed.noRows")} description={translate("families.observed.noRowsDescription")} />
+              ) : (
+                pagedRawTypes.rows.map((rawType) => {
+                  const eventKey = `${rawType.course_display}::${rawType.raw_type}`;
+                  const activeEvents = eventRowsByObservedLabel.get(eventKey) || [];
+                  const relatedSuggestions = suggestionCountByObservedLabel.get(eventKey) || 0;
+                  return (
+                    <button
+                      key={rawType.id}
+                      type="button"
+                      onClick={() => selectRawType(rawType)}
+                      className={workbenchQueueRowClassName({
+                        selected: activeRawType?.id === rawType.id,
+                        className: "block w-full p-4 text-left",
+                      })}
+                    >
+                      <p className="font-medium text-ink">{rawType.raw_type}</p>
+                      <p className="mt-1 text-sm text-[#596270]">{rawType.course_display}</p>
+                      <p className="mt-2 text-sm text-[#314051]">
+                        {translate("families.observed.currentFamily", { label: familyLabelById[rawType.family_id] || translate("families.labels.unavailable") })}
+                      </p>
+                      <p className="mt-2 text-xs text-[#6d7885]">
+                        {translate("families.observed.impactSummary", {
+                          events: activeEvents.length,
+                          suggestions: relatedSuggestions,
+                        })}
+                      </p>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            <PaginationControls page={pagedRawTypes.page} totalPages={pagedRawTypes.totalPages} onPageChange={setRawTypePage} />
+          </Card>
+
+          {!isObservedMobileWorkbench && (isDesktop || isTablet) ? (
+            isDesktop ? (
+              <>
+                {rawTypeFamilyPanel}
+                {rawTypeImpactPanel}
+              </>
             ) : (
-              pagedRawTypes.rows.map((rawType) => {
-                const targetFamilies = familyRows.filter((family) => family.course_display === rawType.course_display);
-                const currentTarget = rawTypeTargets[rawType.id] || String(rawType.family_id);
-                const eventKey = `${rawType.course_display}::${rawType.raw_type}`;
-                const activeEvents = eventRowsByObservedLabel.get(eventKey) || [];
-                const relatedSuggestions = suggestionCountByObservedLabel.get(eventKey) || 0;
-                return (
-                  <div key={rawType.id} className="rounded-[1.15rem] border border-line/80 bg-white/72 p-4">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-ink">{rawType.raw_type}</p>
-                        <p className="mt-1 text-sm text-[#596270]">{rawType.course_display}</p>
-                        <p className="mt-2 text-sm text-[#314051]">
-                          {translate("families.observed.currentFamily", { label: familyLabelById[rawType.family_id] || translate("families.labels.unavailable") })}
-                        </p>
-                        <p className="mt-2 text-xs text-[#6d7885]">
-                          {translate("families.observed.impactSummary", {
-                            events: activeEvents.length,
-                            suggestions: relatedSuggestions,
-                          })}
-                        </p>
-                      </div>
-                      <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
-                        <select
-                          aria-label={translate("families.list.canonicalRename")}
-                          className="h-11 min-w-[220px] rounded-2xl border border-line bg-white/85 px-4 text-sm text-ink outline-none transition focus:border-cobalt focus:bg-white"
-                          value={currentTarget}
-                          onChange={(event) => setRawTypeTargets((current) => ({ ...current, [rawType.id]: event.target.value }))}
-                        >
-                          {targetFamilies.map((family) => (
-                            <option key={family.id} value={String(family.id)}>
-                              {family.canonical_label}
-                            </option>
-                          ))}
-                        </select>
-                        <Button size="sm" disabled={busyRawTypeId === rawType.id || currentTarget === String(rawType.family_id)} onClick={() => previewMoveRawType(rawType)}>
-                          {busyRawTypeId === rawType.id ? translate("families.observed.previewing") : translate("families.observed.previewMove")}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          <PaginationControls page={pagedRawTypes.page} totalPages={pagedRawTypes.totalPages} onPageChange={setRawTypePage} />
-        </Card>
+              <div className="space-y-4">
+                {rawTypeFamilyPanel}
+                {rawTypeImpactPanel}
+              </div>
+            )
+          ) : null}
+        </div>
       ) : null}
+
+      <Sheet open={isObservedMobileWorkbench && observedDetailOpen && Boolean(activeRawType)} onOpenChange={setObservedDetailOpen}>
+        <SheetContent side="bottom" className="overflow-y-auto lg:hidden">
+          <SheetHeader>
+            <div>
+              <SheetTitle>{activeRawType?.raw_type || translate("families.observed.title")}</SheetTitle>
+              <SheetDescription>{translate("families.observed.summary")}</SheetDescription>
+            </div>
+            <SheetDismissButton />
+          </SheetHeader>
+          <div className="mt-6 space-y-4">
+            {rawTypeFamilyPanel}
+            {rawTypeImpactPanel}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {workspaceArea === "suggestions" ? (
         <Card className="animate-surface-enter p-5">
@@ -940,7 +1175,10 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
         </Card>
       ) : null}
 
-      <Sheet open={Boolean(relinkPreviewRawType && relinkPreviewTargetFamily)} onOpenChange={(open) => (!open ? setRelinkPreview(null) : undefined)}>
+      <Sheet
+        open={!isObservedMobileWorkbench && Boolean(relinkPreviewRawType && relinkPreviewTargetFamily)}
+        onOpenChange={(open) => (!open ? setRelinkPreview(null) : undefined)}
+      >
         <SheetContent side="bottom" className="overflow-y-auto">
           <SheetHeader>
             <div>

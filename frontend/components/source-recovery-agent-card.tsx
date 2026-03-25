@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { AgentMobileTriggerCard, AgentStepCard } from "@/components/agent-step-flow";
 import { PanelLoadingPlaceholder } from "@/components/panel-loading-placeholder";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState } from "@/components/data-states";
 import { ApprovalTicketBar } from "@/components/approval-ticket-bar";
 import { AgentProposalCard } from "@/components/agent-proposal-card";
+import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   agentSourceContextCacheKey,
   cancelApprovalTicket,
@@ -18,8 +20,11 @@ import {
   getAgentSourceContext,
   getApprovalTicket,
 } from "@/lib/api/agents";
+import { deriveAgentSurfaceStage } from "@/lib/agent-ui";
 import { withBasePath } from "@/lib/demo-mode";
 import { translate } from "@/lib/i18n/runtime";
+import { formatStatusLabel } from "@/lib/presenters";
+import { useResponsiveTier } from "@/lib/use-responsive-tier";
 import type { AgentProposal, AgentSourceContext, ApprovalTicket } from "@/lib/types";
 import { useApiResource } from "@/lib/use-api-resource";
 
@@ -56,6 +61,7 @@ export function SourceRecoveryAgentCard({
   sourceId: number;
   basePath?: string;
 }) {
+  const { isMobile } = useResponsiveTier();
   const context = useApiResource<AgentSourceContext>(() => getAgentSourceContext(sourceId), [sourceId], null, {
     cacheKey: agentSourceContextCacheKey(sourceId),
   });
@@ -64,6 +70,7 @@ export function SourceRecoveryAgentCard({
   const [proposalBusy, setProposalBusy] = useState(false);
   const [ticketBusy, setTicketBusy] = useState<"create" | "confirm" | "cancel" | "refresh" | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   useEffect(() => {
     setProposal(null);
@@ -145,7 +152,7 @@ export function SourceRecoveryAgentCard({
   if (context.loading && !context.data) {
     return (
       <PanelLoadingPlaceholder
-        eyebrow={translate("agent.suggestion.eyebrow")}
+        eyebrow={translate("agent.flow.suggestedPath")}
         title={translate("agent.suggestion.sourceAssistantTitle")}
         rows={2}
       />
@@ -159,39 +166,27 @@ export function SourceRecoveryAgentCard({
   }
 
   const executable = isExecutableProposal(proposal);
-
-  return (
+  const stage = deriveAgentSurfaceStage(proposal, ticket);
+  const content = (
     <div className="space-y-4">
-      <Card className="p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("agent.suggestion.eyebrow")}</p>
-            <h3 className="mt-2 text-lg font-semibold text-ink">{translate("agent.suggestion.sourceAssistantTitle")}</h3>
-          </div>
+      <AgentStepCard
+        eyebrow={translate("agent.flow.suggestedPath")}
+        title={context.data.recommended_next_action.label}
+        summary={context.data.recommended_next_action.reason}
+        badge={
           <Badge tone={riskTone(context.data.recommended_next_action.risk_level)}>
-            {context.data.recommended_next_action.risk_level}
+            {formatStatusLabel(context.data.recommended_next_action.risk_level)}
           </Badge>
-        </div>
-        <div className="mt-4 rounded-[1rem] border border-line/80 bg-white/72 p-4">
-          <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("agent.suggestion.recommendedNextStep")}</p>
-          <p className="mt-2 text-sm font-medium text-ink">{context.data.recommended_next_action.label}</p>
-          <p className="mt-2 text-sm leading-6 text-[#596270]">{context.data.recommended_next_action.reason}</p>
-        </div>
-        {context.data.blocking_conditions.length > 0 ? (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {context.data.blocking_conditions.map((condition) => (
-              <Badge key={`${condition.code}-${condition.message}`} tone={condition.severity === "blocking" ? "error" : condition.severity === "warning" ? "pending" : "info"}>
-                {condition.message}
-              </Badge>
-            ))}
-          </div>
-        ) : null}
-        <div className="mt-4">
-          <Button size="sm" onClick={() => void handleSuggestRecovery()} disabled={proposalBusy}>
-            {proposalBusy ? translate("agent.suggestion.gettingSuggestion") : translate("agent.suggestion.getSuggestion")}
-          </Button>
-        </div>
-      </Card>
+        }
+        state={stage === "brief" ? "active" : "complete"}
+        actions={
+          !proposal ? (
+            <Button size="sm" onClick={() => void handleSuggestRecovery()} disabled={proposalBusy}>
+              {proposalBusy ? translate("agent.suggestion.gettingSuggestion") : translate("agent.suggestion.getSuggestion")}
+            </Button>
+          ) : undefined
+        }
+      />
 
       {banner ? (
         <Card className="border-[#efc4b5] bg-[#fff3ef] p-4">
@@ -201,13 +196,15 @@ export function SourceRecoveryAgentCard({
 
       {proposal ? (
         <AgentProposalCard
-          title={translate("agent.suggestion.sourceAssistantTitle")}
+          title={proposal.summary}
           proposal={proposal}
           executable={executable}
           blockingConditions={context.data.blocking_conditions}
           onCreateTicket={() => void handleCreateTicket()}
           creatingTicket={ticketBusy === "create"}
           executableMessage={translate("agent.suggestion.executableSource")}
+          eyebrow={translate("agent.flow.proposal")}
+          summaryOnly={Boolean(ticket)}
           webOnlyAction={
             !executable ? (
               <Button asChild size="sm" variant="ghost">
@@ -225,8 +222,45 @@ export function SourceRecoveryAgentCard({
           onConfirm={() => void handleConfirm()}
           onCancel={() => void handleCancel()}
           onRefresh={() => void handleRefreshTicket()}
+          eyebrow={ticket.status === "open" ? translate("agent.flow.approvalTicket") : translate("agent.flow.result")}
         />
       ) : null}
     </div>
   );
+
+  if (isMobile) {
+    return (
+      <>
+        <AgentMobileTriggerCard
+          eyebrow={translate("agent.flow.suggestedPath")}
+          title={context.data.recommended_next_action.label}
+          summary={proposal ? proposal.summary : context.data.recommended_next_action.reason}
+          badge={
+            <Badge tone={riskTone(context.data.recommended_next_action.risk_level)}>
+              {formatStatusLabel(context.data.recommended_next_action.risk_level)}
+            </Badge>
+          }
+          action={
+            <Button size="sm" variant="soft" onClick={() => setSheetOpen(true)}>
+              {translate("agent.flow.openRecoveryHelper")}
+            </Button>
+          }
+        />
+        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+          <SheetContent side="bottom" className="overflow-y-auto">
+            <SheetHeader>
+              <div>
+                <SheetTitle className="text-xl">{translate("agent.suggestion.sourceAssistantTitle")}</SheetTitle>
+                <SheetDescription>{translate("agent.suggestion.recommendedNextStep")}</SheetDescription>
+              </div>
+              <SheetDismissButton />
+            </SheetHeader>
+            <div className="mt-6">{content}</div>
+          </SheetContent>
+        </Sheet>
+      </>
+    );
+  }
+
+  return content;
 }

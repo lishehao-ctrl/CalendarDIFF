@@ -1,11 +1,11 @@
 import { apiGet, apiPost } from "@/lib/api/client";
 import { getBrowserTimeZone } from "@/lib/browser-timezone";
 
-export async function login(payload: { notify_email: string; password: string }) {
+export async function login(payload: { email: string; password: string; language_code?: "en" | "zh-CN" }) {
   return apiPost("/auth/login", { ...payload, timezone_name: getBrowserTimeZone() });
 }
 
-export async function register(payload: { notify_email: string; password: string }) {
+export async function register(payload: { email: string; password: string; language_code?: "en" | "zh-CN" }) {
   return apiPost("/auth/register", { ...payload, timezone_name: getBrowserTimeZone() });
 }
 
