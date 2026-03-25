@@ -3,8 +3,9 @@
 ## Runtime model
 CalendarDIFF uses one backend process for the default runtime.
 
-User-facing product lanes are converging to:
+Primary product surfaces are:
 
+- `Overview`
 - `Sources`
 - `Changes`
 - `Families`
@@ -19,13 +20,14 @@ That process contains these module boundaries:
 - `runtime.connectors`: source polling, connector runtime, provider discovery, replay/bootstrap continuation
   - includes provider-specific clients under `runtime.connectors.clients`
 - `runtime.llm`: parser queueing, preflight, message processing, provider reduce
+  - this is the parse-worker layer, not the model transport owner
 - `runtime.apply`: apply parsed results into observations, proposal rebuild, and approved entity state
 - `runtime.kernel`: shared job lifecycle, queues, retries, outbox/result handoff, sync stage writer
 - `changes`: review queues, decisions, edits, label learning under `/changes*`
 - `families`: course family and raw-type management under `/families*`
 - `manual`: manual event CRUD under `/manual/events*`
 - `notify`: notification enqueue and delivery
-- `llm_gateway`: model transport, cache policy, and invocation profiles
+- `llm_gateway`: named provider registry, vendor/protocol adapters, model transport, streaming normalization, fallback policy, and invocation traces
 
 `sync_requests` is the single user-visible runtime state machine.
 
@@ -83,7 +85,10 @@ There is no compatibility public-app wrapper or default split runtime entrypoint
 - `/agent/proposals/*`
 - `/agent/approval-tickets/*`
 - `/settings/profile`
+- `/settings/mcp-*`
+- `/settings/channel-*`
 - `/sources/*`
+- `/sync-requests/*`
 - `/onboarding/*`
 - `/changes*`
 - `/families*`
@@ -99,6 +104,7 @@ Worker loops for `runtime.connectors`, `runtime.apply`, notification dispatch, a
   - `replay`: normal ongoing sync after warmup
 - Sync-level token/cache/latency aggregation currently lives on `sync_requests.metadata_json.llm_usage_summary`
 - Source-level UI observability should build from sync requests rather than raw worker logs
+- Per-call LLM gateway traces are persisted in `llm_invocation_logs` and exposed through source/sync observability APIs
 
 ## Contracts
 - Canonical OpenAPI snapshot: `contracts/openapi/public-service.json`

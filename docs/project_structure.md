@@ -56,9 +56,7 @@ This file is the current top-level map for CalendarDIFF.
 ## Current Documentation Boundaries
 
 - `docs/`
-  - stable current repo truth
-- `docs/archive/`
-  - only recent retained smoke/operational artifacts
+  - stable current repo truth plus a small number of active runbooks
 - `specs/`
   - current active handoff bundles only
 
@@ -70,13 +68,13 @@ These should not be revived as active repo surfaces:
   - old split-service shell, now removed from the active runtime
 - `ui/`
   - empty legacy shell, not a live app surface
-- root-level `archive/`
-  - generated artifact staging, not a source directory
+- `output/`
+  - runtime validation artifacts, not source-of-truth docs or source code
 
 ## Operator Rule
 
 When adding new product work:
 
 1. replace or delete the old path instead of keeping a parallel legacy shell
-2. keep current truth in stable filenames under `docs/`
+2. keep current truth in stable filenames under `docs/` and keep one-off execution notes out of it
 3. delete finished handoff/output docs once they are no longer actively needed

@@ -99,8 +99,12 @@ SERVICE_NAME=backend RUN_MIGRATIONS=true PORT=8200 ./scripts/start_service.sh
 当前公开 route group：
 
 - `/auth/*`
+- `/agent/*`
 - `/settings/profile`
+- `/settings/mcp-*`
+- `/settings/channel-*`
 - `/sources/*`
+- `/sync-requests/*`
 - `/onboarding/*`
 - `/changes*`
 - `/families*`
@@ -153,6 +157,23 @@ SERVICE_NAME=backend RUN_MIGRATIONS=true PORT=8200 ./scripts/start_service.sh
 - Canvas ICS
 - SMTP
 - fixture / probe 脚本
+
+## Agent generation gateway
+
+当前 agent proposal / approval / MCP contract 默认仍然是 deterministic。
+
+现在额外提供一层可选的内部 proposal copy gateway，挂在 `llm_gateway` 之上：
+
+- `AGENT_GENERATION_MODE=deterministic` 保持当前稳定行为
+- `AGENT_GENERATION_MODE=llm_assisted` 只允许后端通过 `profile_family=\"agent\"` 改写 proposal 的 `summary` 和 `reason`
+
+这层 gateway 不能改变：
+
+- suggested action
+- payload kind
+- 是否可创建 approval ticket
+- MCP tool surface
+- confirm 阶段的 drift protection
 
 部署规则：
 
@@ -213,12 +234,8 @@ scripts/release_aws_main.sh
 这个脚本现在是完整发布动作，不只是同步 git：
 
 - 把 AWS checkout 同步到本地 `HEAD`
-- 重建并重启 `frontend` 和 `public-service`
+- 重建并重启 `frontend`、`public-service` 和 `mcp-service`
 - 校验 `health` 与 `login`
-
-历史发布记录和阶段性 rollout 文档已经统一归到：
-
-- `docs/archive/`
 
 ## 文档索引
 

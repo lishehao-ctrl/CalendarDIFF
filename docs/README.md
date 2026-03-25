@@ -1,49 +1,44 @@
 # Docs
 
-This directory now separates stable repo truth from dated execution records.
+This directory contains two kinds of files:
 
-## Read These First
+- stable repo truth
+- active runbooks for operation, validation, and MCP usage
+
+It is not a general archive.
+
+## Stable Repo Truth
 
 - `docs/project_structure.md`
-  - active top-level directories, dataset boundaries, and what is no longer part of the mainline
+  - active top-level directories, dataset boundaries, and retired repo surfaces
 - `docs/architecture.md`
-  - monolith runtime, module boundaries, sync runtime model
+  - current monolith runtime, module boundaries, and service ownership
 - `docs/api_surface_current.md`
-  - current public backend route families
+  - current public/backend and MCP-adjacent HTTP surface
 - `docs/api_layering_contract.md`
-  - short lane-to-endpoint ownership map for frontend, agent, and MCP callers
+  - surface ownership rules for web, agent, and MCP callers
 - `docs/deployment.md`
-  - current deploy/runtime defaults for local and AWS
+  - current local/AWS runtime defaults and release posture
 - `docs/event_contracts.md`
   - canonical persisted handoff objects and semantic flow
 - `docs/frontend_backend_contracts.md`
-  - current frontend-consumable backend contract fields and code-based copy strategy
+  - frontend-consumable backend contract fields and copy strategy
 - `docs/api_consistency_test_plan.md`
-  - strict cross-endpoint consistency matrix for truth, posture, preview, and write-after-read checks
-- `docs/agent_rollout_todo.md`
-  - phased agent/channel rollout checklist
-- `docs/agent_api_layering_spec.md`
-  - Phase 0 API layering boundary for agent/social/MCP integration
+  - strict cross-endpoint consistency expectations
+
+## Runbooks And External Surfaces
+
 - `docs/mcp_server.md`
-  - CalendarDIFF MCP server entrypoint, tool/resource surface, and OpenClaw integration shape
+  - CalendarDIFF MCP server entrypoint, tool surface, and token/audit behavior
 - `docs/openclaw_integration.md`
-  - practical OpenClaw + CalendarDIFF MCP integration notes and workspace skill usage
+  - OpenClaw/QClaw integration notes for the current MCP contract
 - `docs/claw_smoke_runbook.md`
-  - exact manual validation flow for the Claw-first MCP path
+  - shortest manual validation path for the Claw-first workflow
 - `docs/agent_claw_closeout.md`
-  - frozen Claw-facing MCP contract and closeout acceptance rule
-- `docs/agent_claw_closeout.md`
-  - frozen Claw-facing MCP contract and closeout rules
+  - frozen Claw-facing contract and closeout boundary
 - `docs/nginx_live_routing_architecture.md`
   - live shared-host nginx ownership and routing rules
 
-## Historical Material
-
-- `docs/archive/`
-  - only keep recent smoke notes or operational records that still matter
-- `specs/`
-  - active implementation handoffs only
-
 ## Rule
 
-If a document is date-stamped and only records an already-finished handoff, rollout, or audit, delete it once its value is exhausted instead of accumulating archive debt.
+If a document is a finished handoff, dated rollout note, or historical memo instead of current truth or an active runbook, delete it instead of archiving it in `docs/`.

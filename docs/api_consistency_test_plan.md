@@ -114,14 +114,6 @@ Must stay consistent on:
 - preview candidate effect vs committed effect
 - no write-side mutation before commit
 
-This group should be extended further once:
-
-- `families/raw-types/relink-preview`
-- `changes/{change_id}/decision-preview`
-- `manual/events/preview`
-
-exist.
-
 ## Strictness Rules
 
 - Prefer checking multiple endpoints in one test when they describe the same state.
@@ -135,15 +127,10 @@ exist.
 - After a write, always verify at least one read endpoint plus one aggregate endpoint.
 - If a field is intentionally lane-specific, document that instead of asserting accidental equality.
 
-## Phase Alignment With Agent Rollout
+## Phase Alignment
 
-These tests are the precondition for:
+These tests remain the precondition for:
 
-- `docs/agent_api_layering_spec.md`
-- `docs/agent_rollout_todo.md`
-
-Reason:
-
-- future `Context API` will aggregate current endpoint projections
-- future `Proposal API` will depend on preview/commit correctness
-- future `Approval API` and social confirmation will depend on write-after-read consistency
+- current agent context projections
+- proposal preview / write-after-read consistency
+- approval-ticket execution safety

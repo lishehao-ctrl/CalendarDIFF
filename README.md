@@ -86,6 +86,18 @@ Health check:
 curl http://127.0.0.1:8200/health
 ```
 
+Full local validation:
+
+```bash
+python scripts/run_full_repo_validation.py
+```
+
+Validation rule:
+
+- local Redis is expected on `127.0.0.1:6379`
+- the validation runner reuses isolated Redis DB indexes per phase
+- Docker Desktop is optional if PostgreSQL on `5432` and Redis on `6379` are already reachable
+
 ## Direct backend run
 
 ```bash
@@ -99,8 +111,12 @@ SERVICE_NAME=backend RUN_MIGRATIONS=true PORT=8200 ./scripts/start_service.sh
 Current public route groups:
 
 - `/auth/*`
+- `/agent/*`
 - `/settings/profile`
+- `/settings/mcp-*`
+- `/settings/channel-*`
 - `/sources/*`
+- `/sync-requests/*`
 - `/onboarding/*`
 - `/changes*`
 - `/families*`
@@ -153,6 +169,65 @@ Supported integrations remain:
 - Canvas ICS
 - SMTP delivery
 - fixture builders and probe scripts
+
+## Agent generation gateway
+
+The agent proposal/approval/MCP contract remains deterministic by default.
+
+An optional internal proposal-copy gateway can ride on top of `llm_gateway`:
+
+- `AGENT_GENERATION_MODE=deterministic` keeps the current stable behavior
+- `AGENT_GENERATION_MODE=llm_assisted` lets the backend rewrite proposal `summary` and `reason` via `profile_family="agent"`
+
+This gateway must not change:
+
+- suggested action
+- payload kind
+- approval-ticket eligibility
+- MCP tool surface
+- confirm-time drift protection
+
+## LLM gateway
+
+`llm_gateway` is now the shared model-invocation kernel for:
+
+- named provider registry
+- vendor/protocol adapters
+- structured JSON extraction
+- streaming normalization
+- same-vendor fallback
+- per-call trace and usage persistence
+
+Current supported vendor families:
+
+- `openai`
+- `gemini`
+- `dashscope_openai`
+
+Current supported protocols:
+
+- `responses`
+- `chat_completions`
+- `gemini_generate_content`
+
+Configuration rule:
+
+- prefer named providers via `INGESTION_LLM_PROVIDER_ID` and `AGENT_LLM_PROVIDER_ID`
+- runtime queue orchestration still lives in `runtime.llm`; `llm_gateway` does not own parse-task claim/ack/retry
+
+## Internal agent gateway
+
+Agent reads, proposal creation, approval tickets, and recent activity now share one backend application boundary:
+
+- internal entry: `app/modules/agents/gateway.py`
+- web surface: `app/modules/agents/router.py`
+- MCP surface: `services/mcp_server/main.py`
+
+Design rule:
+
+- router and MCP should reuse `agents.gateway`
+- `agents.gateway` may reuse context/proposal/approval services
+- future frontend copilot entrypoints should bind to the same gateway contract instead of stitching lower-level services directly
 
 Operational rule:
 
@@ -213,12 +288,8 @@ scripts/release_aws_main.sh
 That script is a full release step, not just a git sync:
 
 - syncs the AWS checkout to local `HEAD`
-- rebuilds and restarts `frontend` and `public-service`
+- rebuilds and restarts `frontend`, `public-service`, and `mcp-service`
 - verifies `health` and `login`
-
-Historical release notes and dated rollout records now live under:
-
-- `docs/archive/`
 
 ## Docs map
 
@@ -257,3 +328,8 @@ npm run typecheck
 npm run lint
 NEXT_DIST_DIR=.next-prod npm run build
 ```
+
+Full repo validation wraps those checks plus:
+
+- `scripts/run_agent_claw_strict_eval.py`
+- `scripts/run_year_timeline_replay_smoke.py`
