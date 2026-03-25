@@ -14,12 +14,12 @@ from app.modules.auth.bootstrap import bootstrap_env_admin_user, ensure_env_admi
 def test_ensure_env_admin_user_creates_user(db_session) -> None:
     user = ensure_env_admin_user(
         db_session,
-        notify_email="admin@example.com",
+        email="admin@example.com",
         password="123456",
         timezone_name="America/Los_Angeles",
     )
 
-    assert user.notify_email == "admin@example.com"
+    assert user.email == "admin@example.com"
     assert user.email == "admin@example.com"
     assert user.timezone_name == "America/Los_Angeles"
     assert user.timezone_source == "manual"
@@ -30,14 +30,14 @@ def test_ensure_env_admin_user_creates_user(db_session) -> None:
 def test_ensure_env_admin_user_updates_existing_password(db_session) -> None:
     first = ensure_env_admin_user(
         db_session,
-        notify_email="admin@example.com",
+        email="admin@example.com",
         password="123456",
         timezone_name="UTC",
     )
 
     updated = ensure_env_admin_user(
         db_session,
-        notify_email="admin@example.com",
+        email="admin@example.com",
         password="abcdef",
         timezone_name="America/Los_Angeles",
     )
@@ -45,11 +45,11 @@ def test_ensure_env_admin_user_updates_existing_password(db_session) -> None:
     assert updated.id == first.id
     assert updated.timezone_name == "America/Los_Angeles"
     assert bcrypt.checkpw(b"abcdef", updated.password_hash.encode("utf-8"))
-    assert db_session.scalar(select(User).where(User.notify_email == "admin@example.com").limit(1)).id == first.id
+    assert db_session.scalar(select(User).where(User.email == "admin@example.com").limit(1)).id == first.id
 
 
 def test_bootstrap_env_admin_user_skips_when_env_missing(db_session, monkeypatch) -> None:
-    monkeypatch.setenv("BOOTSTRAP_ADMIN_NOTIFY_EMAIL", "")
+    monkeypatch.setenv("BOOTSTRAP_ADMIN_EMAIL", "")
     monkeypatch.setenv("BOOTSTRAP_ADMIN_PASSWORD", "")
     monkeypatch.setenv("BOOTSTRAP_ADMIN_TIMEZONE_NAME", "America/Los_Angeles")
     get_settings.cache_clear()
@@ -61,7 +61,7 @@ def test_bootstrap_env_admin_user_skips_when_env_missing(db_session, monkeypatch
 
 
 def test_bootstrap_env_admin_user_reads_env_and_creates_user(db_session, monkeypatch) -> None:
-    monkeypatch.setenv("BOOTSTRAP_ADMIN_NOTIFY_EMAIL", "lishehao@gmail.com")
+    monkeypatch.setenv("BOOTSTRAP_ADMIN_EMAIL", "lishehao@gmail.com")
     monkeypatch.setenv("BOOTSTRAP_ADMIN_PASSWORD", "123456")
     monkeypatch.setenv("BOOTSTRAP_ADMIN_TIMEZONE_NAME", "America/Los_Angeles")
     get_settings.cache_clear()
@@ -70,7 +70,7 @@ def test_bootstrap_env_admin_user_reads_env_and_creates_user(db_session, monkeyp
     bootstrap_env_admin_user(app)
 
     db_session.expire_all()
-    user = db_session.scalar(select(User).where(User.notify_email == "lishehao@gmail.com").limit(1))
+    user = db_session.scalar(select(User).where(User.email == "lishehao@gmail.com").limit(1))
     get_settings.cache_clear()
 
     assert user is not None

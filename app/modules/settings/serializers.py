@@ -8,7 +8,6 @@ def to_user_response(user: User) -> UserResponse:
     return UserResponse(
         id=user.id,
         email=user.email,
-        notify_email=user.notify_email,
         timezone_name=user.timezone_name,
         timezone_source=user.timezone_source,
         language_code=user.language_code,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import AliasChoices, Field
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -44,59 +44,30 @@ class Settings(BaseSettings):
     gmail_secondary_filter_mode: str = "off"
     gmail_secondary_filter_provider: str = "noop"
     gmail_secondary_filter_min_confidence: float = 0.995
-    gmail_secondary_filter_endpoint_url: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("GMAIL_SECONDARY_FILTER_ENDPOINT_URL"),
-    )
-    gmail_secondary_filter_api_token: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices(
-            "GMAIL_SECONDARY_FILTER_API_TOKEN",
-            "HF_TOKEN",
-            "HFTOKEN",
-            "HUGGINGFACE_TOKEN",
-            "HUGGINGFACE_API_TOKEN",
-            "HUGGINGFACEHUB_API_TOKEN",
-        ),
-    )
+    gmail_secondary_filter_endpoint_url: str | None = Field(default=None)
+    gmail_secondary_filter_api_token: str | None = Field(default=None)
     gmail_secondary_filter_timeout_seconds: float = 8.0
     gmail_secondary_filter_max_input_chars: int = 1200
     gmail_secondary_filter_min_batch_size: int = 11
     gmail_message_parse_cache_enabled: bool = True
     calendar_component_parse_cache_enabled: bool = True
-    app_llm_openai_model: str | None = None
-    ingestion_llm_base_url: str | None = None
-    ingestion_llm_chat_base_url: str | None = None
-    ingestion_llm_responses_base_url: str | None = None
-    ingestion_llm_api_key: str | None = None
-    ingestion_llm_model: str = ""
-    ingestion_llm_api_mode: str = "responses"
-    ingestion_llm_extra_body_json: str | None = None
+    ingestion_llm_provider_id: str | None = None
     ingestion_llm_session_cache_enabled: bool = False
-    ingestion_llm_timeout_seconds: float | None = None
-    ingestion_llm_max_retries: int | None = None
-    ingestion_llm_max_input_chars: int | None = None
-    agent_llm_base_url: str | None = None
-    agent_llm_chat_base_url: str | None = None
-    agent_llm_responses_base_url: str | None = None
-    agent_llm_api_key: str | None = None
-    agent_llm_model: str = "qwen3.5-plus"
-    agent_llm_api_mode: str = "chat_completions"
-    agent_llm_extra_body_json: str | None = None
-    agent_llm_timeout_seconds: float | None = None
-    agent_llm_max_retries: int | None = None
-    agent_llm_max_input_chars: int | None = None
+    agent_llm_provider_id: str | None = None
+    agent_generation_mode: str = "deterministic"
     llm_request_window_seconds: int = 60
     llm_max_requests_per_window: int = 480
+    ingestion_llm_fallback_enabled: bool = True
+    agent_llm_fallback_enabled: bool = False
+    llm_gateway_max_routes_per_invoke: int = 2
+    llm_gateway_no_fallback_tasks: str = ""
+    llm_gateway_trace_persistence_enabled: bool = True
 
     redis_url: str | None = None
     llm_queue_stream_key: str = "llm:parse:stream"
     llm_queue_group: str = "llm-parse-workers"
     llm_queue_consumer_poll_ms: int = 500
     llm_worker_concurrency: int = 12
-    llm_rate_limit_target_rps: int = 40
-    llm_rate_limit_hard_rps: int = 50
-    llm_rate_limit_burst: int = 50
     llm_retry_base_seconds: int = 30
     llm_retry_max_seconds: int = 600
     llm_retry_jitter_seconds: int = 5
@@ -105,19 +76,15 @@ class Settings(BaseSettings):
 
     smtp_host: str = "localhost"
     smtp_port: int = 25
-    smtp_username: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_USERNAME", "SMTP_USER"))
-    smtp_password: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_PASSWORD", "SMTP_PASS"))
+    smtp_username: str | None = Field(default=None)
+    smtp_password: str | None = Field(default=None)
     smtp_use_tls: bool = False
-    smtp_from_name: str | None = Field(default="CalendarDIFF", validation_alias=AliasChoices("SMTP_FROM_NAME"))
-    smtp_from_email: str = Field(
-        default="no-reply@example.com", validation_alias=AliasChoices("SMTP_FROM_EMAIL", "SMTP_FROM")
-    )
+    smtp_from_name: str | None = Field(default="CalendarDIFF")
+    smtp_from_email: str = Field(default="no-reply@example.com")
     notify_sink_mode: str = "smtp"
     notify_jsonl_path: str = "data/smoke/notify_sink.jsonl"
 
-    default_notify_email: str | None = Field(
-        default=None, validation_alias=AliasChoices("DEFAULT_NOTIFY_EMAIL", "SMTP_TO")
-    )
+    default_email: str | None = Field(default=None)
     app_base_url: str | None = None
     public_api_base_url: str | None = None
 
@@ -126,7 +93,7 @@ class Settings(BaseSettings):
 
     default_changes_limit: int = 50
     max_changes_limit: int = 200
-    bootstrap_admin_notify_email: str | None = None
+    bootstrap_admin_email: str | None = None
     bootstrap_admin_password: str | None = None
     bootstrap_admin_timezone_name: str = "America/Los_Angeles"
 

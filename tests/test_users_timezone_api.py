@@ -11,7 +11,6 @@ from app.db.models.shared import User
 def test_get_user_returns_timezone_name(input_client, db_session, auth_headers) -> None:
     user = User(
         email="tz-user@example.com",
-        notify_email="tz-user@example.com",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
@@ -30,7 +29,6 @@ def test_get_user_returns_timezone_name(input_client, db_session, auth_headers) 
 def test_patch_user_timezone_name_validates_iana_name(input_client, db_session, auth_headers) -> None:
     user = User(
         email="tz-user@example.com",
-        notify_email="tz-user@example.com",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
@@ -66,7 +64,6 @@ def test_patch_user_timezone_name_validates_iana_name(input_client, db_session, 
 def test_patch_user_auto_timezone_preserves_auto_mode(input_client, db_session, auth_headers) -> None:
     user = User(
         email="tz-auto@example.com",
-        notify_email="tz-auto@example.com",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
@@ -86,7 +83,6 @@ def test_patch_user_auto_timezone_preserves_auto_mode(input_client, db_session, 
 def test_patch_user_language_code_persists(input_client, db_session, auth_headers) -> None:
     user = User(
         email="lang-user@example.com",
-        notify_email="lang-user@example.com",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db_session.add(user)
@@ -112,4 +108,4 @@ def test_patch_user_language_code_persists(input_client, db_session, auth_header
         json={"language_code": "fr"},
     )
     assert invalid_response.status_code == 422
-    assert "language_code must be one of: en, zh-CN" in str(invalid_response.json()["detail"])
+    assert "Input should be 'en' or 'zh-CN'" in str(invalid_response.json()["detail"])

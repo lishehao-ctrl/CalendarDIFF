@@ -12,21 +12,21 @@ from app.modules.onboarding.schemas import OnboardingStageLiteral
 
 
 class AuthRegisterRequest(BaseModel):
-    notify_email: str = Field(min_length=3, max_length=255)
+    email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=8, max_length=128)
     timezone_name: str | None = Field(default=None, max_length=64)
     language_code: LanguageCodeLiteral | None = Field(default=None)
 
     model_config = {"extra": "forbid"}
 
-    @field_validator("notify_email")
+    @field_validator("email")
     @classmethod
-    def _validate_notify_email(cls, value: str) -> str:
+    def _validate_email(cls, value: str) -> str:
         stripped = value.strip().lower()
         if not stripped:
-            raise ValueError("notify_email must not be blank")
+            raise ValueError("email must not be blank")
         if not _is_valid_email_address(stripped):
-            raise ValueError("notify_email must be a valid email address")
+            raise ValueError("email must be a valid email address")
         return stripped
 
     @field_validator("timezone_name")
@@ -50,7 +50,7 @@ class AuthLoginRequest(AuthRegisterRequest):
 
 class AuthSessionUserResponse(BaseModel):
     id: int
-    notify_email: str
+    email: str
     timezone_name: str
     timezone_source: str
     language_code: LanguageCodeLiteral = DEFAULT_LANGUAGE_CODE

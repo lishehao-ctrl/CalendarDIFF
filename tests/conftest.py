@@ -21,6 +21,7 @@ from app.modules.sources.schemas import InputSourceCreateRequest
 from app.modules.sources.sources_service import create_input_source
 
 DEFAULT_TEST_DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/deadline_diff_test"
+DEFAULT_TEST_REDIS_URL = "redis://127.0.0.1:6379/15"
 
 
 def _live_smoke_mode() -> bool:
@@ -80,15 +81,15 @@ def configure_test_environment(test_database_url: str) -> Generator[None, None, 
 
     os.environ["APP_API_KEY"] = "test-api-key"
     os.environ["APP_SECRET_KEY"] = "7J2Btjj4GW8jIP5MErM81QOZeK4c7xYknVxKsgKMnmk="
-    os.environ["DEFAULT_NOTIFY_EMAIL"] = "notify@example.com"
+    os.environ["DEFAULT_EMAIL"] = "notify@example.com"
     os.environ["DATABASE_URL"] = test_database_url
     os.environ["SCHEMA_GUARD_ENABLED"] = "true"
     os.environ["INGEST_SERVICE_ENABLE_WORKER"] = "false"
     os.environ["REVIEW_SERVICE_ENABLE_APPLY_WORKER"] = "false"
     os.environ["NOTIFICATION_SERVICE_ENABLE_WORKER"] = "false"
     os.environ["LLM_SERVICE_ENABLE_WORKER"] = "false"
-    os.environ["REDIS_URL"] = "redis://127.0.0.1:6389/0"
-    os.environ["BOOTSTRAP_ADMIN_NOTIFY_EMAIL"] = ""
+    os.environ["REDIS_URL"] = os.getenv("REDIS_URL", DEFAULT_TEST_REDIS_URL) or DEFAULT_TEST_REDIS_URL
+    os.environ["BOOTSTRAP_ADMIN_EMAIL"] = ""
     os.environ["BOOTSTRAP_ADMIN_PASSWORD"] = ""
     os.environ["BOOTSTRAP_ADMIN_TIMEZONE_NAME"] = "America/Los_Angeles"
 
@@ -181,8 +182,7 @@ def auth_headers(authenticate_client):
 def initialized_user(client: TestClient, db_session: Session) -> dict[str, object]:
     del client
     user = User(
-        email=None,
-        notify_email="student@example.com",
+        email="student@example.com",
         password_hash="hash",
         onboarding_completed_at=datetime.now(timezone.utc),
     )
@@ -205,7 +205,6 @@ def initialized_user(client: TestClient, db_session: Session) -> dict[str, objec
     return {
         "id": user.id,
         "email": user.email,
-        "notify_email": user.notify_email,
         "calendar_delay_seconds": user.calendar_delay_seconds,
         "created_at": user.created_at,
     }

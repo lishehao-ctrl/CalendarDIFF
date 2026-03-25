@@ -12,8 +12,7 @@ from app.modules.common.language import DEFAULT_LANGUAGE_CODE, LanguageCodeLiter
 
 class UserResponse(BaseModel):
     id: int
-    email: str | None
-    notify_email: str | None
+    email: str
     timezone_name: str
     timezone_source: str
     language_code: LanguageCodeLiteral = DEFAULT_LANGUAGE_CODE
@@ -22,26 +21,12 @@ class UserResponse(BaseModel):
 
 
 class UserUpdateRequest(BaseModel):
-    email: str | None = Field(default=None, max_length=255)
-    notify_email: str | None = Field(default=None, max_length=255)
     timezone_name: str | None = Field(default=None, max_length=64)
     timezone_source: str | None = Field(default=None, max_length=16)
     language_code: LanguageCodeLiteral | None = Field(default=None)
     calendar_delay_seconds: int | None = Field(default=None, ge=0, le=3600)
 
     model_config = {"extra": "forbid"}
-
-    @field_validator("email", "notify_email")
-    @classmethod
-    def validate_optional_email(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        stripped = value.strip()
-        if not stripped:
-            return None
-        if not _is_valid_email_address(stripped):
-            raise ValueError("must be a valid email address")
-        return stripped
 
     @field_validator("timezone_name")
     @classmethod

@@ -54,7 +54,7 @@ def create_registration(
         result = register_onboarding(
             db,
             user=user,
-            notify_email=payload.notify_email,
+            email=payload.email,
         )
     except OnboardingRegisterError as exc:
         status_code = exc.status_code if exc.status_code in {409, 422} else status.HTTP_422_UNPROCESSABLE_ENTITY

@@ -24,7 +24,7 @@ def register_auth(
     try:
         user = register_user(
             db,
-            notify_email=payload.notify_email,
+            email=payload.email,
             password=payload.password,
             timezone_name=payload.timezone_name,
             language_code=payload.language_code,
@@ -33,9 +33,9 @@ def register_auth(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=api_error_detail(
-                code="notify_email_exists",
+                code="email_exists",
                 message=str(exc),
-                message_code="auth.notify_email_exists",
+                message_code="auth.email_exists",
             ),
         ) from exc
     except ValueError as exc:
@@ -61,7 +61,7 @@ def login_auth(
     try:
         user = login_user(
             db,
-            notify_email=payload.notify_email,
+            email=payload.email,
             password=payload.password,
             timezone_name=payload.timezone_name,
             language_code=payload.language_code,
@@ -111,7 +111,7 @@ def _to_auth_session_user(db: Session, *, user: User) -> AuthSessionUserResponse
     status_payload = get_onboarding_status_for_user(db, user=user)
     return AuthSessionUserResponse(
         id=user.id,
-        notify_email=user.notify_email or "",
+        email=user.email,
         timezone_name=user.timezone_name,
         timezone_source=user.timezone_source,
         language_code=user.language_code,

@@ -13,17 +13,11 @@ def update_current_user(
     db: Session,
     *,
     user: User,
-    email: str | None = None,
-    notify_email: str | None = None,
     timezone_name: str | None = None,
     timezone_source: str | None = None,
     language_code: str | None = None,
     calendar_delay_seconds: int | None = None,
 ) -> User:
-    if email is not None:
-        user.email = _normalize_optional_text(email)
-    if notify_email is not None and notify_email != user.notify_email:
-        raise ValueError("notify_email is managed by auth and cannot be changed here")
     if timezone_name is not None:
         user.timezone_name = _normalize_timezone_name(timezone_name)
         user.timezone_source = _normalize_timezone_source(timezone_source) if timezone_source is not None else "manual"
@@ -52,13 +46,6 @@ def sync_auto_timezone(
     db.commit()
     db.refresh(user)
     return user
-
-
-def _normalize_optional_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    stripped = value.strip()
-    return stripped or None
 
 
 def _normalize_timezone_source(value: str) -> str:

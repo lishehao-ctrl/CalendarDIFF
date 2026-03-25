@@ -141,15 +141,15 @@ def register_onboarding(
     db: Session,
     *,
     user: User,
-    notify_email: str,
+    email: str,
 ) -> OnboardingRegisterResult:
-    normalized = notify_email.strip().lower()
-    if normalized != (user.notify_email or "").strip().lower():
+    normalized = email.strip().lower()
+    if normalized != user.email.strip().lower():
         raise OnboardingRegisterError(
-            "notify_email is managed by auth register flow",
+            "email is managed by auth register flow",
             status_code=422,
-            code="onboarding_notify_email_managed_by_auth",
-            message_code="onboarding.notify_email_managed_by_auth",
+            code="onboarding_email_managed_by_auth",
+            message_code="onboarding.email_managed_by_auth",
         )
 
     status = get_onboarding_status_for_user(db, user=user)
@@ -437,11 +437,7 @@ def _source_has_gmail_connection(source: InputSource) -> bool:
 
 def _merge_source_config_with_monitoring(*, source: InputSource, window: SourceMonitoringWindow) -> dict:
     config_json = dict(source.config.config_json if source.config is not None else {})
-    config_json.pop("term_key", None)
-    config_json.pop("term_from", None)
-    config_json.pop("term_to", None)
     config_json.update(window.to_config_json())
-    config_json.pop("pending_term_rebind", None)
     return config_json
 
 

@@ -50,21 +50,10 @@ def patch_profile(
     db: Session = Depends(get_db),
     user: User = Depends(get_authenticated_user_or_401),
 ) -> UserResponse:
-    if "notify_email" in payload.model_fields_set and payload.notify_email is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=api_error_detail(
-                code="notify_email_cannot_be_cleared",
-                message="notify_email cannot be cleared",
-                message_code="settings.notify_email_cannot_be_cleared",
-            ),
-        )
     try:
         updated = update_current_user(
             db,
             user=user,
-            email=payload.email,
-            notify_email=payload.notify_email,
             timezone_name=payload.timezone_name,
             timezone_source=payload.timezone_source,
             language_code=payload.language_code,

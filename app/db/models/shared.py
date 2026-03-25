@@ -34,8 +34,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    notify_email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     timezone_name: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC", server_default="UTC")
     timezone_source: Mapped[str] = mapped_column(String(16), nullable=False, default="auto", server_default="auto")

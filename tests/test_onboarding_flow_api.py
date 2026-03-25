@@ -10,8 +10,7 @@ from app.db.models.shared import User
 
 def _create_user(db_session, *, email: str) -> User:
     user = User(
-        email=None,
-        notify_email=email,
+        email=email,
         password_hash="hash",
         timezone_name="America/Los_Angeles",
         timezone_source="manual",

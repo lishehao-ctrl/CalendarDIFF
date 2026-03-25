@@ -157,7 +157,7 @@ def _mark_notifications_failed(
 
 def _resolve_recipient(user: User) -> str | None:
     settings = get_settings()
-    for candidate in (user.notify_email, user.email, settings.default_notify_email):
+    for candidate in (user.email, settings.default_email):
         if candidate is None:
             continue
         stripped = candidate.strip()

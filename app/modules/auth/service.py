@@ -37,23 +37,22 @@ class AuthenticationRequiredError(RuntimeError):
 def register_user(
     db: Session,
     *,
-    notify_email: str,
+    email: str,
     password: str,
     timezone_name: str | None = None,
     language_code: str | None = None,
 ) -> User:
-    normalized_email = _normalize_notify_email(notify_email)
+    normalized_email = _normalize_email(email)
     _validate_password(password)
 
-    existing = db.scalar(select(User).where(User.notify_email == normalized_email).limit(1))
+    existing = db.scalar(select(User).where(User.email == normalized_email).limit(1))
     if existing is not None:
-        raise AuthEmailExistsError("notify_email already exists")
+        raise AuthEmailExistsError("email already exists")
 
     normalized_timezone = _normalize_timezone_name(timezone_name) if timezone_name is not None else "UTC"
     normalized_language = normalize_language_code(language_code) if language_code is not None else DEFAULT_LANGUAGE_CODE
     user = User(
-        email=None,
-        notify_email=normalized_email,
+        email=normalized_email,
         password_hash=_hash_password(password),
         timezone_name=normalized_timezone,
         timezone_source="auto",
@@ -69,19 +68,22 @@ def register_user(
 def login_user(
     db: Session,
     *,
-    notify_email: str,
+    email: str,
     password: str,
     timezone_name: str | None = None,
     language_code: str | None = None,
 ) -> User:
-    normalized_email = _normalize_notify_email(notify_email)
-    user = db.scalar(select(User).where(User.notify_email == normalized_email).limit(1))
+    normalized_email = _normalize_email(email)
+    user = db.scalar(select(User).where(User.email == normalized_email).limit(1))
     if user is None or not user.password_hash:
         raise InvalidCredentialsError("invalid credentials")
     if not bcrypt.checkpw(password.encode("utf-8"), user.password_hash.encode("utf-8")):
         raise InvalidCredentialsError("invalid credentials")
+    dirty = False
     if language_code is not None:
         user.language_code = normalize_language_code(language_code)
+        dirty = True
+    if dirty:
         db.commit()
         db.refresh(user)
     return sync_auto_timezone(db, user=user, timezone_name=timezone_name)
@@ -153,12 +155,12 @@ def _validate_password(password: str) -> None:
         raise ValueError("password must be at least 8 characters")
 
 
-def _normalize_notify_email(value: str) -> str:
+def _normalize_email(value: str) -> str:
     normalized = value.strip().lower()
     if not normalized:
-        raise ValueError("notify_email must not be blank")
+        raise ValueError("email must not be blank")
     if not _is_valid_email_address(normalized):
-        raise ValueError("notify_email must be a valid email address")
+        raise ValueError("email must be a valid email address")
     return normalized
 
 

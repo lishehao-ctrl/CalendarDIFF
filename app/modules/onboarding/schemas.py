@@ -19,18 +19,18 @@ OnboardingStageLiteral = Literal[
 
 
 class OnboardingRegisterRequest(BaseModel):
-    notify_email: str = Field(min_length=3, max_length=255)
+    email: str = Field(min_length=3, max_length=255)
 
     model_config = {"extra": "forbid"}
 
-    @field_validator("notify_email")
+    @field_validator("email")
     @classmethod
-    def validate_notify_email(cls, value: str) -> str:
+    def validate_email(cls, value: str) -> str:
         stripped = value.strip()
         if not stripped:
-            raise ValueError("notify_email must not be blank")
+            raise ValueError("email must not be blank")
         if not _is_valid_email_address(stripped):
-            raise ValueError("notify_email must be a valid email address")
+            raise ValueError("email must be a valid email address")
         return stripped
 
 
