@@ -1,7 +1,7 @@
 """add agent proposal localization params
 
 Revision ID: 20260325_0018_agent_lang
-Revises: 20260324_0016_llm_inv_logs
+Revises: 20260325_0022
 Create Date: 2026-03-25 10:20:00
 """
 
@@ -13,7 +13,7 @@ from sqlalchemy import inspect
 
 
 revision = "20260325_0018_agent_lang"
-down_revision = "20260324_0016_llm_inv_logs"
+down_revision = "20260325_0022"
 branch_labels = None
 depends_on = None
 

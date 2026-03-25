@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.modules.common.language import DEFAULT_LANGUAGE_CODE
 from app.modules.agents.language_context import AgentLanguageContext, agent_output_language_mismatch
-from app.modules.llm_gateway import LlmGatewayError, LlmInvokeRequest, invoke_llm_typed
+from app.modules.llm_gateway import LlmGatewayError, LlmInvokeRequest, invoke_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -43,16 +44,16 @@ _AGENT_PROPOSAL_SYSTEM_PROMPT = (
 class AgentProposalDraft:
     summary: str
     summary_code: str
-    summary_params_json: dict
     reason: str
     reason_code: str
-    reason_params_json: dict
     risk_level: str
     confidence: float
     suggested_action: str
     payload_json: dict
     context_json: dict
     target_snapshot_json: dict
+    summary_params_json: dict = field(default_factory=dict)
+    reason_params_json: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -61,8 +62,15 @@ class AgentProposalDraftRequest:
     target_kind: str
     target_id: str
     origin_request_id: str | None
-    language_context: AgentLanguageContext
     deterministic_draft: AgentProposalDraft
+    language_context: AgentLanguageContext = field(
+        default_factory=lambda: AgentLanguageContext(
+            effective_language_code=DEFAULT_LANGUAGE_CODE,
+            input_language_code=None,
+            system_language_code=DEFAULT_LANGUAGE_CODE,
+            resolution_source="default",
+        )
+    )
 
 
 class AgentProposalNarrativeResponse(BaseModel):
@@ -82,7 +90,7 @@ def generate_agent_proposal_draft(
         return draft_request.deterministic_draft
 
     try:
-        llm_result = invoke_llm_typed(
+        llm_result = invoke_llm_json(
             db,
             invoke_request=LlmInvokeRequest(
                 task_name=f"agent_{draft_request.proposal_kind}_proposal_narrative",
@@ -96,10 +104,8 @@ def generate_agent_proposal_draft(
                 temperature=0.0,
                 session_cache_mode="disable",
             ),
-            response_model=AgentProposalNarrativeResponse,
-            validation_label=f"agent_{draft_request.proposal_kind}_proposal_narrative",
         )
-        narrative = llm_result.value
+        narrative = AgentProposalNarrativeResponse.model_validate(llm_result.json_object)
     except (LlmGatewayError, ValidationError) as exc:
         logger.warning(
             "agents.generation_gateway.fallback proposal_kind=%s target_kind=%s target_id=%s error=%s",

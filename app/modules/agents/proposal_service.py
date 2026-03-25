@@ -673,11 +673,17 @@ def create_change_edit_commit_proposal_with_origin(
     summary_code = "agents.proposals.change_edit_commit.summary"
     summary_params_json = {
         "change_type": change.change_type.value,
-        "patch_fields": _localized_patch_fields(patch_fields, language_code=language_context.effective_language_code),
+        "patch_fields": _localized_patch_fields(
+            patch_fields=patch_fields,
+            language_code=language_context.effective_language_code,
+        ),
     }
     reason_code = "agents.proposals.change_edit_commit.reason"
     reason_params_json = {
-        "patch_fields": _localized_patch_fields(patch_fields, language_code=language_context.effective_language_code),
+        "patch_fields": _localized_patch_fields(
+            patch_fields=patch_fields,
+            language_code=language_context.effective_language_code,
+        ),
         "delta_text": _localized_delta_text(preview=preview, language_code=language_context.effective_language_code),
     }
     draft = generate_agent_proposal_draft(
