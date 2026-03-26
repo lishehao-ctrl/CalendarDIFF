@@ -78,6 +78,11 @@ Optional bounded agent-generation settings:
 - `AGENT_GENERATION_MODE=deterministic|llm_assisted`
 - `AGENT_LLM_PROVIDER_ID`
 
+Provider routing rule:
+- keep `INGESTION_LLM_PROVIDER_ID` and `AGENT_LLM_PROVIDER_ID` on the intended mainline provider
+- do not point mainline qwen traffic at gemini through provider-level fallback ids
+- reserve gemini for explicitly selected lanes only; do not let it become an implicit fallback for the main ingestion/agent path
+
 Operational rule:
 - keep the Claw / approval / MCP contract deterministic
 - `AGENT_GENERATION_MODE=llm_assisted` may rewrite proposal summary/reason copy only

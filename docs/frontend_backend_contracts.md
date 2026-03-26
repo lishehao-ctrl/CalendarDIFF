@@ -333,6 +333,13 @@ params currently:
 
 ## Agent
 
+Agent 主链输出现在包含：
+
+- `language_code`
+- `language_resolution_source`
+
+前端或外部 agent 客户端应将它视为当前响应的最终语言真相，而不是自己根据账户设置或输入文本再猜一次。
+
 ## A. Proposal lifecycle fields
 
 Applies to:
