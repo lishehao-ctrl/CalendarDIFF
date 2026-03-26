@@ -7,6 +7,7 @@ import os
 import signal
 import socket
 import subprocess
+import shutil
 import sys
 import time
 from contextlib import contextmanager
@@ -22,6 +23,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.core.config import get_settings
+from app.db.session import reset_engine
+from app.modules.llm_gateway.registry import validate_ingestion_llm_config
 
 OUTPUT_ROOT = REPO_ROOT / "output"
 DEFAULT_STRICT_EVAL_DB = "postgresql+psycopg://postgres:postgres@localhost:5432/deadline_diff_agent_claw_eval"
@@ -221,6 +224,7 @@ def run_engineering_full(*, run_dir: Path) -> dict[str, Any]:
         env=os.environ.copy(),
         log_path=run_dir / "frontend_lint.log",
     )
+    reset_frontend_dist_dir(REPO_ROOT / "frontend", dist_dir=".next-prod")
     build_env = os.environ.copy()
     build_env["NEXT_DIST_DIR"] = ".next-prod"
     build = run_command(
@@ -241,6 +245,12 @@ def run_engineering_full(*, run_dir: Path) -> dict[str, Any]:
     }
 
 
+def reset_frontend_dist_dir(frontend_dir: Path, *, dist_dir: str) -> None:
+    target = frontend_dir / dist_dir
+    if target.exists():
+        shutil.rmtree(target)
+
+
 def run_year_timeline_replay(
     *,
     run_dir: Path,
@@ -257,6 +267,18 @@ def run_year_timeline_replay(
     env["GMAIL_API_BASE_URL"] = "http://127.0.0.1:8765/gmail/v1/users/me"
     env["GMAIL_SECONDARY_FILTER_MODE"] = "off"
     env["GMAIL_SECONDARY_FILTER_PROVIDER"] = "noop"
+    live_llm_error = validate_replay_llm_env(env)
+    if live_llm_error is not None:
+        return {
+            "ok": False,
+            "start": None,
+            "status_checks": [],
+            "report": None,
+            "report_json": None,
+            "backend_log": None,
+            "replay_run_dir": None,
+            "live_llm_error": live_llm_error,
+        }
     recreate_postgres_database(database_url)
     backend_log = run_dir / "replay_backend.log"
     with managed_backend(
@@ -356,8 +378,9 @@ def run_year_timeline_replay(
             log_path=run_dir / "replay_report.log",
         )
         report_json = _load_json_if_exists(replay_run_path / "report.json")
+        replay_finished = _replay_report_finished(report_json)
         report_summary = {
-            "ok": report["success"] and isinstance(report_json, dict),
+            "ok": report["success"] and replay_finished,
             "start": start,
             "status_checks": status_checks,
             "report": report,
@@ -382,6 +405,31 @@ def build_stage_env(*, database_url: str, redis_url: str, app_api_key: str) -> d
     env["BOOTSTRAP_ADMIN_EMAIL"] = ""
     env["BOOTSTRAP_ADMIN_PASSWORD"] = ""
     return env
+
+
+@contextmanager
+def applied_env(overrides: dict[str, str]):
+    original = os.environ.copy()
+    try:
+        os.environ.clear()
+        os.environ.update(overrides)
+        get_settings.cache_clear()
+        reset_engine()
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(original)
+        get_settings.cache_clear()
+        reset_engine()
+
+
+def validate_replay_llm_env(env: dict[str, str]) -> str | None:
+    try:
+        with applied_env(env):
+            validate_ingestion_llm_config()
+    except Exception as exc:
+        return f"live LLM provider not configured: {exc}"
+    return None
 
 
 @contextmanager
@@ -521,6 +569,19 @@ def write_final_report(*, run_dir: Path, report: dict[str, Any]) -> None:
         f"- Agent/Claw Closeout: {_stage_status(report['stages']['agent_claw_closeout'])}",
         f"- Year Timeline Replay: {_stage_status(report['stages']['year_timeline_replay'])}",
         "",
+    ]
+    replay_stage = report["stages"]["year_timeline_replay"]
+    if isinstance(replay_stage, dict) and replay_stage.get("live_llm_error"):
+        lines.extend(
+            [
+                "## Live LLM",
+                "",
+                f"- Replay env error: `{replay_stage['live_llm_error']}`",
+                "",
+            ]
+        )
+    lines.extend(
+        [
         "## Artifacts",
         "",
         "- `git_status.txt`",
@@ -529,6 +590,7 @@ def write_final_report(*, run_dir: Path, report: dict[str, Any]) -> None:
         "- `preflight.md`",
         "- `FINAL_REPORT.json`",
     ]
+    )
     _write_text(run_dir / "FINAL_REPORT.md", "\n".join(lines) + "\n")
 
 
@@ -619,6 +681,14 @@ def _parse_json_blob(value: object) -> dict[str, Any] | None:
     except Exception:
         return None
     return parsed if isinstance(parsed, dict) else None
+
+
+def _replay_report_finished(report_json: dict[str, Any] | None) -> bool:
+    return bool(
+        isinstance(report_json, dict)
+        and report_json.get("finished") is True
+        and report_json.get("awaiting_manual") is False
+    )
 
 
 def _stage_status(stage: dict[str, Any]) -> str:
