@@ -18,10 +18,12 @@ import { translate } from "@/lib/i18n/runtime";
 import { buildSourceObservabilityViews } from "@/lib/source-observability";
 import { invalidateSourceCaches } from "@/lib/source-cache";
 import { deleteSource, getSyncRequest, listSources, sourceListCacheKey, updateSource } from "@/lib/api/sources";
+import { useResponsiveTier } from "@/lib/use-responsive-tier";
 import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime } from "@/lib/presenters";
 import { workbenchPanelClassName, workbenchStateSurfaceClassName, workbenchSupportPanelClassName } from "@/lib/workbench-styles";
 import type { SourceRow, SyncStatus } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const DeferredSourceObservabilitySections = dynamic(
   () => import("@/components/source-observability-sections").then((mod) => mod.SourceObservabilitySections),
@@ -31,6 +33,7 @@ const DeferredSourceObservabilitySections = dynamic(
 );
 
 export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
+  const { isTabletWide, isDesktop } = useResponsiveTier();
   const { data, loading, error, refresh } = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), [], null, {
     cacheKey: sourceListCacheKey("all"),
   });
@@ -84,6 +87,7 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
       syncStatusesBySource: syncDetail ? { [source.source_id]: syncDetail } : {},
     })[0];
   }, [basePath, source, syncDetail]);
+  const showSupportColumn = isTabletWide || isDesktop;
 
   async function save() {
     const normalizedUrl = canvasIcsUrl.trim();
@@ -166,7 +170,7 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
           </Card>
         ) : null}
 
-        <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className={cn("mt-6 grid gap-5", showSupportColumn ? "lg:grid-cols-[minmax(0,1fr)_320px]" : "")}>
           <div className="space-y-5">
           <Card className={workbenchPanelClassName("secondary", "p-5")}>
             <div className="flex items-center gap-3">
@@ -183,7 +187,7 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
               <p className="mt-2">{translate("sourceConnect.canvasPanel.source")}: {source ? `#${source.source_id}` : translate("sourceConnect.canvasPanel.sourceWillBeCreated")}</p>
               <p className="mt-2">{translate("sourceConnect.canvasPanel.lastPolled")}: {formatDateTime(source?.last_polled_at, translate("sources.detail.never"))}</p>
             </div>
-            <SourceSyncProgress className="mt-4" progress={source?.sync_progress} stableLabel="Syncing Canvas source" />
+            <SourceSyncProgress className="mt-4" progress={source?.sync_progress} stableLabel={translate("sourceConnect.canvasPanel.syncingLabel")} />
             {source ? (
               <div className="mt-5">
                 <Button variant="ghost" onClick={() => void archive()} disabled={busyArchive}>
@@ -205,9 +209,9 @@ export function CanvasIcsSetupPanel({ basePath = "" }: { basePath?: string }) {
                 {translate("sourceConnect.canvasPanel.getLinkSummary")}
               </p>
               <div className="mt-4 grid gap-3 md:grid-cols-3">
-                <div className={workbenchSupportPanelClassName("default", "p-3")}><p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Step 1</p><p className="mt-2 font-medium text-ink">{translate("sourceConnect.canvasPanel.step1")}</p><p className="mt-1 text-sm leading-6 text-[#596270]">{translate("sourceConnect.canvasPanel.step1Summary")}</p></div>
-                <div className={workbenchSupportPanelClassName("default", "p-3")}><p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Step 2</p><p className="mt-2 font-medium text-ink">{translate("sourceConnect.canvasPanel.step2")}</p><p className="mt-1 text-sm leading-6 text-[#596270]">{translate("sourceConnect.canvasPanel.step2Summary")}</p></div>
-                <div className={workbenchSupportPanelClassName("default", "p-3")}><p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Step 3</p><p className="mt-2 font-medium text-ink">{translate("sourceConnect.canvasPanel.step3")}</p><p className="mt-1 text-sm leading-6 text-[#596270]">{translate("sourceConnect.canvasPanel.step3Summary")}</p></div>
+                <div className={workbenchSupportPanelClassName("default", "p-3")}><p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("common.labels.step", { step: 1 })}</p><p className="mt-2 font-medium text-ink">{translate("sourceConnect.canvasPanel.step1")}</p><p className="mt-1 text-sm leading-6 text-[#596270]">{translate("sourceConnect.canvasPanel.step1Summary")}</p></div>
+                <div className={workbenchSupportPanelClassName("default", "p-3")}><p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("common.labels.step", { step: 2 })}</p><p className="mt-2 font-medium text-ink">{translate("sourceConnect.canvasPanel.step2")}</p><p className="mt-1 text-sm leading-6 text-[#596270]">{translate("sourceConnect.canvasPanel.step2Summary")}</p></div>
+                <div className={workbenchSupportPanelClassName("default", "p-3")}><p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("common.labels.step", { step: 3 })}</p><p className="mt-2 font-medium text-ink">{translate("sourceConnect.canvasPanel.step3")}</p><p className="mt-1 text-sm leading-6 text-[#596270]">{translate("sourceConnect.canvasPanel.step3Summary")}</p></div>
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <a href="https://canvas.ucsd.edu/calendar" target="_blank" rel="noreferrer noopener" className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-cobalt-soft px-4 text-sm font-medium text-cobalt transition-all duration-200 hover:bg-[rgba(31,94,255,0.16)]">

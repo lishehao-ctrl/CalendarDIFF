@@ -15,12 +15,14 @@ import { createOAuthSession, createSyncRequest, deleteSource as deleteSourceRequ
 import { withBasePath } from "@/lib/demo-mode";
 import { translate } from "@/lib/i18n/runtime";
 import { invalidateSourceCaches } from "@/lib/source-cache";
+import { usePageMetadata } from "@/lib/use-page-metadata";
 import { useResponsiveTier } from "@/lib/use-responsive-tier";
 import { useApiResource } from "@/lib/use-api-resource";
 import { useSourceObservabilityMap } from "@/lib/use-source-observability-map";
 import { workbenchPanelClassName, workbenchStateSurfaceClassName, workbenchSupportPanelClassName } from "@/lib/workbench-styles";
 import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
 import type { SourceObservabilityResponse, SourceRecovery, SourceRow, SyncStatus } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const oauthQueryKeys = ["oauth_provider", "oauth_status", "source_id", "request_id", "message"] as const;
 
@@ -45,7 +47,7 @@ function buildSourceInsight(source: SourceRow) {
   if (sourceNeedsAttention(source)) {
     return {
       title: source.provider === "gmail" ? translate("sources.reconnectGmail") : translate("sources.toolsSection"),
-      detail: "New changes from this source are not trustworthy yet.",
+      detail: translate("sources.insightNeedsTrust"),
     };
   }
 
@@ -187,6 +189,7 @@ function ConnectedSourceCard({
   onDelete,
   busyDelete,
   basePath,
+  wideActions,
 }: {
   source: SourceRow;
   observability: SourceObservabilityResponse | undefined;
@@ -195,6 +198,7 @@ function ConnectedSourceCard({
   onDelete: (sourceId: number, provider: string) => void;
   busyDelete: number | null;
   basePath: string;
+  wideActions: boolean;
 }) {
   const recovery = resolveRecovery(source, observability);
   const productPhase = resolveProductPhase(source, observability);
@@ -202,26 +206,27 @@ function ConnectedSourceCard({
   const normalizedSyncLabel = syncLabel?.toLowerCase() || "";
   const showSyncBadge = normalizedSyncLabel !== "" && normalizedSyncLabel !== "idle";
   const detailHref = withBasePath(basePath, `/sources/${source.source_id}`);
+  const ctaClassName = wideActions ? "min-w-[10rem] justify-center" : "w-full justify-center";
   const primaryAction =
     recovery?.next_action === "reconnect_gmail" ? (
-      <Button asChild className="w-full justify-center">
+      <Button asChild className={ctaClassName}>
         <Link href={sourceSetupHref(basePath, source.provider)}>{translate("sources.reconnectGmail")}</Link>
       </Button>
     ) : recovery?.next_action === "update_ics" ? (
-      <Button asChild className="w-full justify-center">
+      <Button asChild className={ctaClassName}>
         <Link href={sourceSetupHref(basePath, source.provider)}>{translate("sources.updateCanvas")}</Link>
       </Button>
     ) : recovery?.next_action === "retry_sync" ? (
-      <Button onClick={() => onSync(source.source_id)} className="w-full justify-center">
+      <Button onClick={() => onSync(source.source_id)} className={ctaClassName}>
         <RefreshCw className="mr-2 h-4 w-4" />
         {recovery.next_action_label || translate("sources.retrySync")}
       </Button>
     ) : productPhase === "needs_initial_review" ? (
-      <Button asChild className="w-full justify-center">
+      <Button asChild className={ctaClassName}>
         <Link href={withBasePath(basePath, "/changes?bucket=initial_review")}>{translate("sources.openInitialReview")}</Link>
       </Button>
     ) : (
-      <Button asChild className="w-full justify-center">
+      <Button asChild className={ctaClassName}>
         <Link href={detailHref}>{translate("sources.openDetails")}</Link>
       </Button>
     );
@@ -244,12 +249,12 @@ function ConnectedSourceCard({
               </div>
               <p className="mt-2 text-sm text-[#596270]">{formatSourceSubtitle(source)}</p>
             </div>
-            <div className="flex w-full shrink-0 flex-wrap gap-2 lg:w-[360px] lg:justify-end">
+            <div className={cn("flex w-full shrink-0 flex-wrap gap-2", wideActions ? "md:ml-auto md:justify-end" : "")}>
               {primaryAction}
-              <Button asChild variant="ghost" className="min-w-[9rem] justify-center">
+              <Button asChild variant="ghost" className={wideActions ? "min-w-[9rem] justify-center" : "w-full justify-center"}>
                 <Link href={detailHref}>{translate("sources.openDetails")}</Link>
               </Button>
-              <Button variant="ghost" className="min-w-[9rem] justify-center" onClick={() => onDelete(source.source_id, source.provider)} disabled={busyDelete === source.source_id}>
+              <Button variant="ghost" className={wideActions ? "min-w-[9rem] justify-center" : "w-full justify-center"} onClick={() => onDelete(source.source_id, source.provider)} disabled={busyDelete === source.source_id}>
                 <Trash2 className="mr-2 h-4 w-4" />
                 {busyDelete === source.source_id ? translate("sources.archiving") : translate("sources.archive")}
               </Button>
@@ -303,7 +308,8 @@ function ArchivedSourceCard({
 }
 
 export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
-  const { isMobile, isTablet, isDesktop } = useResponsiveTier();
+  usePageMetadata(translate("sources.heroTitle"), translate("sources.heroSummary"));
+  const { isMobile, isTabletPortrait, isTabletWide, isDesktop } = useResponsiveTier();
   const active = useApiResource<SourceRow[]>(() => listSources({ status: "active" }), [], null, {
     cacheKey: sourceListCacheKey("active"),
   });
@@ -318,7 +324,9 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [observabilityRefreshNonce, setObservabilityRefreshNonce] = useState(0);
   const oauthQueryHandled = useRef(false);
-  const toolsSheetSide = isDesktop ? "right" : "bottom";
+  const toolsSheetSide = isDesktop || isTabletWide ? "right" : "bottom";
+  const showWideSupportColumn = isDesktop || isTabletWide;
+  const showBelowSupportCards = isTabletPortrait;
 
   const activeSources = useMemo(
     () =>
@@ -459,9 +467,13 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
         setSyncState((prev) => ({ ...prev, [sourceId]: normalized }));
         if (status.status === "SUCCEEDED" || status.status === "FAILED") {
         if (status.status === "SUCCEEDED") {
-            setBanner({ tone: "info", text: options?.successMessage || `Source #${sourceId} sync succeeded.` });
+            setBanner({ tone: "info", text: options?.successMessage || translate("sources.syncSucceeded", { sourceId }) });
           } else {
-            const failure = status.error_message || status.connector_result?.error_message || options?.failurePrefix || `Source #${sourceId} sync failed.`;
+            const failure =
+              status.error_message ||
+              status.connector_result?.error_message ||
+              options?.failurePrefix ||
+              translate("sources.syncFailedForSource", { sourceId });
             setBanner({ tone: "error", text: failure });
           }
           break;
@@ -489,7 +501,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
     const sourceId = sourceIdRaw ? Number(sourceIdRaw) : null;
     setBanner({
       tone: status === "success" ? "info" : "error",
-      text: message || (status === "success" ? "Gmail connection succeeded." : "Gmail connection failed."),
+      text: message || (status === "success" ? translate("sources.oauthSuccess") : translate("sources.oauthFailed")),
     });
 
     for (const key of oauthQueryKeys) {
@@ -501,8 +513,8 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
     void refreshAll({ background: true, force: true, refreshObservability: true });
     if (status === "success" && requestId && sourceId) {
       void pollSyncRequest(sourceId, requestId, {
-        successMessage: "Gmail initial sync succeeded.",
-        failurePrefix: "Gmail initial sync failed",
+        successMessage: translate("sources.initialSyncSuccess"),
+        failurePrefix: translate("sources.initialSyncFailed"),
       });
     }
   }, [pollSyncRequest, refreshAll]);
@@ -514,7 +526,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
       invalidateSourceCaches(sourceId);
       await pollSyncRequest(sourceId, created.request_id);
     } catch (err) {
-      const text = err instanceof Error ? err.message : "Sync failed";
+      const text = err instanceof Error ? err.message : translate("sources.syncFailed");
       setSyncState((prev) => ({ ...prev, [sourceId]: "failed" }));
       setBanner({ tone: "error", text });
     }
@@ -541,7 +553,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
       });
       await refreshAll({ background: true, force: true, refreshObservability: true });
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to archive source" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("sources.archiveFailed") });
     } finally {
       setBusyDelete(null);
     }
@@ -556,7 +568,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
       setBanner({ tone: "info", text: translate("sources.reactivateSource", { sourceId }) });
       await refreshAll({ background: true, force: true, refreshObservability: true });
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Unable to reactivate source" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("sources.reactivateFailed") });
     } finally {
       setBusyReactivate(null);
     }
@@ -679,7 +691,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
         </Card>
       ) : null}
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className={cn("grid gap-5", showWideSupportColumn ? "lg:grid-cols-[minmax(0,1fr)_300px]" : "")}>
         <div className="space-y-4">
         <Card className={workbenchPanelClassName("secondary", "animate-surface-enter p-5")}>
           <div className="flex items-start justify-between gap-4">
@@ -725,6 +737,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
                         onDelete={archiveSource}
                         busyDelete={busyDelete}
                         basePath={basePath}
+                        wideActions={isTabletWide || isDesktop}
                       />
                     ))}
                   </div>
@@ -750,6 +763,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
                         onDelete={archiveSource}
                         busyDelete={busyDelete}
                         basePath={basePath}
+                        wideActions={isTabletWide || isDesktop}
                       />
                     ))}
                   </div>
@@ -782,7 +796,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
             </Card>
           ) : null}
 
-          {isTablet ? (
+          {showBelowSupportCards ? (
             <div className="grid gap-4 md:grid-cols-2">
               {postureCard}
               {toolsCard}
@@ -790,7 +804,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
           ) : null}
         </div>
 
-        {isDesktop ? <div className="space-y-4">{postureCard}{toolsCard}</div> : null}
+        {showWideSupportColumn ? <div className="space-y-4">{postureCard}{toolsCard}</div> : null}
       </div>
 
       <Sheet open={toolsOpen} onOpenChange={setToolsOpen}>

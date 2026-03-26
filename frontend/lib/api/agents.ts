@@ -1,8 +1,9 @@
-import { apiGet, apiPost } from "@/lib/api/client";
+import { apiGet, apiPost, buildQuery } from "@/lib/api/client";
 import type {
   AgentChangeContext,
   AgentFamilyContext,
   AgentProposal,
+  AgentRecentActivityResponse,
   AgentSourceContext,
   AgentWorkspaceContext,
   ApprovalTicket,
@@ -32,8 +33,16 @@ export function approvalTicketCacheKey(ticketId: string) {
   return `agent:approval-ticket:${ticketId}`;
 }
 
+export function agentRecentActivityCacheKey(limit = 10) {
+  return `agent:activity:recent:${limit}`;
+}
+
 export async function getAgentWorkspaceContext() {
   return apiGet<AgentWorkspaceContext>("/agent/context/workspace");
+}
+
+export async function getRecentAgentActivity(limit = 10) {
+  return apiGet<AgentRecentActivityResponse>(`/agent/activity/recent${buildQuery({ limit })}`);
 }
 
 export async function getAgentChangeContext(changeId: number) {

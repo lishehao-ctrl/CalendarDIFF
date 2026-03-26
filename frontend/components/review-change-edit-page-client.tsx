@@ -13,6 +13,7 @@ import { applyChangeEdit, getChangeEditContext, previewChangeEdit } from "@/lib/
 import { withBasePath } from "@/lib/demo-mode";
 import { translate } from "@/lib/i18n/runtime";
 import { formatCourseDisplay, formatSemanticDue, formatStatusLabel } from "@/lib/presenters";
+import { workbenchPanelClassName, workbenchStateSurfaceClassName, workbenchSupportPanelClassName } from "@/lib/workbench-styles";
 import type { ChangeEditContext, ChangeEditMode, ChangeEditPreviewResponse, ChangeEditRequest } from "@/lib/types";
 import { useApiResource } from "@/lib/use-api-resource";
 import { useRouter } from "next/navigation";
@@ -25,13 +26,13 @@ function ReviewEditEventCard({
   event: ChangeEditPreviewResponse["base"];
 }) {
   return (
-    <div className="rounded-[1.2rem] border border-line/80 bg-white/70 p-4 text-sm text-[#314051]">
+      <div className={workbenchSupportPanelClassName("default", "p-4 text-sm text-[#314051]")}>
       <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{title}</p>
       <p className="mt-2 font-medium text-ink">{event.event_display.display_label}</p>
       <p className="mt-1 text-xs text-[#6d7885]">{event.event_display.course_display}</p>
       <div className="mt-4 space-y-1.5">
         <p>{translate("manual.family")}: {event.event_display.family_name}</p>
-        <p>{translate("changeEdit.ordinal")}: {event.event_display.ordinal ?? "N/A"}</p>
+        <p>{translate("changeEdit.ordinal")}: {event.event_display.ordinal ?? translate("common.labels.notApplicable")}</p>
         <p>{translate("changeEdit.due")}: {formatSemanticDue(event as unknown as Record<string, unknown>, "N/A")}</p>
       </div>
     </div>
@@ -182,13 +183,13 @@ export function ChangeItemEditPageClient({ mode, changeId, basePath = "" }: { mo
         </div>
 
         {banner ? (
-          <div className={banner.tone === "error" ? "mt-5 rounded-[1.15rem] border border-[#efc4b5] bg-[#fff3ef] px-4 py-3 text-sm text-[#7f3d2a]" : "mt-5 rounded-[1.15rem] border border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] px-4 py-3 text-sm text-[#314051]"}>
+          <div className={workbenchStateSurfaceClassName(banner.tone === "error" ? "error" : "info", `mt-5 px-4 py-3 text-sm ${banner.tone === "error" ? "text-[#7f3d2a]" : "text-[#314051]"}`)}>
             {banner.text}
           </div>
         ) : null}
 
         <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_0.95fr]">
-          <Card className="bg-white/60 p-5">
+          <Card className={workbenchPanelClassName("secondary", "p-5")}>
             <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changeEdit.editFields")}</p>
             <div className="mt-4 space-y-4">
               <div>
@@ -263,7 +264,12 @@ export function ChangeItemEditPageClient({ mode, changeId, basePath = "" }: { mo
                   <Eye className="mr-2 h-4 w-4" />
                   {busy === "preview" ? translate("changeEdit.previewing") : translate("changeEdit.previewChanges")}
                 </Button>
-                <Button variant="secondary" onClick={() => void applyEdit()} disabled={busy !== null || !form.due_date}>
+                <Button
+                  variant="secondary"
+                  onClick={() => void applyEdit()}
+                  disabled={busy !== null || !form.due_date}
+                  data-testid="review-edit-apply-button"
+                >
                   <Save className="mr-2 h-4 w-4" />
                   {busy === "apply" ? translate("changeEdit.applying") : mode === "proposal" ? translate("changeEdit.applyProposalEdit") : translate("changeEdit.applyDirectEdit")}
                 </Button>
@@ -272,17 +278,17 @@ export function ChangeItemEditPageClient({ mode, changeId, basePath = "" }: { mo
           </Card>
 
           <div className="space-y-5">
-            <Card className="bg-white/60 p-5">
+            <Card className={workbenchPanelClassName("secondary", "p-5")}>
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changeEdit.currentItem")}</p>
               <div className="mt-4 space-y-2 text-sm text-[#314051]">
-                <p>Entity UID: {data.entity_uid}</p>
+                <p>{translate("changeEdit.entityUid")}: {data.entity_uid}</p>
                 <p>{translate("manual.family")}: {data.editable_event.family_name}</p>
                 <p>{translate("changes.course")}: {formatCourseDisplay(data.editable_event as unknown as Record<string, unknown>)}</p>
               </div>
             </Card>
 
             {preview ? (
-              <Card className="bg-white/60 p-5">
+              <Card className={workbenchPanelClassName("secondary", "p-5")}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changeEdit.previewResult")}</p>
@@ -295,8 +301,10 @@ export function ChangeItemEditPageClient({ mode, changeId, basePath = "" }: { mo
                   <ReviewEditEventCard title={translate("changeEdit.candidateAfter")} event={preview.candidate_after} />
                 </div>
                 <div className="mt-4 space-y-1.5 text-sm text-[#314051]">
-                  <p>{translate("changeEdit.deltaSeconds", { value: preview.delta_seconds ?? "N/A" })}</p>
-                  {preview.will_reject_pending_change_ids.length > 0 ? <p>Will reject pending IDs: {preview.will_reject_pending_change_ids.join(", ")}</p> : null}
+                  <p>{translate("changeEdit.deltaSeconds", { value: preview.delta_seconds ?? translate("common.labels.notApplicable") })}</p>
+                  {preview.will_reject_pending_change_ids.length > 0 ? (
+                    <p>{translate("changeEdit.rejectedPendingIds", { ids: preview.will_reject_pending_change_ids.join(", ") })}</p>
+                  ) : null}
                 </div>
               </Card>
             ) : (

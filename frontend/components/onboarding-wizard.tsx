@@ -18,6 +18,7 @@ import {
 } from "@/lib/api/onboarding";
 import { translate } from "@/lib/i18n/runtime";
 import { useApiResource } from "@/lib/use-api-resource";
+import { workbenchPanelClassName, workbenchStateSurfaceClassName, workbenchSupportPanelClassName } from "@/lib/workbench-styles";
 import type { OnboardingStage, OnboardingStatus } from "@/lib/types";
 
 const stepOrder: Array<{
@@ -182,12 +183,12 @@ export function OnboardingWizard() {
   const stepIndex = currentStepIndex(data.stage);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" data-testid="onboarding-wizard">
       <Card className="relative overflow-hidden px-6 py-7 md:px-8 md:py-8">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.16),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(215,90,45,0.14),transparent_28%)]" />
         <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="max-w-3xl">
-            <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">Onboarding</p>
+            <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">{translate("onboarding.introEyebrow")}</p>
             <h1 className="mt-3 text-3xl font-semibold text-ink md:text-4xl">{stageTitle()}</h1>
             <p className="mt-4 text-sm leading-7 text-[#596270]">
               {translate("onboarding.heroSummary")}
@@ -199,8 +200,8 @@ export function OnboardingWizard() {
               ) : null}
             </div>
           </div>
-          <Card className="relative border-white/40 bg-white/55 p-5">
-            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Progress</p>
+          <Card className={workbenchPanelClassName("secondary", "relative p-5")}>
+            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("onboarding.progress")}</p>
             <div className="mt-4 space-y-3">
               {stepOrder.map((step, index) => {
                 const active = index === stepIndex;
@@ -209,7 +210,7 @@ export function OnboardingWizard() {
                   (step.id === "gmail" && (!!data.gmail_source?.connected || data.gmail_skipped || stepIndex > 1)) ||
                   (step.id === "monitoring" && !!data.monitoring_window && data.stage === "ready");
                 return (
-                  <div key={step.id} className="flex items-start gap-3 rounded-[1.1rem] border border-line/80 bg-white/70 p-3">
+                  <div key={step.id} className={workbenchSupportPanelClassName("default", "flex items-start gap-3 p-3")}>
                     <div className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-2xl ${complete ? "bg-[rgba(77,124,15,0.12)] text-moss" : active ? "bg-[rgba(31,94,255,0.12)] text-cobalt" : "bg-[rgba(20,32,44,0.06)] text-[#6d7885]"}`}>
                       {complete ? <CheckCircle2 className="h-4 w-4" /> : <span className="text-xs font-semibold">{index + 1}</span>}
                     </div>
@@ -225,11 +226,7 @@ export function OnboardingWizard() {
         </div>
       </Card>
 
-      {banner ? (
-        <Card className={banner.tone === "error" ? "border-[#efc4b5] bg-[#fff3ef] p-4 text-sm text-[#7f3d2a]" : "border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.08)] p-4 text-sm text-[#314051]"}>
-          {banner.text}
-        </Card>
-      ) : null}
+      {banner ? <Card className={workbenchStateSurfaceClassName(banner.tone === "error" ? "error" : "info", `p-4 text-sm ${banner.tone === "error" ? "text-[#7f3d2a]" : "text-[#314051]"}`)}>{banner.text}</Card> : null}
 
       {data.stage === "needs_canvas_ics" ? (
         <Card className="p-6 md:p-7">
@@ -263,21 +260,18 @@ export function OnboardingWizard() {
                 {savingCanvas ? translate("onboarding.saveCanvasBusy") : translate("onboarding.saveCanvas")}
               </Button>
             </div>
-            <Card className="bg-white/60 p-5">
+            <Card className={workbenchPanelClassName("secondary", "p-5")}>
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("onboarding.canvasUrl")}</p>
-              <p className="mt-3 text-base font-medium text-ink">Open Canvas Calendar in a new tab.</p>
+              <p className="mt-3 text-base font-medium text-ink">{translate("onboarding.canvasGuideTitle")}</p>
               <p className="mt-2 text-sm leading-6 text-[#596270]">
-                Canvas exposes your personal ICS feed from the Calendar page. Copy the URL there, then come back and paste it here.
+                {translate("onboarding.canvasGuideSummary")}
               </p>
               <div className="mt-4">
-                <a
-                  href="https://canvas.ucsd.edu/calendar"
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="inline-flex h-10 items-center justify-center rounded-full bg-cobalt-soft px-4 text-sm font-medium text-cobalt transition-all duration-200 hover:bg-[rgba(31,94,255,0.16)]"
-                >
-                  Open Canvas Calendar
-                </a>
+                <Button asChild variant="soft">
+                  <a href="https://canvas.ucsd.edu/calendar" target="_blank" rel="noreferrer noopener">
+                    {translate("onboarding.openCanvasCalendar")}
+                  </a>
+                </Button>
               </div>
             </Card>
           </div>
@@ -299,15 +293,15 @@ export function OnboardingWizard() {
             </div>
           </div>
           <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_320px]">
-            <Card className="bg-white/60 p-5">
+            <Card className={workbenchPanelClassName("secondary", "p-5")}>
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("onboarding.gmailStepTitle")}</p>
               <p className="mt-3 text-base font-medium text-ink">
                 {data.gmail_source?.connected && data.gmail_source.oauth_account_email
-                  ? `Connected as ${data.gmail_source.oauth_account_email}`
-                  : "No mailbox connected yet"}
+                  ? translate("onboarding.gmailConnectedAs", { email: data.gmail_source.oauth_account_email })
+                  : translate("onboarding.gmailNotConnectedYet")}
               </p>
               <p className="mt-2 text-sm leading-6 text-[#596270]">
-                The OAuth callback will return you here. If you connect Gmail now, it will use the same monitoring start once the last step is saved.
+                {translate("onboarding.gmailOauthReturnHere")}
               </p>
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button disabled={startingGmail} onClick={() => void connectGmail()}>
@@ -318,10 +312,10 @@ export function OnboardingWizard() {
                 </Button>
               </div>
             </Card>
-            <Card className="bg-white/60 p-5">
+            <Card className={workbenchPanelClassName("secondary", "p-5")}>
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("onboarding.optional")}</p>
               <p className="mt-3 text-sm leading-6 text-[#596270]">
-                You can still enter the workspace with Canvas only. Later, if you decide to add Gmail from Sources, it will inherit the same monitoring start automatically.
+                {translate("onboarding.gmailSkipLaterSummary")}
               </p>
             </Card>
           </div>
@@ -341,7 +335,7 @@ export function OnboardingWizard() {
                 {translate("onboarding.monitoringSummary")}
               </p>
               <p className="mt-2 text-sm leading-6 text-[#596270]">
-                Nothing starts syncing until you save this step.
+                {translate("onboarding.monitoringStartsAfterSave")}
               </p>
             </div>
           </div>
@@ -353,7 +347,7 @@ export function OnboardingWizard() {
                 </label>
                 <Input id="monitor-since" type="date" value={monitorSince} onChange={(event) => setMonitorSince(event.target.value)} />
                 <p className="mt-2 text-xs leading-5 text-[#6d7885]">
-                  Recommended default: {defaultStart}. Choose an earlier date only if you want to pull in older coursework or older email changes.
+                  {translate("onboarding.monitoringDefaultHint", { date: defaultStart })}
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
@@ -364,34 +358,34 @@ export function OnboardingWizard() {
                 </Button>
                 {monitorSince !== defaultStart ? (
                   <Button variant="ghost" disabled={savingMonitoring} onClick={() => setMonitorSince(defaultStart)}>
-                    {translate("onboarding.monitoringStepTitle")}
+                    {translate("onboarding.monitoringResetDefault")}
                   </Button>
                 ) : null}
               </div>
             </div>
-            <Card className="bg-white/60 p-5">
+            <Card className={workbenchPanelClassName("secondary", "p-5")}>
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("onboarding.monitoringStepTitle")}</p>
               <div className="mt-4 space-y-3 text-sm text-[#314051]">
-                <p>Default setup starts 90 days back.</p>
-                <p>Choose an earlier date if you need older coursework or prior changes pulled into the workspace.</p>
-                <p>This is a monitoring scope, not a semester label. Future updates still appear normally.</p>
+                {(["0", "1", "2"] as const).map((index) => (
+                  <p key={index}>{translate(`onboarding.monitoringGuideItems.${index}`)}</p>
+                ))}
               </div>
               <p className="mt-5 text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.listEyebrow")}</p>
               <div className="mt-3 space-y-3 text-sm text-[#314051]">
-                <div className="rounded-[1rem] border border-line/80 bg-white/70 p-4">
+                <div className={workbenchSupportPanelClassName("default", "p-4")}>
                   <p className="font-medium text-ink">Canvas ICS</p>
                   <p className="mt-1 text-[#596270]">
-                    {data.canvas_source?.connected ? `Ready on source #${data.canvas_source.source_id}` : "Missing"}
+                    {data.canvas_source?.connected ? translate("onboarding.sourceReady", { sourceId: data.canvas_source.source_id }) : translate("onboarding.sourceMissing")}
                   </p>
                 </div>
-                <div className="rounded-[1rem] border border-line/80 bg-white/70 p-4">
+                <div className={workbenchSupportPanelClassName("default", "p-4")}>
                   <p className="font-medium text-ink">Gmail</p>
                   <p className="mt-1 text-[#596270]">
                     {data.gmail_source?.connected
-                      ? data.gmail_source.oauth_account_email || `Connected on source #${data.gmail_source.source_id}`
+                      ? data.gmail_source.oauth_account_email || translate("onboarding.sourceReady", { sourceId: data.gmail_source.source_id })
                       : data.gmail_skipped
-                        ? "Skipped for this setup"
-                        : "Not connected"}
+                        ? translate("onboarding.gmailSkippedForSetup")
+                        : translate("onboarding.gmailNotConnectedYet")}
                   </p>
                 </div>
               </div>
@@ -400,8 +394,9 @@ export function OnboardingWizard() {
         </Card>
       ) : null}
 
-      <Card className="p-5 text-sm text-[#596270]">
-        Need to manage sources after onboarding? You can do that later from <Link href="/sources" className="font-medium text-cobalt">{translate("shell.nav.sources.label")}</Link>, but the main workspace only opens once the required onboarding step finishes.
+      <Card className={workbenchPanelClassName("secondary", "p-5 text-sm text-[#596270]")}>
+        {translate("onboarding.manageLaterSummary")}{" "}
+        <Link href="/sources" className="font-medium text-cobalt">{translate("shell.nav.sources.label")}</Link>.
       </Card>
     </div>
   );

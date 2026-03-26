@@ -1,5 +1,6 @@
 "use client";
 
+import { translateStatusLabel } from "@/lib/i18n/runtime";
 import { cn } from "@/lib/utils";
 import type { SyncProgress } from "@/lib/types";
 
@@ -49,7 +50,7 @@ export function SourceSyncProgress({
             />
           </div>
           <div className="mt-2 flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-[#6d7885]">
-            <span>{progress.phase.replaceAll("_", " ")}</span>
+            <span>{translateStatusLabel(progress.phase)}</span>
             <span>{percent.toFixed(percent % 1 === 0 ? 0 : 1)}%</span>
           </div>
         </div>

@@ -3,6 +3,7 @@
 import { ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { workbenchStateSurfaceClassName, workbenchSupportPanelClassName } from "@/lib/workbench-styles";
 import { cn } from "@/lib/utils";
 
 type AgentStepState = "active" | "complete" | "terminal";
@@ -10,11 +11,11 @@ type AgentStepState = "active" | "complete" | "terminal";
 function stateClassName(state: AgentStepState) {
   switch (state) {
     case "active":
-      return "border-[rgba(31,94,255,0.18)] bg-[rgba(31,94,255,0.06)]";
+      return workbenchStateSurfaceClassName("info");
     case "terminal":
-      return "border-line/80 bg-white/90";
+      return workbenchSupportPanelClassName("quiet");
     default:
-      return "border-line/80 bg-white/80";
+      return workbenchSupportPanelClassName("default");
   }
 }
 
@@ -63,7 +64,7 @@ export function AgentDisclosure({
   defaultOpen?: boolean;
 }) {
   return (
-    <details open={defaultOpen || undefined} className="group rounded-[1rem] border border-line/80 bg-white/70 p-3">
+    <details open={defaultOpen || undefined} className={cn("group", workbenchSupportPanelClassName("quiet", "p-3"))}>
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-ink">
         <span>{title}</span>
         <ChevronDown className="h-4 w-4 text-[#6d7885] transition-transform group-open:rotate-180" />

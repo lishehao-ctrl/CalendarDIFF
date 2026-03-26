@@ -16,21 +16,38 @@ import {
   createSyncRequest,
   deleteSource,
   getSourceObservability,
+  getSourceLlmInvocations,
   getSourceSyncHistory,
+  getSyncRequestLlmInvocations,
   listSources,
   sourceListCacheKey,
+  sourceLlmInvocationsCacheKey,
   sourceObservabilityCacheKey,
   sourceSyncHistoryCacheKey,
+  syncRequestLlmInvocationsCacheKey,
   updateSource,
 } from "@/lib/api/sources";
 import { withBasePath } from "@/lib/demo-mode";
-import { translate } from "@/lib/i18n/runtime";
-import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
+import { intlDateLocale, translate } from "@/lib/i18n/runtime";
+import { formatCount, formatDateTime, formatStatusLabel } from "@/lib/presenters";
 import { invalidateSourceCaches } from "@/lib/source-cache";
 import { formatElapsedMs } from "@/lib/source-observability";
+import { usePageMetadata } from "@/lib/use-page-metadata";
+import { useResponsiveTier } from "@/lib/use-responsive-tier";
 import { workbenchPanelClassName, workbenchStateSurfaceClassName, workbenchSupportPanelClassName } from "@/lib/workbench-styles";
-import type { SourceObservabilitySync, SourceRecovery, SourceRow, SourceSyncHistoryResponse } from "@/lib/types";
+import type {
+  LlmInvocationLogResponse,
+  LlmInvocationSummaryResponse,
+  SourceObservabilitySync,
+  SourceOperatorGuidance,
+  SourceRecovery,
+  SourceRow,
+  SourceSyncHistoryResponse,
+  SourceLlmInvocationsResponse,
+  SyncRequestLlmInvocationsResponse,
+} from "@/lib/types";
 import { useApiResource } from "@/lib/use-api-resource";
+import { cn } from "@/lib/utils";
 
 function sourceTitle(source: SourceRow) {
   if (source.provider === "ics") {
@@ -95,11 +112,94 @@ function trustStateTone(trustState: SourceRecovery["trust_state"] | null | undef
   }
 }
 
+function guidanceTone(severity: SourceOperatorGuidance["severity"] | null | undefined) {
+  switch (severity) {
+    case "blocking":
+      return "error";
+    case "warning":
+      return "pending";
+    case "info":
+    default:
+      return "info";
+  }
+}
+
+function formatUsd(value: number | null | undefined, pricingAvailable = true) {
+  if (!pricingAvailable) {
+    return translate("sources.detail.llmActivityPricingUnavailable");
+  }
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return translate("common.labels.notAvailable");
+  }
+  const digits = value >= 1 ? 2 : value >= 0.01 ? 3 : 4;
+  return new Intl.NumberFormat(intlDateLocale(), {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(value);
+}
+
+function humanizeIdentifier(value: string | null | undefined) {
+  if (!value) {
+    return translate("common.labels.notAvailable");
+  }
+  if (value === "responses") {
+    return "Responses API";
+  }
+  if (value === "chat_completions") {
+    return "Chat Completions API";
+  }
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function compactIdentifier(value: string) {
+  return value.length > 14 ? `${value.slice(0, 12)}…` : value;
+}
+
+function countEntries(mapping: Record<string, number>) {
+  return Object.entries(mapping)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 3);
+}
+
 function usageFact(label: string, value: string) {
   return (
     <div className={workbenchSupportPanelClassName("default", "p-3")}>
       <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{label}</p>
       <p className="mt-2 text-sm font-medium text-ink">{value}</p>
+    </div>
+  );
+}
+
+function CountBreakdown({
+  label,
+  entries,
+  preserveLabel = false,
+}: {
+  label: string;
+  entries: Array<[string, number]>;
+  preserveLabel?: boolean;
+}) {
+  return (
+    <div className={workbenchSupportPanelClassName("quiet", "p-4")}>
+      <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{label}</p>
+      {entries.length > 0 ? (
+        <div className="mt-3 space-y-2">
+          {entries.map(([entryLabel, count]) => (
+            <div key={`${label}-${entryLabel}`} className="flex items-center justify-between gap-3 text-sm text-[#314051]">
+              <span className="min-w-0 truncate">{preserveLabel ? entryLabel : humanizeIdentifier(entryLabel)}</span>
+              <span className="font-medium text-ink">{formatCount(count)}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-[#596270]">{translate("common.labels.notAvailable")}</p>
+      )}
     </div>
   );
 }
@@ -138,6 +238,7 @@ function SyncRunCard({
 }
 
 export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: number; basePath?: string }) {
+  const { isTabletWide, isDesktop } = useResponsiveTier();
   const sources = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), [], null, {
     cacheKey: sourceListCacheKey("all"),
   });
@@ -159,12 +260,35 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
     cacheKey: sourceSyncHistoryCacheKey(sourceId, 8),
     },
   );
+  const sourceLlmActivity = useApiResource<SourceLlmInvocationsResponse | null>(
+    () => (canLoadSourceDetail ? getSourceLlmInvocations(sourceId, { limit: 8 }) : Promise.resolve(null)),
+    [sourceId, canLoadSourceDetail],
+    null,
+    {
+      cacheKey: sourceLlmInvocationsCacheKey(sourceId, { limit: 8 }),
+    },
+  );
   const [banner, setBanner] = useState<{ tone: "info" | "error"; text: string } | null>(null);
   const [busySync, setBusySync] = useState(false);
   const [busyArchive, setBusyArchive] = useState(false);
   const [busyReactivate, setBusyReactivate] = useState(false);
   const [busyReconnect, setBusyReconnect] = useState(false);
   const activeSync = observability.data?.active || null;
+  const activeRequestId = observability.data?.active_request_id || activeSync?.request_id || null;
+  const requestLlmActivity = useApiResource<SyncRequestLlmInvocationsResponse | null>(
+    () => (canLoadSourceDetail && activeRequestId ? getSyncRequestLlmInvocations(activeRequestId, { limit: 8 }) : Promise.resolve(null)),
+    [sourceId, canLoadSourceDetail, activeRequestId],
+    null,
+    {
+      cacheKey: activeRequestId ? syncRequestLlmInvocationsCacheKey(activeRequestId, 8) : undefined,
+    },
+  );
+  const previewSourceRecovery = observability.data?.source_recovery || source?.source_recovery || null;
+
+  usePageMetadata(
+    source ? sourceTitle(source) : translate("sources.detail.pageEyebrow"),
+    source ? previewSourceRecovery?.impact_summary || sourceSubtitle(source) : translate("sources.heroSummary"),
+  );
 
   const shouldPollActiveSync = Boolean(
     (activeSync && activeSync.status !== "SUCCEEDED" && activeSync.status !== "FAILED") ||
@@ -183,8 +307,10 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
     await Promise.all([
       observability.refresh({ background: options?.background, force: options?.force }),
       history.refresh({ background: options?.background, force: options?.force }),
+      sourceLlmActivity.refresh({ background: options?.background, force: options?.force }),
+      requestLlmActivity.refresh({ background: options?.background, force: options?.force }),
     ]);
-  }, [canLoadSourceDetail, history, observability, sources]);
+  }, [canLoadSourceDetail, history, observability, requestLlmActivity, sourceLlmActivity, sources]);
 
   useEffect(() => {
     if (!shouldPollActiveSync) {
@@ -267,12 +393,34 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
   const latestReplay = observability.data?.latest_replay || null;
   const sourceRecovery = observability.data?.source_recovery || source.source_recovery || null;
   const sourceProductPhase = observability.data?.source_product_phase || source.source_product_phase || null;
+  const operatorGuidance = observability.data?.operator_guidance || source.operator_guidance || null;
+  const showingOperatorGuidance = Boolean(operatorGuidance?.message && operatorGuidance.message !== sourceRecovery?.impact_summary);
+  const requestActivityHasItems = Boolean((requestLlmActivity.data?.items || []).length > 0);
+  const sourceActivityHasItems = Boolean((sourceLlmActivity.data?.items || []).length > 0);
+  const usingRequestActivity = Boolean(activeRequestId && requestActivityHasItems);
+  const llmActivityData = usingRequestActivity
+    ? requestLlmActivity.data
+    : sourceActivityHasItems
+      ? sourceLlmActivity.data
+      : requestLlmActivity.data || sourceLlmActivity.data;
+  const llmActivityLoading =
+    (activeRequestId ? requestLlmActivity.loading : false) ||
+    (!requestActivityHasItems && sourceLlmActivity.loading && !sourceLlmActivity.data);
+  const llmActivityError =
+    requestLlmActivity.error && !requestActivityHasItems && !sourceActivityHasItems
+      ? requestLlmActivity.error
+      : !sourceActivityHasItems
+        ? sourceLlmActivity.error
+        : null;
+  const llmActivityItems = llmActivityData?.items || [];
+  const llmActivitySummary = llmActivityData?.summary as LlmInvocationSummaryResponse | undefined;
   const needsReconnect =
     sourceRecovery?.next_action === "reconnect_gmail" ||
     Boolean(source.last_error_message) ||
     source.oauth_connection_status === "not_connected";
   const bootstrapConnector = bootstrap?.connector_result && typeof bootstrap.connector_result === "object" ? (bootstrap.connector_result as Record<string, unknown>) : null;
   const bootstrapRecordsCount = typeof bootstrapConnector?.records_count === "number" ? bootstrapConnector.records_count : null;
+  const showSupportColumn = isTabletWide || isDesktop;
 
   return (
     <div className="space-y-5">
@@ -292,7 +440,7 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
               <p className="mt-3 text-sm text-[#314051]">{translate("sources.detail.nextStep", { label: sourceRecovery.next_action_label })}</p>
             ) : null}
           </div>
-          <div className="grid w-full gap-2 sm:grid-cols-2 xl:flex xl:w-auto xl:max-w-[420px] xl:justify-end">
+          <div className={cn("grid w-full gap-2 sm:grid-cols-2", showSupportColumn ? "lg:flex lg:w-auto lg:max-w-[420px] lg:flex-wrap lg:justify-end" : "")}>
             {sourceProductPhase === "needs_initial_review" ? (
               <Button asChild size="sm" className="w-full xl:w-auto">
                 <Link href={withBasePath(basePath, "/changes?bucket=initial_review")}>{translate("sources.detail.openInitialReview")}</Link>
@@ -355,9 +503,9 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
         </Card>
       ) : null}
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.08fr)_340px]">
+      <div className={cn("grid gap-5", showSupportColumn ? "lg:grid-cols-[minmax(0,1.08fr)_340px]" : "")}>
         <div className="space-y-4">
-          <Card className={workbenchPanelClassName("secondary", "animate-surface-enter p-5")}>
+          <Card className={workbenchPanelClassName("secondary", "animate-surface-enter p-5")} data-testid="source-detail-current-health">
           <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.detail.currentPosture")}</p>
           {observability.loading && !observability.data ? (
             <PanelLoadingPlaceholder rows={2} className="mt-4 p-4" />
@@ -391,6 +539,22 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
                   </div>
                 </div>
               ) : null}
+              {showingOperatorGuidance ? (
+                <div className={workbenchSupportPanelClassName("quiet", "mt-4 p-4")}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("sources.detail.operatorGuidance")}</p>
+                      <p className="mt-2 text-sm font-medium text-ink">{operatorGuidance?.message}</p>
+                    </div>
+                    <Badge tone={guidanceTone(operatorGuidance?.severity)}>{formatStatusLabel(operatorGuidance?.severity, translate("common.labels.unknown"))}</Badge>
+                  </div>
+                  {operatorGuidance?.related_request_id ? (
+                    <p className="mt-3 text-sm text-[#596270]">
+                      {translate("sources.detail.relatedRequest")}: <span className="font-mono text-[12px] text-[#314051]">{operatorGuidance.related_request_id}</span>
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               {activeSync ? (
                 <>
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -404,6 +568,84 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
               ) : null}
             </div>
           )}
+          </Card>
+
+          <Card className={workbenchPanelClassName("secondary", "animate-surface-enter p-5")}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="max-w-3xl">
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.detail.llmActivity")}</p>
+                <h3 className="mt-2 text-base font-semibold text-ink">{translate("sources.detail.llmActivityTitle")}</h3>
+                <p className="mt-2 text-sm leading-6 text-[#596270]">
+                  {usingRequestActivity ? translate("sources.detail.llmActivityCurrentRequest") : translate("sources.detail.llmActivityRecentSource")}
+                </p>
+              </div>
+            </div>
+            {llmActivityLoading ? (
+              <PanelLoadingPlaceholder rows={2} className="mt-4 p-4" />
+            ) : llmActivityError && !llmActivityData ? (
+              <div className={workbenchStateSurfaceClassName("error", "mt-4 p-4 text-sm text-[#7f3d2a]")}>
+                {`${translate("sources.detail.llmActivityLoadFailed")} ${llmActivityError}`}
+              </div>
+            ) : llmActivityItems.length === 0 ? (
+              <div className={workbenchSupportPanelClassName("default", "mt-4 p-4")}>
+                <p className="text-sm font-medium text-ink">{translate("sources.detail.llmActivityEmptyTitle")}</p>
+                <p className="mt-2 text-sm leading-6 text-[#596270]">
+                  {usingRequestActivity ? translate("sources.detail.llmActivityCurrentRequestEmpty") : translate("sources.detail.llmActivityEmptyDescription")}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {usageFact(
+                    translate("sources.detail.llmActivityScope"),
+                    usingRequestActivity && activeRequestId ? compactIdentifier(activeRequestId) : translate("common.labels.recent"),
+                  )}
+                  {usageFact(translate("sources.detail.llmActivityTotalCalls"), formatCount(llmActivitySummary?.total_count || 0))}
+                  {usageFact(translate("sources.detail.llmActivitySucceeded"), formatCount(llmActivitySummary?.success_count || 0))}
+                  {usageFact(translate("sources.detail.llmActivityFailed"), formatCount(llmActivitySummary?.failure_count || 0))}
+                  {usageFact(translate("sources.detail.llmActivityAvgLatency"), formatElapsedMs(llmActivitySummary?.avg_latency_ms || null))}
+                  {usageFact(translate("sources.detail.llmActivityTotalTokens"), formatCount(llmActivitySummary?.total_tokens || 0))}
+                  {usageFact(
+                    translate("sources.detail.llmActivityEstimatedCost"),
+                    formatUsd(llmActivitySummary?.estimated_cost_usd, llmActivitySummary?.pricing_available !== false),
+                  )}
+                </div>
+
+                <div className="mt-4 grid gap-3 xl:grid-cols-3">
+                  <CountBreakdown
+                    label={translate("sources.detail.llmActivityModels")}
+                    entries={countEntries(llmActivitySummary?.model_counts || {})}
+                    preserveLabel
+                  />
+                  <CountBreakdown label={translate("sources.detail.llmActivityProtocols")} entries={countEntries(llmActivitySummary?.protocol_counts || {})} />
+                  <CountBreakdown label={translate("sources.detail.llmActivityTasks")} entries={countEntries(llmActivitySummary?.task_counts || {})} />
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("sources.detail.llmActivityRecentCalls")}</p>
+                  {llmActivityItems.slice(0, 4).map((item: LlmInvocationLogResponse, index: number) => (
+                    <div
+                      key={`${item.request_id || "requestless"}-${item.created_at}-${index}`}
+                      className={workbenchSupportPanelClassName("quiet", "p-4")}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-medium text-ink">{humanizeIdentifier(item.task_name)}</p>
+                            <Badge tone={item.success ? "approved" : "error"}>{formatStatusLabel(item.success ? "succeeded" : "failed")}</Badge>
+                          </div>
+                          <div className="mt-3 grid gap-2 text-sm text-[#596270]">
+                            <p>{formatDateTime(item.created_at)} · {item.model}</p>
+                            <p>{humanizeIdentifier(item.protocol)} · {formatElapsedMs(item.latency_ms)} · {formatUsd(item.estimated_cost_usd)}</p>
+                          </div>
+                          {item.error_code ? <p className="mt-3 text-sm text-[#7f3d2a]">{item.error_code}</p> : null}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </Card>
 
           <Card className={workbenchPanelClassName("secondary", "animate-surface-enter p-5")}>
@@ -454,7 +696,7 @@ export function SourceDetailPanel({ sourceId, basePath = "" }: { sourceId: numbe
                   <div key={item.request_id} className={workbenchSupportPanelClassName("default", "p-4")}>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <p className="text-sm font-medium text-ink">{formatStatusLabel(item.status)} replay</p>
+                        <p className="text-sm font-medium text-ink">{translate("sources.detail.replayRunLabel", { status: formatStatusLabel(item.status) })}</p>
                         <p className="mt-1 text-sm text-[#596270]">{formatDateTime(item.updated_at)}</p>
                       </div>
                       <Badge tone={item.status === "FAILED" ? "error" : item.status === "RUNNING" ? "pending" : "approved"}>

@@ -28,6 +28,9 @@
   --motion-distance-sm: 8px;
   --motion-distance-md: 16px;
   --motion-distance-lg: 28px;
+  --motion-hover-lift: -2px;
+  --motion-soft-lift: -1px;
+  --motion-shimmer-duration: 2.2s;
   --surface-primary: linear-gradient(180deg, rgba(255, 254, 250, 0.98), rgba(255, 249, 241, 0.92));
   --surface-secondary: linear-gradient(180deg, rgba(255, 252, 246, 0.9), rgba(255, 248, 240, 0.78));
   --surface-quiet: rgba(255, 249, 242, 0.58);
@@ -63,6 +66,45 @@ body {
   margin: 0;
   color: var(--ink);
   background: transparent;
+}
+
+[data-terminal="mobile"] {
+  --motion-duration-fast: 120ms;
+  --motion-duration-base: 180ms;
+  --motion-duration-slow: 260ms;
+  --motion-duration-scene: 320ms;
+  --motion-distance-sm: 5px;
+  --motion-distance-md: 10px;
+  --motion-distance-lg: 18px;
+  --motion-hover-lift: -1px;
+  --motion-soft-lift: 0px;
+  --motion-shimmer-duration: 1.8s;
+}
+
+[data-terminal="tabletPortrait"] {
+  --motion-duration-fast: 140ms;
+  --motion-duration-base: 210ms;
+  --motion-duration-slow: 300ms;
+  --motion-duration-scene: 400ms;
+  --motion-distance-sm: 6px;
+  --motion-distance-md: 12px;
+  --motion-distance-lg: 22px;
+  --motion-hover-lift: -1px;
+  --motion-soft-lift: 0px;
+  --motion-shimmer-duration: 2s;
+}
+
+[data-terminal="tabletWide"] {
+  --motion-duration-fast: 150ms;
+  --motion-duration-base: 220ms;
+  --motion-duration-slow: 320ms;
+  --motion-duration-scene: 430ms;
+  --motion-distance-sm: 7px;
+  --motion-distance-md: 14px;
+  --motion-distance-lg: 24px;
+  --motion-hover-lift: -1.5px;
+  --motion-soft-lift: -1px;
+  --motion-shimmer-duration: 2.1s;
 }
 
 @keyframes surface-enter {
@@ -473,7 +515,7 @@ a {
   }
 
   .interactive-lift:hover {
-    transform: translateY(-2px);
+    transform: translateY(var(--motion-hover-lift));
   }
 
   .workbench-queue-row--idle:hover {
@@ -484,7 +526,12 @@ a {
       0 1px 0 rgba(255, 255, 255, 0.68) inset;
   }
 
-  .workbench-queue-row--checked:hover,
+  .workbench-queue-row--checked:hover {
+    box-shadow:
+      0 12px 26px rgba(20, 32, 44, 0.07),
+      0 1px 0 rgba(255, 255, 255, 0.7) inset;
+  }
+
   .workbench-queue-row--selected:hover {
     box-shadow:
       0 16px 34px rgba(20, 32, 44, 0.085),
@@ -500,7 +547,7 @@ a {
   }
 
   .soft-hover:hover {
-    transform: translateY(-1px);
+    transform: translateY(var(--motion-soft-lift));
   }
 
   .soft-press {
@@ -560,7 +607,7 @@ a {
     position: absolute;
     inset: 0;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.38), transparent);
-    animation: bar-shimmer 2.2s linear infinite;
+    animation: bar-shimmer var(--motion-shimmer-duration) linear infinite;
   }
 }
 

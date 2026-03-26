@@ -4,7 +4,7 @@ import { SettingsPanel } from "@/components/settings-panel";
 export default function PreviewSettingsPage() {
   return (
     <div className="space-y-4">
-      <LocalizedPageIntro eyebrowKey="settingsPage.eyebrow" titleKey="settingsPage.title" />
+      <LocalizedPageIntro eyebrowKey="settingsPage.eyebrow" titleKey="settingsPage.title" summaryKey="settingsPage.summary" />
       <SettingsPanel />
     </div>
   );

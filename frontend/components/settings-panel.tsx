@@ -36,9 +36,37 @@ const DeferredSettingsMcpAccessCard = dynamic(
   },
 );
 
+const DeferredSettingsAgentActivityCard = dynamic(
+  () => import("@/components/settings-agent-activity-card").then((mod) => mod.SettingsAgentActivityCard),
+  {
+    loading: () => (
+      <PanelLoadingPlaceholder
+        eyebrow={translate("settings.agentActivity.eyebrow")}
+        title={translate("settings.agentActivity.title")}
+        summary={translate("settings.agentActivity.summary")}
+        rows={2}
+      />
+    ),
+  },
+);
+
+const DeferredSettingsMcpInvocationAuditCard = dynamic(
+  () => import("@/components/settings-mcp-invocation-audit-card").then((mod) => mod.SettingsMcpInvocationAuditCard),
+  {
+    loading: () => (
+      <PanelLoadingPlaceholder
+        eyebrow={translate("settings.mcpAudit.eyebrow")}
+        title={translate("settings.mcpAudit.title")}
+        summary={translate("settings.mcpAudit.summary")}
+        rows={2}
+      />
+    ),
+  },
+);
+
 export function SettingsPanel() {
   const { locale, setLocale } = useLocale();
-  const { isMobile, isTablet, isDesktop } = useResponsiveTier();
+  const { isMobile, isTabletWide, isDesktop } = useResponsiveTier();
   const user = useApiResource<UserProfile>(() => getSettingsProfile(), [], null, {
     cacheKey: settingsProfileCacheKey(),
   });
@@ -234,77 +262,78 @@ export function SettingsPanel() {
         </Card>
       ) : null}
 
-      <div className={`grid gap-5 ${isDesktop ? "xl:items-start xl:grid-cols-[minmax(0,0.92fr)_360px]" : isTablet ? "lg:items-start lg:grid-cols-[minmax(0,1fr)_320px]" : ""}`}>
-        <Card className="p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">{translate("settings.account")}</p>
-              <h3 className="mt-2 text-lg font-semibold text-ink">{translate("settings.accountTitle")}</h3>
+      <div className={`grid gap-5 ${isDesktop ? "xl:items-start xl:grid-cols-[minmax(0,1fr)_360px]" : isTabletWide ? "lg:items-start lg:grid-cols-[minmax(0,1fr)_320px]" : ""}`}>
+        <div className="space-y-4">
+          <Card className="p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-[#6d7885]">{translate("settings.account")}</p>
+                <h3 className="mt-2 text-lg font-semibold text-ink">{translate("settings.accountTitle")}</h3>
+              </div>
+              <Badge tone="info">{user.data.timezone_source === "manual" ? translate("settings.manual") : translate("settings.auto")}</Badge>
             </div>
-            <Badge tone="info">{user.data.timezone_source === "manual" ? translate("settings.manual") : translate("settings.auto")}</Badge>
-          </div>
-          <div className={`mt-4 grid gap-3 ${isDesktop ? "xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end" : "md:grid-cols-2"}`}>
-            <div>
-              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="account-email-settings">{translate("settings.accountEmail")}</label>
-              <Input id="account-email-settings" value={user.data.email} disabled />
+            <div className={`mt-4 grid gap-3 ${isDesktop ? "xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end" : isTabletWide ? "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end" : "md:grid-cols-2"}`}>
+              <div>
+                <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="account-email-settings">{translate("settings.accountEmail")}</label>
+                <Input id="account-email-settings" value={user.data.email} disabled />
+              </div>
+              <div>
+                <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="timezone-name">{translate("settings.timezone")}</label>
+                <div ref={pickerRef} className="relative">
+                  <button
+                    id="timezone-name"
+                    type="button"
+                    aria-expanded={timeZonePickerOpen}
+                    onClick={() => setTimeZonePickerOpen((current) => !current)}
+                    className="flex h-11 w-full items-center justify-between rounded-2xl border border-line bg-white/80 px-4 text-left text-sm text-ink transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(31,94,255,0.24)] hover:bg-white"
+                  >
+                    <span className={form.timezone_name ? "" : "text-[#7a8593]"}>{form.timezone_name || translate("settings.chooseTimezone")}</span>
+                    <ChevronDown className={timeZonePickerOpen ? "h-4 w-4 rotate-180 transition-transform" : "h-4 w-4 transition-transform"} />
+                  </button>
+                  {timeZonePickerOpen && !isMobile ? timeZonePickerPanel : null}
+                </div>
+              </div>
+              <Button
+                className={`${isDesktop ? "xl:min-w-[132px]" : isTabletWide ? "lg:min-w-[132px]" : "w-full md:col-span-2"}`}
+                onClick={() => void saveUser()}
+                disabled={savingUser || !form.timezone_name}
+              >
+                {savingUser ? `${translate("common.actions.save")}...` : translate("common.actions.save")}
+              </Button>
             </div>
-            <div>
-              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="timezone-name">{translate("settings.timezone")}</label>
-              <div ref={pickerRef} className="relative">
-                <button
-                  id="timezone-name"
-                  type="button"
-                  aria-expanded={timeZonePickerOpen}
-                  onClick={() => setTimeZonePickerOpen((current) => !current)}
-                  className="flex h-11 w-full items-center justify-between rounded-2xl border border-line bg-white/80 px-4 text-left text-sm text-ink transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(31,94,255,0.24)] hover:bg-white"
+            <div className="mt-4 border-t border-line/80 pt-4" data-testid="settings-locale-switch">
+              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("common.localeLabel")}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant={locale === "en" ? "secondary" : "ghost"}
+                  data-testid="settings-locale-en"
+                  onClick={() => void saveLocale("en")}
+                  disabled={savingLocale !== null}
                 >
-                  <span className={form.timezone_name ? "" : "text-[#7a8593]"}>{form.timezone_name || translate("settings.chooseTimezone")}</span>
-                  <ChevronDown className={timeZonePickerOpen ? "h-4 w-4 rotate-180 transition-transform" : "h-4 w-4 transition-transform"} />
-                </button>
-                {timeZonePickerOpen && !isMobile ? timeZonePickerPanel : null}
+                  {translate("common.locales.en")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant={locale === "zh-CN" ? "secondary" : "ghost"}
+                  data-testid="settings-locale-zh-CN"
+                  onClick={() => void saveLocale("zh-CN")}
+                  disabled={savingLocale !== null}
+                >
+                  {translate("common.locales.zh-CN")}
+                </Button>
               </div>
             </div>
-            <Button
-              className={`${isDesktop ? "xl:min-w-[132px]" : "w-full md:col-span-2"}`}
-              onClick={() => void saveUser()}
-              disabled={savingUser || !form.timezone_name}
-            >
-              {savingUser ? `${translate("common.actions.save")}...` : translate("common.actions.save")}
-            </Button>
-          </div>
-          <div className="mt-4 border-t border-line/80 pt-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("common.localeLabel")}</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant={locale === "en" ? "secondary" : "ghost"}
-                onClick={() => void saveLocale("en")}
-                disabled={savingLocale !== null}
-              >
-                {translate("common.locales.en")}
-              </Button>
-              <Button
-                size="sm"
-                variant={locale === "zh-CN" ? "secondary" : "ghost"}
-                onClick={() => void saveLocale("zh-CN")}
-                disabled={savingLocale !== null}
-              >
-                {translate("common.locales.zh-CN")}
-              </Button>
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-[#596270]">
+              <span>{deviceTimeZone ? translate("settings.deviceTimezone", { timezone: deviceTimeZone }) : translate("settings.deviceTimezoneUnavailable")}</span>
+              {deviceTimeZone ? (
+                <button type="button" className="font-medium text-cobalt transition hover:text-[#1f4fd6]" onClick={applyDeviceTimeZone}>
+                  {translate("settings.useDeviceTimezone")}
+                </button>
+              ) : null}
             </div>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-[#596270]">
-            <span>{deviceTimeZone ? translate("settings.deviceTimezone", { timezone: deviceTimeZone }) : translate("settings.deviceTimezoneUnavailable")}</span>
-            {deviceTimeZone ? (
-              <button type="button" className="font-medium text-cobalt transition hover:text-[#1f4fd6]" onClick={applyDeviceTimeZone}>
-                {translate("settings.useDeviceTimezone")}
-              </button>
-            ) : null}
-          </div>
-        </Card>
+          </Card>
 
-        <div className="space-y-4">
-          <DeferredSettingsMcpAccessCard />
           <Card className="p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("settings.helpEyebrow")}</p>
             <h3 className="mt-2 text-base font-semibold text-ink">{translate("settings.helpTitle")}</h3>
@@ -320,6 +349,12 @@ export function SettingsPanel() {
               </Button>
             </div>
           </Card>
+        </div>
+
+        <div className="space-y-4">
+          <DeferredSettingsMcpAccessCard />
+          <DeferredSettingsMcpInvocationAuditCard />
+          <DeferredSettingsAgentActivityCard />
         </div>
       </div>
 

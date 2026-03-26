@@ -18,9 +18,11 @@ import { translate } from "@/lib/i18n/runtime";
 import { buildSourceObservabilityViews } from "@/lib/source-observability";
 import { invalidateSourceCaches } from "@/lib/source-cache";
 import { createOAuthSession, deleteSource, getSyncRequest, listSources, sourceListCacheKey } from "@/lib/api/sources";
+import { useResponsiveTier } from "@/lib/use-responsive-tier";
 import { useApiResource } from "@/lib/use-api-resource";
 import { workbenchPanelClassName, workbenchStateSurfaceClassName, workbenchSupportPanelClassName } from "@/lib/workbench-styles";
 import type { SourceRow, SyncStatus } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const DeferredSourceObservabilitySections = dynamic(
   () => import("@/components/source-observability-sections").then((mod) => mod.SourceObservabilitySections),
@@ -30,6 +32,7 @@ const DeferredSourceObservabilitySections = dynamic(
 );
 
 export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) {
+  const { isTabletWide, isDesktop } = useResponsiveTier();
   const { data, loading, error, refresh } = useApiResource<SourceRow[]>(() => listSources({ status: "all" }), [], null, {
     cacheKey: sourceListCacheKey("all"),
   });
@@ -89,6 +92,7 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
       : needsReconnect
         ? translate("sourceConnect.gmailPanel.reconnectSummary")
         : translate("sourceConnect.gmailPanel.connectedSummary");
+  const showSupportColumn = isTabletWide || isDesktop;
 
   async function connect() {
     setConnecting(true);
@@ -158,7 +162,7 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
           </Card>
         ) : null}
 
-        <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className={cn("mt-6 grid gap-5", showSupportColumn ? "lg:grid-cols-[minmax(0,1fr)_320px]" : "")}>
           <div className="space-y-5">
           <Card className={workbenchPanelClassName("secondary", "p-5")}>
             <div className="flex items-center gap-3">
@@ -176,7 +180,7 @@ export function GmailSourceSetupPanel({ basePath = "" }: { basePath?: string }) 
               <p className="mt-2">{translate("sourceConnect.gmailPanel.label")}: INBOX</p>
               {source?.oauth_account_email ? <p className="mt-2">{translate("sourceConnect.gmailPanel.account")}: {source.oauth_account_email}</p> : null}
             </div>
-            <SourceSyncProgress className="mt-4" progress={source?.sync_progress} stableLabel="Syncing Gmail source" />
+            <SourceSyncProgress className="mt-4" progress={source?.sync_progress} stableLabel={translate("sourceConnect.gmailPanel.syncingLabel")} />
             <p className="mt-4 text-sm leading-6 text-[#596270]">{connectionSummary}</p>
             {source ? (
               <div className="mt-5 flex flex-wrap gap-3">

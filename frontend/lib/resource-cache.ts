@@ -1,5 +1,7 @@
 "use client";
 
+import { translate } from "@/lib/i18n/runtime";
+
 type ResourceCacheEntry<T> = {
   data?: T;
   promise?: Promise<T>;
@@ -70,7 +72,7 @@ export async function preloadResource<T>({
         resourceCache.set(key, {
           data: existing.data,
           updatedAt: existing.updatedAt,
-          error: error instanceof Error ? error.message : "Unknown error",
+          error: error instanceof Error ? error.message : translate("common.labels.requestError"),
         });
       } else {
         resourceCache.delete(key);

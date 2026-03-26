@@ -33,6 +33,7 @@ import { useResponsiveTier } from "@/lib/use-responsive-tier";
 import { useApiResource } from "@/lib/use-api-resource";
 import { workbenchQueueRowClassName, workbenchStateSurfaceClassName, workbenchSupportPanelClassName } from "@/lib/workbench-styles";
 import { formatDateTime, formatSemanticDue } from "@/lib/presenters";
+import { cn } from "@/lib/utils";
 import type {
   CourseIdentity,
   CourseWorkItemFamily,
@@ -193,7 +194,7 @@ function PaginationControls({
   }
   return (
     <div className="mt-4 flex items-center justify-between gap-3 border-t border-line/80 pt-4 text-sm text-[#596270]">
-      <span>Page {page} of {totalPages}</span>
+      <span>{translate("common.labels.pageOf", { page, totalPages })}</span>
       <div className="flex gap-2">
         <Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
           {translate("common.actions.previous")}
@@ -580,15 +581,15 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
   if (families.loading || status.loading || courses.loading || rawTypes.loading || suggestions.loading) {
     return <WorkbenchLoadingShell variant="families" />;
   }
-  if (families.error) return <ErrorState message={`Families failed to load. ${families.error}`} />;
-  if (status.error) return <ErrorState message={`Families status failed to load. ${status.error}`} />;
-  if (courses.error) return <ErrorState message={`Course scope failed to load. ${courses.error}`} />;
-  if (rawTypes.error) return <ErrorState message={`Observed labels failed to load. ${rawTypes.error}`} />;
-  if (suggestions.error) return <ErrorState message={`Suggestions failed to load. ${suggestions.error}`} />;
+  if (families.error) return <ErrorState message={`${translate("families.loadFamiliesFailed")} ${families.error}`} />;
+  if (status.error) return <ErrorState message={`${translate("families.loadStatusFailed")} ${status.error}`} />;
+  if (courses.error) return <ErrorState message={`${translate("families.loadCourseScopeFailed")} ${courses.error}`} />;
+  if (rawTypes.error) return <ErrorState message={`${translate("families.loadObservedLabelsFailed")} ${rawTypes.error}`} />;
+  if (suggestions.error) return <ErrorState message={`${translate("families.loadSuggestionsFailed")} ${suggestions.error}`} />;
 
   const isObservedMobileWorkbench = isMobile && workspaceArea === "raw-types";
   const inlineRelinkPreview =
-    isObservedMobileWorkbench && relinkPreviewRawType && relinkPreviewTargetFamily ? (
+    relinkPreviewRawType && relinkPreviewTargetFamily ? (
       <div className={workbenchSupportPanelClassName("default", "mt-4 p-4")}>
         <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("families.observed.reviewImpact")}</p>
         <div className="mt-3 space-y-3 text-sm text-[#314051]">
@@ -816,7 +817,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
       ) : null}
 
       {workspaceArea === "families" ? (
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(340px,0.9fr)_minmax(0,1.1fr)]">
+        <div className={cn("grid items-start gap-4", isDesktop ? "xl:grid-cols-[minmax(340px,0.9fr)_minmax(0,1.1fr)]" : isTablet ? "md:grid-cols-[320px_minmax(0,1fr)]" : "")}>
           <Card className="order-2 animate-surface-enter p-5 xl:order-1">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -959,7 +960,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
                       </div>
                     ) : manualEvents.error ? (
                       <div className={workbenchStateSurfaceClassName("error", "p-4 text-sm text-[#7f3d2a]")}>
-                        Event preview is unavailable right now. {manualEvents.error}
+                        {translate("families.list.eventPreviewUnavailable")} {manualEvents.error}
                       </div>
                     ) : pagedEvents.rows.length === 0 ? (
                       <div className={workbenchSupportPanelClassName("quiet", "border-dashed p-4 text-sm text-[#596270]")}>
@@ -1176,7 +1177,7 @@ export function FamilyManagementPanel({ basePath = "" }: { basePath?: string }) 
       ) : null}
 
       <Sheet
-        open={!isObservedMobileWorkbench && Boolean(relinkPreviewRawType && relinkPreviewTargetFamily)}
+        open={false}
         onOpenChange={(open) => (!open ? setRelinkPreview(null) : undefined)}
       >
         <SheetContent side="bottom" className="overflow-y-auto">

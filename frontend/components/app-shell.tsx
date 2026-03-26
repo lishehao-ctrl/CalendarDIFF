@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
 import {
   BellDot,
   CircleAlert,
@@ -20,6 +19,7 @@ import {
   X
 } from "lucide-react";
 import { LogoutButton } from "@/components/logout-button";
+import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { updateSettingsProfile } from "@/lib/api/settings";
 import { getBrowserTimeZone } from "@/lib/browser-timezone";
 import { withBasePath } from "@/lib/demo-mode";
@@ -181,7 +181,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const { locale, setLocale } = useLocale();
-  const { isMobile, isTablet } = useResponsiveTier();
+  const { tier, isMobile, isTabletPortrait, isTabletWide, isDesktop } = useResponsiveTier();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [desktopNavCollapsed, setDesktopNavCollapsed] = useState(false);
   const [timezoneSynced, setTimezoneSynced] = useState(false);
@@ -268,8 +268,26 @@ export function AppShell({
     return () => globalThis.clearTimeout(timeoutId);
   }, [basePath, onboardingReady, primeRoute]);
 
+  const showDesktopSidebar = isDesktop;
+  const showTabletSidebar = isTabletWide;
+  const showTopBar = !showDesktopSidebar && !showTabletSidebar;
+  const tabletStatusStack = isTabletPortrait;
+
   return (
-    <div className="mx-auto flex min-h-screen max-w-[1500px] gap-4 p-3 md:p-5 xl:gap-6 xl:p-6">
+    <div data-terminal={tier} className="mx-auto flex min-h-screen max-w-[1500px] gap-3 p-3 md:p-4 lg:gap-5 lg:p-5 xl:gap-6 xl:p-6">
+      <aside className="hidden shrink-0 lg:flex xl:hidden">
+        {showTabletSidebar ? (
+          <div className="w-[92px] rounded-[1.35rem] border border-line/80 bg-card p-3 shadow-[var(--shadow-panel)]">
+            <NavContentWithItems
+              pathname={pathname}
+              items={navItems}
+              collapsed
+              onPrimeRoute={primeRoute}
+              logoutRedirectTo={basePath ? withBasePath(basePath, "/") : "/login"}
+            />
+          </div>
+        ) : null}
+      </aside>
       <aside
         className={cn(
           "hidden shrink-0 flex-col overflow-visible rounded-[1.45rem] border border-line/80 bg-card p-4 shadow-[var(--shadow-panel)] transition-[width,padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] xl:flex",
@@ -286,30 +304,35 @@ export function AppShell({
         />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col gap-5 xl:gap-6">
-        <div className="flex items-center justify-between gap-3 rounded-[1.2rem] border border-line/70 bg-card px-4 py-3 shadow-[var(--shadow-panel)] xl:hidden">
+        <div
+          className={cn(
+            "items-center justify-between gap-3 rounded-[1.2rem] border border-line/70 bg-card px-4 py-3 shadow-[var(--shadow-panel)]",
+            showTopBar ? "flex" : "hidden",
+          )}
+        >
           <div className="min-w-0">
             <p className="text-[11px] uppercase tracking-[0.22em] text-[#6d7885]">{translate("shell.brand")}</p>
             <p className="mt-1 text-base font-semibold">{translate("shell.title")}</p>
           </div>
           <div className="flex items-center gap-2">
             <LogoutButton redirectTo={basePath ? withBasePath(basePath, "/") : "/login"} />
-            <Dialog.Root open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-              <Dialog.Trigger asChild>
+            <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+              <SheetTrigger asChild>
                 <button aria-label={translate("shell.openNavigation")} className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ink text-paper">
                   <Menu className="h-5 w-5" />
                 </button>
-              </Dialog.Trigger>
-              <Dialog.Portal>
-                <Dialog.Overlay className="fixed inset-0 z-40 bg-[rgba(20,32,44,0.38)] backdrop-blur-sm" />
-                <Dialog.Content className="nav-panel-content motion-surface fixed inset-y-0 left-0 z-50 w-[88vw] max-w-sm border-r border-line bg-card p-5 shadow-[var(--shadow-panel)]">
-                  <Dialog.Title className="sr-only">{translate("shell.openNavigation")}</Dialog.Title>
-                  <Dialog.Description className="sr-only">{translate("shell.navigateDescription")}</Dialog.Description>
+              </SheetTrigger>
+                <SheetContent
+                  side="left"
+                  className={cn(
+                    "nav-panel-content",
+                    isTabletPortrait ? "w-[74vw] max-w-[30rem]" : "w-[88vw] max-w-sm",
+                  )}
+                >
+                  <SheetTitle className="sr-only">{translate("shell.openNavigation")}</SheetTitle>
+                  <SheetDescription className="sr-only">{translate("shell.navigateDescription")}</SheetDescription>
                   <div className="mb-4 flex items-center justify-end">
-                    <Dialog.Close asChild>
-                      <button aria-label={translate("shell.closeNavigation")} className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(20,32,44,0.06)] text-ink">
-                        <X className="h-4 w-4" />
-                      </button>
-                    </Dialog.Close>
+                    <SheetDismissButton />
                   </div>
                   <NavContentWithItems
                     pathname={pathname}
@@ -318,33 +341,36 @@ export function AppShell({
                     onPrimeRoute={primeRoute}
                     logoutRedirectTo={basePath ? withBasePath(basePath, "/") : "/login"}
                   />
-                </Dialog.Content>
-              </Dialog.Portal>
-            </Dialog.Root>
+                </SheetContent>
+            </Sheet>
           </div>
         </div>
         <div
           className={cn(
             "animate-surface-enter rounded-[1.15rem] border border-line/70 bg-card px-4 py-3 shadow-[var(--shadow-panel)]",
-            isMobile ? "space-y-3" : "flex flex-col gap-2 md:flex-row md:items-center md:justify-between",
+            isMobile
+              ? "space-y-3"
+              : tabletStatusStack
+                ? "space-y-3"
+                : "flex flex-col gap-2 md:flex-row md:items-center md:justify-between",
           )}
         >
           <p className="text-[11px] uppercase tracking-[0.22em] text-[#6d7885]">{translate("shell.workspaceStatus")}</p>
           <div
             className={cn(
               "text-xs text-[#314051]",
-              isMobile ? "grid grid-cols-2 gap-2" : "flex flex-wrap gap-2",
+              isMobile ? "grid grid-cols-2 gap-2" : tabletStatusStack ? "flex flex-wrap gap-2" : "flex flex-wrap gap-2",
             )}
           >
             <span className={cn("rounded-full border border-line/80 bg-white/80 px-3 py-1.5", isMobile ? "col-span-2 truncate" : "min-w-0")}>
               {sessionUser.email}
             </span>
-            <span className={cn("rounded-full border border-line/80 bg-white/80 px-3 py-1.5", isTablet ? "min-w-0" : null)}>
+            <span className={cn("rounded-full border border-line/80 bg-white/80 px-3 py-1.5", isTabletPortrait || isTabletWide ? "min-w-0" : null)}>
               {sessionUser.timezone_name}
             </span>
             <span className={cn(
               "inline-flex items-center gap-2 rounded-full border px-3 py-1.5",
-              isMobile ? "col-span-2 justify-center" : null,
+              isMobile ? "col-span-2 justify-center" : tabletStatusStack ? "w-full justify-center" : null,
               onboardingReady ? "border-[rgba(77,124,15,0.18)] bg-[rgba(77,124,15,0.08)] text-[#3f5f12]" : "border-[rgba(215,90,45,0.18)] bg-[rgba(215,90,45,0.08)] text-[#8a472d]",
             )}>
               <CircleAlert className="h-4 w-4" />

@@ -37,6 +37,9 @@ const STATUS_KEYS: Record<string, string> = {
   approved: "common.status.approved",
   rejected: "common.status.rejected",
   all: "common.status.all",
+  succeeded: "common.status.succeeded",
+  failed: "common.status.failed",
+  changed: "common.status.changed",
   active: "common.status.active",
   inactive: "common.status.inactive",
   archived: "common.status.archived",
@@ -58,14 +61,20 @@ const STATUS_KEYS: Record<string, string> = {
   error: "common.status.error",
   ok: "common.status.ok",
   created: "common.status.created",
+  started: "common.status.started",
   updated: "common.status.updated",
   due_changed: "common.status.due_changed",
+  baseline_ready: "common.status.baseline_ready",
   removed: "common.status.removed",
   normal: "common.status.normal",
   high_attention: "common.status.high_attention",
   new_work: "common.status.new_work",
   proposal: "common.status.proposal",
   canonical: "common.status.canonical",
+  gmail: "common.status.gmail",
+  ics: "common.status.ics",
+  email: "common.status.email",
+  calendar: "common.status.calendar",
   initial_review: "common.status.initial_review",
   changes: "common.status.changes",
   sources: "common.status.sources",
@@ -82,14 +91,22 @@ const STATUS_KEYS: Record<string, string> = {
   importing_baseline: "common.status.importing_baseline",
   needs_initial_review: "common.status.needs_initial_review",
   baseline_import: "common.status.baseline_import",
+  stable: "common.status.stable",
+  rebind_pending: "common.status.rebind_pending",
 };
 
 const FALLBACK_KEYS: Record<string, string> = {
-  "Not available": "common.labels.notAvailable",
-  "Unknown": "common.labels.unknown",
+  "not available": "common.labels.notAvailable",
+  "unknown": "common.labels.unknown",
+  "unknown course": "changes.unknownCourse",
+  "unknown error": "common.labels.requestError",
   "recently": "common.labels.recent",
-  "No sample": "common.labels.notAvailable",
-  "Unavailable": "common.labels.unavailable",
+  "no sample": "common.labels.notAvailable",
+  "unavailable": "common.labels.unavailable",
+  "workspace": "common.labels.workspace",
+  "no due date": "common.labels.noDueDate",
+  "not connected": "common.status.disconnected",
+  "n/a": "common.labels.notAvailable",
 };
 
 const LOADING_LABEL_KEYS: Record<string, string> = {
@@ -106,6 +123,7 @@ const LOADING_LABEL_KEYS: Record<string, string> = {
   "gmail setup": "common.loadingLabels.gmailSetup",
   "canvas ics setup": "common.loadingLabels.canvasIcsSetup",
   "proposal edit": "common.loadingLabels.proposalEdit",
+  "suggestion edit": "common.loadingLabels.proposalEdit",
   "direct edit": "common.loadingLabels.directEdit",
 };
 
@@ -158,7 +176,7 @@ export function translateStatusLabel(value: string | null | undefined, fallback 
 }
 
 export function translateFallback(value: string, locale: Locale = runtimeLocale) {
-  const key = FALLBACK_KEYS[value];
+  const key = FALLBACK_KEYS[value.trim().toLowerCase()];
   return key ? translate(key, undefined, locale) : value;
 }
 

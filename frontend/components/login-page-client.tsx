@@ -3,28 +3,38 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { PublicAuthShell } from "@/components/public-auth-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { login, register } from "@/lib/api/auth";
 import { translate } from "@/lib/i18n/runtime";
 import { useLocale } from "@/lib/i18n/use-locale";
+import { usePageMetadata } from "@/lib/use-page-metadata";
+import { workbenchStateSurfaceClassName } from "@/lib/workbench-styles";
 
 export function LoginPageClient({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
-  const { locale } = useLocale();
+  const { locale, setLocale } = useLocale();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const t = (key: string, vars?: Record<string, string | number | null | undefined>) =>
+    translate(key, vars, locale);
+  const pageTitle = mode === "login" ? t("auth.signIn") : t("auth.register");
+  const pageSummary = mode === "login" ? t("auth.loginSummary") : t("auth.registerSummary");
+
+  usePageMetadata(pageTitle, pageSummary);
+
   async function submit() {
     setSubmitting(true);
     setError(null);
     try {
       if (mode === "register" && password !== confirmPassword) {
-        throw new Error(translate("auth.passwordsDoNotMatch"));
+        throw new Error(t("auth.passwordsDoNotMatch"));
       }
       if (mode === "login") {
         await login({ email, password, language_code: locale });
@@ -34,96 +44,86 @@ export function LoginPageClient({ mode }: { mode: "login" | "register" }) {
       router.replace("/onboarding");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : mode === "login" ? translate("auth.unableToLogin") : translate("auth.unableToRegister"));
+      setError(err instanceof Error ? err.message : mode === "login" ? t("auth.unableToLogin") : t("auth.unableToRegister"));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-transparent px-4 py-8 md:px-8">
-      <div className="mx-auto flex min-h-[80vh] max-w-6xl items-center justify-center">
-        <div className="grid w-full gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-          <Card className="relative overflow-hidden p-8 md:p-10">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.16),transparent_42%),radial-gradient(circle_at_80%_20%,rgba(215,90,45,0.12),transparent_30%)]" />
-            <div className="relative">
-              <p className="text-xs uppercase tracking-[0.24em] text-[#6d7885]">CalendarDIFF</p>
-              <h1 className="mt-4 text-4xl font-semibold leading-tight text-ink">{translate("auth.marketingTitle")}</h1>
-              <p className="mt-5 max-w-xl text-sm leading-7 text-[#596270]">
-                {translate("auth.marketingSummary")}
-              </p>
+    <PublicAuthShell locale={locale} onLocaleChange={setLocale}>
+      <Card className="p-8 md:p-10">
+        <p className="text-xs uppercase tracking-[0.24em] text-[#6d7885]">{mode === "login" ? t("auth.welcomeBack") : t("auth.createAccountEyebrow")}</p>
+        <h2 className="mt-3 text-3xl font-semibold text-ink">{pageTitle}</h2>
+        <p className="mt-3 text-sm leading-6 text-[#596270]">
+          {pageSummary}
+        </p>
+        {error ? (
+          <div className={workbenchStateSurfaceClassName("error", "mt-5 px-4 py-3 text-sm text-[#7f3d2a]")}>
+            {error}
+          </div>
+        ) : null}
+        <form
+          className="mt-6 space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+        >
+          <div>
+            <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="email-auth">
+              {t("auth.email")}
+            </label>
+            <Input id="email-auth" value={email} onChange={(event) => setEmail(event.target.value)} placeholder={t("auth.emailPlaceholder")} />
+          </div>
+          <div>
+            <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="password-auth">
+              {t("auth.password")}
+            </label>
+            <Input
+              id="password-auth"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder={mode === "register" ? t("auth.passwordRegisterPlaceholder") : t("auth.passwordLoginPlaceholder")}
+            />
+          </div>
+          {mode === "register" ? (
+            <div>
+              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="password-confirm-auth">
+                {t("auth.confirmPassword")}
+              </label>
+              <Input id="password-confirm-auth" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder={t("auth.confirmPasswordPlaceholder")} />
             </div>
-          </Card>
-          <Card className="p-8 md:p-10">
-            <p className="text-xs uppercase tracking-[0.24em] text-[#6d7885]">{mode === "login" ? translate("auth.welcomeBack") : translate("auth.createAccountEyebrow")}</p>
-            <h2 className="mt-3 text-3xl font-semibold text-ink">{mode === "login" ? translate("auth.signIn") : translate("auth.register")}</h2>
-            <p className="mt-3 text-sm leading-6 text-[#596270]">
-              {mode === "login"
-                ? translate("auth.loginSummary")
-                : translate("auth.registerSummary")}
-            </p>
-            {error ? (
-              <div className="mt-5 rounded-[1.15rem] border border-[#efc4b5] bg-[#fff3ef] px-4 py-3 text-sm text-[#7f3d2a]">
-                {error}
-              </div>
-            ) : null}
-            <div className="mt-6 space-y-4">
-              <div>
-                <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="email-auth">
-                  {translate("auth.email")}
-                </label>
-                <Input id="email-auth" value={email} onChange={(event) => setEmail(event.target.value)} placeholder={translate("auth.emailPlaceholder")} />
-              </div>
-              <div>
-                <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="password-auth">
-                  {translate("auth.password")}
-                </label>
-                <Input
-                  id="password-auth"
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder={mode === "register" ? translate("auth.passwordRegisterPlaceholder") : translate("auth.passwordLoginPlaceholder")}
-                />
-              </div>
-              {mode === "register" ? (
-                <div>
-                  <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="password-confirm-auth">
-                    {translate("auth.confirmPassword")}
-                  </label>
-                  <Input id="password-confirm-auth" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder={translate("auth.confirmPasswordPlaceholder")} />
-                </div>
-              ) : null}
-              <Button className="w-full" disabled={submitting || !email || !password || (mode === "register" && !confirmPassword)} onClick={() => void submit()}>
-                {submitting
-                  ? (mode === "login" ? translate("auth.signInBusy") : translate("auth.createAccountBusy"))
-                  : (mode === "login" ? translate("auth.signIn") : translate("auth.createAccountEyebrow"))}
-              </Button>
-            </div>
-            <div className="mt-6 space-y-3 text-sm text-[#596270]">
-              <div>
-                {mode === "login" ? (
-                  <>
-                    {translate("auth.needAccount")} <Link className="font-medium text-cobalt" href="/register">{translate("auth.register")}</Link>
-                  </>
-                ) : (
-                  <>
-                    {translate("auth.alreadyRegistered")} <Link className="font-medium text-cobalt" href="/login">{translate("auth.signIn")}</Link>
-                  </>
-                )}
-              </div>
-              <div>
-                {translate("auth.openPreview")} <Link className="font-medium text-cobalt" href="/preview">{translate("auth.openPreviewLink")}</Link>
-              </div>
-              <div className="flex flex-wrap gap-3 text-xs uppercase tracking-[0.14em] text-[#6d7885]">
-                <Link className="font-medium text-[#425061] transition hover:text-cobalt" href="/privacy">{translate("auth.privacy")}</Link>
-                <span aria-hidden="true">•</span>
-                <Link className="font-medium text-[#425061] transition hover:text-cobalt" href="/terms">{translate("auth.terms")}</Link>
-              </div>
-            </div>
-          </Card>
+          ) : null}
+          <Button type="submit" className="w-full" disabled={submitting || !email || !password || (mode === "register" && !confirmPassword)}>
+            {submitting
+              ? (mode === "login" ? t("auth.signInBusy") : t("auth.createAccountBusy"))
+              : (mode === "login" ? t("auth.signIn") : t("auth.createAccountEyebrow"))}
+          </Button>
+        </form>
+        <div className="mt-6 space-y-3 text-sm text-[#596270]">
+          <div>
+            {mode === "login" ? (
+              <>
+                {t("auth.needAccount")} <Link className="font-medium text-cobalt" href="/register">{t("auth.register")}</Link>
+              </>
+            ) : (
+              <>
+                {t("auth.alreadyRegistered")} <Link className="font-medium text-cobalt" href="/login">{t("auth.signIn")}</Link>
+              </>
+            )}
+          </div>
+          <div>
+            {t("auth.openPreview")} <Link className="font-medium text-cobalt" href="/preview">{t("auth.openPreviewLink")}</Link>
+          </div>
+          <div className="flex flex-wrap gap-3 text-xs uppercase tracking-[0.14em] text-[#6d7885]">
+            <Link className="font-medium text-[#425061] transition hover:text-cobalt" href="/privacy">{t("auth.privacy")}</Link>
+            <span aria-hidden="true">•</span>
+            <Link className="font-medium text-[#425061] transition hover:text-cobalt" href="/terms">{t("auth.terms")}</Link>
+          </div>
         </div>
-      </div>
-    </div>
+      </Card>
+    </PublicAuthShell>
   );
 }

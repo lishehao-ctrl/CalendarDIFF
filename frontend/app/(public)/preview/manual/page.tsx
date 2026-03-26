@@ -12,7 +12,7 @@ const DeferredManualWorkbenchPanel = dynamic(
 export default function PreviewManualPage() {
   return (
     <div className="space-y-4">
-      <LocalizedPageIntro eyebrowKey="manual.heroEyebrow" titleKey="manual.heroTitle" />
+      <LocalizedPageIntro eyebrowKey="manual.heroEyebrow" titleKey="manual.heroTitle" summaryKey="manual.heroSummary" />
       <DeferredManualWorkbenchPanel />
     </div>
   );

@@ -3,6 +3,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import * as React from "react";
 import { X } from "lucide-react";
+import { useT } from "@/lib/i18n/use-locale";
 import { cn } from "@/lib/utils";
 
 export const Sheet = Dialog.Root;
@@ -19,11 +20,13 @@ export const SheetOverlay = React.forwardRef<
 
 export const SheetContent = React.forwardRef<
   React.ElementRef<typeof Dialog.Content>,
-  React.ComponentPropsWithoutRef<typeof Dialog.Content> & { side?: "right" | "bottom" }
+  React.ComponentPropsWithoutRef<typeof Dialog.Content> & { side?: "left" | "right" | "bottom" }
 >(function SheetContent({ className, children, side = "right", ...props }, ref) {
   const sideClassName = side === "bottom"
     ? "sheet-content--bottom motion-surface fixed inset-x-0 bottom-0 z-50 max-h-[85vh] rounded-t-[1.7rem] border-t border-line bg-card p-5 shadow-[var(--shadow-panel)]"
-    : "sheet-content--right motion-surface fixed inset-y-0 right-0 z-50 h-full w-full max-w-2xl border-l border-line bg-card p-5 shadow-[var(--shadow-panel)]";
+    : side === "left"
+      ? "sheet-content--left motion-surface fixed inset-y-0 left-0 z-50 h-full w-full max-w-2xl border-r border-line bg-card p-5 shadow-[var(--shadow-panel)]"
+      : "sheet-content--right motion-surface fixed inset-y-0 right-0 z-50 h-full w-full max-w-2xl border-l border-line bg-card p-5 shadow-[var(--shadow-panel)]";
   return (
     <Dialog.Portal>
       <SheetOverlay />
@@ -53,9 +56,13 @@ export const SheetDescription = React.forwardRef<
 });
 
 export function SheetDismissButton() {
+  const t = useT();
   return (
     <Dialog.Close asChild>
-      <button aria-label="Close details" className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(20,32,44,0.06)] text-ink">
+      <button
+        aria-label={t("common.actions.close")}
+        className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(20,32,44,0.06)] text-ink transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(31,94,255,0.24)]"
+      >
         <X className="h-4 w-4" />
       </button>
     </Dialog.Close>

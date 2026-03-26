@@ -1,9 +1,12 @@
 "use client";
 
+import { getRuntimeLocale } from "@/lib/i18n/runtime";
+import type { Locale } from "@/lib/i18n/locales";
 import type {
   AgentBlockingCondition,
   AgentChangeContext,
   AgentProposal,
+  AgentRecentActivityResponse,
   AgentRecommendedAction,
   AgentSourceContext,
   AgentWorkspaceContext,
@@ -19,6 +22,7 @@ import type {
   LabelLearningPreview,
   McpAccessToken,
   McpAccessTokenCreateResponse,
+  McpToolInvocation,
   ManualEvent,
   ManualEventMutationResponse,
   OnboardingStatus,
@@ -30,10 +34,13 @@ import type {
   ChangeEditContext,
   ChangeEditPreviewResponse,
   ChangeEditRequest,
+  LlmInvocationLogResponse,
   SourceRow,
+  SourceLlmInvocationsResponse,
   SourceObservabilityResponse,
   SourceObservabilitySync,
   SourceSyncHistoryResponse,
+  SyncRequestLlmInvocationsResponse,
   SyncStatus,
   UserProfile,
 } from "@/lib/types";
@@ -56,9 +63,26 @@ type DemoState = {
 
 const nowIso = "2026-03-18T05:20:00.000Z";
 
-let demoState: DemoState = createInitialDemoState();
+let demoLocale: Locale = getRuntimeLocale();
+let demoState: DemoState = createInitialDemoState(demoLocale);
 
-function createInitialDemoState(): DemoState {
+function isZh(locale: Locale = demoLocale) {
+  return locale === "zh-CN";
+}
+
+function localized<T>(enValue: T, zhValue: T, locale: Locale = demoLocale) {
+  return isZh(locale) ? zhValue : enValue;
+}
+
+function syncDemoLocale() {
+  const nextLocale = getRuntimeLocale();
+  if (nextLocale !== demoLocale) {
+    demoLocale = nextLocale;
+    demoState = createInitialDemoState(demoLocale);
+  }
+}
+
+function createInitialDemoState(locale: Locale = demoLocale): DemoState {
   const families: CourseWorkItemFamily[] = [
     familyRow(11, "CSE", 120, null, "WI", 26, "Homework", ["hw", "homework", "problem set"]),
     familyRow(12, "CSE", 120, null, "WI", 26, "Quiz", ["quiz", "check-in", "weekly quiz"]),
@@ -172,7 +196,7 @@ function createInitialDemoState(): DemoState {
     user: {
       id: 9001,
       email: "demo@calendardiff.app",
-      language_code: "en" as const,
+      language_code: locale,
       timezone_name: "America/Los_Angeles",
       timezone_source: "manual",
       calendar_delay_seconds: 120,
@@ -180,12 +204,20 @@ function createInitialDemoState(): DemoState {
     },
     onboarding: {
       stage: "ready",
-      message: "Preview mode is showing a realistic workspace snapshot with mixed source health and pending review work.",
+      message: localized(
+        "Preview shows a realistic workspace snapshot with mixed source health and pending review work.",
+        "预览模式正在展示一份接近真实使用状态的工作区快照，其中包含来源健康波动和待处理审核项。",
+        locale,
+      ),
       registered_user_id: 9001,
       first_source_id: 1,
       source_health: {
         status: "attention",
-        message: "A connected source needs attention before syncs are fully reliable.",
+        message: localized(
+          "A connected source needs attention before syncs are fully reliable.",
+          "有一个已连接来源仍需处理，接入才算真正稳定。",
+          locale,
+        ),
         affected_source_id: 2,
         affected_provider: "gmail",
       },
@@ -236,14 +268,18 @@ function createInitialDemoState(): DemoState {
         source_product_phase: "needs_initial_review",
         source_recovery: {
           trust_state: "partial",
-          impact_summary: "Imported baseline items are visible, but one item still needs Initial Review before this source is fully trusted for monitoring.",
+          impact_summary: localized(
+            "Imported baseline items are visible, but one item still needs Initial Review before this source is fully trusted for monitoring.",
+            "基线导入内容已经可见，但还有 1 条项目尚未完成初始审核，因此这个来源还不能完全进入稳定监测。",
+            locale,
+          ),
           next_action: "wait",
-          next_action_label: "Finish Initial Review",
+          next_action_label: localized("Finish Initial Review", "完成初始审核", locale),
           last_good_sync_at: "2026-03-18T05:05:00.000Z",
           degraded_since: "2026-03-18T05:05:00.000Z",
           recovery_steps: [
-            "Review the remaining baseline item.",
-            "Approve or reject it before relying on day-to-day replay.",
+            localized("Review the remaining baseline item.", "先处理剩下那条基线项目。", locale),
+            localized("Approve or reject it before relying on day-to-day replay.", "在依赖日常回放前，先决定通过还是拒绝。", locale),
           ],
         },
       },
@@ -258,7 +294,11 @@ function createInitialDemoState(): DemoState {
         last_polled_at: "2026-03-18T05:04:00.000Z",
         next_poll_at: "2026-03-18T05:19:00.000Z",
         last_error_code: "oauth_expired",
-        last_error_message: "Google credentials expired. This is intentional in preview mode so the Sources lane shows an attention state.",
+        last_error_message: localized(
+          "Google credentials expired. This is intentional in preview mode so the Sources lane shows an attention state.",
+          "Google 授权已过期。这里是预览模式里刻意保留的异常，用来展示来源页的关注状态。",
+          locale,
+        ),
         config: {},
         oauth_connection_status: "connected",
         oauth_account_email: "demo-inbox@school.edu",
@@ -270,21 +310,25 @@ function createInitialDemoState(): DemoState {
           recommended_action: "investigate_runtime",
           severity: "warning",
           reason_code: "oauth_expired",
-          message: "Reconnect Gmail before trusting replay.",
+          message: localized("Reconnect Gmail before trusting replay.", "先重新连接 Gmail，再信任后续回放。", locale),
           related_request_id: null,
           progress_age_seconds: null,
         },
         source_product_phase: "needs_attention",
         source_recovery: {
           trust_state: "blocked",
-          impact_summary: "New Gmail-based changes may be missing until the mailbox is reconnected.",
+          impact_summary: localized(
+            "New Gmail-based changes may be missing until the mailbox is reconnected.",
+            "在重新连接这个邮箱之前，新的 Gmail 变更可能会继续漏掉。",
+            locale,
+          ),
           next_action: "reconnect_gmail",
-          next_action_label: "Reconnect Gmail",
+          next_action_label: localized("Reconnect Gmail", "重新连接 Gmail", locale),
           last_good_sync_at: "2026-03-17T04:40:00.000Z",
           degraded_since: "2026-03-18T04:58:00.000Z",
           recovery_steps: [
-            "Reconnect the Gmail mailbox.",
-            "Run a sync to verify replay resumes.",
+            localized("Reconnect the Gmail mailbox.", "先重新连接这个 Gmail 邮箱。", locale),
+            localized("Run a sync to verify replay resumes.", "再运行一次同步，确认回放已经恢复。", locale),
           ],
         },
       },
@@ -308,10 +352,58 @@ function createInitialDemoState(): DemoState {
       rawTypeRow(213, families[4], "write-up"),
     ],
     rawTypeSuggestions: [
-      rawTypeSuggestionRow(301, families[1], "weekly quiz", families[0], "homework", 0.78, "Some instructors still call this work 'weekly quiz', but the deadline pattern overlaps with homework posts."),
-      rawTypeSuggestionRow(302, families[2], "checkpoint", families[1], "quiz", 0.67, "Checkpoint notices and quiz reminders share the same short-form naming in this course."),
-      rawTypeSuggestionRow(303, families[4], "write-up", families[0], "problem set", 0.72, "Write-up and problem set language are drifting together in recent course announcements."),
-      rawTypeSuggestionRow(304, families[3], "practice set", families[0], "homework", 0.82, "Practice set is increasingly being used as the homework label in MATH 18."),
+      rawTypeSuggestionRow(
+        301,
+        families[1],
+        "weekly quiz",
+        families[0],
+        "homework",
+        0.78,
+        localized(
+          "Some instructors still call this work 'weekly quiz', but the deadline pattern overlaps with homework posts.",
+          "有些老师仍然把这类任务叫作 weekly quiz，但它的截止时间模式已经更接近 homework。",
+          locale,
+        ),
+      ),
+      rawTypeSuggestionRow(
+        302,
+        families[2],
+        "checkpoint",
+        families[1],
+        "quiz",
+        0.67,
+        localized(
+          "Checkpoint notices and quiz reminders share the same short-form naming in this course.",
+          "这门课里，checkpoint 通知和 quiz 提醒越来越常用同一套短标签。",
+          locale,
+        ),
+      ),
+      rawTypeSuggestionRow(
+        303,
+        families[4],
+        "write-up",
+        families[0],
+        "problem set",
+        0.72,
+        localized(
+          "Write-up and problem set language are drifting together in recent course announcements.",
+          "最近几次课程公告里，write-up 和 problem set 的叫法正在逐渐混用。",
+          locale,
+        ),
+      ),
+      rawTypeSuggestionRow(
+        304,
+        families[3],
+        "practice set",
+        families[0],
+        "homework",
+        0.82,
+        localized(
+          "Practice set is increasingly being used as the homework label in MATH 18.",
+          "在 MATH 18 里，practice set 越来越像 homework 的另一种叫法。",
+          locale,
+        ),
+      ),
     ],
     familyStatus: {
       state: "idle",
@@ -326,7 +418,7 @@ function createInitialDemoState(): DemoState {
     mcpTokens: [
       {
         token_id: "mcp_tok_active_1",
-        label: "OpenClaw laptop",
+        label: localized("OpenClaw laptop", "OpenClaw 笔记本", locale),
         scopes: ["calendar.read", "changes.write"],
         last_used_at: "2026-03-17T21:35:00.000Z",
         expires_at: "2026-06-16T00:00:00.000Z",
@@ -335,7 +427,7 @@ function createInitialDemoState(): DemoState {
       },
       {
         token_id: "mcp_tok_revoked_1",
-        label: "OpenClaw desktop",
+        label: localized("OpenClaw desktop", "OpenClaw 桌面端", locale),
         scopes: ["calendar.read"],
         last_used_at: "2026-03-12T19:00:00.000Z",
         expires_at: "2026-04-15T00:00:00.000Z",
@@ -457,45 +549,59 @@ function buildDecisionSupport(input: {
 }): ChangeDecisionSupport {
   if (input.intakePhase === "baseline") {
     return {
-      why_now: "This item came from the first baseline import and still needs an initial decision before monitoring can fully settle.",
+      why_now: localized(
+        "This item came from the first baseline import and still needs an initial decision before monitoring can fully settle.",
+        "这条项目来自第一次基线导入，仍需要先做出初始决策，监测才会真正稳定下来。",
+      ),
       suggested_action: "approve",
-      suggested_action_reason: "The source provided a concrete initial deadline, so approving will establish the starting live state.",
+      suggested_action_reason: localized(
+        "The source provided a concrete initial deadline, so approving will establish the starting live state.",
+        "来源已经提供了明确的初始截止时间，通过后就能建立第一版实时状态。",
+      ),
       risk_level: "medium",
-      risk_summary: "If this baseline item is wrong, the first live version of the event will start from the wrong date.",
+      risk_summary: localized(
+        "If this baseline item is wrong, the first live version of the event will start from the wrong date.",
+        "如果这条基线项目判断错了，事件进入实时状态的第一版日期就会从一开始出错。",
+      ),
       key_facts: [
-        `${input.label} is part of the initial import`,
-        input.primarySource?.provider === "ics" ? "Observed on the calendar feed" : "Observed from mailbox evidence",
-        input.afterDate ? `New date ${input.afterDate}` : "No existing live date yet",
+        localized(`${input.label} is part of the initial import`, `${input.label} 来自第一次导入`, demoLocale),
+        input.primarySource?.provider === "ics"
+          ? localized("Observed on the calendar feed", "来自日历订阅", demoLocale)
+          : localized("Observed from mailbox evidence", "来自邮箱证据", demoLocale),
+        input.afterDate ? localized(`New date ${input.afterDate}`, `新日期：${input.afterDate}`, demoLocale) : localized("No existing live date yet", "当前还没有实时日期", demoLocale),
       ],
       outcome_preview: {
-        approve: "Create the initial live version",
-        reject: "Keep this baseline item out of the live state",
-        edit: "Correct the imported details before creating the live version",
+        approve: localized("Create the initial live version", "创建第一版实时记录"),
+        reject: localized("Keep this baseline item out of the live state", "不要把这条基线项目写入实时状态"),
+        edit: localized("Correct the imported details before creating the live version", "先修正导入细节，再创建实时记录"),
       },
     };
   }
 
   return {
-    why_now: "A connected source observed a live change after the baseline was established, so replay review is required before the live state updates.",
+    why_now: localized(
+      "A connected source observed a live change after the baseline was established, so replay review is required before the live state updates.",
+      "基线建立之后，已连接来源又观察到一条实时变化，因此在更新实时状态前必须先完成回放审核。",
+    ),
     suggested_action: input.changeType === "updated" ? "approve" : input.changeType === "created" ? "review_carefully" : "review_carefully",
     suggested_action_reason:
       input.changeType === "updated"
-        ? "The new source evidence points to a concrete time change."
-        : "The system found a new item, but you should confirm it belongs in the live schedule.",
+        ? localized("The new source evidence points to a concrete time change.", "新的来源证据明确指向了一次时间变更。")
+        : localized("The system found a new item, but you should confirm it belongs in the live schedule.", "系统发现了一条新项目，但还需要你确认它是否应该进入实时日程。"),
     risk_level: input.changeType === "updated" ? "medium" : "high",
     risk_summary:
       input.changeType === "updated"
-        ? "Approving updates the live deadline immediately. Rejecting keeps the current live version."
-        : "Approving may add a new live deadline. Rejecting leaves the current schedule unchanged.",
+        ? localized("Approving updates the live deadline immediately. Rejecting keeps the current live version.", "通过后会立即更新实时截止时间；拒绝则保留当前版本。")
+        : localized("Approving may add a new live deadline. Rejecting leaves the current schedule unchanged.", "通过后可能会新增一条实时截止时间；拒绝则保持当前日程不变。"),
     key_facts: [
-      input.beforeDate ? `Previous date ${input.beforeDate}` : "No previous live date",
-      input.afterDate ? `Observed date ${input.afterDate}` : "No observed replacement date",
-      input.primarySource?.provider === "gmail" ? "Mailbox evidence is attached" : "Calendar evidence is attached",
+      input.beforeDate ? localized(`Previous date ${input.beforeDate}`, `原日期：${input.beforeDate}`, demoLocale) : localized("No previous live date", "之前没有实时日期", demoLocale),
+      input.afterDate ? localized(`Observed date ${input.afterDate}`, `观测到的新日期：${input.afterDate}`, demoLocale) : localized("No observed replacement date", "没有观测到替代日期", demoLocale),
+      input.primarySource?.provider === "gmail" ? localized("Mailbox evidence is attached", "已附上邮箱证据", demoLocale) : localized("Calendar evidence is attached", "已附上日历证据", demoLocale),
     ],
     outcome_preview: {
-      approve: "Update live deadline",
-      reject: "Keep current version",
-      edit: "Correct details before updating live state",
+      approve: localized("Update live deadline", "更新实时截止时间"),
+      reject: localized("Keep current version", "保留当前版本"),
+      edit: localized("Correct details before updating live state", "先修正细节，再更新实时状态"),
     },
   };
 }
@@ -538,7 +644,7 @@ function changeRow(input: {
     viewed_at: input.reviewStatus === "pending" ? null : "2026-03-18T04:48:00.000Z",
     viewed_note: null,
     reviewed_at: input.reviewStatus === "pending" ? null : "2026-03-18T04:52:00.000Z",
-    review_note: input.reviewStatus === "pending" ? null : "Preview mode auto-note",
+    review_note: input.reviewStatus === "pending" ? null : localized("Preview note", "预览模式自动备注"),
     priority_rank: input.reviewStatus === "pending" ? 1 : 2,
     priority_label: input.priorityLabel,
     notification_state: "queued",
@@ -614,25 +720,29 @@ function buildEvidence(changes: ChangeItem[]): Record<string, EvidencePreviewRes
       structured_items: after ? [{
         uid: after.uid || undefined,
         event_display: after.event_display,
-        source_title: change.primary_source?.provider === "ics" ? "Canvas event card" : "Professor announcement",
+        source_title: change.primary_source?.provider === "ics"
+          ? localized("Canvas event card", "Canvas 事件卡片")
+          : localized("Professor announcement", "教师公告"),
         start_at: after.due_date ? `${after.due_date}T${after.due_time || "23:59:00"}Z` : null,
         end_at: after.due_date ? `${after.due_date}T${after.due_time || "23:59:00"}Z` : null,
         sender: change.primary_source?.provider === "gmail" ? "Professor <staff@example.edu>" : undefined,
-        snippet: change.primary_source?.provider === "gmail" ? "Because of the room conflict, Homework 4 is now due Sunday at 11:59 PM." : undefined,
+        snippet: change.primary_source?.provider === "gmail"
+          ? localized("Because of the room conflict, Homework 4 is now due Sunday at 11:59 PM.", "由于教室冲突，Homework 4 现在改到本周日 11:59 PM 截止。")
+          : undefined,
         internal_date: "2026-03-18T04:39:00.000Z",
         thread_id: "demo-thread-1",
       }] : [],
       event_count: after ? 1 : 0,
       events: [],
       preview_text: change.primary_source?.provider === "gmail"
-        ? "Professor note: because of a room conflict, the item is now due later this week. Gradescope and rubric are unchanged."
-        : "Canvas assignment due date changed on the authoritative course calendar.",
+        ? localized("Instructor note: the item moved later this week because of a room conflict. Gradescope and the rubric are unchanged.", "教师说明：由于教室冲突，这项任务改到本周稍晚截止；Gradescope 和 rubric 没有变化。")
+        : localized("The due date changed on the course calendar.", "课程主日历里的 Canvas 作业截止时间已经变更。"),
     };
     out[`${change.id}:before`] = {
       ...out[`${change.id}:after`],
       side: "before",
       filename: `change-${change.id}-before.txt`,
-      preview_text: "Previous canonical timing before the newly observed update.",
+      preview_text: localized("Previous canonical timing before the newly observed update.", "这是本次新变化出现之前的旧时间。"),
     };
   }
   return out;
@@ -668,6 +778,7 @@ function replaceFamilyRawTypes(familyId: number, nextRawTypes: string[]) {
 }
 
 export function getDemoPreviewState() {
+  syncDemoLocale();
   return clone(demoState);
 }
 
@@ -687,7 +798,7 @@ function buildDemoObservabilitySync(sourceId: number, phase: "bootstrap" | "repl
     applied_at: status === "SUCCEEDED" ? nowIso : null,
     elapsed_ms: sourceId === 1 ? (phase === "bootstrap" ? 4620 : 480) : phase === "bootstrap" ? 18600 : 3290,
     error_code: status === "FAILED" ? source?.last_error_code || "attention" : null,
-    error_message: status === "FAILED" ? source?.last_error_message || "Preview mode replay is blocked." : null,
+    error_message: status === "FAILED" ? source?.last_error_message || localized("Preview mode replay is blocked.", "预览模式下的回放已被阻塞。") : null,
     connector_result: { status: status === "FAILED" ? "error" : "changed", error_code: null, error_message: null },
     llm_usage: phase === "bootstrap"
       ? {
@@ -726,14 +837,17 @@ function buildDemoSourceObservability(sourceId: number): SourceObservabilityResp
       source_product_phase: "needs_initial_review",
       source_recovery: {
         trust_state: "partial",
-        impact_summary: "Imported baseline items are visible, but one item still needs Initial Review before this source is fully trusted for monitoring.",
+        impact_summary: localized(
+          "Imported baseline items are visible, but one item still needs Initial Review before this source is fully trusted for monitoring.",
+          "基线导入内容已经可见，但还有 1 条项目尚未完成初始审核，因此这个来源还不能完全进入稳定监测。",
+        ),
         next_action: "wait",
-        next_action_label: "Finish Initial Review",
+        next_action_label: localized("Finish Initial Review", "完成初始审核"),
         last_good_sync_at: "2026-03-18T05:05:00.000Z",
         degraded_since: "2026-03-18T05:05:00.000Z",
         recovery_steps: [
-          "Review the remaining baseline item.",
-          "Approve or reject it before relying on replay review.",
+          localized("Review the remaining baseline item.", "先处理剩下那条基线项目。"),
+          localized("Approve or reject it before relying on replay review.", "在依赖回放审核前，先决定通过还是拒绝。"),
         ],
       },
     };
@@ -756,21 +870,24 @@ function buildDemoSourceObservability(sourceId: number): SourceObservabilityResp
       recommended_action: "investigate_runtime",
       severity: "warning",
       reason_code: "oauth_expired",
-      message: "Reconnect Gmail before trusting replay.",
+      message: localized("Reconnect Gmail before trusting replay.", "先重新连接 Gmail，再信任后续回放。"),
       related_request_id: "demo-replay-2",
       progress_age_seconds: 180,
     },
     source_product_phase: "needs_attention",
     source_recovery: {
       trust_state: "blocked",
-      impact_summary: "New Gmail-based changes may be missing until the mailbox is reconnected.",
+      impact_summary: localized(
+        "New Gmail-based changes may be missing until the mailbox is reconnected.",
+        "在重新连接这个邮箱之前，新的 Gmail 变更可能会继续漏掉。",
+      ),
       next_action: "reconnect_gmail",
-      next_action_label: "Reconnect Gmail",
+      next_action_label: localized("Reconnect Gmail", "重新连接 Gmail"),
       last_good_sync_at: "2026-03-17T04:40:00.000Z",
       degraded_since: "2026-03-18T04:58:00.000Z",
       recovery_steps: [
-        "Reconnect the Gmail mailbox.",
-        "Run a sync to confirm replay recovers.",
+        localized("Reconnect the Gmail mailbox.", "先重新连接这个 Gmail 邮箱。"),
+        localized("Run a sync to confirm replay recovers.", "再运行一次同步，确认回放已经恢复。"),
       ],
     },
   };
@@ -795,6 +912,284 @@ function buildDemoSourceSyncHistory(sourceId: number): SourceSyncHistoryResponse
   };
 }
 
+function buildDemoLlmInvocation(
+  overrides: Partial<LlmInvocationLogResponse> & Pick<LlmInvocationLogResponse, "task_name" | "protocol" | "model" | "success" | "created_at">,
+): LlmInvocationLogResponse {
+  return {
+    request_id: null,
+    source_id: null,
+    profile_family: "runtime_parse",
+    route_id: "default",
+    route_index: 0,
+    provider_id: "openai",
+    vendor: "openai",
+    session_cache_enabled: false,
+    latency_ms: null,
+    upstream_request_id: null,
+    response_id: null,
+    error_code: null,
+    retryable: null,
+    http_status: null,
+    usage: null,
+    estimated_cost_usd: null,
+    ...overrides,
+  };
+}
+
+type DemoUsageKey = keyof NonNullable<LlmInvocationLogResponse["usage"]>;
+
+function sumUsage(items: LlmInvocationLogResponse[], key: DemoUsageKey) {
+  return items.reduce((total, item) => total + Number(item.usage?.[key] || 0), 0);
+}
+
+function summarizeDemoLlmInvocations(items: LlmInvocationLogResponse[]) {
+  const latencyValues = items.map((item) => item.latency_ms).filter((value): value is number => Number.isFinite(value as number));
+  const taskCounts: Record<string, number> = {};
+  const modelCounts: Record<string, number> = {};
+  const protocolCounts: Record<string, number> = {};
+
+  for (const item of items) {
+    taskCounts[item.task_name] = (taskCounts[item.task_name] || 0) + 1;
+    modelCounts[item.model] = (modelCounts[item.model] || 0) + 1;
+    protocolCounts[item.protocol] = (protocolCounts[item.protocol] || 0) + 1;
+  }
+
+  return {
+    total_count: items.length,
+    success_count: items.filter((item) => item.success).length,
+    failure_count: items.filter((item) => !item.success).length,
+    avg_latency_ms: latencyValues.length > 0 ? Math.round(latencyValues.reduce((sum, value) => sum + value, 0) / latencyValues.length) : null,
+    input_tokens: sumUsage(items, "input_tokens"),
+    cached_input_tokens: sumUsage(items, "cached_input_tokens"),
+    cache_creation_input_tokens: sumUsage(items, "cache_creation_input_tokens"),
+    output_tokens: sumUsage(items, "output_tokens"),
+    reasoning_tokens: sumUsage(items, "reasoning_tokens"),
+    total_tokens: sumUsage(items, "total_tokens"),
+    estimated_cost_usd: Number(items.reduce((total, item) => total + Number(item.estimated_cost_usd || 0), 0).toFixed(6)),
+    input_cost_usd: 0,
+    cached_input_cost_usd: 0,
+    output_cost_usd: 0,
+    pricing_available: items.every((item) => item.estimated_cost_usd !== null),
+    unpriced_call_count: items.filter((item) => item.estimated_cost_usd === null).length,
+    task_counts: taskCounts,
+    model_counts: modelCounts,
+    protocol_counts: protocolCounts,
+  };
+}
+
+function buildDemoSourceLlmInvocations(sourceId: number, requestId?: string | null): SourceLlmInvocationsResponse {
+  const normalizedRequestId = typeof requestId === "string" && requestId.trim() ? requestId.trim() : null;
+  const items =
+    sourceId === 1
+      ? [
+          buildDemoLlmInvocation({
+            request_id: "demo-bootstrap-1",
+            source_id: 1,
+            task_name: "calendar_delta_parse",
+            protocol: "responses",
+            model: "gpt-5.2",
+            success: true,
+            latency_ms: 1180,
+            usage: {
+              input_tokens: 960,
+              cached_input_tokens: 0,
+              cache_creation_input_tokens: 0,
+              output_tokens: 132,
+              reasoning_tokens: 0,
+              total_tokens: 1092,
+            },
+            estimated_cost_usd: 0.0142,
+            created_at: "2026-03-18T05:04:12.000Z",
+          }),
+          buildDemoLlmInvocation({
+            request_id: "demo-bootstrap-1",
+            source_id: 1,
+            task_name: "calendar_delta_parse",
+            protocol: "responses",
+            model: "gpt-5.2",
+            success: true,
+            latency_ms: 910,
+            usage: {
+              input_tokens: 720,
+              cached_input_tokens: 0,
+              cache_creation_input_tokens: 0,
+              output_tokens: 88,
+              reasoning_tokens: 0,
+              total_tokens: 808,
+            },
+            estimated_cost_usd: 0.0103,
+            created_at: "2026-03-18T05:03:01.000Z",
+          }),
+        ]
+      : [
+          buildDemoLlmInvocation({
+            request_id: "demo-replay-2",
+            source_id: 2,
+            task_name: "gmail_replay_parse",
+            protocol: "responses",
+            model: "gpt-5.2",
+            success: true,
+            latency_ms: 1340,
+            usage: {
+              input_tokens: 1820,
+              cached_input_tokens: 940,
+              cache_creation_input_tokens: 0,
+              output_tokens: 121,
+              reasoning_tokens: 18,
+              total_tokens: 2899,
+            },
+            estimated_cost_usd: 0.0194,
+            created_at: "2026-03-18T05:19:11.000Z",
+          }),
+          buildDemoLlmInvocation({
+            request_id: "demo-replay-2",
+            source_id: 2,
+            task_name: "gmail_replay_parse",
+            protocol: "responses",
+            model: "gpt-5.2",
+            success: false,
+            latency_ms: 2260,
+            error_code: "oauth_expired",
+            retryable: true,
+            http_status: 401,
+            usage: {
+              input_tokens: 1640,
+              cached_input_tokens: 880,
+              cache_creation_input_tokens: 0,
+              output_tokens: 0,
+              reasoning_tokens: 0,
+              total_tokens: 2520,
+            },
+            estimated_cost_usd: 0.0148,
+            created_at: "2026-03-18T05:17:42.000Z",
+          }),
+          buildDemoLlmInvocation({
+            request_id: "demo-replay-2-prev",
+            source_id: 2,
+            task_name: "gmail_replay_parse",
+            protocol: "responses",
+            model: "gpt-5.2",
+            success: true,
+            latency_ms: 980,
+            usage: {
+              input_tokens: 1490,
+              cached_input_tokens: 760,
+              cache_creation_input_tokens: 0,
+              output_tokens: 97,
+              reasoning_tokens: 12,
+              total_tokens: 2359,
+            },
+            estimated_cost_usd: 0.0153,
+            created_at: "2026-03-17T04:40:10.000Z",
+          }),
+          buildDemoLlmInvocation({
+            request_id: "demo-bootstrap-2",
+            source_id: 2,
+            task_name: "gmail_bootstrap_parse",
+            protocol: "responses",
+            model: "gpt-5.2",
+            success: true,
+            latency_ms: 2480,
+            usage: {
+              input_tokens: 3210,
+              cached_input_tokens: 1920,
+              cache_creation_input_tokens: 320,
+              output_tokens: 210,
+              reasoning_tokens: 34,
+              total_tokens: 5694,
+            },
+            estimated_cost_usd: 0.0364,
+            created_at: "2026-03-16T08:22:01.000Z",
+          }),
+        ];
+
+  const filteredItems = normalizedRequestId ? items.filter((item) => item.request_id === normalizedRequestId) : items;
+  return {
+    source_id: sourceId,
+    request_id: normalizedRequestId,
+    items: filteredItems,
+    summary: summarizeDemoLlmInvocations(filteredItems),
+  };
+}
+
+function buildDemoSyncRequestLlmInvocations(requestId: string): SyncRequestLlmInvocationsResponse {
+  const requestItems = buildDemoSourceLlmInvocations(2, requestId).items;
+  return {
+    request_id: requestId,
+    items: requestItems,
+    summary: summarizeDemoLlmInvocations(requestItems),
+  };
+}
+
+function buildDemoMcpInvocations(): McpToolInvocation[] {
+  return [
+    {
+      invocation_id: "mcp_inv_1",
+      transport_request_id: "tr_1",
+      tool_name: "create_approval_ticket",
+      transport: "mcp_http",
+      auth_mode: "token",
+      status: "succeeded",
+      proposal_id: 1201,
+      ticket_id: "apr_401",
+      target_kind: "change",
+      target_id: "401",
+      summary_code: "agents.ticket.confirm.change_decision.summary",
+      output_summary: {
+        target_kind: "change",
+        target_id: "401",
+        status: "executed",
+        summary_code: "agents.ticket.confirm.change_decision.summary",
+      },
+      error_text: null,
+      created_at: "2026-03-17T21:35:00.000Z",
+      completed_at: "2026-03-17T21:35:03.000Z",
+    },
+    {
+      invocation_id: "mcp_inv_2",
+      transport_request_id: "tr_2",
+      tool_name: "run_source_sync",
+      transport: "mcp_http",
+      auth_mode: "token",
+      status: "succeeded",
+      proposal_id: null,
+      ticket_id: null,
+      target_kind: "source",
+      target_id: "2",
+      summary_code: "agents.proposals.source_recovery.retry_sync.summary",
+      output_summary: {
+        target_kind: "source",
+        target_id: "2",
+        status: "queued",
+        action_type: "retry_sync",
+      },
+      error_text: null,
+      created_at: "2026-03-17T21:12:00.000Z",
+      completed_at: "2026-03-17T21:12:01.000Z",
+    },
+    {
+      invocation_id: "mcp_inv_3",
+      transport_request_id: "tr_3",
+      tool_name: "review_source_observability",
+      transport: "mcp_http",
+      auth_mode: "token",
+      status: "failed",
+      proposal_id: null,
+      ticket_id: null,
+      target_kind: "source",
+      target_id: "2",
+      summary_code: null,
+      output_summary: {},
+      error_text: localized(
+        "Client disconnected before the response finished.",
+        "客户端在响应完成前断开了连接。",
+      ),
+      created_at: "2026-03-16T18:03:00.000Z",
+      completed_at: "2026-03-16T18:03:04.000Z",
+    },
+  ];
+}
+
 function laneToTool(lane: AgentRecommendedAction["lane"]) {
   return {
     sources: "review_sources",
@@ -817,7 +1212,7 @@ function buildWorkspaceBlockingConditions(summary: ChangesWorkbenchSummary): Age
   if ((summary.baseline_review_pending || 0) > 0) {
     items.push({
       code: "baseline_review_pending",
-      message: "Baseline import review is not finished yet.",
+      message: localized("Baseline import review is not finished yet.", "基线导入审核还没有完成。"),
       severity: "warning",
     });
   }
@@ -886,12 +1281,20 @@ function getDemoWorkspaceSummary(): ChangesWorkbenchSummary {
       baselinePending > 0 ? "baseline_review_pending" : pending > 0 ? "changes_pending" : pendingSuggestions > 0 ? "family_governance_pending" : "all_clear",
     recommended_action_reason:
       baselinePending > 0
-        ? `${baselinePending} baseline import items are waiting in Initial Review.`
+        ? localized(
+            `${baselinePending} baseline items are waiting in Initial Review.`,
+            `还有 ${baselinePending} 条基线导入项目在等待初始审核。`,
+            demoLocale,
+          )
         : pending > 0
-          ? `${pending} pending change proposals are waiting for review decisions.`
+          ? localized(
+              `${pending} changes are waiting for review decisions.`,
+              `还有 ${pending} 条待处理变更在等待决策。`,
+              demoLocale,
+            )
           : pendingSuggestions > 0
-            ? "Family or raw-type governance items need attention."
-            : "No immediate lane action is required.",
+            ? localized("Family or raw-type governance items need attention.", "归类或原始标签治理项仍需处理。")
+            : localized("No immediate lane action is required.", "当前没有需要立刻处理的工作区。"),
     workspace_posture: {
       phase: workspacePhase,
       initial_review: {
@@ -908,40 +1311,48 @@ function getDemoWorkspaceSummary(): ChangesWorkbenchSummary {
       },
       next_action:
         workspacePhase === "baseline_import"
-          ? {
-              lane: "sources",
-              label: "Open Sources",
-              reason: "Baseline import is still running on at least one source.",
-            }
-          : workspacePhase === "initial_review"
-            ? {
-                lane: "initial_review",
-                label: "Open Baseline Review",
-                reason: baselinePending === 1 ? "1 baseline item still needs review." : `${baselinePending} baseline items still need review.`,
-              }
-            : workspacePhase === "attention_required"
               ? {
                   lane: "sources",
-                  label: "Open Sources",
-                  reason: "A source needs attention before the workspace is fully trustworthy.",
+                  label: localized("Open Sources", "打开来源"),
+                  reason: localized("Baseline import is still running on at least one source.", "至少还有一个来源正在进行基线导入。"),
                 }
-              : pending > 0
+            : workspacePhase === "initial_review"
+              ? {
+                  lane: "initial_review",
+                  label: localized("Open Baseline Review", "打开基线审核"),
+                  reason:
+                    baselinePending === 1
+                      ? localized("1 baseline item still needs review.", "还有 1 条基线项目待审核。")
+                      : localized(`${baselinePending} baseline items still need review.`, `还有 ${baselinePending} 条基线项目待审核。`, demoLocale),
+                }
+              : workspacePhase === "attention_required"
                 ? {
-                    lane: "changes",
-                    label: "Open Changes",
-                    reason: pending === 1 ? "1 replay change is waiting." : `${pending} replay changes are waiting.`,
+                    lane: "sources",
+                    label: localized("Open Sources", "打开来源"),
+                    reason: localized("A source needs attention before the workspace is fully trustworthy.", "还有来源需要处理，工作区才算真正稳定。"),
                   }
-                : pendingSuggestions > 0
+                : pending > 0
                   ? {
-                      lane: "families",
-                      label: "Open Families",
-                      reason: "Naming drift is waiting in Families.",
+                      lane: "changes",
+                      label: localized("Open Changes", "打开变更"),
+                      reason:
+                        pending === 1
+                          ? localized("1 replay change is waiting.", "有 1 条回放变更在等待。")
+                          : localized(`${pending} replay changes are waiting.`, `有 ${pending} 条回放变更在等待。`, demoLocale),
                     }
-                  : {
-                      lane: "manual",
-                      label: "Open Manual",
-                      reason: manualActiveCount > 0 ? "Manual fallback work is still open." : "No immediate action is required.",
-                    },
+                  : pendingSuggestions > 0
+                    ? {
+                        lane: "families",
+                        label: localized("Open Families", "打开归类"),
+                        reason: localized("Families still has label drift to review.", "归类页里还有命名漂移需要处理。"),
+                      }
+                    : {
+                        lane: "manual",
+                        label: localized("Open Manual", "打开手动"),
+                        reason: manualActiveCount > 0
+                          ? localized("Manual work is still open.", "手动兜底工作仍然没有处理完。")
+                          : localized("No immediate action is required.", "当前没有需要立刻处理的动作。"),
+                      },
     },
     sources: {
       active_count: activeSources.length,
@@ -954,10 +1365,10 @@ function getDemoWorkspaceSummary(): ChangesWorkbenchSummary {
       reason_code: blockingSources.length > 0 ? "latest_sync_failed" : attentionSources.length > 0 ? "sync_running" : "source_idle",
       message:
         blockingSources.length > 0
-          ? "A source needs runtime attention before lane state is fully trustworthy."
+          ? localized("A source needs runtime attention before lane state is fully trustworthy.", "有来源仍需运行层面的处理，工作区才算真正稳定。")
           : attentionSources.length > 0
-            ? "Some sources still need attention while you continue review."
-            : "No active sync is running. Continue reviewing changes.",
+            ? localized("Some sources still need attention while you continue review.", "继续审核前，仍有一些来源需要先处理。")
+            : localized("No active sync is running. Continue reviewing changes.", "当前没有同步在运行，可以继续审核变更。"),
       related_request_id: attentionSources[0]?.active_request_id || null,
       progress_age_seconds: null,
     },
@@ -990,12 +1401,12 @@ function buildDemoChangeAgentContext(changeId: number): AgentChangeContext {
       lane: change.review_bucket,
       label:
         suggestedAction === "approve"
-          ? "Approve change"
-          : suggestedAction === "reject"
-            ? "Reject change"
-            : suggestedAction === "edit"
-              ? "Edit before approval"
-              : "Review carefully",
+          ? localized("Approve change", "通过变更")
+        : suggestedAction === "reject"
+            ? localized("Reject change", "拒绝变更")
+          : suggestedAction === "edit"
+              ? localized("Edit before approval", "先编辑再通过")
+              : localized("Review carefully", "仔细查看"),
       reason: decisionSupport?.suggested_action_reason || "",
       reason_code: "demo.agent.change.next_action",
       reason_params: {},
@@ -1009,10 +1420,14 @@ function buildDemoChangeAgentContext(changeId: number): AgentChangeContext {
     },
     blocking_conditions: [
       ...(change.review_status !== "pending"
-        ? [{ code: "change_already_reviewed", message: "This change has already been reviewed.", severity: "blocking" as const }]
+        ? [{ code: "change_already_reviewed", message: localized("This change has already been reviewed.", "这条变更已经审核过了。"), severity: "blocking" as const }]
         : []),
       ...((decisionSupport?.risk_level || "") === "high"
-        ? [{ code: "high_risk_change", message: decisionSupport?.risk_summary || "This change should be reviewed carefully before confirmation.", severity: "warning" as const }]
+        ? [{
+            code: "high_risk_change",
+            message: decisionSupport?.risk_summary || localized("This change should be reviewed carefully before confirmation.", "这条变更风险较高，确认前请仔细核对。"),
+            severity: "warning" as const,
+          }]
         : []),
     ],
     available_next_tools: ["view_change", "view_before_evidence", "view_after_evidence", "submit_change_decision", "preview_change_edit", "preview_label_learning", "review_families"],
@@ -1058,12 +1473,12 @@ function buildDemoSourceAgentContext(sourceId: number): AgentSourceContext {
       label:
         observability.source_recovery?.next_action_label ||
         (nextAction === "retry_sync"
-          ? "Run another sync"
+          ? localized("Run another sync", "再运行一次同步")
           : nextAction === "reconnect_gmail"
-            ? "Reconnect source"
+            ? localized("Reconnect source", "重新连接来源")
             : nextAction === "update_ics"
-              ? "Open connection flow"
-              : "Wait for runtime"),
+              ? localized("Open connection flow", "打开连接流程")
+              : localized("Wait for runtime", "等待运行状态更新")),
       reason: observability.source_recovery?.impact_summary || observability.operator_guidance?.message || "",
       reason_code: "demo.agent.source.next_action",
       reason_params: {},
@@ -1085,7 +1500,11 @@ function buildDemoSourceAgentContext(sourceId: number): AgentSourceContext {
         ? [{ code: observability.operator_guidance.reason_code, message: observability.operator_guidance.message, severity: "blocking" as const }]
         : []),
       ...(observability.source_recovery?.trust_state === "blocked" || observability.source_recovery?.trust_state === "partial" || observability.source_recovery?.trust_state === "stale"
-        ? [{ code: "source_recovery_attention", message: observability.source_recovery?.impact_summary || "Source trust is degraded.", severity: observability.source_recovery?.trust_state === "blocked" ? "blocking" as const : "warning" as const }]
+        ? [{
+            code: "source_recovery_attention",
+            message: observability.source_recovery?.impact_summary || localized("Source trust is degraded.", "来源可信度已经下降。"),
+            severity: observability.source_recovery?.trust_state === "blocked" ? "blocking" as const : "warning" as const,
+          }]
         : []),
     ],
     available_next_tools: ["review_source_observability", "view_sync_history", "run_source_sync", "start_oauth_session"],
@@ -1178,12 +1597,12 @@ function createDemoSourceProposal(sourceId: number): AgentProposal {
     target_id: String(sourceId),
     summary:
       action === "retry_sync"
-        ? "Run another sync for this source."
+        ? localized("Run another sync for this source.", "为这个来源再运行一次同步。")
         : action === "reconnect_gmail"
-          ? "Reconnect this source before trusting it again."
+          ? localized("Reconnect this source before trusting it again.", "先重新连接这个来源，再继续信任它。")
           : action === "update_ics"
-            ? "Update source settings before the next sync."
-            : "Wait for runtime progress before taking further action.",
+            ? localized("Update source settings before the next sync.", "先更新来源设置，再进行下一次同步。")
+            : localized("Wait for runtime progress before taking further action.", "先等待运行状态推进，再决定下一步。"),
     summary_code: `demo.agent.source.${action}.summary`,
     reason: context.recommended_next_action.reason,
     reason_code: context.recommended_next_action.reason_code,
@@ -1258,6 +1677,132 @@ function nextApprovalTicket(proposal: AgentProposal): ApprovalTicket {
   };
 }
 
+function buildDemoRecentAgentActivity(limit = 8): AgentRecentActivityResponse {
+  const items = [
+    {
+      item_kind: "ticket" as const,
+      activity_id: "demo-ticket-activity-401",
+      occurred_at: "2026-03-17T21:35:00.000Z",
+      owner_user_id: demoState.user.id,
+      proposal_id: 1201,
+      ticket_id: "apr_401",
+      status: "executed",
+      lifecycle_code: "agents.ticket.lifecycle.executed",
+      next_step_code: "agents.ticket.next_step.completed",
+      risk_level: "low" as const,
+      target_kind: "change",
+      target_id: "401",
+      summary: localized("Approved the change for Homework 4.", "已通过 Homework 4 的变更。"),
+      summary_code: "agents.activity.ticket.executed",
+      detail: localized(
+        "The approval request was confirmed and the replay change was applied.",
+        "审批请求已经确认，回放变更也已正式应用。",
+      ),
+      detail_code: "agents.activity.ticket.executed.detail",
+      origin_kind: "web",
+      origin_label: "create_approval_ticket",
+      origin_request_id: null,
+      channel: "web",
+      execution_mode: "approval_ticket_required" as const,
+      execution_mode_code: "agents.proposal.execution_mode.approval_ticket_required",
+      confirm_summary_code: "agents.ticket.confirm.change_decision.summary",
+      cancel_summary_code: "agents.ticket.cancel.change_decision.summary",
+      transition_message_code: "agents.ticket.transition.change_decision.executed",
+      social_safe_cta_code: "agents.ticket.cta.confirm",
+      can_create_ticket: false,
+      can_confirm: false,
+      can_cancel: false,
+      last_transition_kind: "web",
+      last_transition_label: localized("Confirmed in workspace", "已在工作区确认"),
+      suggested_action: "approve",
+      action_type: "change_decision",
+    },
+    {
+      item_kind: "proposal" as const,
+      activity_id: "demo-proposal-activity-source-2",
+      occurred_at: "2026-03-17T21:12:00.000Z",
+      owner_user_id: demoState.user.id,
+      proposal_id: 1200,
+      ticket_id: null,
+      status: "open",
+      lifecycle_code: "agents.proposal.lifecycle.open",
+      next_step_code: "agents.proposal.next_step.create_ticket",
+      risk_level: "medium" as const,
+      target_kind: "source",
+      target_id: "2",
+      summary: localized("Suggested another sync for Gmail Inbox.", "建议为 Gmail Inbox 再运行一次同步。"),
+      summary_code: "agents.proposals.source_recovery.retry_sync.summary",
+      detail: localized(
+        "The source stayed in attention, so the assistant suggested a retry after reconnecting the mailbox.",
+        "来源仍处于需关注状态，所以助手建议在重新连接邮箱后再补跑一次同步。",
+      ),
+      detail_code: "agents.proposals.source_recovery.retry_sync.detail",
+      origin_kind: "web",
+      origin_label: "embedded_agent",
+      origin_request_id: null,
+      channel: null,
+      execution_mode: "approval_ticket_required" as const,
+      execution_mode_code: "agents.proposal.execution_mode.approval_ticket_required",
+      confirm_summary_code: null,
+      cancel_summary_code: null,
+      transition_message_code: null,
+      social_safe_cta_code: null,
+      can_create_ticket: true,
+      can_confirm: false,
+      can_cancel: false,
+      last_transition_kind: "assistant",
+      last_transition_label: localized("Suggested in Sources", "已在来源页生成建议"),
+      suggested_action: "retry_sync",
+      action_type: "source_recovery",
+    },
+    {
+      item_kind: "proposal" as const,
+      activity_id: "demo-proposal-activity-change-402",
+      occurred_at: "2026-03-16T18:20:00.000Z",
+      owner_user_id: demoState.user.id,
+      proposal_id: 1198,
+      ticket_id: null,
+      status: "accepted",
+      lifecycle_code: "agents.proposal.lifecycle.accepted",
+      next_step_code: "agents.proposal.next_step.completed",
+      risk_level: "low" as const,
+      target_kind: "change",
+      target_id: "402",
+      summary: localized("Suggested approving Project Milestone 2.", "建议通过 Project Milestone 2。"),
+      summary_code: "agents.proposals.change_decision.approve.summary",
+      detail: localized(
+        "The change looked low-risk, so the assistant recommended approval.",
+        "这条变更风险较低，所以助手给出了通过建议。",
+      ),
+      detail_code: "agents.proposals.change_decision.approve.detail",
+      origin_kind: "web",
+      origin_label: "embedded_agent",
+      origin_request_id: null,
+      channel: null,
+      execution_mode: "approval_ticket_required" as const,
+      execution_mode_code: "agents.proposal.execution_mode.approval_ticket_required",
+      confirm_summary_code: null,
+      cancel_summary_code: null,
+      transition_message_code: null,
+      social_safe_cta_code: null,
+      can_create_ticket: false,
+      can_confirm: false,
+      can_cancel: false,
+      last_transition_kind: "assistant",
+      last_transition_label: localized("Completed in Changes", "已在变更页完成"),
+      suggested_action: "approve",
+      action_type: "change_decision",
+    },
+  ];
+
+  return {
+    generated_at: nowIso,
+    language_code: demoState.user.language_code,
+    language_resolution_source: "preview_locale",
+    items: items.slice(0, Math.max(1, limit)),
+  };
+}
+
 function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -1279,6 +1824,7 @@ function pathKey(path: string) {
 }
 
 export async function demoBackendFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  syncDemoLocale();
   await delay(120);
   const method = (init?.method || "GET").toUpperCase();
   const body = parseBody(init);
@@ -1339,6 +1885,10 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   if (pathname === "/agent/context/workspace" && method === "GET") {
     return clone(buildDemoWorkspaceAgentContext()) as T;
   }
+  if (pathname === "/agent/activity/recent" && method === "GET") {
+    const limit = Number(url.searchParams.get("limit") || "8");
+    return clone(buildDemoRecentAgentActivity(Number.isFinite(limit) ? limit : 8)) as T;
+  }
   if (/^\/agent\/context\/changes\/\d+$/.test(pathname) && method === "GET") {
     const changeId = Number(pathname.split("/").pop());
     return clone(buildDemoChangeAgentContext(changeId)) as T;
@@ -1365,7 +1915,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     if (!proposal) throw new Error("Agent proposal not found");
     const kind = String(proposal.suggested_payload.kind || "");
     if (!["change_decision", "run_source_sync"].includes(kind)) {
-      throw new Error("This proposal is not directly executable and must stay in the web workflow.");
+      throw new Error(localized("This suggestion can't run directly and must stay in the web flow.", "这条建议不能直接执行，需要继续留在网页流程里处理。"));
     }
     const ticket = nextApprovalTicket(proposal);
     demoState.approvalTickets.unshift(ticket);
@@ -1374,13 +1924,13 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   if (/^\/agent\/approval-tickets\/[^/]+$/.test(pathname) && method === "GET") {
     const ticketId = decodeURIComponent(pathname.split("/").pop() || "");
     const ticket = demoState.approvalTickets.find((item) => item.ticket_id === ticketId);
-    if (!ticket) throw new Error("Approval ticket not found");
+    if (!ticket) throw new Error(localized("Approval ticket not found", "未找到审批请求"));
     return clone(ticket) as T;
   }
   if (/^\/agent\/approval-tickets\/[^/]+\/confirm$/.test(pathname) && method === "POST") {
     const ticketId = pathname.split("/")[3];
     const ticket = demoState.approvalTickets.find((item) => item.ticket_id === ticketId);
-    if (!ticket) throw new Error("Approval ticket not found");
+    if (!ticket) throw new Error(localized("Approval ticket not found", "未找到审批请求"));
     const kind = String(ticket.payload.kind || "");
     if (kind === "change_decision") {
       const row = demoState.changes.find((item) => item.id === Number(ticket.payload.change_id));
@@ -1420,7 +1970,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   if (/^\/agent\/approval-tickets\/[^/]+\/cancel$/.test(pathname) && method === "POST") {
     const ticketId = pathname.split("/")[3];
     const ticket = demoState.approvalTickets.find((item) => item.ticket_id === ticketId);
-    if (!ticket) throw new Error("Approval ticket not found");
+    if (!ticket) throw new Error(localized("Approval ticket not found", "未找到审批请求"));
     ticket.status = "canceled";
     ticket.canceled_at = nowIso;
     ticket.updated_at = nowIso;
@@ -1458,7 +2008,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   if (/^\/changes\/\d+\/views$/.test(pathname) && method === "PATCH") {
     const changeId = Number(pathname.split("/")[2]);
     const row = demoState.changes.find((item) => item.id === changeId);
-    if (!row) throw new Error("Review change not found");
+    if (!row) throw new Error(localized("Review change not found", "未找到审核变更"));
     row.viewed_at = nowIso;
     row.viewed_note = body?.note || null;
     return clone(row) as T;
@@ -1466,7 +2016,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   if (/^\/changes\/\d+\/decisions$/.test(pathname) && method === "POST") {
     const changeId = Number(pathname.split("/")[2]);
     const row = demoState.changes.find((item) => item.id === changeId);
-    if (!row) throw new Error("Review change not found");
+    if (!row) throw new Error(localized("Review change not found", "未找到审核变更"));
     row.review_status = body?.decision === "reject" ? "rejected" : "approved";
     row.reviewed_at = nowIso;
     row.review_note = body?.note || null;
@@ -1502,7 +2052,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
         reviewed_at: nowIso,
         review_note: body?.note || null,
         error_code: demoState.changes.some((item) => item.id === id) ? null : "not_found",
-        error_detail: demoState.changes.some((item) => item.id === id) ? null : "Missing demo row",
+        error_detail: demoState.changes.some((item) => item.id === id) ? null : localized("Preview row missing", "缺少预览示例数据"),
       })),
     };
     return clone(response) as T;
@@ -1510,7 +2060,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   if (/^\/changes\/\d+\/edit-context$/.test(pathname) && method === "GET") {
     const changeId = Number(pathname.split("/")[2]);
     const row = demoState.changes.find((item) => item.id === changeId);
-    if (!row || !row.after_event) throw new Error("Review change not found");
+    if (!row || !row.after_event) throw new Error(localized("Review change not found", "未找到审核变更"));
     const editable: ChangeEditContext = {
       change_id: row.id,
       entity_uid: row.entity_uid,
@@ -1541,7 +2091,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     const request = body as ChangeEditRequest;
     const changeId = request?.target?.change_id;
     const row = demoState.changes.find((item) => item.id === changeId);
-    if (!row || !row.after_event) throw new Error("Review change not found");
+    if (!row || !row.after_event) throw new Error(localized("Review change not found", "未找到审核变更"));
     const next = clone(row.after_event);
     if (request.patch.event_name) {
       next.event_display.display_label = request.patch.event_name;
@@ -1572,7 +2122,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     const request = body as ChangeEditRequest;
     const changeId = request?.target?.change_id;
     const row = demoState.changes.find((item) => item.id === changeId);
-    if (!row || !row.after_event) throw new Error("Review change not found");
+    if (!row || !row.after_event) throw new Error(localized("Review change not found", "未找到审核变更"));
     if (request.patch.event_name) row.after_event.event_display.display_label = request.patch.event_name;
     if (request.patch.due_date !== undefined) row.after_event.due_date = request.patch.due_date;
     if (request.patch.due_time !== undefined) row.after_event.due_time = request.patch.due_time;
@@ -1651,7 +2201,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   if (/^\/families\/\d+$/.test(pathname) && method === "PATCH") {
     const familyId = Number(pathname.split("/").pop());
     const family = demoState.families.find((item) => item.id === familyId);
-    if (!family) throw new Error("Family not found");
+    if (!family) throw new Error(localized("Family not found", "未找到归类"));
     family.canonical_label = body?.canonical_label || family.canonical_label;
     family.updated_at = nowIso;
     if (Array.isArray(body?.raw_types)) {
@@ -1696,7 +2246,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     const rawType = demoState.rawTypes.find((item) => item.id === rawTypeId);
     const targetFamily = demoState.families.find((item) => item.id === familyId);
     if (!rawType || !targetFamily) {
-      throw new Error("Raw type relink target not found");
+      throw new Error(localized("Raw type relink target not found", "未找到原始标签迁移目标"));
     }
     const previousFamilyId = rawType.family_id;
     rawType.family_id = targetFamily.id;
@@ -1731,7 +2281,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   if (/^\/families\/raw-type-suggestions\/\d+\/decisions$/.test(pathname) && method === "POST") {
     const suggestionId = Number(pathname.split("/")[3]);
     const suggestion = demoState.rawTypeSuggestions.find((item) => item.id === suggestionId);
-    if (!suggestion) throw new Error("Raw type suggestion not found");
+    if (!suggestion) throw new Error(localized("Raw type suggestion not found", "未找到原始标签建议"));
     const decision = body?.decision === "approve" || body?.decision === "reject" || body?.decision === "dismiss" ? body.decision : "reject";
     suggestion.status = decision === "approve" ? "approved" : decision === "reject" ? "rejected" : "dismissed";
     suggestion.review_note = body?.note || null;
@@ -1770,6 +2320,10 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   if (pathname === "/settings/mcp-tokens" && method === "GET") {
     return clone(demoState.mcpTokens) as T;
   }
+  if (pathname === "/settings/mcp-invocations" && method === "GET") {
+    const limit = Number(url.searchParams.get("limit") || "10");
+    return clone(buildDemoMcpInvocations().slice(0, Number.isFinite(limit) ? limit : 10)) as T;
+  }
   if (pathname === "/settings/mcp-tokens" && method === "POST") {
     const tokenId = `mcp_tok_${Date.now()}`;
     const expiresInDays =
@@ -1780,7 +2334,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     const expiresAt = new Date(new Date(createdAt).getTime() + expiresInDays * 24 * 60 * 60 * 1000).toISOString();
     const row: McpAccessToken = {
       token_id: tokenId,
-      label: typeof body?.label === "string" && body.label.trim() ? body.label.trim() : "MCP token",
+      label: typeof body?.label === "string" && body.label.trim() ? body.label.trim() : localized("MCP token", "MCP 令牌"),
       scopes: ["calendar.read", "changes.write", "manual.write"],
       last_used_at: null,
       expires_at: expiresAt,
@@ -1797,7 +2351,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   if (/^\/settings\/mcp-tokens\/[^/]+$/.test(pathname) && method === "DELETE") {
     const tokenId = decodeURIComponent(pathname.split("/").pop() || "");
     const token = demoState.mcpTokens.find((item) => item.token_id === tokenId);
-    if (!token) throw new Error("MCP token not found");
+    if (!token) throw new Error(localized("MCP token not found", "未找到 MCP 令牌"));
     token.revoked_at = nowIso;
     return clone(token) as T;
   }
@@ -1829,7 +2383,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   if (/^\/manual\/events\/[^/]+$/.test(pathname) && method === "PATCH") {
     const entityUid = decodeURIComponent(pathname.split("/").pop() || "");
     const event = demoState.manualEvents.find((item) => item.entity_uid === entityUid);
-    if (!event) throw new Error("Manual event not found");
+    if (!event) throw new Error(localized("Manual event not found", "未找到手动事件"));
     event.event_name = body?.event_name || event.event_name;
     event.raw_type = body?.raw_type || event.raw_type;
     event.ordinal = body?.ordinal ?? event.ordinal;
@@ -1849,7 +2403,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   if (/^\/manual\/events\/[^/]+$/.test(pathname) && method === "DELETE") {
     const entityUid = decodeURIComponent(pathname.split("/").pop() || "");
     const event = demoState.manualEvents.find((item) => item.entity_uid === entityUid);
-    if (!event) throw new Error("Manual event not found");
+    if (!event) throw new Error(localized("Manual event not found", "未找到手动事件"));
     event.lifecycle = "removed";
     event.updated_at = nowIso;
     return {
@@ -1864,6 +2418,11 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   if (/^\/sources\/\d+\/observability$/.test(pathname) && method === "GET") {
     const sourceId = Number(pathname.split("/")[2]);
     return clone(buildDemoSourceObservability(sourceId)) as T;
+  }
+  if (/^\/sources\/\d+\/llm-invocations$/.test(pathname) && method === "GET") {
+    const sourceId = Number(pathname.split("/")[2]);
+    const requestId = url.searchParams.get("request_id");
+    return clone(buildDemoSourceLlmInvocations(sourceId, requestId)) as T;
   }
   if (/^\/sources\/\d+\/sync-history$/.test(pathname) && method === "GET") {
     const sourceId = Number(pathname.split("/")[2]);
@@ -1902,7 +2461,11 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
       request_id: `demo-sync-${Date.now()}`,
     } as T;
   }
-  if (/^\/sync-requests\/.+$/.test(pathname) && method === "GET") {
+  if (/^\/sync-requests\/[^/]+\/llm-invocations$/.test(pathname) && method === "GET") {
+    const requestId = pathname.split("/")[2] || "demo-sync";
+    return clone(buildDemoSyncRequestLlmInvocations(requestId)) as T;
+  }
+  if (/^\/sync-requests\/[^/]+$/.test(pathname) && method === "GET") {
     const requestId = pathname.split("/").pop() || "demo-sync";
     const response: SyncStatus = {
       request_id: requestId,
@@ -1914,8 +2477,8 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
       connector_result: { status: "changed", error_code: null, error_message: null },
       progress: {
         phase: "fetch",
-        label: "Polling source",
-        detail: "Preview mode simulated sync",
+        label: localized("Polling source", "轮询来源"),
+        detail: localized("Preview mode simulated sync", "预览模式模拟同步中"),
         current: 2,
         total: 4,
         percent: 50,
@@ -1933,7 +2496,7 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
     } as T;
   }
 
-  throw new Error(`Preview mode does not yet implement ${method} ${pathname}`);
+  throw new Error(localized(`Preview mode does not yet implement ${method} ${pathname}`, `预览模式暂未实现 ${method} ${pathname}`));
 }
 
 export type { DemoState };

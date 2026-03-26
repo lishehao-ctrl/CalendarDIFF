@@ -1,5 +1,5 @@
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api/client";
-import type { McpAccessToken, McpAccessTokenCreateResponse, UserProfile } from "@/lib/types";
+import { apiDelete, apiGet, apiPatch, apiPost, buildQuery } from "@/lib/api/client";
+import type { McpAccessToken, McpAccessTokenCreateResponse, McpToolInvocation, UserProfile } from "@/lib/types";
 
 export function settingsProfileCacheKey() {
   return "settings:profile";
@@ -7,6 +7,10 @@ export function settingsProfileCacheKey() {
 
 export function settingsMcpTokensCacheKey() {
   return "settings:mcp-tokens";
+}
+
+export function settingsMcpInvocationsCacheKey(limit = 10) {
+  return `settings:mcp-invocations${buildQuery({ limit })}`;
 }
 
 export async function getSettingsProfile() {
@@ -35,4 +39,8 @@ export async function createMcpToken(payload: {
 
 export async function revokeMcpToken(tokenId: string) {
   return apiDelete<McpAccessToken>(`/settings/mcp-tokens/${encodeURIComponent(tokenId)}`);
+}
+
+export async function getMcpInvocations(limit = 10) {
+  return apiGet<McpToolInvocation[]>(`/settings/mcp-invocations${buildQuery({ limit })}`);
 }

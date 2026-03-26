@@ -1,4 +1,5 @@
 export const LOCALE_STORAGE_KEY = "calendardiff.locale";
+export const LOCALE_COOKIE_KEY = "calendardiff_locale";
 
 export const SUPPORTED_LOCALES = ["en", "zh-CN"] as const;
 

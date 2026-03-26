@@ -31,6 +31,8 @@ export type SourceOperatorGuidance = {
   severity: "info" | "warning" | "blocking";
   reason_code: string;
   message: string;
+  message_code?: string;
+  message_params?: Record<string, unknown>;
   related_request_id?: string | null;
   progress_age_seconds?: number | null;
 };
@@ -123,6 +125,7 @@ export type ChangesWorkbenchSummary = {
   recommended_lane: "sources" | "initial_review" | "changes" | "families" | null;
   recommended_lane_reason_code: string;
   recommended_action_reason: string;
+  recommended_action_reason_params?: Record<string, unknown>;
   workspace_posture: WorkspacePosture;
   sources: ChangesWorkbenchSourcesSummary;
   families: ChangesWorkbenchFamiliesSummary;
@@ -267,6 +270,74 @@ export type SyncUsageSummary = {
   models: Record<string, number>;
   task_counts: Record<string, number>;
   last_observed_at?: string | null;
+};
+
+export type LlmInvocationUsage = {
+  input_tokens?: number;
+  cached_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+  output_tokens?: number;
+  reasoning_tokens?: number;
+  total_tokens?: number;
+};
+
+export type LlmInvocationLogResponse = {
+  request_id: string | null;
+  source_id: number | null;
+  task_name: string;
+  profile_family: string;
+  route_id: string;
+  route_index: number;
+  provider_id: string;
+  vendor: string;
+  protocol: string;
+  model: string;
+  session_cache_enabled: boolean;
+  success: boolean;
+  latency_ms: number | null;
+  upstream_request_id: string | null;
+  response_id: string | null;
+  error_code: string | null;
+  retryable: boolean | null;
+  http_status: number | null;
+  usage: LlmInvocationUsage | null;
+  estimated_cost_usd: number | null;
+  created_at: string;
+};
+
+export type LlmInvocationSummaryResponse = {
+  total_count: number;
+  success_count: number;
+  failure_count: number;
+  avg_latency_ms: number | null;
+  input_tokens: number;
+  cached_input_tokens: number;
+  cache_creation_input_tokens: number;
+  output_tokens: number;
+  reasoning_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+  input_cost_usd: number;
+  cached_input_cost_usd: number;
+  output_cost_usd: number;
+  pricing_available: boolean;
+  unpriced_call_count: number;
+  task_counts: Record<string, number>;
+  model_counts: Record<string, number>;
+  protocol_counts: Record<string, number>;
+};
+
+export type SyncRequestLlmInvocationsResponse = {
+  request_id: string;
+  items: LlmInvocationLogResponse[];
+  summary: LlmInvocationSummaryResponse;
+};
+
+export type SourceLlmInvocationsResponse = {
+  source_id: number;
+  request_id: string | null;
+  items: LlmInvocationLogResponse[];
+  summary: LlmInvocationSummaryResponse;
 };
 
 export type SourceObservabilityView = {
@@ -664,12 +735,46 @@ export type McpAccessTokenCreateResponse = McpAccessToken & {
   token: string;
 };
 
+export type McpToolInvocationStatus = "started" | "succeeded" | "failed";
+
+export type McpToolInvocationOutputSummary = {
+  proposal_id?: number | null;
+  ticket_id?: string | null;
+  status?: string | null;
+  target_kind?: string | null;
+  target_id?: string | null;
+  summary_code?: string | null;
+  action_type?: string | null;
+  risk_level?: string | null;
+  delivery_kind?: string | null;
+  [key: string]: unknown;
+};
+
+export type McpToolInvocation = {
+  invocation_id: string;
+  transport_request_id: string | null;
+  tool_name: string;
+  transport: string;
+  auth_mode: string;
+  status: McpToolInvocationStatus;
+  proposal_id: number | null;
+  ticket_id: string | null;
+  target_kind: string | null;
+  target_id: string | null;
+  summary_code: string | null;
+  output_summary: McpToolInvocationOutputSummary;
+  error_text: string | null;
+  created_at: string;
+  completed_at: string | null;
+};
+
 export type AgentRiskLevel = "low" | "medium" | "high";
 export type AgentConditionSeverity = "info" | "warning" | "blocking";
 export type AgentProposalType =
   | "change_decision"
   | "source_recovery"
   | "family_relink_preview"
+  | "family_relink_commit"
   | "label_learning_commit"
   | "proposal_edit_commit";
 export type AgentProposalStatus = "open" | "accepted" | "rejected" | "expired" | "superseded";
@@ -693,6 +798,8 @@ export type AgentRecommendedAction = {
 
 export type AgentWorkspaceContext = {
   generated_at: string;
+  language_code?: "en" | "zh-CN";
+  language_resolution_source?: string;
   summary: ChangesWorkbenchSummary;
   top_pending_changes: ChangeItem[];
   recommended_next_action: AgentRecommendedAction;
@@ -702,6 +809,8 @@ export type AgentWorkspaceContext = {
 
 export type AgentChangeContext = {
   generated_at: string;
+  language_code?: "en" | "zh-CN";
+  language_resolution_source?: string;
   change: ChangeItem;
   recommended_next_action: AgentRecommendedAction;
   blocking_conditions: AgentBlockingCondition[];
@@ -714,6 +823,8 @@ export type AgentSourceContextSource = SourceRow & {
 
 export type AgentSourceContext = {
   generated_at: string;
+  language_code?: "en" | "zh-CN";
+  language_resolution_source?: string;
   source: AgentSourceContextSource;
   observability: SourceObservabilityResponse;
   active_sync_request: SyncStatus | null;
@@ -724,6 +835,8 @@ export type AgentSourceContext = {
 
 export type AgentFamilyContext = {
   generated_at: string;
+  language_code?: "en" | "zh-CN";
+  language_resolution_source?: string;
   family: CourseWorkItemFamily;
   raw_types: CourseWorkItemRawType[];
   pending_raw_type_suggestions: RawTypeSuggestionItem[];
@@ -734,6 +847,8 @@ export type AgentFamilyContext = {
 
 export type AgentProposal = {
   proposal_id: number;
+  language_code?: "en" | "zh-CN";
+  language_resolution_source?: string;
   owner_user_id: number;
   proposal_type: AgentProposalType;
   status: AgentProposalStatus;
@@ -764,6 +879,8 @@ export type AgentProposal = {
 
 export type ApprovalTicket = {
   ticket_id: string;
+  language_code?: "en" | "zh-CN";
+  language_resolution_source?: string;
   proposal_id: number;
   owner_user_id: number;
   channel: string;
@@ -795,6 +912,51 @@ export type ApprovalTicket = {
   executed_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type AgentActivityItemKind = "proposal" | "ticket";
+
+export type AgentRecentActivityItem = {
+  item_kind: AgentActivityItemKind;
+  activity_id: string;
+  occurred_at: string;
+  owner_user_id: number;
+  proposal_id: number | null;
+  ticket_id: string | null;
+  status: string;
+  lifecycle_code: string;
+  next_step_code: string;
+  risk_level: AgentRiskLevel;
+  target_kind: string;
+  target_id: string;
+  summary: string;
+  summary_code: string;
+  detail: string | null;
+  detail_code: string | null;
+  origin_kind: string;
+  origin_label: string;
+  origin_request_id: string | null;
+  channel: string | null;
+  execution_mode: "approval_ticket_required" | "web_only" | null;
+  execution_mode_code: string | null;
+  confirm_summary_code: string | null;
+  cancel_summary_code: string | null;
+  transition_message_code: string | null;
+  social_safe_cta_code: string | null;
+  can_create_ticket: boolean;
+  can_confirm: boolean;
+  can_cancel: boolean;
+  last_transition_kind: string | null;
+  last_transition_label: string | null;
+  suggested_action: string | null;
+  action_type: string | null;
+};
+
+export type AgentRecentActivityResponse = {
+  generated_at: string;
+  language_code: "en" | "zh-CN";
+  language_resolution_source: string;
+  items: AgentRecentActivityItem[];
 };
 
 

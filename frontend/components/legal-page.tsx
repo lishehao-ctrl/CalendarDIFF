@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
+import { workbenchSupportPanelClassName } from "@/lib/workbench-styles";
 import { useT } from "@/lib/i18n/use-locale";
 
 type LegalSection = {
@@ -25,7 +26,7 @@ export function LegalPage({
   const t = useT();
 
   return (
-    <div className="min-h-screen bg-transparent px-4 py-8 md:px-8">
+    <div className="min-h-screen bg-transparent px-4 py-8 md:px-8" data-testid="legal-page">
       <div className="mx-auto flex min-h-[80vh] max-w-6xl items-center justify-center">
         <div className="grid w-full gap-6 lg:grid-cols-[0.9fr_1.1fr]">
           <Card className="relative overflow-hidden p-8 md:p-10">
@@ -36,7 +37,7 @@ export function LegalPage({
                 <h1 className="mt-4 text-4xl font-semibold leading-tight text-ink">{title}</h1>
                 <p className="mt-5 max-w-xl text-sm leading-7 text-[#596270]">{summary}</p>
               </div>
-              <div className="rounded-[1.15rem] border border-line/80 bg-white/55 p-4 text-sm text-[#314051]">
+              <div className={workbenchSupportPanelClassName("quiet", "p-4 text-sm text-[#314051]")}>
                 <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{t("legal.whatThisCovers")}</p>
                 <ul className="mt-3 space-y-2 leading-6">
                   {(["0", "1", "2"] as const).map((index) => (
@@ -61,7 +62,7 @@ export function LegalPage({
                 <p className="text-xs uppercase tracking-[0.24em] text-[#6d7885]">{eyebrow}</p>
                 <h2 className="mt-3 text-3xl font-semibold text-ink">{title}</h2>
               </div>
-              <div className="rounded-full border border-line/80 bg-white/65 px-4 py-2 text-xs uppercase tracking-[0.18em] text-[#6d7885]">
+              <div className="rounded-full border border-line/80 bg-[var(--surface-support)] px-4 py-2 text-xs uppercase tracking-[0.18em] text-[#6d7885]">
                 {t("legal.updated", { date: updatedAt })}
               </div>
             </div>

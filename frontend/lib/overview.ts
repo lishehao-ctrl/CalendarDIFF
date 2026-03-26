@@ -136,7 +136,9 @@ export function buildOverviewSurface(params: {
   const replayReviewSummary = topPendingChange
     ? translate("overview.cards.changes.topPending", {
         title: summarizeChange(topPendingChange).title,
-        source: topPendingChange.primary_source ? sourceDescriptor(topPendingChange.primary_source) : "attached evidence",
+        source: topPendingChange.primary_source
+          ? sourceDescriptor(topPendingChange.primary_source)
+          : translate("changes.workspace.attachedEvidence"),
       })
     : summary.changes_pending > 0
       ? translate("overview.cards.changes.replayWaiting", { count: summary.changes_pending })

@@ -1,3 +1,4 @@
+import { translate } from "@/lib/i18n/runtime";
 import { formatCount, formatDateTime } from "@/lib/presenters";
 import type { IntakePostureView, SourceObservabilityView, SourceRow, SyncStatus, SyncUsageSummary } from "@/lib/types";
 
@@ -134,15 +135,15 @@ function previewObservabilityForSource(source: SourceRow): SourceObservabilityVi
       runtime_state: source.runtime_state || "active",
       connection_status: "healthy",
       connection_label: "Connected",
-      connection_detail: "Calendar feed is active and replay is steady.",
+      connection_detail: translate("sources.observability.calendarConnectedDetail"),
       bootstrap_status: "succeeded",
       replay_status: "succeeded",
       latest_bootstrap_elapsed_ms: 4620,
       latest_replay_elapsed_ms: 480,
       bootstrap_usage: PREVIEW_USAGE.canvasBootstrap,
       replay_usage: PREVIEW_USAGE.canvasReplay,
-      latest_sync_label: "Latest replay succeeded",
-      latest_sync_detail: "Canvas inventory is in steady-state replay.",
+      latest_sync_label: translate("sources.observability.latestReplaySucceeded"),
+      latest_sync_detail: translate("sources.observability.latestReplayStable"),
     };
   }
 
@@ -152,16 +153,16 @@ function previewObservabilityForSource(source: SourceRow): SourceObservabilityVi
     source_kind: "email",
     runtime_state: source.runtime_state || "active",
     connection_status: "attention",
-    connection_label: "Needs reconnect",
-    connection_detail: source.last_error_message || "Mailbox auth needs repair before replay is trustworthy.",
+    connection_label: translate("sources.observability.needsReconnect"),
+    connection_detail: source.last_error_message || translate("sources.observability.mailboxReconnectDetail"),
     bootstrap_status: "running",
     replay_status: "failed",
     latest_bootstrap_elapsed_ms: 18600,
     latest_replay_elapsed_ms: 3290,
     bootstrap_usage: PREVIEW_USAGE.gmailBootstrap,
     replay_usage: PREVIEW_USAGE.gmailReplay,
-    latest_sync_label: "Replay blocked",
-    latest_sync_detail: "Reconnect Gmail to restore steady replay parsing.",
+    latest_sync_label: translate("sources.observability.replayBlocked"),
+    latest_sync_detail: translate("sources.observability.replayRestoreDetail"),
   };
 }
 
@@ -174,12 +175,12 @@ function inferLatestSync(source: SourceRow, syncStatus: SyncStatus | undefined) 
   }
   if (source.last_polled_at) {
     return {
-      label: "Last sync completed",
+      label: translate("sources.observability.lastSyncCompleted"),
       detail: `Updated ${formatDateTime(source.last_polled_at, "recently")}`,
     };
   }
   return {
-    label: "No completed sync yet",
+    label: translate("sources.observability.noCompletedSync"),
     detail: null,
   };
 }
@@ -254,19 +255,22 @@ export function buildIntakePosture(observability: SourceObservabilityView[]): In
     replay_health: replayAttentionCount > 0 ? "attention" : observability.length > 0 ? "healthy" : "unknown",
     bootstrap_cost_state: bootstrapState,
     replay_cost_state: replayState,
-    warming_label: warmingSourceCount > 0 ? `${warmingSourceCount} source${warmingSourceCount === 1 ? "" : "s"} warming up` : "No source warmup",
-    replay_label: replayAttentionCount > 0 ? "Replay needs attention" : "Replay looks healthy",
+    warming_label:
+      warmingSourceCount > 0
+        ? translate("sources.attentionSummary", { count: warmingSourceCount })
+        : translate("sources.noBlockingReview"),
+    replay_label: replayAttentionCount > 0 ? translate("common.status.attention") : translate("common.status.healthy"),
     cost_label:
       bootstrapState === "elevated"
-        ? "Bootstrap cost is elevated"
+        ? translate("sources.observability.bootstrapCostElevated")
         : replayState === "elevated"
-          ? "Replay cost is elevated"
-          : "Cost looks normal",
+          ? translate("sources.observability.replayCostElevated")
+          : translate("sources.observability.costLooksNormal"),
   };
 }
 
 export function formatElapsedMs(value: number | null) {
-  if (value === null || !Number.isFinite(value)) return "Unavailable";
+  if (value === null || !Number.isFinite(value)) return translate("common.labels.unavailable");
   if (value < 1000) return `${Math.round(value)} ms`;
   if (value < 60000) return `${(value / 1000).toFixed(1)} s`;
   return `${(value / 60000).toFixed(1)} min`;
@@ -275,14 +279,18 @@ export function formatElapsedMs(value: number | null) {
 export function formatUsageSummary(summary: SyncUsageSummary | null) {
   if (!summary) {
     return {
-      headline: "Unavailable",
-      detail: "No live sample yet",
+      headline: translate("common.labels.unavailable"),
+      detail: translate("sources.observability.noLiveSampleYet"),
     };
   }
-  const cacheHit = summary.cache_hit_ratio === null ? "No cache" : `${Math.round(summary.cache_hit_ratio * 100)}% cache`;
-  const latency = summary.avg_latency_ms === null ? "No latency sample" : `${Math.round(summary.avg_latency_ms)} ms avg`;
+  const cacheHit = summary.cache_hit_ratio === null
+    ? translate("sources.observability.noCache")
+    : translate("sources.observability.cacheHit", { value: Math.round(summary.cache_hit_ratio * 100) });
+  const latency = summary.avg_latency_ms === null
+    ? translate("sources.observability.noLatencySample")
+    : translate("sources.observability.avgLatency", { value: Math.round(summary.avg_latency_ms) });
   return {
-    headline: `${formatCount(summary.total_tokens)} tokens`,
+    headline: `${formatCount(summary.total_tokens)} ${translate("sources.observability.tokens")}`,
     detail: `${cacheHit} · ${latency}`,
   };
 }

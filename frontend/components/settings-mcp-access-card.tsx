@@ -59,6 +59,19 @@ function statusLabel(status: ReturnType<typeof tokenStatus>) {
   }
 }
 
+function scopeLabel(scope: string) {
+  switch (scope) {
+    case "calendar.read":
+      return translate("settings.mcp.scopeNames.calendarRead");
+    case "changes.write":
+      return translate("settings.mcp.scopeNames.changesWrite");
+    case "manual.write":
+      return translate("settings.mcp.scopeNames.manualWrite");
+    default:
+      return scope;
+  }
+}
+
 function tokenSort(left: McpAccessToken, right: McpAccessToken) {
   const leftStatus = tokenStatus(left);
   const rightStatus = tokenStatus(right);
@@ -302,7 +315,7 @@ export function SettingsMcpAccessCard() {
             ) : (
               sortedTokens.map((token) => {
                 const status = tokenStatus(token);
-                const scopesSummary = token.scopes.length > 0 ? token.scopes.join(", ") : translate("common.labels.notAvailable");
+                const scopesSummary = token.scopes.length > 0 ? token.scopes.map(scopeLabel).join(", ") : translate("common.labels.notAvailable");
 
                 return (
                   <div key={token.token_id} className={workbenchSupportPanelClassName("quiet", "p-4")}>
@@ -352,7 +365,7 @@ export function SettingsMcpAccessCard() {
             )}
           </div>
 
-          <div className="mt-5 rounded-[1rem] border border-line/80 bg-[#fbf8f3] p-4">
+          <div className={workbenchSupportPanelClassName("quiet", "mt-5 p-4")}>
             <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("settings.mcp.usageEyebrow")}</p>
             <p className="mt-2 text-sm leading-6 text-[#596270]">{translate("settings.mcp.usageHint")}</p>
           </div>

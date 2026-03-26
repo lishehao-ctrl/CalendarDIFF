@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "e2e:real-flows": "playwright test -c playwright.config.ts e2e/real_user_flows.spec.ts",
+    "e2e:locale-smoke": "playwright test -c playwright.config.ts e2e/locale_smoke.spec.ts",
+    "e2e:locale-capture": "playwright test -c playwright.config.ts e2e/locale_visual_capture.spec.ts"
   },
   "dependencies": {
     "next": "14.2.30",
@@ -29,6 +32,7 @@
     "postcss": "8.4.49",
     "autoprefixer": "10.4.20",
     "eslint": "8.57.1",
-    "eslint-config-next": "14.2.30"
+    "eslint-config-next": "14.2.30",
+    "@playwright/test": "^1.53.0"
   }
 }

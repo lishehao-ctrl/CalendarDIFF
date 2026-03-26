@@ -1,8 +1,10 @@
 import { apiDelete, apiGet, apiPatch, apiPost, buildQuery } from "@/lib/api/client";
 import type {
+  SourceLlmInvocationsResponse,
   SourceObservabilityResponse,
   SourceRow,
   SourceSyncHistoryResponse,
+  SyncRequestLlmInvocationsResponse,
   SyncStatus,
 } from "@/lib/types";
 
@@ -16,6 +18,14 @@ export function sourceObservabilityCacheKey(sourceId: number) {
 
 export function sourceSyncHistoryCacheKey(sourceId: number, limit?: number) {
   return `sources:${sourceId}:sync-history${buildQuery({ limit })}`;
+}
+
+export function sourceLlmInvocationsCacheKey(sourceId: number, params?: { requestId?: string | null; limit?: number }) {
+  return `sources:${sourceId}:llm-invocations${buildQuery({ request_id: params?.requestId, limit: params?.limit })}`;
+}
+
+export function syncRequestLlmInvocationsCacheKey(requestId: string, limit?: number) {
+  return `sync-requests:${requestId}:llm-invocations${buildQuery({ limit })}`;
 }
 
 export async function listSources(params?: { status?: "active" | "archived" | "all" }) {
@@ -52,4 +62,16 @@ export async function getSourceObservability(sourceId: number) {
 
 export async function getSourceSyncHistory(sourceId: number, params?: { limit?: number }) {
   return apiGet<SourceSyncHistoryResponse>(`/sources/${sourceId}/sync-history${buildQuery({ limit: params?.limit })}`);
+}
+
+export async function getSourceLlmInvocations(sourceId: number, params?: { requestId?: string | null; limit?: number }) {
+  return apiGet<SourceLlmInvocationsResponse>(
+    `/sources/${sourceId}/llm-invocations${buildQuery({ request_id: params?.requestId, limit: params?.limit })}`,
+  );
+}
+
+export async function getSyncRequestLlmInvocations(requestId: string, params?: { limit?: number }) {
+  return apiGet<SyncRequestLlmInvocationsResponse>(
+    `/sync-requests/${encodeURIComponent(requestId)}/llm-invocations${buildQuery({ limit: params?.limit })}`,
+  );
 }

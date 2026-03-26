@@ -1,5 +1,6 @@
 import { demoBackendFetch } from "@/lib/demo-backend";
 import { getClientPreviewMode } from "@/lib/demo-mode";
+import { translate } from "@/lib/i18n/runtime";
 
 export async function backendFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (getClientPreviewMode()) {
@@ -36,7 +37,7 @@ export async function backendFetch<T>(path: string, init?: RequestInit): Promise
 function extractErrorMessage(path: string, status: number, body: string) {
   const trimmed = body.trim();
   if (!trimmed) {
-    return `Backend request failed: ${status}`;
+    return translate("common.backendErrors.requestFailed", { status });
   }
 
   try {
@@ -86,31 +87,31 @@ function humanizeErrorPayload(path: string, status: number, payload: unknown) {
         return message;
       }
       if (path.startsWith("/changes")) {
-        return "Finish onboarding before opening Changes.";
+        return translate("common.backendErrors.finishOnboardingChanges");
       }
       if (path.startsWith("/sources")) {
-        return "Finish onboarding before opening source posture.";
+        return translate("common.backendErrors.finishOnboardingSources");
       }
       if (path.startsWith("/families")) {
-        return "Finish onboarding before opening the family workspace.";
+        return translate("common.backendErrors.finishOnboardingFamilies");
       }
       if (path.startsWith("/manual")) {
-        return "Finish onboarding before opening the manual repair workspace.";
+        return translate("common.backendErrors.finishOnboardingManual");
       }
       if (path.startsWith("/settings")) {
-        return "Finish onboarding before opening Settings.";
+        return translate("common.backendErrors.finishOnboardingSettings");
       }
-      return "Finish onboarding before continuing.";
+      return translate("common.backendErrors.finishOnboardingDefault");
     }
 
     if (code === "gmail_source_exists") {
-      return "A Gmail mailbox is already connected for this workspace.";
+      return translate("common.backendErrors.gmailSourceExists");
     }
     if (code === "ics_source_exists") {
-      return "A Canvas ICS link is already connected for this workspace.";
+      return translate("common.backendErrors.canvasSourceExists");
     }
     if (code === "source_inactive") {
-      return "This source is archived. Reactivate it in Sources before syncing.";
+      return translate("common.backendErrors.sourceInactive");
     }
 
     if (message) {
@@ -119,7 +120,7 @@ function humanizeErrorPayload(path: string, status: number, payload: unknown) {
   }
 
   if (status === 401) {
-    return "Please sign in again.";
+    return translate("common.backendErrors.signInAgain");
   }
 
   return trimmedFallback(payload, status);
@@ -132,6 +133,6 @@ function trimmedFallback(payload: unknown, status: number) {
   try {
     return JSON.stringify(payload);
   } catch {
-    return `Backend request failed: ${status}`;
+    return translate("common.backendErrors.requestFailed", { status });
   }
 }

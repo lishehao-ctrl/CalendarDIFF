@@ -1,5 +1,5 @@
 import type { ChangeItem } from "@/lib/types";
-import { formatNumber, intlDateLocale, translateFallback, translateStatusLabel } from "@/lib/i18n/runtime";
+import { formatNumber, intlDateLocale, translate, translateFallback, translateStatusLabel } from "@/lib/i18n/runtime";
 
 export function formatDateTime(value: string | null | undefined, fallback = "Not available") {
   if (!value) {
@@ -25,11 +25,11 @@ export function formatStatusLabel(value: string | null | undefined, fallback = "
 
 export function formatSemanticDue(payload: Record<string, unknown> | null | undefined, fallback = "Not available") {
   if (!payload) {
-    return fallback;
+    return translateFallback(fallback);
   }
   const dueDate = typeof payload.due_date === "string" ? payload.due_date.trim() : "";
   if (!dueDate) {
-    return fallback;
+    return translateFallback(fallback);
   }
   const dueTime = typeof payload.due_time === "string" ? payload.due_time.trim() : "";
   const precision = typeof payload.time_precision === "string" ? payload.time_precision : "datetime";
@@ -41,7 +41,7 @@ export function formatSemanticDue(payload: Record<string, unknown> | null | unde
 
 export function formatCourseDisplay(payload: Record<string, unknown> | null | undefined, fallback = "Unknown course") {
   if (!payload) {
-    return fallback;
+    return translateFallback(fallback);
   }
   if (typeof payload.course_display === "string" && payload.course_display.trim()) {
     return payload.course_display.trim();
@@ -52,7 +52,7 @@ export function formatCourseDisplay(payload: Record<string, unknown> | null | un
   const quarter = typeof payload.course_quarter === "string" ? payload.course_quarter.trim().toUpperCase() : "";
   const year2 = typeof payload.course_year2 === "number" ? String(payload.course_year2).padStart(2, "0") : "";
   if (!dept || !number) {
-    return fallback;
+    return translateFallback(fallback);
   }
   const base = `${dept} ${number}${suffix}`.trim();
   if (quarter && year2) {
@@ -133,14 +133,14 @@ export function sourceDescriptor(source: {
     return formatStatusLabel(sourceKind);
   }
 
-  return `Source #${source.source_id}`;
+  return `${translate("sources.detail.source")} #${source.source_id}`;
 }
 
 export function sourceKindDescriptor(value: string | null | undefined) {
   if (!value) {
     return null;
   }
-  return `${formatStatusLabel(value)} source`;
+  return formatStatusLabel(value);
 }
 
 export function formatCount(value: number) {

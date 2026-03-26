@@ -61,10 +61,11 @@ export function ErrorState({
 }
 
 export function EmptyState({ title, description }: { title: string; description: string }) {
+  const t = useT();
   return (
     <Card className={workbenchEmptyClassName("p-8")}>
       <div className={workbenchSupportPanelClassName("quiet", "px-4 py-3")}>
-        <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">Workspace</p>
+        <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{t("common.labels.workspace")}</p>
         <h3 className="mt-2 text-lg font-semibold text-ink">{title}</h3>
         <p className="mt-2 max-w-xl text-sm leading-6 text-[#596270]">{description}</p>
       </div>

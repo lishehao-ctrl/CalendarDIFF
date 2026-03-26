@@ -40,6 +40,7 @@ import {
 import { translate } from "@/lib/i18n/runtime";
 import type { EvidencePreviewResponse, LabelLearningPreview, ChangesWorkbenchSummary, ChangeItem, ChangeEditContext, SourceRow } from "@/lib/types";
 import { useApiResource } from "@/lib/use-api-resource";
+import { usePageMetadata } from "@/lib/use-page-metadata";
 
 const statusOptions = ["pending", "approved", "rejected", "all"] as const;
 
@@ -116,15 +117,15 @@ function ChangeSummarySourceCard({
       <p className="mt-2 font-medium text-ink">{sourceLabel}</p>
       {sourceKind ? <p className="mt-1 text-xs text-[#6d7885]">{sourceKind}</p> : null}
       <div className="mt-4 space-y-1.5 text-sm text-[#314051]">
-        <p>Value time: {formatDateTime(summary?.value_time, "N/A")}</p>
-        {summary?.source_observed_at ? <p>Observed: {formatDateTime(summary.source_observed_at)}</p> : null}
+        <p>{translate("changes.workspace.valueTime")}: {formatDateTime(summary?.value_time, translate("common.labels.notAvailable"))}</p>
+        {summary?.source_observed_at ? <p>{translate("changes.workspace.observedAt")}: {formatDateTime(summary.source_observed_at)}</p> : null}
       </div>
     </div>
   );
 }
 
 function ReviewInboxError({ message, basePath = "" }: { message: string; basePath?: string }) {
-  const showSourcesCta = message.includes("Connect at least one active source in Sources");
+  const showSourcesCta = /source|sources|来源/i.test(message);
   return (
     <ErrorState
       message={message}
@@ -175,7 +176,7 @@ function EvidenceSummary({ evidence }: { evidence: LoadedEvidence }) {
                   <p className="font-medium text-ink">{item.event_display?.display_label || translate("common.labels.unknown")}</p>
                   {item.source_title ? <Badge tone="info">{item.source_title}</Badge> : null}
                 </div>
-                {item.uid ? <p className="mt-1 text-xs text-[#6d7885]">UID: {item.uid}</p> : null}
+                {item.uid ? <p className="mt-1 text-xs text-[#6d7885]">{translate("changes.workspace.recordId")}: {item.uid}</p> : null}
               </div>
               <Badge tone="approved">{translate("changes.workspace.emailBacked")}</Badge>
             </div>
@@ -208,9 +209,9 @@ function EvidenceSummary({ evidence }: { evidence: LoadedEvidence }) {
                 <p className="font-medium text-ink">{item.event_display?.display_label || translate("common.labels.unknown")}</p>
                 {item.source_title ? <Badge tone="info">{item.source_title}</Badge> : null}
               </div>
-              {item.uid ? <p className="mt-1 text-xs text-[#6d7885]">UID: {item.uid}</p> : null}
+              {item.uid ? <p className="mt-1 text-xs text-[#6d7885]">{translate("changes.workspace.recordId")}: {item.uid}</p> : null}
             </div>
-            <Badge tone="info">Event {index + 1}</Badge>
+            <Badge tone="info">{translate("changes.workspace.eventNumber", { count: index + 1 })}</Badge>
           </div>
           <div className="mt-4 grid gap-2 md:grid-cols-2">
             <p>{translate("changes.workspace.start")}: {formatDateTime(item.start_at, "N/A")}</p>
@@ -233,10 +234,13 @@ function EvidenceSummary({ evidence }: { evidence: LoadedEvidence }) {
 }
 
 function useWorkspaceLayout() {
-  const { isMobile, isDesktop } = useResponsiveTier();
+  const { isMobile, isDesktop, isTablet, isTabletPortrait, isTabletWide } = useResponsiveTier();
   return {
     side: (isMobile ? "bottom" : "right") as "right" | "bottom",
     isDesktop,
+    isTablet,
+    isTabletPortrait,
+    isTabletWide,
     isMobile,
     showInlineWorkspace: !isMobile,
   };
@@ -423,7 +427,7 @@ function ChangeInboxRow({
         {showSelection ? (
           <div className="pt-1">
             <Checkbox
-              aria-label={`Select review change ${row.id}`}
+              aria-label={translate("changes.selectChangeAria", { id: row.id })}
               checked={checked}
               onChange={(event) => onToggleSelection(event.currentTarget.checked)}
             />
@@ -534,6 +538,7 @@ function DecisionWorkspaceMain({
   | "basePath"
   | "compact"
 >) {
+  const { isTabletPortrait } = useResponsiveTier();
   const summary = summarizeChange(selected);
   const selectedEvidenceAvailability = getEvidenceAvailability(selected);
   const beforeDue = formatSemanticDue((selected.before_event || {}) as Record<string, unknown>, translate("changes.noPreviousTime"));
@@ -541,20 +546,20 @@ function DecisionWorkspaceMain({
   const canonicalTimeline = canonicalTimelineLabel(editContext);
   const decisionSupport = selected.decision_support;
   const [expandedSections, setExpandedSections] = useState<Record<CompactWorkspaceSection, boolean>>({
-    evidence: false,
-    match: false,
+    evidence: isTabletPortrait,
+    match: isTabletPortrait,
     extras: false,
   });
 
   useEffect(() => {
     setExpandedSections({
-      evidence: false,
-      match: false,
+      evidence: isTabletPortrait,
+      match: isTabletPortrait,
       extras: false,
     });
-  }, [selected.id]);
+  }, [isTabletPortrait, selected.id]);
 
-  const evidenceSummary = `${selected.proposal_sources.length} source${selected.proposal_sources.length === 1 ? "" : "s"} · ${confidenceLabel(selected)}`;
+  const evidenceSummary = `${translate("changes.workspace.linkedSources", { count: selected.proposal_sources.length })} · ${confidenceLabel(selected)}`;
   const evidenceBody = (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
@@ -841,7 +846,7 @@ function DecisionWorkspaceRail({
     ? translate("changes.mapping.contextLine", {
         course: labelLearning.course_display || translate("common.labels.unknown"),
         label: labelLearning.raw_label || translate("common.labels.unknown"),
-        ordinal: labelLearning.ordinal ?? "N/A",
+        ordinal: labelLearning.ordinal ?? translate("common.labels.notApplicable"),
       })
     : null;
 
@@ -1039,7 +1044,7 @@ function DecisionWorkspaceRail({
           <div className={workbenchSupportPanelClassName("quiet", "p-4 text-sm text-[#314051]")}>
             <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.reviewBucket")}</p>
             <p className="mt-2 font-medium text-ink">{formatStatusLabel(selected.review_bucket)}</p>
-            <p className="mt-3 text-xs text-[#6d7885]">Intake phase: {formatStatusLabel(selected.intake_phase)}</p>
+            <p className="mt-3 text-xs text-[#6d7885]">{translate("changes.workspace.intakePhase")}: {formatStatusLabel(selected.intake_phase)}</p>
           </div>
           <div className={workbenchSupportPanelClassName("quiet", "p-4 text-sm text-[#314051]")}>
             <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("changes.workspace.sourceReferences")}</p>
@@ -1047,7 +1052,7 @@ function DecisionWorkspaceRail({
               {selected.primary_source ? sourceDescriptor(selected.primary_source) : translate("changes.noPrimarySource")}
             </p>
             <p className="mt-3 text-xs text-[#6d7885]">
-              {selected.proposal_sources.length} proposal source{selected.proposal_sources.length === 1 ? "" : "s"} · {confidenceLabel(selected)}
+              {translate("changes.workspace.linkedSources", { count: selected.proposal_sources.length })} · {confidenceLabel(selected)}
             </p>
           </div>
         </div>
@@ -1115,6 +1120,10 @@ export function ChangeItemsPanel({
   basePath?: string;
   reviewBucket?: "changes" | "initial_review";
 }) {
+  usePageMetadata(
+    reviewBucket === "initial_review" ? translate("changes.initialReview") : translate("changes.replayReview"),
+    reviewBucket === "initial_review" ? translate("changes.hero.initialReviewPendingSummary") : translate("changes.hero.replaySummary"),
+  );
   const [statusFilter, setStatusFilter] = useState<(typeof statusOptions)[number]>("pending");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [selectedChangeId, setSelectedChangeId] = useState<number | null>(null);
@@ -1138,7 +1147,7 @@ export function ChangeItemsPanel({
   const [editContextError, setEditContextError] = useState<string | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const { side: drawerSide, isDesktop, isMobile, showInlineWorkspace } = useWorkspaceLayout();
+  const { side: drawerSide, isDesktop, isTablet, isTabletPortrait, isTabletWide, isMobile, showInlineWorkspace } = useWorkspaceLayout();
   const changeQuery: Parameters<typeof listChanges>[0] = {
     review_status: statusFilter,
     review_bucket: reviewBucket,
@@ -1224,8 +1233,8 @@ export function ChangeItemsPanel({
       if (!availability[side]) {
         const message =
           side === "after"
-            ? "No frozen after evidence is available for this change."
-            : "No frozen before evidence is available for this change.";
+            ? translate("changes.banners.noAfterEvidence")
+            : translate("changes.banners.noBeforeEvidence");
         setEvidence({
           payload: {
             side,
@@ -1249,10 +1258,10 @@ export function ChangeItemsPanel({
         const fallback =
           payload.events
             ?.map((event) => [event.summary || "(untitled)", event.dtstart, event.location].filter(Boolean).join(" · "))
-            .join("\n") || "No preview text available.";
+            .join("\n") || translate("changes.banners.noPreviewText");
         setEvidence({ payload, summaryFallback: fallback });
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Unable to load evidence preview.";
+        const message = err instanceof Error ? err.message : translate("changes.banners.evidencePreviewFailed");
         setEvidence({
           payload: {
             side,
@@ -1314,7 +1323,7 @@ export function ChangeItemsPanel({
       })
       .catch((err) => {
         if (!cancelled) {
-          setEditContextError(err instanceof Error ? err.message : "Unable to load canonical match context.");
+          setEditContextError(err instanceof Error ? err.message : translate("changes.banners.canonicalContextFailed"));
         }
       })
       .finally(() => {
@@ -1352,7 +1361,7 @@ export function ChangeItemsPanel({
       .catch((err) => {
         if (cancelled) return;
         setLabelLearning(null);
-        setLabelLearningError(err instanceof Error ? err.message : "Unable to load label learning context.");
+        setLabelLearningError(err instanceof Error ? err.message : translate("changes.banners.learningContextFailed"));
         setNewFamilyLabel("");
       })
       .finally(() => {
@@ -1373,12 +1382,12 @@ export function ChangeItemsPanel({
     try {
       await decideChange(selected.id, { decision, note: `ui_${decision}` });
       setSelectedIds((prev) => prev.filter((id) => id !== selected.id));
-      setBanner({ tone: "info", text: decision === "approve" ? "Change approved." : "Change rejected." });
+      setBanner({ tone: "info", text: decision === "approve" ? translate("changes.banners.changeApproved") : translate("changes.banners.changeRejected") });
       setLearningOpen(false);
       setMobileDetailOpen(false);
       await refresh();
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Decision failed" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("changes.banners.decisionFailed") });
     } finally {
       setDecisionBusy(null);
     }
@@ -1395,14 +1404,14 @@ export function ChangeItemsPanel({
         tone: payload.failed > 0 ? "error" : "info",
         text:
           payload.failed > 0
-            ? `${payload.succeeded} updated, ${payload.failed} skipped.`
+            ? translate("changes.banners.updatedMany", { succeeded: payload.succeeded, failed: payload.failed })
             : decision === "approve"
-              ? `${payload.succeeded} changes approved.`
-              : `${payload.succeeded} changes rejected.`,
+              ? translate("changes.banners.approvedMany", { count: payload.succeeded })
+              : translate("changes.banners.rejectedMany", { count: payload.succeeded }),
       });
       await refresh();
     } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : "Batch decision failed" });
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("changes.banners.batchFailed") });
     } finally {
       setBatchBusy(null);
     }
@@ -1587,7 +1596,7 @@ export function ChangeItemsPanel({
                 <option value="all">{formatStatusLabel("all")}</option>
                 {(sources.data || []).map((source) => (
                   <option key={source.source_id} value={String(source.source_id)}>
-                    {source.display_name || source.provider || `Source ${source.source_id}`}
+                    {source.display_name || source.provider || translate("changes.sourceFallback", { id: source.source_id })}
                   </option>
                 ))}
               </select>
@@ -1614,10 +1623,10 @@ export function ChangeItemsPanel({
             {statusFilter === "pending" ? <Badge tone="pending">{translate("changes.selectedCount", { count: selectedIds.length })}</Badge> : <Badge tone="info">{translate("changes.rowsCount", { count: rows.length })}</Badge>}
           </div>
 
-      {statusFilter === "pending" && isDesktop ? (
+      {statusFilter === "pending" && !isMobile ? (
             <div className={workbenchSupportPanelClassName("quiet", "mt-4 flex flex-wrap items-center justify-between gap-4 p-4")}>
               <label className="flex items-center gap-3 text-sm text-[#314051]">
-                <Checkbox aria-label="Select all visible review changes" checked={allVisibleSelected} onChange={(event) => toggleVisibleSelection(event.currentTarget.checked)} />
+                <Checkbox aria-label={translate("changes.selectVisible")} checked={allVisibleSelected} onChange={(event) => toggleVisibleSelection(event.currentTarget.checked)} />
                 {translate("changes.selectVisible")}
               </label>
               <div className="flex flex-wrap gap-2">
@@ -1670,7 +1679,7 @@ export function ChangeItemsPanel({
                         checked={selectedIdsSet.has(row.id)}
                         onToggleSelection={(checked) => toggleRowSelection(row.id, checked)}
                         onOpen={() => openChange(row.id)}
-                        showSelection={isDesktop && statusFilter === "pending"}
+                        showSelection={!isMobile && statusFilter === "pending"}
                         compact={!isDesktop}
                         basePath={basePath}
                       />
@@ -1732,6 +1741,89 @@ export function ChangeItemsPanel({
                     basePath={basePath}
                   />
                 </div>
+              </div>
+            ) : isTablet ? (
+              <div className={isTabletWide ? "space-y-4" : "space-y-4"}>
+                {isTabletWide ? (
+                  <div className="lg:sticky lg:top-24">
+                    <DecisionWorkspaceRail
+                      selected={selected}
+                      labelLearning={labelLearning}
+                      labelLearningBusy={labelLearningBusy}
+                      labelLearningError={labelLearningError}
+                      learningOpen={learningOpen}
+                      newFamilyLabel={newFamilyLabel}
+                      editContext={editContext}
+                      decisionBusy={decisionBusy}
+                      onMarkViewed={() => void markViewed(selected)}
+                      onDecide={(decision) => void decide(decision)}
+                      onLearningToggle={() => setLearningOpen((current) => !current)}
+                      onApproveAndLearnExisting={(familyId, rawLabel, canonicalLabel) =>
+                        void approveAndLearn({
+                          mode: "add_alias",
+                          family_id: familyId,
+                          successText: translate("changes.learnedExisting", { rawLabel, canonicalLabel }),
+                        })
+                      }
+                      onApproveAndLearnCreate={() =>
+                        void approveAndLearn({
+                          mode: "create_family",
+                          canonical_label: newFamilyLabel.trim(),
+                          successText: translate("changes.learnedCreated", { label: newFamilyLabel.trim() }),
+                        })
+                      }
+                      onNewFamilyLabelChange={setNewFamilyLabel}
+                      onRetryLearningContext={() => setLabelLearningReloadNonce((current) => current + 1)}
+                      basePath={basePath}
+                    />
+                  </div>
+                ) : null}
+                <DecisionWorkspaceMain
+                  selected={selected}
+                  currentEvidenceSide={currentEvidenceSide}
+                  evidenceView={evidenceView}
+                  evidence={evidence}
+                  previewBusy={previewBusy}
+                  editContext={editContext}
+                  editContextBusy={editContextBusy}
+                  editContextError={editContextError}
+                  onEvidenceSideChange={(side) => void openEvidence(selected, side)}
+                  onEvidenceViewChange={setEvidenceView}
+                  basePath={basePath}
+                  compact
+                />
+                {isTabletPortrait ? (
+                  <DecisionWorkspaceRail
+                    selected={selected}
+                    labelLearning={labelLearning}
+                    labelLearningBusy={labelLearningBusy}
+                    labelLearningError={labelLearningError}
+                    learningOpen={learningOpen}
+                    newFamilyLabel={newFamilyLabel}
+                    editContext={editContext}
+                    decisionBusy={decisionBusy}
+                    onMarkViewed={() => void markViewed(selected)}
+                    onDecide={(decision) => void decide(decision)}
+                    onLearningToggle={() => setLearningOpen((current) => !current)}
+                    onApproveAndLearnExisting={(familyId, rawLabel, canonicalLabel) =>
+                      void approveAndLearn({
+                        mode: "add_alias",
+                        family_id: familyId,
+                        successText: translate("changes.learnedExisting", { rawLabel, canonicalLabel }),
+                      })
+                    }
+                    onApproveAndLearnCreate={() =>
+                      void approveAndLearn({
+                        mode: "create_family",
+                        canonical_label: newFamilyLabel.trim(),
+                        successText: translate("changes.learnedCreated", { label: newFamilyLabel.trim() }),
+                      })
+                    }
+                    onNewFamilyLabelChange={setNewFamilyLabel}
+                    onRetryLearningContext={() => setLabelLearningReloadNonce((current) => current + 1)}
+                    basePath={basePath}
+                  />
+                ) : null}
               </div>
             ) : (
               <DecisionWorkspace
@@ -1884,7 +1976,7 @@ export function ChangeItemsPanel({
                 <option value="all">{formatStatusLabel("all")}</option>
                 {(sources.data || []).map((source) => (
                   <option key={source.source_id} value={String(source.source_id)}>
-                    {source.display_name || source.provider || `Source ${source.source_id}`}
+                    {source.display_name || source.provider || translate("changes.sourceFallback", { id: source.source_id })}
                   </option>
                 ))}
               </select>

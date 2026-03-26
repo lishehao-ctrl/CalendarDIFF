@@ -1,6 +1,7 @@
 "use client";
 
 import { type DependencyList, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { translate } from "@/lib/i18n/runtime";
 import { getCachedResourceSnapshot, invalidateCachedResource, preloadResource, writeCachedResource } from "@/lib/resource-cache";
 
 type UseApiResourceOptions = {
@@ -95,7 +96,7 @@ export function useApiResource<T>(
       applyData(next);
     } catch (err) {
       if (!background) {
-        setError(err instanceof Error ? err.message : "Unknown error");
+        setError(err instanceof Error ? err.message : translate("common.labels.requestError"));
       }
     } finally {
       if (!background) {

@@ -18,10 +18,12 @@ import {
 } from "@/lib/api/manual";
 import { familiesListCacheKey, listFamilies } from "@/lib/api/families";
 import { translate } from "@/lib/i18n/runtime";
+import { useResponsiveTier } from "@/lib/use-responsive-tier";
 import { useApiResource } from "@/lib/use-api-resource";
 import { formatDateTime, formatSemanticDue, formatStatusLabel } from "@/lib/presenters";
 import { workbenchQueueRowClassName, workbenchStateSurfaceClassName, workbenchSupportPanelClassName } from "@/lib/workbench-styles";
 import type { CourseWorkItemFamily, ManualEvent } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 type Banner = {
   tone: "info" | "error";
@@ -104,6 +106,7 @@ function FieldLabel({ htmlFor, children }: { htmlFor?: string; children: React.R
 }
 
 export function ManualWorkbenchPanel() {
+  const { isMobile, isDesktop, isTabletWide } = useResponsiveTier();
   const families = useApiResource<CourseWorkItemFamily[]>(() => listFamilies(), [], [], {
     cacheKey: familiesListCacheKey(),
   });
@@ -160,6 +163,7 @@ export function ManualWorkbenchPanel() {
     return familiesByCourse.get(addCourseKey) || [];
   }, [addCourseKey, familiesByCourse, familyRows]);
   const courseCount = familyCourseOptions.length;
+  const showSplitWorkbench = !isMobile;
   const selectedEvent = useMemo(
     () => filteredEventRows.find((event) => event.entity_uid === expandedEventUid) || filteredEventRows[0] || null,
     [expandedEventUid, filteredEventRows],
@@ -307,7 +311,7 @@ export function ManualWorkbenchPanel() {
 
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <p className="text-sm text-[#596270]">
-          {eventRows.length} events · {courseCount} courses
+          {translate("common.labels.eventsCount", { count: eventRows.length })} · {translate("common.labels.coursesCount", { count: courseCount })}
         </p>
         <Button size="sm" variant={addOpen ? "secondary" : "ghost"} onClick={() => setAddOpen((current) => !current)}>
           <Plus className="mr-2 h-4 w-4" />
@@ -369,15 +373,30 @@ export function ManualWorkbenchPanel() {
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
                       <FieldLabel htmlFor="manual-add-name">{translate("manual.eventName")}</FieldLabel>
-                      <Input id="manual-add-name" value={addEventForm.eventName} onChange={(event) => setAddEventForm((prev) => ({ ...prev, eventName: event.target.value }))} placeholder="Homework 5" />
+                      <Input
+                        id="manual-add-name"
+                        value={addEventForm.eventName}
+                        onChange={(event) => setAddEventForm((prev) => ({ ...prev, eventName: event.target.value }))}
+                        placeholder={translate("manual.sampleEventName")}
+                      />
                     </div>
                     <div>
                       <FieldLabel htmlFor="manual-add-raw-type">{translate("manual.rawType")}</FieldLabel>
-                      <Input id="manual-add-raw-type" value={addEventForm.rawType} onChange={(event) => setAddEventForm((prev) => ({ ...prev, rawType: event.target.value }))} placeholder="hw" />
+                      <Input
+                        id="manual-add-raw-type"
+                        value={addEventForm.rawType}
+                        onChange={(event) => setAddEventForm((prev) => ({ ...prev, rawType: event.target.value }))}
+                        placeholder={translate("manual.sampleObservedLabel")}
+                      />
                     </div>
                     <div>
                       <FieldLabel htmlFor="manual-add-ordinal">{translate("manual.number")}</FieldLabel>
-                      <Input id="manual-add-ordinal" value={addEventForm.ordinal} onChange={(event) => setAddEventForm((prev) => ({ ...prev, ordinal: event.target.value }))} placeholder="5" />
+                      <Input
+                        id="manual-add-ordinal"
+                        value={addEventForm.ordinal}
+                        onChange={(event) => setAddEventForm((prev) => ({ ...prev, ordinal: event.target.value }))}
+                        placeholder={translate("manual.sampleOrdinal")}
+                      />
                     </div>
                     <div>
                       <FieldLabel htmlFor="manual-add-date">{translate("manual.dueDate")}</FieldLabel>
@@ -454,7 +473,7 @@ export function ManualWorkbenchPanel() {
                 ))}
               </select>
             </div>
-            <div className="pb-2 text-sm text-[#596270] md:col-span-2 xl:col-span-1">{filteredEventRows.length} events</div>
+            <div className="pb-2 text-sm text-[#596270] md:col-span-2 xl:col-span-1">{translate("common.labels.eventsCount", { count: filteredEventRows.length })}</div>
           </div>
         </Card>
 
@@ -462,7 +481,8 @@ export function ManualWorkbenchPanel() {
           <EmptyState title={translate("manual.noEventsTitle")} description={translate("manual.listEmpty")} />
         ) : (
           <>
-          <div className="hidden md:grid md:grid-cols-[280px_minmax(0,1fr)] md:items-start md:gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+          {showSplitWorkbench ? (
+          <div className={cn("grid items-start gap-4", isDesktop ? "md:grid-cols-[320px_minmax(0,1fr)]" : isTabletWide ? "lg:grid-cols-[320px_minmax(0,1fr)]" : "md:grid-cols-[280px_minmax(0,1fr)]")}>
             <Card className="self-start p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("manual.heroEyebrow")}</p>
               <h3 className="mt-1 text-lg font-semibold text-ink">{translate("manual.heroTitle")}</h3>
@@ -478,14 +498,14 @@ export function ManualWorkbenchPanel() {
                     })}
                   >
                     <p className="truncate text-sm font-medium text-ink">{eventSummaryLabel(event)}</p>
-                    <p className="mt-1 text-xs text-[#6d7885]">{formatSemanticDue(event as unknown as Record<string, unknown>, "No due date")}</p>
+                    <p className="mt-1 text-xs text-[#6d7885]">{formatSemanticDue(event as unknown as Record<string, unknown>, translate("common.labels.noDueDate"))}</p>
                   </button>
                 ))}
               </div>
             </Card>
 
             {selectedEvent ? (
-              <div className="space-y-4 xl:grid xl:grid-cols-[minmax(0,1fr)_240px] xl:items-start xl:gap-4 xl:space-y-0">
+              <div className={cn("space-y-4", isDesktop ? "xl:grid xl:grid-cols-[minmax(0,1fr)_240px] xl:items-start xl:gap-4 xl:space-y-0" : "")}>
                 <Card className="p-5">
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -572,7 +592,10 @@ export function ManualWorkbenchPanel() {
                   </div>
                   <div className="mt-4 flex items-center justify-between gap-3">
                     <p className="text-sm text-[#596270]">
-                      {formatSemanticDue(selectedEvent as unknown as Record<string, unknown>, "No due date")} · Updated {formatDateTime(selectedEvent.updated_at, "Recently")}
+                      {translate("manual.updatedMeta", {
+                        due: formatSemanticDue(selectedEvent as unknown as Record<string, unknown>, translate("common.labels.noDueDate")),
+                        time: formatDateTime(selectedEvent.updated_at, translate("common.labels.recent")),
+                      })}
                     </p>
                     <Button size="sm" onClick={() => void submitEditedEvent()} disabled={busyEvent === "save"}>
                       {busyEvent === "save" ? `${translate("common.actions.save")}...` : translate("common.actions.save")}
@@ -580,23 +603,40 @@ export function ManualWorkbenchPanel() {
                   </div>
                 </Card>
 
-                <Card className="hidden self-start p-4 xl:block">
-                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("manual.heroEyebrow")}</p>
-                  <div className={workbenchSupportPanelClassName("quiet", "mt-3 p-4")}>
-                    <p className="text-sm leading-6 text-[#596270]">{translate("manual.heroSummary")}</p>
-                  </div>
-                  <div className="mt-4">
-                    <Button size="sm" variant={addOpen ? "secondary" : "ghost"} onClick={() => setAddOpen((current) => !current)}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      {addOpen ? translate("common.actions.hideAddForm") : translate("manual.addButton")}
-                    </Button>
-                  </div>
-                </Card>
+                {isDesktop ? (
+                  <Card className="hidden self-start p-4 xl:block">
+                    <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("manual.heroEyebrow")}</p>
+                    <div className={workbenchSupportPanelClassName("quiet", "mt-3 p-4")}>
+                      <p className="text-sm leading-6 text-[#596270]">{translate("manual.heroSummary")}</p>
+                    </div>
+                    <div className="mt-4">
+                      <Button size="sm" variant={addOpen ? "secondary" : "ghost"} onClick={() => setAddOpen((current) => !current)}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        {addOpen ? translate("common.actions.hideAddForm") : translate("manual.addButton")}
+                      </Button>
+                    </div>
+                  </Card>
+                ) : (
+                  <Card className="p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("manual.heroEyebrow")}</p>
+                    <div className={workbenchSupportPanelClassName("quiet", "mt-3 p-4")}>
+                      <p className="text-sm leading-6 text-[#596270]">{translate("manual.heroSummary")}</p>
+                    </div>
+                    <div className="mt-4">
+                      <Button size="sm" variant={addOpen ? "secondary" : "ghost"} onClick={() => setAddOpen((current) => !current)}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        {addOpen ? translate("common.actions.hideAddForm") : translate("manual.addButton")}
+                      </Button>
+                    </div>
+                  </Card>
+                )}
               </div>
             ) : null}
           </div>
+          ) : null}
 
-          <Card className="p-4 md:hidden">
+          {isMobile ? (
+          <Card className="p-4">
             <div className="space-y-3">
               {filteredEventRows.map((event) => {
                 const expanded = expandedEventUid === event.entity_uid;
@@ -620,7 +660,7 @@ export function ManualWorkbenchPanel() {
 
                     {expanded ? (
                       <div className="mt-4 border-t border-line/70 pt-4">
-                        <div className="grid gap-4 lg:grid-cols-2">
+                        <div className="grid gap-4 sm:grid-cols-2">
                           <div className={workbenchSupportPanelClassName("quiet", "p-4")}>
                             <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("manual.identity")}</p>
                             <div className="mt-4 space-y-4">
@@ -708,7 +748,7 @@ export function ManualWorkbenchPanel() {
                             </div>
                           </div>
 
-                          <div className={workbenchSupportPanelClassName("quiet", "p-4 lg:col-span-2")}>
+                          <div className={workbenchSupportPanelClassName("quiet", "p-4 sm:col-span-2")}>
                             <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("manual.auditNote")}</p>
                             <div className="mt-4">
                               <FieldLabel htmlFor={`event-reason-${event.entity_uid}`}>{translate("manual.reason")}</FieldLabel>
@@ -724,7 +764,10 @@ export function ManualWorkbenchPanel() {
                         </div>
                         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                           <p className="text-sm text-[#596270]">
-                            {formatSemanticDue(event as unknown as Record<string, unknown>, "No due date")} · Updated {formatDateTime(event.updated_at, "Recently")}
+                            {translate("manual.updatedMeta", {
+                              due: formatSemanticDue(event as unknown as Record<string, unknown>, translate("common.labels.noDueDate")),
+                              time: formatDateTime(event.updated_at, translate("common.labels.recent")),
+                            })}
                           </p>
                           <div className="flex flex-wrap items-center gap-2">
                             <Button size="sm" variant="ghost" onClick={() => void removeEvent(event)} disabled={busyEvent === "delete"}>
@@ -743,6 +786,7 @@ export function ManualWorkbenchPanel() {
               })}
             </div>
           </Card>
+          ) : null}
           </>
         )}
       </div>
