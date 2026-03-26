@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.security import require_public_api_key
 from app.db.session import get_db
 from app.modules.common.api_errors import api_error_detail
+from app.modules.common.request_rate_limit import enforce_auth_rate_limit
 from app.modules.auth.deps import attach_session_cookie, clear_session_cookie, get_authenticated_user_or_401
 from app.modules.auth.schemas import AuthLoginRequest, AuthLogoutResponse, AuthRegisterRequest, AuthSessionResponse, AuthSessionUserResponse
 from app.modules.auth.service import AuthEmailExistsError, InvalidCredentialsError, login_user, register_user
@@ -18,9 +19,11 @@ router = APIRouter(prefix="/auth", tags=["auth"], dependencies=[Depends(require_
 @router.post("/register", response_model=AuthSessionResponse, status_code=status.HTTP_201_CREATED)
 def register_auth(
     payload: AuthRegisterRequest,
+    request: Request,
     response: Response,
     db: Session = Depends(get_db),
 ) -> AuthSessionResponse:
+    enforce_auth_rate_limit(request)
     try:
         user = register_user(
             db,
@@ -55,9 +58,11 @@ def register_auth(
 @router.post("/login", response_model=AuthSessionResponse)
 def login_auth(
     payload: AuthLoginRequest,
+    request: Request,
     response: Response,
     db: Session = Depends(get_db),
 ) -> AuthSessionResponse:
+    enforce_auth_rate_limit(request)
     try:
         user = login_user(
             db,

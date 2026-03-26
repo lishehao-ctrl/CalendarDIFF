@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models.agents import ApprovalTicket, ApprovalTicketStatus, AgentProposal, AgentProposalStatus
@@ -72,16 +73,7 @@ def create_approval_ticket(
         )
     _assert_proposal_executable(proposal)
 
-    existing = db.scalar(
-        select(ApprovalTicket)
-        .where(
-            ApprovalTicket.proposal_id == proposal.id,
-            ApprovalTicket.user_id == user_id,
-            ApprovalTicket.status.in_((ApprovalTicketStatus.OPEN, ApprovalTicketStatus.EXECUTED)),
-        )
-        .order_by(ApprovalTicket.created_at.desc())
-        .limit(1)
-    )
+    existing = _find_existing_live_ticket(db, proposal_id=proposal.id, user_id=user_id)
     if existing is not None and not _is_expired(existing):
         return existing
 
@@ -108,7 +100,14 @@ def create_approval_ticket(
         expires_at=proposal.expires_at,
     )
     db.add(ticket)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = _find_existing_live_ticket(db, proposal_id=proposal.id, user_id=user_id)
+        if existing is not None and not _is_expired(existing):
+            return existing
+        raise
     db.refresh(ticket)
     record_ticket_transition_delivery(
         db,
@@ -118,6 +117,19 @@ def create_approval_ticket(
         cta_code=ticket_social_safe_cta_code(ticket),
     )
     return ticket
+
+
+def _find_existing_live_ticket(db: Session, *, proposal_id: int, user_id: int) -> ApprovalTicket | None:
+    return db.scalar(
+        select(ApprovalTicket)
+        .where(
+            ApprovalTicket.proposal_id == proposal_id,
+            ApprovalTicket.user_id == user_id,
+            ApprovalTicket.status.in_((ApprovalTicketStatus.OPEN, ApprovalTicketStatus.EXECUTED)),
+        )
+        .order_by(ApprovalTicket.created_at.desc())
+        .limit(1)
+    )
 
 
 def get_approval_ticket(db: Session, *, user_id: int, ticket_id: str) -> ApprovalTicket | None:

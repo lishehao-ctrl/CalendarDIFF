@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models.agents import AgentProposal, AgentProposalStatus, AgentProposalType
@@ -36,6 +37,8 @@ from app.modules.changes.edit_service import (
 from app.modules.common.structured_copy import render_structured_text
 from app.modules.common.stable_json_hash import stable_json_hash
 
+logger = logging.getLogger(__name__)
+
 
 class AgentProposalInvalidStateError(RuntimeError):
     def __init__(self, *, code: str, message: str, message_code: str) -> None:
@@ -46,6 +49,51 @@ class AgentProposalInvalidStateError(RuntimeError):
             "message_code": message_code,
             "message_params": {},
         }
+
+
+def _persist_or_reuse_open_proposal(db: Session, *, proposal: AgentProposal) -> AgentProposal:
+    existing = _find_equivalent_open_proposal(db, proposal=proposal)
+    if existing is not None:
+        logger.info(
+            "agent proposal deduped user_id=%s proposal_type=%s target_kind=%s target_id=%s suggested_action=%s proposal_id=%s",
+            proposal.user_id,
+            proposal.proposal_type.value,
+            proposal.target_kind,
+            proposal.target_id,
+            proposal.suggested_action,
+            existing.id,
+        )
+        return existing
+    db.add(proposal)
+    db.commit()
+    db.refresh(proposal)
+    return proposal
+
+
+def _find_equivalent_open_proposal(db: Session, *, proposal: AgentProposal) -> AgentProposal | None:
+    now = datetime.now(timezone.utc)
+    rows = db.scalars(
+        select(AgentProposal)
+        .where(
+            AgentProposal.user_id == proposal.user_id,
+            AgentProposal.proposal_type == proposal.proposal_type,
+            AgentProposal.status == AgentProposalStatus.OPEN,
+            AgentProposal.target_kind == proposal.target_kind,
+            AgentProposal.target_id == proposal.target_id,
+            AgentProposal.suggested_action == proposal.suggested_action,
+            or_(AgentProposal.expires_at.is_(None), AgentProposal.expires_at > now),
+        )
+        .order_by(AgentProposal.created_at.desc(), AgentProposal.id.desc())
+    ).all()
+    candidate_payload_hash = stable_json_hash(proposal.payload_json or {})
+    candidate_snapshot_hash = stable_json_hash(proposal.target_snapshot_json or {})
+    for row in rows:
+        if stable_json_hash(row.payload_json or {}) != candidate_payload_hash:
+            continue
+        if stable_json_hash(row.target_snapshot_json or {}) != candidate_snapshot_hash:
+            continue
+        return row
+    return None
 
 
 def _resolve_language_context_for_user(
@@ -179,10 +227,7 @@ def create_change_decision_proposal_with_origin(
         target_snapshot_json=draft.target_snapshot_json,
         expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
     )
-    db.add(proposal)
-    db.commit()
-    db.refresh(proposal)
-    return proposal
+    return _persist_or_reuse_open_proposal(db, proposal=proposal)
 
 
 def create_source_recovery_proposal(db: Session, *, user_id: int, source_id: int) -> AgentProposal:
@@ -295,10 +340,7 @@ def create_source_recovery_proposal_with_origin(
         target_snapshot_json=draft.target_snapshot_json,
         expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
     )
-    db.add(proposal)
-    db.commit()
-    db.refresh(proposal)
-    return proposal
+    return _persist_or_reuse_open_proposal(db, proposal=proposal)
 
 
 def create_family_relink_preview_proposal(
@@ -491,10 +533,7 @@ def create_family_relink_preview_proposal_with_origin(
         target_snapshot_json=draft.target_snapshot_json,
         expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
     )
-    db.add(proposal)
-    db.commit()
-    db.refresh(proposal)
-    return proposal
+    return _persist_or_reuse_open_proposal(db, proposal=proposal)
 
 
 def create_family_relink_commit_proposal_with_origin(
@@ -615,10 +654,7 @@ def create_family_relink_commit_proposal_with_origin(
         target_snapshot_json=draft.target_snapshot_json,
         expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
     )
-    db.add(proposal)
-    db.commit()
-    db.refresh(proposal)
-    return proposal
+    return _persist_or_reuse_open_proposal(db, proposal=proposal)
 
 
 def create_change_edit_commit_proposal_with_origin(
@@ -762,10 +798,7 @@ def create_change_edit_commit_proposal_with_origin(
         target_snapshot_json=draft.target_snapshot_json,
         expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
     )
-    db.add(proposal)
-    db.commit()
-    db.refresh(proposal)
-    return proposal
+    return _persist_or_reuse_open_proposal(db, proposal=proposal)
 
 
 def create_label_learning_commit_proposal_with_origin(

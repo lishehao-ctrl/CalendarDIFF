@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.security import require_public_api_key
@@ -52,6 +52,7 @@ from app.modules.agents.proposal_service import (
     AgentProposalInvalidStateError,
 )
 from app.modules.auth.deps import get_onboarded_authenticated_user_or_409 as get_onboarded_user_or_409
+from app.modules.common.request_rate_limit import enforce_user_mutation_rate_limit
 
 router = APIRouter(prefix="/agent", tags=["agents"], dependencies=[Depends(require_public_api_key)])
 
@@ -112,9 +113,11 @@ def get_agent_family_context(
 @router.post("/proposals/change-decision", response_model=AgentProposalResponse, status_code=status.HTTP_201_CREATED)
 def post_agent_change_decision_proposal(
     payload: AgentChangeDecisionProposalRequest,
+    request: Request,
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> AgentProposalResponse:
+    enforce_user_mutation_rate_limit(request, user_id=user.id)
     try:
         proposal = create_change_decision_proposal(
             db=db,
@@ -132,16 +135,18 @@ def post_agent_change_decision_proposal(
 @router.post("/proposals/change-edit-commit", response_model=AgentProposalResponse, status_code=status.HTTP_201_CREATED)
 def post_agent_change_edit_commit_proposal(
     payload: AgentChangeEditCommitProposalRequest,
+    request: Request,
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> AgentProposalResponse:
+    enforce_user_mutation_rate_limit(request, user_id=user.id)
     try:
         proposal = create_change_edit_commit_proposal(
             db=db,
             user_id=user.id,
             change_id=payload.change_id,
             patch=payload.patch.model_dump(exclude_unset=True),
-            language_code=payload.language_code or user.language_code,
+            language_code=payload.language_code,
         )
     except AgentContextNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.detail) from exc
@@ -153,9 +158,11 @@ def post_agent_change_edit_commit_proposal(
 @router.post("/proposals/source-recovery", response_model=AgentProposalResponse, status_code=status.HTTP_201_CREATED)
 def post_agent_source_recovery_proposal(
     payload: AgentSourceRecoveryProposalRequest,
+    request: Request,
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> AgentProposalResponse:
+    enforce_user_mutation_rate_limit(request, user_id=user.id)
     try:
         proposal = create_source_recovery_proposal(
             db=db,
@@ -171,9 +178,11 @@ def post_agent_source_recovery_proposal(
 @router.post("/proposals/family-relink-preview", response_model=AgentProposalResponse, status_code=status.HTTP_201_CREATED)
 def post_agent_family_relink_preview_proposal(
     payload: AgentFamilyRelinkPreviewProposalRequest,
+    request: Request,
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> AgentProposalResponse:
+    enforce_user_mutation_rate_limit(request, user_id=user.id)
     try:
         proposal = create_family_relink_preview_proposal(
             db=db,
@@ -192,9 +201,11 @@ def post_agent_family_relink_preview_proposal(
 @router.post("/proposals/family-relink-commit", response_model=AgentProposalResponse, status_code=status.HTTP_201_CREATED)
 def post_agent_family_relink_commit_proposal(
     payload: AgentFamilyRelinkCommitProposalRequest,
+    request: Request,
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> AgentProposalResponse:
+    enforce_user_mutation_rate_limit(request, user_id=user.id)
     try:
         proposal = create_family_relink_commit_proposal(
             db=db,
@@ -213,9 +224,11 @@ def post_agent_family_relink_commit_proposal(
 @router.post("/proposals/label-learning-commit", response_model=AgentProposalResponse, status_code=status.HTTP_201_CREATED)
 def post_agent_label_learning_commit_proposal(
     payload: AgentLabelLearningCommitProposalRequest,
+    request: Request,
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> AgentProposalResponse:
+    enforce_user_mutation_rate_limit(request, user_id=user.id)
     try:
         proposal = create_label_learning_commit_proposal(
             db=db,
@@ -313,9 +326,11 @@ def get_approval_tickets_route(
 @router.post("/approval-tickets", response_model=ApprovalTicketResponse, status_code=status.HTTP_201_CREATED)
 def post_approval_ticket(
     payload: ApprovalTicketCreateRequest,
+    request: Request,
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> ApprovalTicketResponse:
+    enforce_user_mutation_rate_limit(request, user_id=user.id)
     try:
         ticket = create_approval_ticket_for_proposal(
             db=db,
@@ -375,9 +390,11 @@ def get_approval_ticket_route(
 def post_approval_ticket_confirm(
     ticket_id: str,
     payload: ApprovalTicketConfirmRequest,
+    request: Request,
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> ApprovalTicketResponse:
+    enforce_user_mutation_rate_limit(request, user_id=user.id)
     try:
         ticket = confirm_approval_ticket_for_user(
             db=db,
@@ -394,9 +411,11 @@ def post_approval_ticket_confirm(
 def post_approval_ticket_cancel(
     ticket_id: str,
     payload: ApprovalTicketCancelRequest,
+    request: Request,
     db: Session = Depends(get_db),
     user=Depends(get_onboarded_user_or_409),
 ) -> ApprovalTicketResponse:
+    enforce_user_mutation_rate_limit(request, user_id=user.id)
     try:
         ticket = cancel_approval_ticket_for_user(
             db=db,

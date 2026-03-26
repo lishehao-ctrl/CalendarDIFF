@@ -169,9 +169,70 @@ def test_compute_summary_counts_failures_and_guard_violations() -> None:
     assert summary["safety"]["non_executable_proposal_ticket_created_count"] == 1
     assert "non_executable_proposal_ticket_created" in summary["threshold_failures"]
     assert summary["latency_ms"]["overall"]["p50"] == 180.0
+    assert summary["reliability"]["context_read_success_rate"] is None
+    assert summary["reliability"]["state_drift_guard_success_rate"] is None
+    assert summary["token_usage"]["overall"]["total_tokens"] == 0
+    assert summary["cost_usd"]["overall"]["estimated_cost_usd"] == 0.0
+    assert summary["safety"]["corrupt_success_count"] == 1
+    assert summary["safety"]["procedural_integrity_score"] == 0.5
+    assert summary["scenario_weighted_score"] == 0.425
     assert summary["reliability"]["proposal_success_rate"] == 1.0
     assert summary["reliability"]["ticket_create_success_rate"] is None
     assert summary["executable_actions_exercised"]["change_decision"] is False
+    assert "corrupt_success_detected" in summary["threshold_failures"]
+
+
+def test_evaluate_repeat_proposal_outcome_accepts_deduped_open_proposal() -> None:
+    outcome = live_eval.evaluate_repeat_proposal_outcome(
+        first_status=201,
+        first_payload={"proposal_id": 42},
+        second_status=201,
+        second_payload={"proposal_id": 42},
+        fetched_ok=True,
+    )
+
+    assert outcome["success"] is True
+    assert outcome["details"]["deduped_open_proposal"] is True
+    assert outcome["details"]["returned_distinct_rows"] is False
+
+
+def test_compute_summary_counts_repeat_proposal_dedupe_as_single_persisted_row() -> None:
+    plan = [
+        live_eval.ScenarioSpec("change.proposal.repeat", "Repeat proposal", "change_proposal", "change_proposal_repeat"),
+    ]
+    results = [
+        live_eval.ScenarioResult(
+            scenario_id="change.proposal.repeat",
+            name="Repeat proposal",
+            category="change_proposal",
+            operation="change_proposal_repeat",
+            status="passed",
+            success=True,
+            expected_statuses=[201],
+            http_status=201,
+            started_at="2026-03-23T00:00:00+00:00",
+            finished_at="2026-03-23T00:00:01+00:00",
+            elapsed_ms=100.0,
+            note="deduped",
+            details={
+                "deduped_open_proposal": True,
+                "returned_distinct_rows": False,
+                "fetched_ok": True,
+                "first_proposal_id": 7,
+                "second_proposal_id": 7,
+            },
+        ),
+    ]
+
+    summary = live_eval.compute_summary(
+        plan=plan,
+        results=results,
+        proposal_audit={"count": 1},
+        ticket_audit={"count": 0},
+    )
+
+    assert summary["audit"]["proposal_rows"] == 1
+    assert summary["audit"]["proposal_persistence_completeness"] == 1.0
 
 
 def test_report_eval_rebuilds_summary_from_saved_artifacts(tmp_path: Path) -> None:
@@ -227,6 +288,8 @@ def test_report_eval_rebuilds_summary_from_saved_artifacts(tmp_path: Path) -> No
     assert (run_dir / live_eval.SUMMARY_FILE).exists()
     saved_summary = json.loads((run_dir / live_eval.SUMMARY_JSON_FILE).read_text(encoding="utf-8"))
     assert saved_summary["passed_count"] == 1
+    assert saved_summary["token_usage"]["overall"]["total_tokens"] == 0
     markdown = (run_dir / live_eval.SUMMARY_FILE).read_text(encoding="utf-8")
     assert "Agent Live Eval Summary" in markdown
+    assert "Token & Cost" in markdown
     assert "Workspace context primary read" not in markdown

@@ -22,6 +22,7 @@ if str(REPO_ROOT) not in sys.path:
 from app.core.config import get_settings
 from app.db.models.agents import ApprovalTicket, AgentProposal, McpToolInvocation
 from app.db.session import get_session_factory, reset_engine
+from app.modules.llm_gateway.registry import validate_agent_llm_config, validate_ingestion_llm_config
 from scripts.run_claw_mcp_smoke import configure_smoke_database
 
 OUTPUT_ROOT = REPO_ROOT / "output"
@@ -30,6 +31,7 @@ DEFAULT_OTHER_EMAIL = "agent-live-eval-other@example.com"
 DEFAULT_PASSWORD = "password123"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8210
+DEFAULT_FRONTEND_BASE = "http://127.0.0.1:3000"
 
 STRICT_PYTEST_COMMANDS: list[list[str]] = [
     [sys.executable, "-m", "pytest", "-q", "tests/test_mcp_server.py"],
@@ -63,6 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--database-url", default=None)
     parser.add_argument("--public-api-host", default=DEFAULT_HOST)
     parser.add_argument("--public-api-port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--frontend-base", default=DEFAULT_FRONTEND_BASE)
     parser.add_argument("--email", default=DEFAULT_EMAIL)
     parser.add_argument("--other-email", default=DEFAULT_OTHER_EMAIL)
     parser.add_argument("--password", default=DEFAULT_PASSWORD)
@@ -86,10 +89,28 @@ def main() -> None:
     live_eval_result: dict[str, Any] | None = None
     claw_smoke_result: dict[str, Any] | None = None
     live_eval_summary: dict[str, Any] | None = None
+    proposal_quality_result: dict[str, Any] | None = None
+    proposal_quality_summary: dict[str, Any] | None = None
+    real_user_flow_result: dict[str, Any] | None = None
+    real_user_flow_summary: dict[str, Any] | None = None
     claw_smoke_summary: dict[str, Any] | None = None
     db_audit: dict[str, Any] | None = None
+    live_llm_error: str | None = None
+    real_flow_email = f"{run_dir.name}-real-flow@example.com"
 
     if all(result["success"] for result in strict_results + [pycompile_result]):
+        live_env = build_eval_env(
+            database_url=target_database_url,
+            app_api_key=settings.app_api_key,
+            agent_generation_mode="llm_assisted",
+        )
+        live_llm_error = validate_live_llm_env(live_env)
+        if live_llm_error is None:
+            env = live_env
+        backend_env = build_closeout_backend_env(
+            base_env=env if live_llm_error is None else build_eval_env(database_url=target_database_url, app_api_key=settings.app_api_key),
+            run_id=run_dir.name,
+        )
         configure_smoke_database(database_url=target_database_url)
         seed_result = run_command(
             [
@@ -107,29 +128,59 @@ def main() -> None:
             log_dir=run_dir,
         )
         if seed_result["success"]:
-            with managed_backend(env=env, host=str(args.public_api_host), port=int(args.public_api_port), log_dir=run_dir):
-                live_eval_result = run_command(
+            with managed_backend(env=backend_env, host=str(args.public_api_host), port=int(args.public_api_port), log_dir=run_dir):
+                if live_llm_error is None:
+                    live_eval_result = run_command(
+                        [
+                            sys.executable,
+                            "scripts/run_agent_live_eval.py",
+                            "run",
+                            "--public-api-base",
+                            f"http://{args.public_api_host}:{args.public_api_port}",
+                            "--api-key",
+                            settings.app_api_key,
+                            "--email",
+                            str(args.email),
+                            "--password",
+                            str(args.password),
+                            "--cross-user-email",
+                            str(args.other_email),
+                            "--scenario-set",
+                            "full",
+                            "--output-root",
+                            str(run_dir),
+                        ],
+                        cwd=REPO_ROOT,
+                        env=env,
+                        log_dir=run_dir,
+                    )
+                else:
+                    live_eval_summary = {
+                        "success_rate": 0.0,
+                        "failed_count": 1,
+                        "config_error": live_llm_error,
+                        "executable_actions_exercised": {},
+                    }
+                real_user_flow_result = run_command(
                     [
                         sys.executable,
-                        "scripts/run_agent_live_eval.py",
+                        "scripts/run_real_user_flow_eval.py",
                         "run",
                         "--public-api-base",
                         f"http://{args.public_api_host}:{args.public_api_port}",
+                        "--frontend-base",
+                        str(args.frontend_base),
                         "--api-key",
                         settings.app_api_key,
                         "--email",
-                        str(args.email),
+                        real_flow_email,
                         "--password",
                         str(args.password),
-                        "--cross-user-email",
-                        str(args.other_email),
-                        "--scenario-set",
-                        "full",
                         "--output-root",
                         str(run_dir),
                     ],
                     cwd=REPO_ROOT,
-                    env=env,
+                    env=backend_env,
                     log_dir=run_dir,
                 )
 
@@ -152,8 +203,35 @@ def main() -> None:
                 env=env,
                 log_dir=run_dir,
             )
+            proposal_quality_result = run_command(
+                [
+                    sys.executable,
+                    "scripts/run_agent_proposal_quality_eval.py",
+                    "--email",
+                    str(args.email),
+                    "--output-root",
+                    str(run_dir),
+                    "--limit",
+                    "50",
+                    "--language-code",
+                    "en",
+                    "--judge-mode",
+                    "llm" if live_llm_error is None else "deterministic",
+                ],
+                cwd=REPO_ROOT,
+                env=backend_env,
+                log_dir=run_dir,
+            )
 
             live_eval_summary = load_result_summary(live_eval_result, summary_filename="SUMMARY.json") if live_eval_result else None
+            proposal_quality_summary = load_result_summary(proposal_quality_result, summary_filename="proposal-quality-summary.json") if proposal_quality_result else None
+            real_user_flow_summary = load_result_summary(real_user_flow_result, summary_filename="SUMMARY.json") if real_user_flow_result else None
+            if real_user_flow_summary is None:
+                real_user_flow_summary = load_latest_child_summary(
+                    parent_run_dir=run_dir,
+                    prefix="real-user-flow-eval-",
+                    summary_filename="SUMMARY.json",
+                )
             claw_smoke_summary = load_result_summary(claw_smoke_result, summary_filename="summary.json") if claw_smoke_result else None
             db_audit = inspect_claw_db_audit(database_url=target_database_url)
 
@@ -163,16 +241,21 @@ def main() -> None:
         strict_results=strict_results,
         pycompile_result=pycompile_result,
         live_eval_summary=live_eval_summary,
+        proposal_quality_summary=proposal_quality_summary,
+        real_user_flow_summary=real_user_flow_summary,
         claw_smoke_summary=claw_smoke_summary,
         db_audit=db_audit,
+        live_llm_error=live_llm_error,
     )
     final["live_eval"] = live_eval_result
+    final["proposal_quality"] = proposal_quality_result
+    final["real_user_flow"] = real_user_flow_result
     final["claw_smoke"] = claw_smoke_result
     write_final_report(run_dir, final)
     print(run_dir)
 
 
-def build_eval_env(*, database_url: str, app_api_key: str) -> dict[str, str]:
+def build_eval_env(*, database_url: str, app_api_key: str, agent_generation_mode: str | None = None) -> dict[str, str]:
     env = os.environ.copy()
     env["DATABASE_URL"] = database_url
     env["TEST_DATABASE_URL"] = database_url
@@ -184,7 +267,53 @@ def build_eval_env(*, database_url: str, app_api_key: str) -> dict[str, str]:
     env["LLM_SERVICE_ENABLE_WORKER"] = "false"
     env["BOOTSTRAP_ADMIN_EMAIL"] = ""
     env["BOOTSTRAP_ADMIN_PASSWORD"] = ""
+    if agent_generation_mode:
+        env["AGENT_GENERATION_MODE"] = agent_generation_mode
     return env
+
+
+def build_closeout_backend_env(*, base_env: dict[str, str], run_id: str) -> dict[str, str]:
+    env = dict(base_env)
+    queue_suffix = str(run_id or "agent-claw-closeout").replace("/", "-")
+    env["INGEST_SERVICE_ENABLE_WORKER"] = "true"
+    env["INGEST_SERVICE_ENABLE_SCHEDULER"] = "false"
+    env["REVIEW_SERVICE_ENABLE_APPLY_WORKER"] = "true"
+    env["LLM_SERVICE_ENABLE_WORKER"] = "true"
+    env["GMAIL_API_BASE_URL"] = "http://127.0.0.1:8765/gmail/v1/users/me"
+    env["GMAIL_SECONDARY_FILTER_MODE"] = "off"
+    env["GMAIL_SECONDARY_FILTER_PROVIDER"] = "noop"
+    env["LLM_QUEUE_STREAM_KEY"] = f"llm:parse:stream:{queue_suffix}"
+    env["LLM_QUEUE_GROUP"] = f"llm-parse-workers:{queue_suffix}"
+    return env
+
+
+@contextmanager
+def applied_env(overrides: dict[str, str]):
+    original = os.environ.copy()
+    try:
+        os.environ.clear()
+        os.environ.update(overrides)
+        get_settings.cache_clear()
+        reset_engine()
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(original)
+        get_settings.cache_clear()
+        reset_engine()
+
+
+def validate_live_llm_env(env: dict[str, str]) -> str | None:
+    try:
+        with applied_env(env):
+            validate_ingestion_llm_config()
+            validate_agent_llm_config()
+            settings = get_settings()
+            if str(settings.agent_generation_mode or "").strip().lower() != "llm_assisted":
+                return "live LLM provider configured but AGENT_GENERATION_MODE is not llm_assisted"
+    except Exception as exc:
+        return f"live LLM provider not configured: {exc}"
+    return None
 
 
 def run_git_status() -> str:
@@ -249,6 +378,15 @@ def load_result_summary(result: dict[str, Any], *, summary_filename: str) -> dic
     if not path.is_file():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_latest_child_summary(*, parent_run_dir: Path, prefix: str, summary_filename: str) -> dict[str, Any] | None:
+    children = sorted(parent_run_dir.glob(f"{prefix}*"), key=lambda path: path.stat().st_mtime, reverse=True)
+    for child in children:
+        path = child / summary_filename
+        if path.is_file():
+            return json.loads(path.read_text(encoding="utf-8"))
+    return None
 
 
 @contextmanager
@@ -344,12 +482,16 @@ def build_final_report(
     strict_results: list[dict[str, Any]],
     pycompile_result: dict[str, Any],
     live_eval_summary: dict[str, Any] | None,
+    proposal_quality_summary: dict[str, Any] | None,
+    real_user_flow_summary: dict[str, Any] | None,
     claw_smoke_summary: dict[str, Any] | None,
     db_audit: dict[str, Any] | None,
+    live_llm_error: str | None,
 ) -> dict[str, Any]:
     strict_pass = all(item["success"] for item in strict_results) and bool(pycompile_result["success"])
     live_eval_pass = bool(live_eval_summary and live_eval_summary.get("success_rate") == 1.0)
     claw_smoke_pass = bool(claw_smoke_summary and claw_smoke_summary.get("success") is True)
+    real_user_flow_pass = bool(real_user_flow_summary and real_user_flow_summary.get("overall_status") == "passed")
     steps = {row["name"]: row for row in (claw_smoke_summary or {}).get("steps", []) if isinstance(row, dict)}
     live_eval_actions = dict((live_eval_summary or {}).get("executable_actions_exercised") or {})
     tool_families = {
@@ -372,6 +514,23 @@ def build_final_report(
         and (steps["family_relink_preview"]["payload"] or {}).get("can_create_ticket") is False
     )
     settings_mcp_invocations_visible = bool("settings_mcp_invocations" in steps and steps["settings_mcp_invocations"]["ok"])
+    real_user_goal_completion = (
+        float(real_user_flow_summary.get("goal_completion_rate"))
+        if isinstance(real_user_flow_summary, dict) and real_user_flow_summary.get("goal_completion_rate") is not None
+        else None
+    )
+    proposal_quality_score = (
+        float(proposal_quality_summary.get("overall_quality_score_avg"))
+        if isinstance(proposal_quality_summary, dict) and proposal_quality_summary.get("overall_quality_score_avg") is not None
+        else None
+    )
+    procedural_integrity_score = (
+        float((live_eval_summary or {}).get("safety", {}).get("procedural_integrity_score"))
+        if isinstance((live_eval_summary or {}).get("safety"), dict) and (live_eval_summary or {}).get("safety", {}).get("procedural_integrity_score") is not None
+        else None
+    )
+    observability_score = 1.0 if proposal_ticket_correlation_success and settings_mcp_invocations_visible and bool((db_audit or {}).get("mcp_invocation_count", 0)) else 0.0
+    cost_efficiency_score = _cost_efficiency_score((live_eval_summary or {}).get("cost_usd"))
     live_eval_action_gate = all(
         bool(live_eval_actions.get(name))
         for name in (
@@ -387,11 +546,27 @@ def build_final_report(
         strict_pass
         and live_eval_pass
         and claw_smoke_pass
+        and real_user_flow_pass
         and live_eval_action_gate
         and smoke_action_gate
         and proposal_ticket_correlation_success
         and family_relink_preview_non_executable
         and settings_mcp_invocations_visible
+    )
+    agent_execution_score = round(float((live_eval_summary or {}).get("scenario_weighted_score") or 0), 4)
+    agent_quality_score = round(proposal_quality_score or 0.0, 4)
+    agent_safety_score = round(procedural_integrity_score or 0.0, 4)
+    agent_observability_score = round(observability_score, 4)
+    agent_cost_efficiency_score = round(cost_efficiency_score, 4)
+    agent_goal_completion_score = round(real_user_goal_completion or 0.0, 4)
+    overall_agent_score = round(
+        (agent_execution_score * 0.25)
+        + (agent_quality_score * 0.2)
+        + (agent_safety_score * 0.2)
+        + (agent_observability_score * 0.1)
+        + (agent_cost_efficiency_score * 0.1)
+        + (agent_goal_completion_score * 0.15),
+        4,
     )
     return {
         "generated_at": datetime.now(UTC).isoformat(),
@@ -402,15 +577,24 @@ def build_final_report(
             "strict_pytests": strict_pass,
             "full_live_eval": live_eval_pass,
             "claw_smoke": claw_smoke_pass,
+            "real_user_flow": real_user_flow_pass,
         },
         "tool_families_exercised": tool_families,
         "smoke_actions_exercised": smoke_actions,
         "executable_actions_exercised": live_eval_actions,
+        "agent_execution_score": agent_execution_score,
+        "agent_quality_score": agent_quality_score,
+        "agent_safety_score": agent_safety_score,
+        "agent_observability_score": agent_observability_score,
+        "agent_cost_efficiency_score": agent_cost_efficiency_score,
+        "agent_goal_completion_score": agent_goal_completion_score,
+        "overall_agent_score": overall_agent_score,
         "mcp_invocations_written": bool((db_audit or {}).get("mcp_invocation_count", 0)),
         "latest_tool_names_observed": latest_tool_names or (db_audit or {}).get("latest_tool_names") or [],
         "proposal_ticket_correlation_success": proposal_ticket_correlation_success,
         "family_relink_preview_non_executable": family_relink_preview_non_executable,
         "settings_mcp_invocations_visible": settings_mcp_invocations_visible,
+        "live_llm_error": live_llm_error,
         "openapi_snapshot_refresh_deferred": True,
         "excluded_dirty_worktrees": excluded_dirty,
         "deferred_items": [
@@ -422,9 +606,28 @@ def build_final_report(
         ],
         "strict_commands": strict_results + [pycompile_result],
         "live_eval_summary": live_eval_summary,
+        "proposal_quality_summary": proposal_quality_summary,
+        "real_user_flow_summary": real_user_flow_summary,
         "claw_smoke_summary": claw_smoke_summary,
         "db_audit": db_audit,
     }
+
+
+def _cost_efficiency_score(cost_summary: Any) -> float:
+    if not isinstance(cost_summary, dict):
+        return 0.0
+    overall = cost_summary.get("overall") if isinstance(cost_summary.get("overall"), dict) else {}
+    estimated_cost_usd = float(overall.get("estimated_cost_usd") or 0)
+    total_tokens = int(overall.get("total_tokens") or 0)
+    if total_tokens <= 0 and estimated_cost_usd <= 0:
+        return 0.0
+    if estimated_cost_usd <= 0.01:
+        return 1.0
+    if estimated_cost_usd <= 0.05:
+        return 0.8
+    if estimated_cost_usd <= 0.1:
+        return 0.6
+    return 0.4
 
 
 def write_final_report(run_dir: Path, report: dict[str, Any]) -> None:
@@ -440,6 +643,8 @@ def write_final_report(run_dir: Path, report: dict[str, Any]) -> None:
         f"- Strict pytests: {'PASS' if report['layers']['strict_pytests'] else 'FAIL'}",
         f"- Full live eval: {'PASS' if report['layers']['full_live_eval'] else 'FAIL'}",
         f"- Claw smoke: {'PASS' if report['layers']['claw_smoke'] else 'FAIL'}",
+        f"- Real user flow eval: {'PASS' if report['layers']['real_user_flow'] else 'FAIL'}",
+        f"- Live LLM env: {'PASS' if not report.get('live_llm_error') else 'FAIL'}",
         "",
         "## Tool Families",
         "",
@@ -449,6 +654,30 @@ def write_final_report(run_dir: Path, report: dict[str, Any]) -> None:
         f"- Smoke change decision exercised: {report['smoke_actions_exercised']['change_decision']}",
         f"- Smoke proposal edit exercised: {report['smoke_actions_exercised']['proposal_edit_commit']}",
         f"- Smoke family executable exercised: {report['smoke_actions_exercised']['family_low_risk_execute']}",
+        "",
+        "## Agent Scorecard",
+        "",
+        f"- Agent execution score: {report['agent_execution_score']}",
+        f"- Agent quality score: {report['agent_quality_score']}",
+        f"- Agent safety score: {report['agent_safety_score']}",
+        f"- Agent observability score: {report['agent_observability_score']}",
+        f"- Agent cost efficiency score: {report['agent_cost_efficiency_score']}",
+        f"- Agent goal completion score: {report['agent_goal_completion_score']}",
+        f"- Overall agent score: {report['overall_agent_score']}",
+        "",
+        "## Real User Flows",
+        "",
+        f"- Goal completion rate: {(report.get('real_user_flow_summary') or {}).get('goal_completion_rate')}",
+        f"- Passed flows: {(report.get('real_user_flow_summary') or {}).get('passed_flow_count')}/{(report.get('real_user_flow_summary') or {}).get('flow_count')}",
+        "",
+        "## Proposal Quality Judge",
+        "",
+        f"- Judge enabled: {(report.get('proposal_quality_summary') or {}).get('judge_enabled')}",
+        f"- Judge available rate: {(report.get('proposal_quality_summary') or {}).get('judge_available_rate')}",
+        f"- Judge fallback count: {(report.get('proposal_quality_summary') or {}).get('judge_fallback_count')}",
+        f"- Judge overall score avg: {(report.get('proposal_quality_summary') or {}).get('judge_overall_score_avg')}",
+        f"- Judge total tokens: {(((report.get('proposal_quality_summary') or {}).get('token_usage') or {}).get('overall') or {}).get('total_tokens')}",
+        f"- Judge estimated cost usd: {(((report.get('proposal_quality_summary') or {}).get('cost_usd') or {}).get('overall') or {}).get('estimated_cost_usd')}",
         "",
         "## Audit",
         "",
@@ -469,6 +698,8 @@ def write_final_report(run_dir: Path, report: dict[str, Any]) -> None:
         "## Deferred",
         "",
     ]
+    if report.get("live_llm_error"):
+        lines.extend(["## Live LLM", "", f"- {report['live_llm_error']}", ""])
     for item in report["deferred_items"]:
         lines.append(f"- {item}")
     lines.append("")

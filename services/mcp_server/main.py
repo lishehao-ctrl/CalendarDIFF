@@ -58,6 +58,7 @@ from app.modules.agents.service import (
     AgentContextNotFoundError,
 )
 from app.modules.changes.change_listing_service import list_changes
+from app.modules.common.request_rate_limit import enforce_mcp_mutation_rate_limit
 from app.modules.changes.schemas import ChangeItemResponse
 from app.modules.sources.read_service import build_source_read_payload
 from app.modules.sources.schemas import InputSourceResponse
@@ -117,6 +118,10 @@ def _mcp_mode() -> str:
 
 def _public_mode_enabled() -> bool:
     return _mcp_mode() == "public"
+
+
+def _public_bearer_required() -> bool:
+    return _public_mode_enabled() and bool(get_settings().mcp_public_require_bearer_token)
 
 
 def _server_host() -> str:
@@ -231,10 +236,16 @@ def _resolve_user(db: Session, *, email: str | None, ctx: Context | None) -> Use
     if user_id is not None:
         user = db.scalar(select(User).where(User.id == user_id).limit(1))
         if user is None:
+            if _public_bearer_required():
+                raise MCPUserResolutionError("MCP authentication required.")
             raise MCPUserResolutionError(f"No CalendarDIFF user found for MCP token user id '{user_id}'.")
         if user.onboarding_completed_at is None:
+            if _public_bearer_required():
+                raise MCPUserResolutionError("MCP authentication required.")
             raise MCPUserResolutionError(f"User id '{user_id}' has not completed onboarding yet.")
         return user
+    if _public_bearer_required():
+        raise MCPUserResolutionError("MCP authentication required.")
     resolved = _resolved_email(email)
     user = db.scalar(select(User).where(User.email == resolved).limit(1))
     if user is None:
@@ -295,17 +306,25 @@ def _run_with_user_audited(
     input_payload: dict[str, Any],
     email: str | None,
     ctx: Context | None,
+    mutating: bool = False,
     fn,
 ):
     try:
         with _db_session() as db:
             user = _resolve_user(db, email=email, ctx=ctx)
+            auth_mode = _auth_mode(email, ctx)
+            if mutating:
+                enforce_mcp_mutation_rate_limit(
+                    tool_name=tool_name,
+                    user_id=user.id,
+                    auth_mode=auth_mode,
+                )
             invocation = create_mcp_tool_invocation(
                 db,
                 user_id=user.id,
                 tool_name=tool_name,
                 transport=_transport_mode(),
-                auth_mode=_auth_mode(email, ctx),
+                auth_mode=auth_mode,
                 transport_request_id=_ctx_request_id(ctx),
                 input_payload=input_payload,
             )
@@ -426,6 +445,7 @@ def create_change_decision_proposal_impl(*, change_id: int, email: str | None = 
         input_payload={"change_id": change_id},
         email=email,
         ctx=ctx,
+        mutating=True,
         fn=lambda db, user: create_change_decision_proposal(
             db=db,
             user_id=user.id,
@@ -446,6 +466,7 @@ def create_source_recovery_proposal_impl(*, source_id: int, email: str | None = 
         input_payload={"source_id": source_id},
         email=email,
         ctx=ctx,
+        mutating=True,
         fn=lambda db, user: create_source_recovery_proposal(
             db=db,
             user_id=user.id,
@@ -473,6 +494,7 @@ def create_change_edit_commit_proposal_impl(
         input_payload={"change_id": change_id, "patch": patch},
         email=email,
         ctx=ctx,
+        mutating=True,
         fn=lambda db, user: create_change_edit_commit_proposal(
             db=db,
             user_id=user.id,
@@ -501,6 +523,7 @@ def create_family_relink_preview_proposal_impl(
         input_payload={"raw_type_id": raw_type_id, "family_id": family_id},
         email=email,
         ctx=ctx,
+        mutating=True,
         fn=lambda db, user: create_family_relink_preview_proposal(
             db=db,
             user_id=user.id,
@@ -529,6 +552,7 @@ def create_family_relink_commit_proposal_impl(
         input_payload={"raw_type_id": raw_type_id, "family_id": family_id},
         email=email,
         ctx=ctx,
+        mutating=True,
         fn=lambda db, user: create_family_relink_commit_proposal(
             db=db,
             user_id=user.id,
@@ -557,6 +581,7 @@ def create_label_learning_commit_proposal_impl(
         input_payload={"change_id": change_id, "family_id": family_id},
         email=email,
         ctx=ctx,
+        mutating=True,
         fn=lambda db, user: create_label_learning_commit_proposal(
             db=db,
             user_id=user.id,
@@ -605,6 +630,7 @@ def create_approval_ticket_impl(*, proposal_id: int, email: str | None = None, c
         input_payload={"proposal_id": proposal_id, "channel": channel},
         email=email,
         ctx=ctx,
+        mutating=True,
         fn=lambda db, user: create_approval_ticket_for_proposal(
             db=db,
             user_id=user.id,
@@ -653,6 +679,7 @@ def confirm_approval_ticket_impl(*, ticket_id: str, email: str | None = None, la
         input_payload={"ticket_id": ticket_id},
         email=email,
         ctx=ctx,
+        mutating=True,
         fn=lambda db, user: confirm_approval_ticket_for_user(
             db=db,
             user_id=user.id,
@@ -669,6 +696,7 @@ def cancel_approval_ticket_impl(*, ticket_id: str, email: str | None = None, lan
         input_payload={"ticket_id": ticket_id},
         email=email,
         ctx=ctx,
+        mutating=True,
         fn=lambda db, user: cancel_approval_ticket_for_user(
             db=db,
             user_id=user.id,

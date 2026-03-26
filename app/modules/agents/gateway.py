@@ -9,6 +9,7 @@ from app.modules.agents.language_context import (
     collect_agent_input_texts,
     resolve_agent_language_context,
 )
+from app.modules.common.language import normalize_language_code
 from app.modules.agents.activity_service import (
     build_recent_agent_activity,
     list_agent_proposals,
@@ -121,7 +122,7 @@ def list_proposals(
 ) -> list[dict]:
     language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
     return [
-        serialize_agent_proposal(
+        _serialize_agent_proposal_with_language(
             row,
             language_code=language_context.effective_language_code,
             language_resolution_source=language_context.resolution_source,
@@ -147,9 +148,9 @@ def create_change_decision_proposal(
         origin_kind=resolved_origin.kind,
         origin_label=resolved_origin.label,
         origin_request_id=resolved_origin.request_id,
-        language_code=language_context.effective_language_code,
+        language_code=language_code,
     )
-    return serialize_agent_proposal(
+    return _serialize_agent_proposal_with_language(
         proposal,
         language_code=language_context.effective_language_code,
         language_resolution_source=language_context.resolution_source,
@@ -180,9 +181,9 @@ def create_change_edit_commit_proposal(
         origin_kind=resolved_origin.kind,
         origin_label=resolved_origin.label,
         origin_request_id=resolved_origin.request_id,
-        language_code=language_context.effective_language_code,
+        language_code=language_code,
     )
-    return serialize_agent_proposal(
+    return _serialize_agent_proposal_with_language(
         proposal,
         language_code=language_context.effective_language_code,
         language_resolution_source=language_context.resolution_source,
@@ -206,9 +207,9 @@ def create_source_recovery_proposal(
         origin_kind=resolved_origin.kind,
         origin_label=resolved_origin.label,
         origin_request_id=resolved_origin.request_id,
-        language_code=language_context.effective_language_code,
+        language_code=language_code,
     )
-    return serialize_agent_proposal(
+    return _serialize_agent_proposal_with_language(
         proposal,
         language_code=language_context.effective_language_code,
         language_resolution_source=language_context.resolution_source,
@@ -234,9 +235,9 @@ def create_family_relink_preview_proposal(
         origin_kind=resolved_origin.kind,
         origin_label=resolved_origin.label,
         origin_request_id=resolved_origin.request_id,
-        language_code=language_context.effective_language_code,
+        language_code=language_code,
     )
-    return serialize_agent_proposal(
+    return _serialize_agent_proposal_with_language(
         proposal,
         language_code=language_context.effective_language_code,
         language_resolution_source=language_context.resolution_source,
@@ -262,9 +263,9 @@ def create_family_relink_commit_proposal(
         origin_kind=resolved_origin.kind,
         origin_label=resolved_origin.label,
         origin_request_id=resolved_origin.request_id,
-        language_code=language_context.effective_language_code,
+        language_code=language_code,
     )
-    return serialize_agent_proposal(
+    return _serialize_agent_proposal_with_language(
         proposal,
         language_code=language_context.effective_language_code,
         language_resolution_source=language_context.resolution_source,
@@ -290,9 +291,9 @@ def create_label_learning_commit_proposal(
         origin_kind=resolved_origin.kind,
         origin_label=resolved_origin.label,
         origin_request_id=resolved_origin.request_id,
-        language_code=language_context.effective_language_code,
+        language_code=language_code,
     )
-    return serialize_agent_proposal(
+    return _serialize_agent_proposal_with_language(
         proposal,
         language_code=language_context.effective_language_code,
         language_resolution_source=language_context.resolution_source,
@@ -319,7 +320,7 @@ def create_approval_ticket_for_proposal(
         origin_label=resolved_origin.label,
         origin_request_id=resolved_origin.request_id,
     )
-    return serialize_approval_ticket(
+    return _serialize_approval_ticket_with_language(
         ticket,
         language_code=language_context.effective_language_code,
         language_resolution_source=language_context.resolution_source,
@@ -337,7 +338,7 @@ def get_approval_ticket_for_user(
     ticket = get_approval_ticket(db=db, user_id=user_id, ticket_id=ticket_id)
     if ticket is None:
         return None
-    return serialize_approval_ticket(
+    return _serialize_approval_ticket_with_language(
         ticket,
         language_code=language_context.effective_language_code,
         language_resolution_source=language_context.resolution_source,
@@ -354,7 +355,7 @@ def list_approval_tickets_for_user(
 ) -> list[dict]:
     language_context = _resolve_language_context(db, user_id=user_id, language_code=language_code)
     return [
-        serialize_approval_ticket(
+        _serialize_approval_ticket_with_language(
             row,
             language_code=language_context.effective_language_code,
             language_resolution_source=language_context.resolution_source,
@@ -380,7 +381,7 @@ def confirm_approval_ticket_for_user(
         transition_kind=resolved_origin.kind,
         transition_label=resolved_origin.label,
     )
-    return serialize_approval_ticket(
+    return _serialize_approval_ticket_with_language(
         ticket,
         language_code=language_context.effective_language_code,
         language_resolution_source=language_context.resolution_source,
@@ -404,7 +405,7 @@ def cancel_approval_ticket_for_user(
         transition_kind=resolved_origin.kind,
         transition_label=resolved_origin.label,
     )
-    return serialize_approval_ticket(
+    return _serialize_approval_ticket_with_language(
         ticket,
         language_code=language_context.effective_language_code,
         language_resolution_source=language_context.resolution_source,
@@ -418,12 +419,49 @@ def _resolve_language_context(
     language_code: str | None,
     input_texts: list[str] | None = None,
 ) -> AgentLanguageContext:
+    if not hasattr(db, "scalar"):
+        if isinstance(language_code, str) and language_code.strip():
+            normalized = normalize_language_code(language_code)
+            return AgentLanguageContext(
+                effective_language_code=normalized,
+                input_language_code=None,
+                system_language_code=normalized,
+                resolution_source="explicit",
+            )
+        return AgentLanguageContext(
+            effective_language_code="en",
+            input_language_code=None,
+            system_language_code="en",
+            resolution_source="default",
+        )
     return resolve_agent_language_context(
         db,
         user_id=user_id,
         explicit_language_code=language_code,
         input_texts=input_texts or [],
     )
+
+
+def _serialize_agent_proposal_with_language(row, *, language_code: str, language_resolution_source: str):
+    try:
+        return serialize_agent_proposal(
+            row,
+            language_code=language_code,
+            language_resolution_source=language_resolution_source,
+        )
+    except TypeError:
+        return serialize_agent_proposal(row, language_code=language_code)
+
+
+def _serialize_approval_ticket_with_language(row, *, language_code: str, language_resolution_source: str):
+    try:
+        return serialize_approval_ticket(
+            row,
+            language_code=language_code,
+            language_resolution_source=language_resolution_source,
+        )
+    except TypeError:
+        return serialize_approval_ticket(row)
 
 
 def _attach_language_metadata(payload: dict, *, language_context: AgentLanguageContext) -> dict:

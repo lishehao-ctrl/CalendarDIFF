@@ -27,6 +27,7 @@ if str(REPO_ROOT) not in sys.path:
 import scripts.run_year_timeline_replay_smoke as replay
 from app.db.models.agents import ApprovalTicket, AgentProposal
 from app.db.models.review import Change, ReviewStatus
+from app.db.models.runtime import LlmInvocationLog
 from app.db.models.shared import CourseWorkItemLabelFamily, CourseWorkItemRawType
 from app.db.session import get_session_factory
 from app.modules.changes.label_learning_service import preview_label_learning
@@ -39,6 +40,7 @@ from services.mcp_server.main import (
     list_pending_changes_impl,
     mcp,
 )
+from app.modules.llm_gateway.costing import estimate_llm_usage_cost, merge_llm_cost_summary
 
 OUTPUT_ROOT = REPO_ROOT / "output"
 SCENARIO_PLAN_FILE = "scenario-plan.json"
@@ -47,6 +49,7 @@ API_TRACE_FILE = "api-trace.jsonl"
 MCP_TRACE_FILE = "mcp-trace.jsonl"
 PROPOSAL_AUDIT_FILE = "proposal-audit.json"
 TICKET_AUDIT_FILE = "ticket-audit.json"
+LLM_USAGE_AUDIT_FILE = "llm-usage-audit.json"
 SUMMARY_FILE = "SUMMARY.md"
 SUMMARY_JSON_FILE = "SUMMARY.json"
 DEFAULT_PENDING_LIMIT = 10
@@ -98,6 +101,7 @@ class ScenarioResult:
     note: str | None = None
     error_code: str | None = None
     response_excerpt: str | None = None
+    details: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -376,7 +380,12 @@ class AgentLiveEvalRunner:
         error_text: str | None = None
         http_status: int | None = None
         try:
-            response = self.client.request(method=method, url=path, json=json_body)
+            response = self.client.request(
+                method=method,
+                url=path,
+                json=json_body,
+                timeout=_request_timeout_seconds(method=method, path=path),
+            )
             http_status = int(response.status_code)
             try:
                 response_payload = response.json()
@@ -628,16 +637,32 @@ class AgentLiveEvalRunner:
             json_body={"change_id": int(change_id)},
         )
         first_id = first_payload.get("proposal_id") if isinstance(first_payload, dict) else None
-        second_id = second_payload.get("proposal_id") if isinstance(second_payload, dict) else None
-        success = first_status == 201 and second_status == 201 and first_id and second_id and int(first_id) != int(second_id)
+        fetched_ok = False
+        fetched_payload: Any = None
+        if first_id:
+            fetch_status, fetched_payload, _fetch_elapsed = self.request_json(
+                method="GET",
+                path=f"/agent/proposals/{int(first_id)}",
+                scenario_id=f"{scenario.scenario_id}.fetch",
+                expected_statuses=[200],
+            )
+            fetched_ok = fetch_status == 200 and isinstance(fetched_payload, dict) and int(fetched_payload.get("proposal_id", 0)) == int(first_id)
+        repeat_outcome = evaluate_repeat_proposal_outcome(
+            first_status=first_status,
+            first_payload=first_payload,
+            second_status=second_status,
+            second_payload=second_payload,
+            fetched_ok=fetched_ok,
+        )
         return build_http_result(
             scenario,
-            success=bool(success),
+            success=bool(repeat_outcome["success"]),
             expected_statuses=[201],
             http_status=second_status,
             elapsed_ms=round(first_elapsed + second_elapsed, 2),
-            response_payload={"first": first_payload, "second": second_payload},
-            note="repeated proposal creation stayed auditable" if success else "repeated proposal creation did not produce distinct rows",
+            response_payload={"first": first_payload, "second": second_payload, "fetched": fetched_payload},
+            note=str(repeat_outcome["note"]),
+            details=repeat_outcome["details"],
         )
 
     def _run_change_proposal_reviewed_conflict(self, scenario: ScenarioSpec) -> ScenarioResult:
@@ -1866,6 +1891,7 @@ def build_http_result(
     elapsed_ms: float,
     response_payload: Any,
     note: str,
+    details: dict[str, Any] | None = None,
 ) -> ScenarioResult:
     return ScenarioResult(
         scenario_id=scenario.scenario_id,
@@ -1884,7 +1910,62 @@ def build_http_result(
         note=note,
         error_code=extract_error_code(response_payload),
         response_excerpt=excerpt_payload(response_payload),
+        details=_merge_result_details(details, payload=response_payload),
     )
+
+
+def evaluate_repeat_proposal_outcome(
+    *,
+    first_status: int,
+    first_payload: Any,
+    second_status: int,
+    second_payload: Any,
+    fetched_ok: bool,
+) -> dict[str, Any]:
+    first_id = first_payload.get("proposal_id") if isinstance(first_payload, dict) else None
+    second_id = second_payload.get("proposal_id") if isinstance(second_payload, dict) else None
+    deduped_open_proposal = bool(
+        first_status == 201
+        and second_status == 201
+        and first_id
+        and second_id
+        and int(first_id) == int(second_id)
+    )
+    returned_distinct_rows = bool(
+        first_status == 201
+        and second_status == 201
+        and first_id
+        and second_id
+        and int(first_id) != int(second_id)
+    )
+    success = bool(
+        first_status == 201
+        and second_status == 201
+        and first_id
+        and second_id
+        and fetched_ok
+        and (deduped_open_proposal or returned_distinct_rows)
+    )
+    note = (
+        "repeated proposal path stayed auditable via open-proposal dedupe"
+        if success and deduped_open_proposal
+        else (
+            "repeated proposal path stayed auditable with distinct persisted rows"
+            if success
+            else "repeat proposal path was not auditable or did not return a valid persisted proposal"
+        )
+    )
+    return {
+        "success": success,
+        "note": note,
+        "details": {
+            "deduped_open_proposal": deduped_open_proposal,
+            "returned_distinct_rows": returned_distinct_rows,
+            "fetched_ok": fetched_ok,
+            "first_proposal_id": int(first_id) if first_id else None,
+            "second_proposal_id": int(second_id) if second_id else None,
+        },
+    }
 
 
 def build_mcp_result(
@@ -1912,7 +1993,21 @@ def build_mcp_result(
         note=note,
         error_code=extract_error_code(response_payload),
         response_excerpt=excerpt_payload(response_payload),
+        details=_merge_result_details(None, payload=response_payload),
     )
+
+
+def _merge_result_details(details: dict[str, Any] | None, *, payload: Any) -> dict[str, Any] | None:
+    merged = dict(details) if isinstance(details, dict) else {}
+    if isinstance(payload, dict):
+        llm_usage = payload.get("llm_usage")
+        if isinstance(llm_usage, dict):
+            merged["llm_usage"] = llm_usage
+            merged.setdefault("provider_id", "qwen_us_main")
+            merged.setdefault("vendor", "dashscope_openai")
+            merged.setdefault("model", "qwen3.5-flash")
+            merged.setdefault("protocol", "responses")
+    return merged or None
 
 
 def build_core_scenarios(snapshot: dict[str, Any]) -> list[ScenarioSpec]:
@@ -2425,12 +2520,72 @@ def collect_ticket_audit(*, user_id: int, started_at: datetime) -> dict[str, Any
     }
 
 
+def collect_llm_usage_audit(*, started_at: datetime) -> dict[str, Any]:
+    session_factory = get_session_factory()
+    with session_factory() as db:
+        rows = list(
+            db.scalars(
+                select(LlmInvocationLog)
+                .where(
+                    LlmInvocationLog.created_at >= started_at,
+                    LlmInvocationLog.task_name.like("agent_%"),
+                )
+                .order_by(LlmInvocationLog.created_at.asc(), LlmInvocationLog.id.asc())
+            ).all()
+        )
+    token_usage = {"overall": {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "total_tokens": 0}, "by_task": {}}
+    cost_usd = {"overall": {"estimated_cost_usd": 0.0, "input_cost_usd": 0.0, "cached_input_cost_usd": 0.0, "output_cost_usd": 0.0, "pricing_available": True, "unpriced_call_count": 0}, "by_task": {}}
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        usage = dict(row.usage_json) if isinstance(row.usage_json, dict) else {}
+        estimate = estimate_llm_usage_cost(
+            provider_id=row.provider_id,
+            vendor=row.vendor,
+            model=row.model,
+            protocol=row.protocol,
+            usage=usage,
+        )
+        bucket = token_usage["by_task"].setdefault(
+            row.task_name,
+            {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+        )
+        for key in ("input_tokens", "cached_input_tokens", "output_tokens", "total_tokens"):
+            value = max(int(usage.get(key) or 0), 0)
+            token_usage["overall"][key] += value
+            bucket[key] += value
+        cost_usd["overall"].update(merge_llm_cost_summary(cost_usd["overall"], estimate=estimate))
+        task_cost = cost_usd["by_task"].setdefault(
+            row.task_name,
+            {"estimated_cost_usd": 0.0, "input_cost_usd": 0.0, "cached_input_cost_usd": 0.0, "output_cost_usd": 0.0, "pricing_available": True, "unpriced_call_count": 0},
+        )
+        task_cost.update(merge_llm_cost_summary(task_cost, estimate=estimate))
+        items.append(
+            {
+                "task_name": row.task_name,
+                "provider_id": row.provider_id,
+                "model": row.model,
+                "protocol": row.protocol,
+                "usage": usage,
+                "estimated_cost_usd": estimate.get("estimated_cost_usd"),
+                "created_at": iso_or_none(row.created_at),
+            }
+        )
+    return {
+        "started_at": started_at.isoformat(),
+        "count": len(items),
+        "items": items,
+        "token_usage": token_usage,
+        "cost_usd": cost_usd,
+    }
+
+
 def compute_summary(
     *,
     plan: list[ScenarioSpec],
     results: list[ScenarioResult],
     proposal_audit: dict[str, Any],
     ticket_audit: dict[str, Any],
+    llm_usage_audit: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     executed = [row for row in results if row.status != "skipped"]
     passed = [row for row in executed if row.success]
@@ -2491,6 +2646,20 @@ def compute_summary(
         and row.note == "non-executable source proposal incorrectly created a ticket"
         and not row.success
     ]
+    context_results = [row for row in executed if row.category in {"workspace_context", "change_context", "source_context", "family_context"}]
+    drift_guard_results = [
+        row
+        for row in executed
+        if row.operation in {
+            "change_ticket_drift_confirm",
+            "change_edit_ticket_drift_confirm",
+            "family_relink_ticket_drift_confirm",
+            "label_learning_ticket_drift_confirm",
+        }
+    ]
+    mcp_auth_results = [row for row in executed if row.category == "mcp_auth"]
+    mcp_revoke_results = [row for row in executed if row.operation == "mcp_verify_revoked"]
+    tool_path_results = [row for row in executed if row.category in {"mcp_impl", "mcp_ticket", "mcp_token"}]
 
     expected_proposal_count = _expected_created_proposal_count(results)
     expected_ticket_count = _expected_created_ticket_count(results)
@@ -2507,6 +2676,24 @@ def compute_summary(
         "family_relink_commit": any(row.operation == "family_relink_ticket_drift_confirm" and row.success for row in results),
         "label_learning_add_alias_commit": any(row.operation == "label_learning_ticket_drift_confirm" and row.success for row in results),
     }
+    corrupt_success_count = (
+        len(source_guard_failures)
+        + len(
+            [
+                row
+                for row in drift_guard_results
+                if row.success and row.http_status not in {409}
+            ]
+        )
+    )
+    procedural_integrity_score = ratio(max(len(executed) - corrupt_success_count, 0), len(executed))
+    token_usage = llm_usage_audit.get("token_usage") if isinstance(llm_usage_audit, dict) and isinstance(llm_usage_audit.get("token_usage"), dict) else build_usage_summary(executed)
+    cost_usd = llm_usage_audit.get("cost_usd") if isinstance(llm_usage_audit, dict) and isinstance(llm_usage_audit.get("cost_usd"), dict) else build_cost_summary(executed)
+    scenario_weighted_score = build_weighted_score(
+        success_rate=ratio(len(passed), len(executed)),
+        procedural_integrity_score=procedural_integrity_score,
+        tool_path_success_rate=ratio(len([row for row in tool_path_results if row.success]), len(tool_path_results)),
+    )
     summary = {
         "generated_at": utc_now_iso(),
         "scenario_count": len(plan),
@@ -2517,22 +2704,33 @@ def compute_summary(
         "success_rate": ratio(len(passed), len(executed)),
         "category_counts": by_category,
         "reliability": {
+            "context_read_success_rate": ratio(len([row for row in context_results if row.success]), len(context_results)),
             "proposal_success_rate": ratio(len([row for row in proposal_create_results if row.success]), len(proposal_create_results)),
             "ticket_create_success_rate": ratio(len([row for row in ticket_create_results if row.success]), len(ticket_create_results)),
             "ticket_confirm_success_rate": ratio(len([row for row in ticket_confirm_results if row.success]), len(ticket_confirm_results)),
+            "state_drift_guard_success_rate": ratio(len([row for row in drift_guard_results if row.success]), len(drift_guard_results)),
+            "mcp_auth_success_rate": ratio(len([row for row in mcp_auth_results if row.success]), len(mcp_auth_results)),
+            "mcp_revoke_block_rate": ratio(len([row for row in mcp_revoke_results if row.success]), len(mcp_revoke_results)),
+            "tool_path_success_rate": ratio(len([row for row in tool_path_results if row.success]), len(tool_path_results)),
         },
         "latency_ms": {
             "overall": build_latency_summary(latencies),
             "by_operation": build_operation_latency_summary(executed),
         },
+        "token_usage": token_usage,
+        "cost_usd": cost_usd,
         "safety": {
             "unsafe_execution_count": 0,
             "executed_without_ticket_count": 0,
             "drifted_but_executed_count": 0,
             "non_executable_proposal_ticket_created_count": len(source_guard_failures),
+            "corrupt_success_count": corrupt_success_count,
+            "corrupt_success_rate": ratio(corrupt_success_count, len(executed)),
+            "procedural_integrity_score": procedural_integrity_score,
         },
         "executable_actions_exercised": executable_actions_exercised,
         "drift_guards_exercised": drift_guards_exercised,
+        "scenario_weighted_score": scenario_weighted_score,
         "audit": {
             "proposal_rows": int(proposal_audit.get("count") or 0),
             "ticket_rows": int(ticket_audit.get("count") or 0),
@@ -2545,6 +2743,7 @@ def compute_summary(
                 expected_ticket_count,
             ),
         },
+        "llm_usage_audit": llm_usage_audit,
         "threshold_failures": build_threshold_failures(
             passed_count=len(passed),
             executed_count=len(executed),
@@ -2552,6 +2751,7 @@ def compute_summary(
             proposal_rate=ratio(len([row for row in proposal_create_results if row.success]), len(proposal_create_results)),
             ticket_create_rate=ratio(len([row for row in ticket_create_results if row.success]), len(ticket_create_results)),
             ticket_confirm_rate=ratio(len([row for row in ticket_confirm_results if row.success]), len(ticket_confirm_results)),
+            corrupt_success_count=corrupt_success_count,
         ),
     }
     return summary
@@ -2573,7 +2773,13 @@ def _expected_created_proposal_count(results: list[ScenarioResult]) -> int:
         }:
             total += 1
         elif row.operation == "change_proposal_repeat":
-            total += 2
+            details = row.details or {}
+            if bool(details.get("deduped_open_proposal")):
+                total += 1
+            elif bool(details.get("returned_distinct_rows")):
+                total += 2
+            else:
+                total += 1
         elif row.operation in {"change_ticket_cancel", "change_ticket_drift_confirm"}:
             total += 1
     return total
@@ -2610,6 +2816,7 @@ def build_threshold_failures(
     proposal_rate: float | None,
     ticket_create_rate: float | None,
     ticket_confirm_rate: float | None,
+    corrupt_success_count: int,
 ) -> list[str]:
     failures: list[str] = []
     if executed_count > 0 and passed_count < executed_count:
@@ -2622,7 +2829,58 @@ def build_threshold_failures(
         failures.append("ticket_create_success_rate_below_target")
     if ticket_confirm_rate is not None and ticket_confirm_rate < 0.95:
         failures.append("ticket_confirm_success_rate_below_target")
+    if corrupt_success_count > 0:
+        failures.append("corrupt_success_detected")
     return failures
+
+
+def build_usage_summary(results: list[ScenarioResult]) -> dict[str, Any]:
+    overall = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    by_operation: dict[str, dict[str, int]] = {}
+    for row in results:
+        usage = (row.details or {}).get("llm_usage")
+        if not isinstance(usage, dict):
+            continue
+        bucket = by_operation.setdefault(row.operation, {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "total_tokens": 0})
+        for key in overall:
+            value = max(int(usage.get(key) or 0), 0)
+            overall[key] += value
+            bucket[key] += value
+    return {"overall": overall, "by_operation": by_operation}
+
+
+def build_cost_summary(results: list[ScenarioResult]) -> dict[str, Any]:
+    overall = {"estimated_cost_usd": 0.0, "input_cost_usd": 0.0, "cached_input_cost_usd": 0.0, "output_cost_usd": 0.0, "pricing_available": True, "unpriced_call_count": 0}
+    by_operation: dict[str, dict[str, Any]] = {}
+    for row in results:
+        details = row.details or {}
+        usage = details.get("llm_usage")
+        if not isinstance(usage, dict):
+            continue
+        estimate = estimate_llm_usage_cost(
+            provider_id=details.get("provider_id") if isinstance(details.get("provider_id"), str) else "qwen_us_main",
+            vendor=details.get("vendor") if isinstance(details.get("vendor"), str) else "dashscope_openai",
+            model=details.get("model") if isinstance(details.get("model"), str) else "qwen3.5-flash",
+            protocol=details.get("protocol") if isinstance(details.get("protocol"), str) else "responses",
+            usage=usage,
+        )
+        overall.update(merge_llm_cost_summary(overall, estimate=estimate))
+        bucket = by_operation.setdefault(row.operation, {"estimated_cost_usd": 0.0, "input_cost_usd": 0.0, "cached_input_cost_usd": 0.0, "output_cost_usd": 0.0, "pricing_available": True, "unpriced_call_count": 0})
+        bucket.update(merge_llm_cost_summary(bucket, estimate=estimate))
+    return {"overall": overall, "by_operation": by_operation}
+
+
+def build_weighted_score(
+    *,
+    success_rate: float | None,
+    procedural_integrity_score: float | None,
+    tool_path_success_rate: float | None,
+) -> float | None:
+    if success_rate is None:
+        return None
+    integrity = procedural_integrity_score if procedural_integrity_score is not None else 0.0
+    tool_path = tool_path_success_rate if tool_path_success_rate is not None else 0.0
+    return round((success_rate * 0.5) + (integrity * 0.35) + (tool_path * 0.15), 4)
 
 
 def build_latency_summary(latencies: list[float]) -> dict[str, float | None]:
@@ -2710,9 +2968,11 @@ def run_eval(args: argparse.Namespace) -> Path:
     results = [runner.execute(scenario) for scenario in plan]
     proposal_audit = collect_proposal_audit(user_id=int(user["id"]), started_at=started_at)
     ticket_audit = collect_ticket_audit(user_id=int(user["id"]), started_at=started_at)
+    llm_usage_audit = collect_llm_usage_audit(started_at=started_at)
     write_json(run_dir / PROPOSAL_AUDIT_FILE, proposal_audit)
     write_json(run_dir / TICKET_AUDIT_FILE, ticket_audit)
-    summary = compute_summary(plan=plan, results=results, proposal_audit=proposal_audit, ticket_audit=ticket_audit)
+    write_json(run_dir / LLM_USAGE_AUDIT_FILE, llm_usage_audit)
+    summary = compute_summary(plan=plan, results=results, proposal_audit=proposal_audit, ticket_audit=ticket_audit, llm_usage_audit=llm_usage_audit)
     write_json(run_dir / SUMMARY_JSON_FILE, summary)
     (run_dir / SUMMARY_FILE).write_text(render_summary_markdown(summary=summary, results=results), encoding="utf-8")
     return run_dir
@@ -2722,13 +2982,14 @@ def report_eval(run_dir: Path) -> dict[str, Any]:
     plan_payload = json.loads((run_dir / SCENARIO_PLAN_FILE).read_text(encoding="utf-8"))
     proposal_audit = json.loads((run_dir / PROPOSAL_AUDIT_FILE).read_text(encoding="utf-8"))
     ticket_audit = json.loads((run_dir / TICKET_AUDIT_FILE).read_text(encoding="utf-8"))
+    llm_usage_audit = json.loads((run_dir / LLM_USAGE_AUDIT_FILE).read_text(encoding="utf-8")) if (run_dir / LLM_USAGE_AUDIT_FILE).exists() else None
     results = [
         ScenarioResult(**json.loads(line))
         for line in read_jsonl(run_dir / SCENARIO_RESULTS_FILE)
         if line.strip()
     ]
     plan = [ScenarioSpec(**row) for row in plan_payload.get("scenarios", [])]
-    summary = compute_summary(plan=plan, results=results, proposal_audit=proposal_audit, ticket_audit=ticket_audit)
+    summary = compute_summary(plan=plan, results=results, proposal_audit=proposal_audit, ticket_audit=ticket_audit, llm_usage_audit=llm_usage_audit)
     write_json(run_dir / SUMMARY_JSON_FILE, summary)
     (run_dir / SUMMARY_FILE).write_text(render_summary_markdown(summary=summary, results=results), encoding="utf-8")
     return summary
@@ -2748,9 +3009,14 @@ def render_summary_markdown(*, summary: dict[str, Any], results: list[ScenarioRe
         "",
         "## Reliability",
         "",
+        f"- Context read success rate: {format_ratio(summary['reliability']['context_read_success_rate'])}",
         f"- Proposal success rate: {format_ratio(summary['reliability']['proposal_success_rate'])}",
         f"- Ticket create success rate: {format_ratio(summary['reliability']['ticket_create_success_rate'])}",
         f"- Ticket confirm success rate: {format_ratio(summary['reliability']['ticket_confirm_success_rate'])}",
+        f"- State drift guard success rate: {format_ratio(summary['reliability']['state_drift_guard_success_rate'])}",
+        f"- MCP auth success rate: {format_ratio(summary['reliability']['mcp_auth_success_rate'])}",
+        f"- MCP revoke block rate: {format_ratio(summary['reliability']['mcp_revoke_block_rate'])}",
+        f"- Tool path success rate: {format_ratio(summary['reliability']['tool_path_success_rate'])}",
         "",
         "## Safety",
         "",
@@ -2758,6 +3024,9 @@ def render_summary_markdown(*, summary: dict[str, Any], results: list[ScenarioRe
         f"- executed_without_ticket_count: {summary['safety']['executed_without_ticket_count']}",
         f"- drifted_but_executed_count: {summary['safety']['drifted_but_executed_count']}",
         f"- non_executable_proposal_ticket_created_count: {summary['safety']['non_executable_proposal_ticket_created_count']}",
+        f"- corrupt_success_count: {summary['safety']['corrupt_success_count']}",
+        f"- corrupt_success_rate: {format_ratio(summary['safety']['corrupt_success_rate'])}",
+        f"- procedural_integrity_score: {format_ratio(summary['safety']['procedural_integrity_score'])}",
         "",
         "## Latency",
         "",
@@ -2765,12 +3034,21 @@ def render_summary_markdown(*, summary: dict[str, Any], results: list[ScenarioRe
         f"- p95: {format_latency(summary['latency_ms']['overall']['p95'])}",
         f"- max: {format_latency(summary['latency_ms']['overall']['max'])}",
         "",
+        "## Token & Cost",
+        "",
+        f"- total_tokens: {summary['token_usage']['overall']['total_tokens']}",
+        f"- input_tokens: {summary['token_usage']['overall']['input_tokens']}",
+        f"- cached_input_tokens: {summary['token_usage']['overall']['cached_input_tokens']}",
+        f"- output_tokens: {summary['token_usage']['overall']['output_tokens']}",
+        f"- estimated_cost_usd: {format_usd(summary['cost_usd']['overall']['estimated_cost_usd'])}",
+        "",
         "## Audit",
         "",
         f"- Proposal rows: {summary['audit']['proposal_rows']}",
         f"- Ticket rows: {summary['audit']['ticket_rows']}",
         f"- Proposal persistence completeness: {format_ratio(summary['audit']['proposal_persistence_completeness'])}",
         f"- Ticket persistence completeness: {format_ratio(summary['audit']['ticket_persistence_completeness'])}",
+        f"- Scenario weighted score: {format_ratio(summary.get('scenario_weighted_score'))}",
         "",
     ]
     threshold_failures = summary.get("threshold_failures") or []
@@ -2860,6 +3138,20 @@ def format_latency(value: float | None) -> str:
     if value is None:
         return "n/a"
     return f"{value:.2f} ms"
+
+
+def _request_timeout_seconds(*, method: str, path: str) -> float:
+    normalized_method = method.strip().upper()
+    normalized_path = path.strip()
+    if normalized_method == "POST" and normalized_path.startswith("/agent/proposals/"):
+        return 45.0
+    return 20.0
+
+
+def format_usd(value: float | None) -> str:
+    if value is None:
+        return "n/a"
+    return f"${value:.6f}"
 
 
 def utc_now_iso() -> str:

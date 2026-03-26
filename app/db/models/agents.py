@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, Enum as SAEnum, Float, ForeignKey, Index, JSON, String, Text, func
+from sqlalchemy import BigInteger, DateTime, Enum as SAEnum, Float, ForeignKey, Index, JSON, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -98,6 +98,7 @@ class ApprovalTicket(Base):
         Index("ix_approval_tickets_user_created", "user_id", "created_at"),
         Index("ix_approval_tickets_proposal_status", "proposal_id", "status"),
         Index("ix_approval_tickets_status_expires", "status", "expires_at"),
+        Index("uq_approval_tickets_open_proposal", "proposal_id", unique=True, postgresql_where=text("status = 'open'")),
     )
 
     ticket_id: Mapped[str] = mapped_column(String(64), primary_key=True)
