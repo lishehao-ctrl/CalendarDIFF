@@ -101,13 +101,13 @@ def test_normalize_basic_coercions(tmp_path: Path) -> None:
     error_rows = read_jsonl(config.errors_path)
 
     assert summary["total_in"] == 4
-    assert summary["normalized_out"] == 3
-    assert summary["error_count"] >= 2
+    assert summary["normalized_out"] == 2
+    assert summary["error_count"] == 2
     assert summary["rescue_applied_count"] == 0
     assert summary["dedupe_count"] == 0
 
     by_id = {row["email_id"]: row for row in normalized_rows}
-    assert set(by_id) == {"new-1", "drop-1", "legacy-1"}
+    assert set(by_id) == {"new-1", "drop-1"}
     for row in normalized_rows:
         assert set(row.keys()) == EXPECTED_KEYS
 
@@ -127,13 +127,8 @@ def test_normalize_basic_coercions(tmp_path: Path) -> None:
     assert drop_row["action_items"] == []
     assert drop_row["confidence"] == 0.0
 
-    legacy_row = by_id["legacy-1"]
-    assert legacy_row["label"] == "KEEP"
-    assert legacy_row["event_type"] == "action_required"
-    assert legacy_row["course_hints"] == ["CSE 120"]
-    assert len(legacy_row["action_items"]) == 1
-    assert legacy_row["action_items"][0]["action"] == "Quiz 1 regrade form"
-    assert legacy_row["raw_extract"]["deadline_text"] == "Submit by Thursday 11:59 PM"
-
     assert any(item["error_type"] == "json_parse" for item in error_rows)
-    assert any(item["error_type"] == "coercion_warning" for item in error_rows)
+    assert any(
+        item["error_type"] == "input_validation" and "legacy keep/category/candidates rows are no longer supported" in item["message_sanitized"]
+        for item in error_rows
+    )

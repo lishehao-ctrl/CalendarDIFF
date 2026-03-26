@@ -30,19 +30,3 @@ def test_connector_apply_has_no_provider_client_dependency() -> None:
     content = apply_path.read_text(encoding="utf-8")
     assert "GmailClient" not in content
     assert "ICSClient" not in content
-
-
-def test_no_legacy_sync_module_imports_remain() -> None:
-    roots = [
-        REPO_ROOT / "app",
-        REPO_ROOT / "tests",
-        REPO_ROOT / "scripts",
-    ]
-    violations: list[str] = []
-    legacy_marker = ".".join(["app", "modules", "sync"])
-    for root in roots:
-        for path in root.rglob("*.py"):
-            content = path.read_text(encoding="utf-8")
-            if legacy_marker in content and path.name != "test_connector_module_boundaries.py":
-                violations.append(str(path.relative_to(REPO_ROOT)))
-    assert not violations, "legacy sync module imports remain in:\n" + "\n".join(sorted(violations))

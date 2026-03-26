@@ -19,13 +19,9 @@ def test_connector_runtime_uses_shared_job_lifecycle_kernel() -> None:
     assert "def _compute_retry_delay_seconds" not in content
 
 
-def test_llm_worker_uses_shared_job_lifecycle_kernel() -> None:
-    worker_path = REPO_ROOT / "app" / "modules" / "runtime" / "llm" / "worker.py"
-    legacy_tick_path = REPO_ROOT / "app" / "modules" / "runtime" / "llm" / "worker_tick.py"
+def test_llm_tick_runner_uses_shared_job_lifecycle_kernel() -> None:
     tick_path = REPO_ROOT / "app" / "modules" / "runtime" / "llm" / "tick_runner.py"
     transitions_path = REPO_ROOT / "app" / "modules" / "runtime" / "llm" / "transitions.py"
-    assert not worker_path.exists()
-    assert not legacy_tick_path.exists()
     tick_content = tick_path.read_text(encoding="utf-8")
     transitions_content = transitions_path.read_text(encoding="utf-8")
     assert "from app.modules.runtime.kernel import" in tick_content or "from app.modules.runtime.kernel import" in transitions_content

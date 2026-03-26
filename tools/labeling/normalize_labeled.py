@@ -78,15 +78,7 @@ EVENT_MAP = {
     "announcement": "announcement",
     "logistics": "announcement",
 }
-LEGACY_CATEGORY_TO_EVENT = {
-    "deadline": "deadline",
-    "exam": "exam",
-    "schedule_change": "schedule_change",
-    "required_action": "action_required",
-    "grade_update": "grade",
-    "course_logistics": "announcement",
-    "irrelevant": None,
-}
+LEGACY_LABEL_ROW_KEYS = frozenset({"keep", "category", "candidates"})
 
 
 @dataclass(frozen=True)
@@ -321,7 +313,7 @@ def normalize_string_list(value: Any, *, max_items: int | None = None) -> list[s
     return out
 
 
-def normalize_label(value: Any, *, fallback_keep: Any = None) -> str:
+def normalize_label(value: Any) -> str:
     if isinstance(value, str):
         mapped = LABEL_MAP.get(value.strip().lower())
         if mapped:
@@ -333,9 +325,6 @@ def normalize_label(value: Any, *, fallback_keep: Any = None) -> str:
             return "KEEP"
         if float(value) == 0.0:
             return "DROP"
-
-    if fallback_keep is not None:
-        return normalize_label(fallback_keep)
     return "DROP"
 
 
@@ -428,56 +417,6 @@ def normalize_raw_extract(value: Any) -> dict[str, str | None]:
     }
 
 
-def normalize_legacy_candidates(value: Any) -> list[dict[str, Any]]:
-    if not isinstance(value, list):
-        return []
-    out: list[dict[str, Any]] = []
-    for item in value:
-        if isinstance(item, dict):
-            out.append(item)
-    return out
-
-
-def maybe_legacy_row(row: dict[str, Any]) -> bool:
-    return "keep" in row or "category" in row or "candidates" in row
-
-
-def build_legacy_action_items(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    action_items: list[dict[str, Any]] = []
-    for candidate in candidates:
-        action = coerce_text(candidate.get("item_title_hint")) or coerce_text(candidate.get("change_type")) or "legacy change"
-        due_iso_candidate = coerce_text(candidate.get("new_time"))
-        if due_iso_candidate is None:
-            due_iso_candidate = coerce_text(candidate.get("old_time"))
-        due_iso = due_iso_candidate if parse_iso8601(due_iso_candidate) else None
-        action_items.append({"action": action, "due_iso": due_iso, "where": None})
-    return action_items
-
-
-def build_legacy_raw_extract(candidates: list[dict[str, Any]]) -> dict[str, str | None]:
-    deadline_text: str | None = None
-    time_text: str | None = None
-
-    for candidate in candidates:
-        evidence = candidate.get("evidence_spans")
-        if deadline_text is None and isinstance(evidence, list):
-            for item in evidence:
-                text = coerce_text(item)
-                if text:
-                    deadline_text = text
-                    break
-        for key in ("new_time", "old_time"):
-            if time_text is None:
-                candidate_time = coerce_text(candidate.get(key))
-                if candidate_time:
-                    time_text = candidate_time
-    return {
-        "deadline_text": deadline_text,
-        "time_text": time_text,
-        "location_text": None,
-    }
-
-
 def merge_course_hints(current: list[str], extra: list[str]) -> list[str]:
     merged = list(current)
     seen = set(current)
@@ -494,52 +433,46 @@ def normalize_row(
     line_number: int,
     max_action_items: int,
     error_rows: list[dict[str, Any]],
-) -> tuple[dict[str, Any], bool, str | None, bool]:
+) -> tuple[dict[str, Any] | None, bool, str | None, bool]:
     email_id = coerce_text(row.get("email_id")) or f"unknown-{line_number}"
-    legacy = maybe_legacy_row(row) and "label" not in row
-    unmapped_event_type = False
-
-    if legacy:
+    original_keys = sorted(str(k) for k in row.keys())
+    legacy_keys = sorted(key for key in original_keys if key in LEGACY_LABEL_ROW_KEYS)
+    if legacy_keys:
         append_error(
             error_rows,
             line_number=line_number,
             email_id=email_id,
-            error_type="coercion_warning",
-            message="legacy keep/category/candidates mapped to strict output contract",
-            original_keys=sorted([str(k) for k in row.keys()]),
+            error_type="input_validation",
+            message="legacy keep/category/candidates rows are no longer supported; rewrite to canonical label/event_type/action_items/raw_extract",
+            original_keys=original_keys,
         )
+        return None, False, None, False
+    if "label" not in row:
+        append_error(
+            error_rows,
+            line_number=line_number,
+            email_id=email_id,
+            error_type="input_validation",
+            message="canonical labeled row must include label",
+            original_keys=original_keys,
+        )
+        return None, False, None, False
 
-    label = normalize_label(row.get("label"), fallback_keep=row.get("keep"))
+    unmapped_event_type = False
+    label = normalize_label(row.get("label"))
     confidence = clamp_confidence(row.get("confidence"))
     reasons = normalize_string_list(row.get("reasons"), max_items=3)
     course_hints = normalize_string_list(row.get("course_hints"))
     notes = coerce_text(row.get("notes"))
-
-    if legacy:
-        category = row.get("category")
-        if isinstance(category, str):
-            category_normalized = category.strip().lower()
-            event_type = LEGACY_CATEGORY_TO_EVENT.get(category_normalized)
-            if category_normalized not in LEGACY_CATEGORY_TO_EVENT:
-                event_type = None
-                unmapped_event_type = True
-        else:
-            event_type = None
-        candidates = normalize_legacy_candidates(row.get("candidates"))
-        legacy_hints = normalize_string_list([candidate.get("course_hint") for candidate in candidates])
-        course_hints = merge_course_hints(course_hints, legacy_hints)
-        action_items = build_legacy_action_items(candidates)
-        raw_extract = build_legacy_raw_extract(candidates)
-    else:
-        event_type, unmapped_event_type = normalize_event_type(row.get("event_type"))
-        action_items, _ = normalize_action_items(
-            row.get("action_items"),
-            max_action_items=max_action_items,
-            line_number=line_number,
-            email_id=email_id,
-            error_rows=error_rows,
-        )
-        raw_extract = normalize_raw_extract(row.get("raw_extract"))
+    event_type, unmapped_event_type = normalize_event_type(row.get("event_type"))
+    action_items, _ = normalize_action_items(
+        row.get("action_items"),
+        max_action_items=max_action_items,
+        line_number=line_number,
+        email_id=email_id,
+        error_rows=error_rows,
+    )
+    raw_extract = normalize_raw_extract(row.get("raw_extract"))
 
     action_items, truncated_count = normalize_action_items(
         action_items,
@@ -660,20 +593,7 @@ def build_rescue_prompt(entry: NormalizedRow) -> str:
         coerce_text(raw_extract.get("time_text")),
         coerce_text(raw_extract.get("location_text")),
     ]
-
-    fallback_source = []
-    candidates = source.get("candidates")
-    if isinstance(candidates, list):
-        for candidate in candidates[:3]:
-            if isinstance(candidate, dict):
-                spans = candidate.get("evidence_spans")
-                if isinstance(spans, list):
-                    for item in spans[:2]:
-                        text = coerce_text(item)
-                        if text:
-                            fallback_source.append(text)
-    fallback = " | ".join(item for item in fallback_source if item)
-    context = body_text or " ".join(item for item in [reasons, *raw_bits, fallback] if item)
+    context = body_text or " ".join(item for item in [reasons, *raw_bits] if item)
     context = _truncate_head_tail(context, limit=1500) if context else "n/a"
 
     return (
@@ -934,6 +854,8 @@ def run_normalization_pipeline(config: NormalizeConfig) -> dict[str, Any]:
             max_action_items=config.max_action_items,
             error_rows=error_rows,
         )
+        if normalized is None:
+            continue
         if len(normalized.get("action_items", [])) >= config.max_action_items and isinstance(raw.get("action_items"), list):
             if len(raw.get("action_items", [])) > config.max_action_items:
                 action_items_truncated_count += 1

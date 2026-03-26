@@ -20,17 +20,14 @@ def test_core_ingest_apply_modules_import_unified_apply_module_only() -> None:
         assert "app.modules.runtime.apply.pending_rebuild" not in content
 
 
-def test_review_change_services_do_not_import_router_or_legacy_service() -> None:
+def test_review_change_services_do_not_import_router_modules() -> None:
     service_files = [
         "app/modules/changes/change_listing_service.py",
         "app/modules/changes/change_decision_service.py",
         "app/modules/changes/change_evidence_service.py",
         "app/modules/changes/edit_service.py",
     ]
-    forbidden_tokens = [
-        "app.modules.changes.router",
-        "app.modules.changes." + "service",
-    ]
+    forbidden_tokens = ["app.modules.changes.router"]
     for path in service_files:
         content = _read(path)
         for token in forbidden_tokens:

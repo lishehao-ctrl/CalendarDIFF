@@ -33,7 +33,7 @@ EVENT_CLASSES = [
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate rules_labeled output against normalized silver labels.")
     parser.add_argument("--pred", default="data/rules_labeled.jsonl", help="Rules prediction JSONL.")
-    parser.add_argument("--silver", default="data/labeled.jsonl", help="Silver label JSONL (possibly mixed legacy).")
+    parser.add_argument("--silver", default="data/labeled.jsonl", help="Silver label JSONL in the canonical normalized contract.")
     parser.add_argument(
         "--silver-normalized",
         default=None,
