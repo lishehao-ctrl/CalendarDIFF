@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.db.models.input import SyncRequest
 from app.db.session import get_session_factory
 from app.modules.llm_gateway.contracts import LlmInvokeRequest, LlmInvokeResult
+from app.modules.llm_gateway.costing import empty_llm_cost_summary, estimate_llm_usage_cost, merge_llm_cost_summary
 from app.modules.llm_gateway.usage_normalizer import normalize_llm_usage
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,12 @@ _NUMERIC_KEYS = (
     "output_tokens",
     "reasoning_tokens",
     "total_tokens",
+)
+_COST_KEYS = (
+    "estimated_cost_usd",
+    "input_cost_usd",
+    "cached_input_cost_usd",
+    "output_cost_usd",
 )
 
 
@@ -46,6 +53,7 @@ def empty_llm_usage_summary() -> dict[str, Any]:
         "task_counts": {},
         "tasks": {},
         "last_observed_at": None,
+        **empty_llm_cost_summary(),
     }
 
 
@@ -85,6 +93,19 @@ def merge_llm_usage_summary(
             model=model,
             protocol=protocol,
         )
+
+    summary.update(
+        merge_llm_cost_summary(
+            summary,
+            estimate=estimate_llm_usage_cost(
+                provider_id=result.provider_id,
+                vendor=result.vendor,
+                model=model,
+                protocol=protocol,
+                usage=normalized_usage,
+            ),
+        )
+    )
 
     summary["last_observed_at"] = datetime.now(UTC).isoformat()
     return summary
@@ -133,6 +154,17 @@ def _coerce_summary(existing: dict[str, Any] | None) -> dict[str, Any]:
             summary[key] = max(int(existing.get(key) or 0), 0)
         except Exception:
             summary[key] = 0
+    for key in _COST_KEYS:
+        try:
+            summary[key] = float(existing.get(key) or 0)
+        except Exception:
+            summary[key] = 0.0
+    cost_keys_present = any(key in existing for key in (*_COST_KEYS, "unpriced_call_count", "pricing_available"))
+    try:
+        summary["unpriced_call_count"] = max(int(existing.get("unpriced_call_count") or 0), 0)
+    except Exception:
+        summary["unpriced_call_count"] = 0
+    summary["pricing_available"] = bool(existing.get("pricing_available", summary["unpriced_call_count"] == 0)) if cost_keys_present else False
     for mapping_key in ("protocols", "models", "task_counts"):
         summary[mapping_key] = _coerce_counter_map(existing.get(mapping_key))
     tasks = existing.get("tasks")
@@ -261,6 +293,12 @@ def present_llm_usage_summary(summary: dict[str, Any] | None) -> dict[str, Any] 
             if input_tokens > 0
             else None
         ),
+        "estimated_cost_usd": round(float(normalized.get("estimated_cost_usd") or 0), 6),
+        "input_cost_usd": round(float(normalized.get("input_cost_usd") or 0), 6),
+        "cached_input_cost_usd": round(float(normalized.get("cached_input_cost_usd") or 0), 6),
+        "output_cost_usd": round(float(normalized.get("output_cost_usd") or 0), 6),
+        "unpriced_call_count": max(int(normalized.get("unpriced_call_count") or 0), 0),
+        "pricing_available": bool(normalized.get("pricing_available", True)),
     }
     return presented
 

@@ -86,12 +86,13 @@ def test_record_sync_request_llm_usage_persists_summary_on_sync_request(db_sessi
     )
     result = LlmInvokeResult(
         json_object={"mode": "atomic"},
-        provider_id="env-default",
+        provider_id="qwen_us_main",
         protocol="responses",
-        model="qwen3.5-plus",
+        model="qwen3.5-flash",
         latency_ms=420,
         response_id="resp-1",
         upstream_request_id="upstream-1",
+        vendor="dashscope_openai",
         raw_usage={
             "input_tokens": 1000,
             "input_tokens_details": {"cached_tokens": 700},
@@ -126,5 +127,11 @@ def test_record_sync_request_llm_usage_persists_summary_on_sync_request(db_sessi
     assert summary["reasoning_tokens"] == 60
     assert summary["total_tokens"] == 1120
     assert summary["protocols"] == {"responses": 1}
-    assert summary["models"] == {"qwen3.5-plus": 1}
+    assert summary["models"] == {"qwen3.5-flash": 1}
     assert summary["task_counts"] == {"gmail_purpose_mode_classify": 1}
+    assert summary["estimated_cost_usd"] == 0.00007
+    assert summary["input_cost_usd"] == 0.000015
+    assert summary["cached_input_cost_usd"] == 0.000007
+    assert summary["output_cost_usd"] == 0.000048
+    assert summary["pricing_available"] is True
+    assert summary["unpriced_call_count"] == 0

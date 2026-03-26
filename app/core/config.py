@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     oauth_callback_require_api_key: bool = False
     oauth_state_ttl_minutes: int = 10
     oauth_token_encryption_key: str | None = None
+    auth_rate_limit_max_requests: int = 10
+    auth_rate_limit_window_seconds: int = 60
+    mutation_rate_limit_max_requests: int = 30
+    mutation_rate_limit_window_seconds: int = 60
+    mcp_public_require_bearer_token: bool = True
+    webhook_max_body_bytes: int = 65536
+    webhook_metadata_preview_max_bytes: int = 2048
 
     gmail_oauth_client_secrets_file: str | None = None
     gmail_oauth_scope: str = "https://www.googleapis.com/auth/gmail.readonly"
@@ -50,11 +57,19 @@ class Settings(BaseSettings):
     gmail_secondary_filter_max_input_chars: int = 1200
     gmail_secondary_filter_min_batch_size: int = 11
     gmail_message_parse_cache_enabled: bool = True
+    gmail_purpose_mode_cache_enabled: bool = True
+    gmail_purpose_mode_fingerprint_reuse_enabled: bool = True
     calendar_component_parse_cache_enabled: bool = True
     ingestion_llm_provider_id: str | None = None
     ingestion_llm_session_cache_enabled: bool = False
     agent_llm_provider_id: str | None = None
     agent_generation_mode: str = "deterministic"
+    llm_price_qwen_us_main_input_per_1m_usd: float | None = None
+    llm_price_qwen_us_main_cached_input_per_1m_usd: float | None = None
+    llm_price_qwen_us_main_output_per_1m_usd: float | None = None
+    llm_price_qwen_us_chat_input_per_1m_usd: float | None = None
+    llm_price_qwen_us_chat_cached_input_per_1m_usd: float | None = None
+    llm_price_qwen_us_chat_output_per_1m_usd: float | None = None
     llm_request_window_seconds: int = 60
     llm_max_requests_per_window: int = 480
     ingestion_llm_fallback_enabled: bool = True
@@ -64,6 +79,7 @@ class Settings(BaseSettings):
     llm_gateway_trace_persistence_enabled: bool = True
 
     redis_url: str | None = None
+    ingest_service_enable_scheduler: bool = True
     llm_queue_stream_key: str = "llm:parse:stream"
     llm_queue_group: str = "llm-parse-workers"
     llm_queue_consumer_poll_ms: int = 500
@@ -73,6 +89,14 @@ class Settings(BaseSettings):
     llm_retry_jitter_seconds: int = 5
     llm_max_retry_attempts: int = 6
     llm_claim_timeout_seconds: int = 300
+    gmail_parse_max_workers: int = 12
+    gmail_fetch_metadata_max_workers: int = 12
+    gmail_continuation_max_message_ids: int = 5000
+    gmail_continuation_max_matched_buffer: int = 2000
+    gmail_connector_chunk_max_seconds: float = 30.0
+    ics_max_payload_bytes: int = 2 * 1024 * 1024
+    ics_max_components: int = 5000
+    ics_parse_max_seconds: float = 10.0
 
     smtp_host: str = "localhost"
     smtp_port: int = 25

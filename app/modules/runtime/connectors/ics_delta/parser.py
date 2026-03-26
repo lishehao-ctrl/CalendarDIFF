@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+import time
 
 from icalendar import Calendar
 
@@ -33,13 +34,20 @@ class ParsedIcsSnapshot:
     invalid_components: int
 
 
-def parse_ics_snapshot(*, content: bytes) -> ParsedIcsSnapshot:
+def parse_ics_snapshot(
+    *,
+    content: bytes,
+    max_components: int | None = None,
+    max_parse_seconds: float | None = None,
+) -> ParsedIcsSnapshot:
     if not content:
         raise IcsDeltaParseError("ics content is empty")
+    started = time.monotonic()
     try:
         calendar = Calendar.from_ical(content)
     except Exception as exc:
         raise IcsDeltaParseError(f"ics parse failed: {exc}") from exc
+    _assert_parse_budget(started=started, max_parse_seconds=max_parse_seconds)
 
     components: dict[str, ParsedIcsComponent] = {}
     cancelled_component_keys: set[str] = set()
@@ -47,9 +55,14 @@ def parse_ics_snapshot(*, content: bytes) -> ParsedIcsSnapshot:
     invalid_components = 0
 
     for component in calendar.walk():
+        _assert_parse_budget(started=started, max_parse_seconds=max_parse_seconds)
         if getattr(component, "name", "") != "VEVENT":
             continue
         total_components += 1
+        if max_components is not None and max_components > 0 and total_components > max_components:
+            raise IcsDeltaParseError(
+                f"ics component count exceeded configured limit: {total_components}>{max_components}"
+            )
 
         uid = _normalize_text(component.get("UID"))
         if not uid:
@@ -94,6 +107,16 @@ def parse_ics_snapshot(*, content: bytes) -> ParsedIcsSnapshot:
         total_components=total_components,
         invalid_components=invalid_components,
     )
+
+
+def _assert_parse_budget(*, started: float, max_parse_seconds: float | None) -> None:
+    if max_parse_seconds is None or max_parse_seconds <= 0:
+        return
+    elapsed = time.monotonic() - started
+    if elapsed > max_parse_seconds:
+        raise IcsDeltaParseError(
+            f"ics parse exceeded configured wall-clock budget: {elapsed:.2f}s>{max_parse_seconds:.2f}s"
+        )
 
 
 def _normalize_text(value: object) -> str | None:

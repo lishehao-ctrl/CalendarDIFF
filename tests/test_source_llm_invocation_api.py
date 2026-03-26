@@ -61,6 +61,9 @@ def _seed_invocation(
     protocol: str = "responses",
     usage_json: dict | None = None,
     error_code: str | None = None,
+    provider_id: str = "qwen_us_main",
+    vendor: str = "dashscope_openai",
+    model: str = "qwen3.5-flash",
 ) -> None:
     db_session.add(
         LlmInvocationLog(
@@ -70,10 +73,10 @@ def _seed_invocation(
             profile_family="ingestion",
             route_id=route_id,
             route_index=1,
-            provider_id="env-default",
-            vendor="openai",
+            provider_id=provider_id,
+            vendor=vendor,
             protocol=protocol,
-            model="test-model",
+            model=model,
             session_cache_enabled=False,
             success=success,
             latency_ms=180 if success else None,
@@ -133,12 +136,16 @@ def test_sync_request_llm_invocations_returns_items_and_summary(input_client, db
     assert payload["items"][0]["protocol"] == "chat_completions"
     assert payload["items"][1]["task_name"] == "gmail_purpose_mode_classify"
     assert payload["items"][1]["protocol"] == "responses"
+    assert payload["items"][1]["estimated_cost_usd"] == 0.000011
     assert payload["summary"]["total_count"] == 2
     assert payload["summary"]["success_count"] == 1
     assert payload["summary"]["failure_count"] == 1
     assert payload["summary"]["protocol_counts"] == {"chat_completions": 1, "responses": 1}
     assert payload["summary"]["input_tokens"] == 100
     assert payload["summary"]["cached_input_tokens"] == 40
+    assert payload["summary"]["estimated_cost_usd"] == 0.000011
+    assert payload["summary"]["pricing_available"] is False
+    assert payload["summary"]["unpriced_call_count"] == 1
 
 
 def test_source_llm_invocations_filters_by_request_id(input_client, db_session, authenticate_client) -> None:

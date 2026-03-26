@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import Counter
+import threading
 
 import redis
 from sqlalchemy.orm import Session, sessionmaker
@@ -34,6 +36,12 @@ from app.modules.runtime.llm.gmail_parse_cache import (
     load_cached_gmail_parse_records,
     store_cached_gmail_parse_records,
     store_non_retryable_gmail_parse_skip,
+)
+from app.modules.runtime.llm.gmail_parse_summary import record_sync_request_gmail_parse_summary
+from app.modules.runtime.llm.gmail_purpose_cache import (
+    classify_gmail_message_fast_path,
+    load_cached_gmail_purpose_mode,
+    store_cached_gmail_purpose_mode,
 )
 from app.modules.runtime.llm.parser_invocation import (
     RateLimitRejected,
@@ -127,6 +135,7 @@ def parse_with_llm(
 
     message_items = [item for item in messages if isinstance(item, dict)]
     max_workers = _gmail_parse_worker_count(len(message_items))
+    gmail_parse_summary = _GmailParseSummaryAccumulator()
     if max_workers <= 1 or len(message_items) <= 1:
         for item in message_items:
             records.extend(
@@ -138,6 +147,7 @@ def parse_with_llm(
                     provider=provider,
                     request_id=request_id,
                     payload_item=item,
+                    gmail_parse_summary=gmail_parse_summary,
                 )
             )
     else:
@@ -153,6 +163,7 @@ def parse_with_llm(
                     provider=provider,
                     request_id=request_id,
                     payload_item=item,
+                    gmail_parse_summary=gmail_parse_summary,
                 ): index
                 for index, item in enumerate(message_items)
             }
@@ -160,6 +171,10 @@ def parse_with_llm(
                 indexed_results[future_map[future]] = future.result()
         for index in sorted(indexed_results):
             records.extend(indexed_results[index])
+    record_sync_request_gmail_parse_summary(
+        request_id=request_id,
+        delta=gmail_parse_summary.snapshot(),
+    )
     status = ConnectorResultStatus.CHANGED if records else ConnectorResultStatus.NO_CHANGE
     return records, status
 
@@ -195,7 +210,9 @@ def _parse_single_gmail_message(
     provider: str,
     request_id: str,
     payload_item: dict,
+    gmail_parse_summary=None,
 ) -> list[dict]:
+    summary = gmail_parse_summary or _GmailParseSummaryAccumulator()
     return parse_single_gmail_message_impl(
         session_factory=session_factory,
         redis_client=redis_client,
@@ -205,9 +222,13 @@ def _parse_single_gmail_message(
         request_id=request_id,
         payload_item=payload_item,
         load_cached_gmail_parse_records_fn=load_cached_gmail_parse_records,
+        load_cached_gmail_purpose_mode_fn=load_cached_gmail_purpose_mode,
         store_cached_gmail_parse_records_fn=store_cached_gmail_parse_records,
+        store_cached_gmail_purpose_mode_fn=store_cached_gmail_purpose_mode,
         store_non_retryable_gmail_parse_skip_fn=store_non_retryable_gmail_parse_skip,
+        classify_gmail_message_fast_path_fn=classify_gmail_message_fast_path,
         increment_parse_metric_counter_fn=increment_parse_metric_counter,
+        record_gmail_parse_summary_stat_fn=summary.increment,
         parse_gmail_payload_fn=parse_gmail_payload,
         invoke_parser_with_limit_fn=invoke_parser_with_limit,
         attach_parser_metadata_fn=attach_parser_metadata,
@@ -228,6 +249,22 @@ def is_rate_limited_llm_error(exc: LlmParseError) -> bool:
 
 def _gmail_parse_worker_count(message_count: int) -> int:
     return gmail_parse_worker_count(message_count)
+
+
+class _GmailParseSummaryAccumulator:
+    def __init__(self) -> None:
+        self._counter: Counter[str] = Counter()
+        self._lock = threading.Lock()
+
+    def increment(self, metric_name: str, amount: int = 1) -> None:
+        if not metric_name:
+            return
+        with self._lock:
+            self._counter[metric_name] += max(int(amount), 0)
+
+    def snapshot(self) -> dict[str, int]:
+        with self._lock:
+            return dict(self._counter)
 
 
 def parse_calendar_changed_component_with_llm(

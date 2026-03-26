@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.db.models.input import IngestTriggerType
@@ -11,6 +11,7 @@ from app.db.models.shared import User
 from app.db.session import get_db
 from app.modules.auth.deps import get_authenticated_user_or_401
 from app.modules.common.api_errors import api_error_detail
+from app.modules.common.request_rate_limit import enforce_user_mutation_rate_limit
 from app.modules.common.source_monitoring_window import parse_source_monitoring_window, source_timezone_name
 from app.modules.sources.router_common import require_owned_source_or_404
 from app.modules.sources.schemas import (
@@ -31,10 +32,12 @@ router = APIRouter()
 def create_sync_request(
     source_id: int,
     payload: SyncRequestCreateRequest,
+    request: Request,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     db: Session = Depends(get_db),
     user: User = Depends(get_authenticated_user_or_401),
 ) -> SyncRequestCreateResponse:
+    enforce_user_mutation_rate_limit(request, user_id=user.id)
     source = require_owned_source_or_404(db=db, user_id=user.id, source_id=source_id)
     if has_pending_monitoring_window_update(source):
         raise HTTPException(

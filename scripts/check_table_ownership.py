@@ -37,6 +37,7 @@ TABLE_OWNERSHIP: dict[str, str] = {
     "ingest_results": "runtime.connectors",
     "calendar_component_parse_tasks": "runtime.llm",
     "gmail_message_parse_cache": "runtime.llm",
+    "gmail_message_purpose_cache": "runtime.llm",
     "calendar_component_parse_cache": "runtime.llm",
     "integration_outbox": "shared",
     "integration_inbox": "shared",

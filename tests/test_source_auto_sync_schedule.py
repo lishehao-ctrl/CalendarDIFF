@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 from sqlalchemy import select
 
@@ -13,8 +14,8 @@ from app.db.models.input import (
     SyncRequest,
     SyncRequestStatus,
 )
-from app.db.models.runtime import ConnectorResultStatus, IngestResult
-from app.db.models.shared import User
+from app.db.models.runtime import ConnectorResultStatus, IngestJob, IngestResult
+from app.db.models.shared import IntegrationOutbox, OutboxStatus, User
 from app.modules.common.source_auto_sync_schedule import next_source_auto_sync_at
 import app.modules.runtime.connectors.orchestrator as orchestrator
 import app.modules.runtime.apply.apply as apply_module
@@ -90,6 +91,126 @@ def test_run_orchestrator_tick_reschedules_next_auto_sync_to_fixed_slot(db_sessi
     assert request is not None
     assert request.trigger_type == IngestTriggerType.SCHEDULER
     assert request.status in {SyncRequestStatus.PENDING, SyncRequestStatus.QUEUED}
+
+
+def test_run_orchestrator_tick_skips_scheduler_when_disabled(db_session, monkeypatch) -> None:
+    fixed_now = datetime(2026, 3, 20, 19, 30, tzinfo=timezone.utc)
+
+    class _FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    monkeypatch.setattr(orchestrator, "datetime", _FrozenDateTime)
+    monkeypatch.setattr(orchestrator, "get_settings", lambda: SimpleNamespace(ingest_service_enable_scheduler=False))
+
+    user = User(
+        email="scheduler-disabled-owner@example.com",
+        timezone_name="America/Los_Angeles",
+        onboarding_completed_at=fixed_now,
+    )
+    db_session.add(user)
+    db_session.flush()
+
+    source = InputSource(
+        user_id=user.id,
+        source_kind=SourceKind.EMAIL,
+        provider="gmail",
+        source_key="gmail-disabled-scheduler-source",
+        display_name="Gmail Disabled Scheduler Source",
+        is_active=True,
+        poll_interval_seconds=900,
+        last_polled_at=fixed_now - timedelta(hours=10),
+        next_poll_at=fixed_now - timedelta(minutes=1),
+    )
+    db_session.add(source)
+    db_session.flush()
+    db_session.add(InputSourceConfig(source_id=source.id, schema_version=1, config_json={"label_id": "INBOX"}))
+    db_session.add(InputSourceCursor(source_id=source.id, version=1, cursor_json={}))
+    db_session.commit()
+
+    processed = orchestrator.run_orchestrator_tick(db_session, worker_id="test-scheduler-disabled")
+    assert processed == 0
+
+    refreshed_source = db_session.get(InputSource, source.id)
+    assert refreshed_source is not None
+    assert refreshed_source.next_poll_at == fixed_now - timedelta(minutes=1)
+    assert db_session.scalar(select(SyncRequest).where(SyncRequest.source_id == source.id)) is None
+
+
+def test_run_orchestrator_tick_still_consumes_sync_requested_when_scheduler_disabled(db_session, monkeypatch) -> None:
+    fixed_now = datetime(2026, 3, 20, 19, 30, tzinfo=timezone.utc)
+
+    class _FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    monkeypatch.setattr(orchestrator, "datetime", _FrozenDateTime)
+    monkeypatch.setattr(orchestrator, "get_settings", lambda: SimpleNamespace(ingest_service_enable_scheduler=False))
+
+    user = User(
+        email="scheduler-disabled-consume@example.com",
+        timezone_name="America/Los_Angeles",
+        onboarding_completed_at=fixed_now,
+    )
+    db_session.add(user)
+    db_session.flush()
+
+    source = InputSource(
+        user_id=user.id,
+        source_kind=SourceKind.EMAIL,
+        provider="gmail",
+        source_key="gmail-disabled-consume-source",
+        display_name="Gmail Disabled Consume Source",
+        is_active=True,
+        poll_interval_seconds=900,
+        next_poll_at=fixed_now + timedelta(hours=1),
+    )
+    db_session.add(source)
+    db_session.flush()
+    db_session.add(InputSourceConfig(source_id=source.id, schema_version=1, config_json={"label_id": "INBOX"}))
+    db_session.add(InputSourceCursor(source_id=source.id, version=1, cursor_json={}))
+    sync_request = SyncRequest(
+        request_id="disabled-scheduler-manual-req",
+        source_id=source.id,
+        trigger_type=IngestTriggerType.MANUAL,
+        status=SyncRequestStatus.PENDING,
+        idempotency_key="idemp:disabled-scheduler-manual-req",
+        metadata_json={"kind": "manual"},
+    )
+    db_session.add(sync_request)
+    db_session.flush()
+    db_session.add(
+        IntegrationOutbox(
+            event_id="disabled-scheduler-event-1",
+            event_type="sync.requested",
+            aggregate_type="sync_request",
+            aggregate_id=sync_request.request_id,
+            payload_json={
+                "request_id": sync_request.request_id,
+                "source_id": source.id,
+                "provider": source.provider,
+                "trigger_type": IngestTriggerType.MANUAL.value,
+            },
+            status=OutboxStatus.PENDING,
+            available_at=fixed_now,
+        )
+    )
+    db_session.commit()
+
+    processed = orchestrator.run_orchestrator_tick(db_session, worker_id="test-scheduler-disabled")
+    assert processed == 1
+
+    job = db_session.scalar(select(IngestJob).where(IngestJob.request_id == sync_request.request_id))
+    assert job is not None
+    refreshed_request = db_session.scalar(select(SyncRequest).where(SyncRequest.request_id == sync_request.request_id))
+    assert refreshed_request is not None
+    assert refreshed_request.status == SyncRequestStatus.QUEUED
 
 
 def test_apply_ingest_result_reschedules_source_to_next_fixed_slot(db_session) -> None:

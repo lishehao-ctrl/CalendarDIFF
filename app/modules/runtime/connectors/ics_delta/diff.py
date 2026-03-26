@@ -20,8 +20,14 @@ def build_ics_delta(
     *,
     content: bytes,
     previous_fingerprints: dict[str, str],
+    max_components: int | None = None,
+    max_parse_seconds: float | None = None,
 ) -> IcsDeltaResult:
-    snapshot = parse_ics_snapshot(content=content)
+    snapshot = parse_ics_snapshot(
+        content=content,
+        max_components=max_components,
+        max_parse_seconds=max_parse_seconds,
+    )
     normalized_previous = _normalize_previous_fingerprints(previous_fingerprints)
     current_fingerprints = {key: component.fingerprint for key, component in snapshot.components.items()}
 

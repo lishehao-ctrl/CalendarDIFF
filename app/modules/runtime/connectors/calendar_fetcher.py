@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, cast
 
+from app.core.config import get_settings
 from app.db.models.runtime import ConnectorResultStatus
 from app.db.models.input import InputSource
 from app.modules.common.source_monitoring_window import calendar_component_in_window, parse_source_monitoring_window, source_timezone_name
@@ -58,10 +59,27 @@ def fetch_calendar_delta(*, source: Any, emit_progress: Callable[[dict], None] |
             error_code="calendar_empty_content",
             error_message="calendar fetch returned empty content",
         )
+    max_payload_bytes = max(int(get_settings().ics_max_payload_bytes), 0)
+    if max_payload_bytes > 0 and len(fetched.content) > max_payload_bytes:
+        return ConnectorFetchOutcome(
+            status=ConnectorResultStatus.FETCH_FAILED,
+            cursor_patch={},
+            parse_payload=None,
+            error_code="calendar_payload_too_large",
+            error_message=(
+                f"calendar fetch returned {len(fetched.content)} bytes, "
+                f"exceeding the configured limit of {max_payload_bytes}"
+            ),
+        )
 
     previous_fingerprints = extract_ics_component_fingerprints(cursor)
     try:
-        delta = build_ics_delta(content=fetched.content, previous_fingerprints=previous_fingerprints)
+        delta = build_ics_delta(
+            content=fetched.content,
+            previous_fingerprints=previous_fingerprints,
+            max_components=max(int(get_settings().ics_max_components), 0),
+            max_parse_seconds=max(float(get_settings().ics_parse_max_seconds), 0.0),
+        )
     except IcsDeltaParseError as exc:
         return ConnectorFetchOutcome(
             status=ConnectorResultStatus.PARSE_FAILED,

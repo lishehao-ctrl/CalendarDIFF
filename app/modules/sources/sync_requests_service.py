@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -10,6 +11,13 @@ from app.contracts.events import new_event
 from app.db.models.input import IngestTriggerType, InputSource, SyncRequest, SyncRequestStage, SyncRequestStatus
 from app.db.models.shared import IntegrationOutbox, OutboxStatus
 from app.modules.runtime.kernel import build_sync_progress_payload, set_sync_runtime_state
+
+logger = logging.getLogger(__name__)
+_ACTIVE_SYNC_STATUSES = (
+    SyncRequestStatus.PENDING,
+    SyncRequestStatus.QUEUED,
+    SyncRequestStatus.RUNNING,
+)
 
 
 def enqueue_sync_request(
@@ -91,6 +99,19 @@ def enqueue_sync_request_idempotent(
     metadata: dict | None = None,
     trace_id: str | None = None,
 ) -> SyncRequest:
+    existing_active = _find_active_sync_request_for_source(
+        db,
+        source_id=source.id,
+        trigger_type=trigger_type,
+    )
+    if existing_active is not None:
+        logger.info(
+            "sync request deduped source_id=%s request_id=%s trigger_type=%s",
+            source.id,
+            existing_active.request_id,
+            trigger_type.value,
+        )
+        return existing_active
     try:
         return enqueue_sync_request(
             db,
@@ -122,6 +143,19 @@ def enqueue_sync_request_idempotent_in_txn(
     metadata: dict | None = None,
     trace_id: str | None = None,
 ) -> SyncRequest:
+    existing_active = _find_active_sync_request_for_source(
+        db,
+        source_id=source.id,
+        trigger_type=trigger_type,
+    )
+    if existing_active is not None:
+        logger.info(
+            "sync request deduped in txn source_id=%s request_id=%s trigger_type=%s",
+            source.id,
+            existing_active.request_id,
+            trigger_type.value,
+        )
+        return existing_active
     existing = db.scalar(
         select(SyncRequest).where(
             SyncRequest.source_id == source.id,
@@ -142,6 +176,25 @@ def enqueue_sync_request_idempotent_in_txn(
 
 def get_sync_request_status(db: Session, *, request_id: str) -> SyncRequest | None:
     return db.scalar(select(SyncRequest).where(SyncRequest.request_id == request_id))
+
+
+def _find_active_sync_request_for_source(
+    db: Session,
+    *,
+    source_id: int,
+    trigger_type: IngestTriggerType,
+) -> SyncRequest | None:
+    if trigger_type != IngestTriggerType.MANUAL:
+        return None
+    return db.scalar(
+        select(SyncRequest)
+        .where(
+            SyncRequest.source_id == source_id,
+            SyncRequest.status.in_(_ACTIVE_SYNC_STATUSES),
+        )
+        .order_by(SyncRequest.created_at.asc(), SyncRequest.id.asc())
+        .limit(1)
+    )
 
 
 def _append_outbox_event(

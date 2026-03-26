@@ -107,8 +107,14 @@ def test_aggregate_llm_usage_summaries_rolls_up_tokens_cache_and_latency() -> No
                 "output_tokens": 300,
                 "reasoning_tokens": 100,
                 "total_tokens": 2100,
+                "estimated_cost_usd": 0.000162,
+                "input_cost_usd": 0.00004,
+                "cached_input_cost_usd": 0.000002,
+                "output_cost_usd": 0.00012,
+                "pricing_available": True,
+                "unpriced_call_count": 0,
                 "protocols": {"responses": 2},
-                "models": {"qwen3.5-plus": 2},
+                "models": {"qwen3.5-flash": 2},
                 "task_counts": {"gmail_purpose_mode_classify": 2},
             },
             {
@@ -122,6 +128,12 @@ def test_aggregate_llm_usage_summaries_rolls_up_tokens_cache_and_latency() -> No
                 "output_tokens": 50,
                 "reasoning_tokens": 0,
                 "total_tokens": 450,
+                "estimated_cost_usd": 0.000036,
+                "input_cost_usd": 0.000015,
+                "cached_input_cost_usd": 0.000001,
+                "output_cost_usd": 0.00002,
+                "pricing_available": True,
+                "unpriced_call_count": 0,
                 "protocols": {"chat_completions": 1},
                 "models": {"qwen3.5-flash": 1},
                 "task_counts": {"calendar_semantic_extract": 1},
@@ -138,6 +150,79 @@ def test_aggregate_llm_usage_summaries_rolls_up_tokens_cache_and_latency() -> No
     assert aggregate["latency_ms_max"] == 500
     assert aggregate["cache_hit_ratio"] == 0.5909
     assert aggregate["protocols"] == {"responses": 2, "chat_completions": 1}
+    assert aggregate["estimated_cost_usd"] == 0.000198
+    assert aggregate["pricing_available"] is True
+
+
+def test_aggregate_gmail_parse_summaries_rolls_up_cache_and_unknown_ratio() -> None:
+    aggregate = replay.aggregate_gmail_parse_summaries(
+        [
+            {
+                "message_count": 10,
+                "final_parse_cache_hit_count": 2,
+                "purpose_cache_hit_count": 3,
+                "purpose_cache_hit_unknown_count": 2,
+                "purpose_cache_hit_atomic_count": 1,
+                "purpose_cache_hit_directive_count": 0,
+                "purpose_cache_shared_content_hit_count": 1,
+                "purpose_cache_fingerprint_hit_count": 1,
+                "deterministic_fast_path_unknown_count": 2,
+                "llm_purpose_classify_call_count": 5,
+                "purpose_unknown_count": 6,
+                "purpose_atomic_count": 3,
+                "purpose_directive_count": 1,
+            },
+            {
+                "message_count": 4,
+                "final_parse_cache_hit_count": 1,
+                "purpose_cache_hit_count": 1,
+                "purpose_cache_hit_unknown_count": 1,
+                "purpose_cache_hit_atomic_count": 0,
+                "purpose_cache_hit_directive_count": 0,
+                "purpose_cache_shared_content_hit_count": 0,
+                "purpose_cache_fingerprint_hit_count": 0,
+                "deterministic_fast_path_unknown_count": 1,
+                "llm_purpose_classify_call_count": 2,
+                "purpose_unknown_count": 3,
+                "purpose_atomic_count": 1,
+                "purpose_directive_count": 0,
+            },
+        ]
+    )
+
+    assert aggregate["message_count"] == 14
+    assert aggregate["final_parse_cache_hit_count"] == 3
+    assert aggregate["purpose_cache_hit_count"] == 4
+    assert aggregate["deterministic_fast_path_unknown_count"] == 3
+    assert aggregate["llm_purpose_classify_call_count"] == 7
+    assert aggregate["unknown_ratio"] == 0.6429
+
+
+def test_extract_sync_gmail_parse_summary_reads_top_level_field() -> None:
+    payload = {
+        "gmail_parse_summary": {
+            "message_count": 4,
+            "final_parse_cache_hit_count": 1,
+            "purpose_cache_hit_count": 1,
+            "purpose_cache_hit_unknown_count": 1,
+            "purpose_cache_hit_atomic_count": 0,
+            "purpose_cache_hit_directive_count": 0,
+            "purpose_cache_shared_content_hit_count": 0,
+            "purpose_cache_fingerprint_hit_count": 0,
+            "deterministic_fast_path_unknown_count": 1,
+            "llm_purpose_classify_call_count": 2,
+            "purpose_unknown_count": 3,
+            "purpose_atomic_count": 1,
+            "purpose_directive_count": 0,
+        }
+    }
+
+    summary = replay.extract_sync_gmail_parse_summary(payload)
+
+    assert summary is not None
+    assert summary["message_count"] == 4
+    assert summary["llm_purpose_classify_call_count"] == 2
+    assert summary["unknown_ratio"] == 0.75
 
 
 def test_start_replay_writes_initial_state_and_credentials(tmp_path: Path, monkeypatch) -> None:
@@ -341,6 +426,12 @@ def test_build_report_rolls_up_batch_llm_usage(tmp_path: Path) -> None:
                         "output_tokens": 90,
                         "reasoning_tokens": 0,
                         "total_tokens": 990,
+                        "estimated_cost_usd": 0.000081,
+                        "input_cost_usd": 0.000045,
+                        "cached_input_cost_usd": 0.0,
+                        "output_cost_usd": 0.000036,
+                        "pricing_available": True,
+                        "unpriced_call_count": 0,
                         "protocols": {"chat_completions": 3},
                         "models": {"qwen3.5-flash": 3},
                         "task_counts": {"calendar_semantic_extract": 3},
@@ -367,6 +458,12 @@ def test_build_report_rolls_up_batch_llm_usage(tmp_path: Path) -> None:
                         "output_tokens": 70,
                         "reasoning_tokens": 0,
                         "total_tokens": 570,
+                        "estimated_cost_usd": 0.000049,
+                        "input_cost_usd": 0.00002,
+                        "cached_input_cost_usd": 0.000001,
+                        "output_cost_usd": 0.000028,
+                        "pricing_available": True,
+                        "unpriced_call_count": 0,
                         "protocols": {"chat_completions": 1},
                         "models": {"qwen3.5-flash": 1},
                         "task_counts": {"calendar_semantic_extract": 1},
@@ -382,8 +479,14 @@ def test_build_report_rolls_up_batch_llm_usage(tmp_path: Path) -> None:
                         "output_tokens": 300,
                         "reasoning_tokens": 100,
                         "total_tokens": 2100,
+                        "estimated_cost_usd": 0.000162,
+                        "input_cost_usd": 0.00003,
+                        "cached_input_cost_usd": 0.000012,
+                        "output_cost_usd": 0.00012,
+                        "pricing_available": True,
+                        "unpriced_call_count": 0,
                         "protocols": {"responses": 2},
-                        "models": {"qwen3.5-plus": 2},
+                        "models": {"qwen3.5-flash": 2},
                         "task_counts": {"gmail_purpose_mode_classify": 2},
                     },
                 }
@@ -403,6 +506,9 @@ def test_build_report_rolls_up_batch_llm_usage(tmp_path: Path) -> None:
     assert report["llm_usage"]["overall"]["cached_input_tokens"] == 1300
     assert report["llm_usage"]["gmail"]["input_tokens"] == 1800
     assert report["llm_usage"]["ics"]["input_tokens"] == 500
+    assert report["llm_usage"]["overall"]["estimated_cost_usd"] == 0.000292
+    assert report["llm_usage"]["gmail"]["estimated_cost_usd"] == 0.000162
+    assert report["llm_usage"]["ics"]["estimated_cost_usd"] == 0.000049
 
 
 def test_wait_for_source_bootstrap_sync_prefers_scheduler_request(monkeypatch) -> None:

@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.runtime import LlmInvocationLog
+from app.modules.llm_gateway.costing import estimate_llm_usage_cost, merge_llm_cost_summary
 
 
 def list_sync_request_llm_invocations(
@@ -54,6 +55,14 @@ def list_source_llm_invocations(
 
 
 def _serialize_log(row: LlmInvocationLog) -> dict[str, Any]:
+    usage = dict(row.usage_json) if isinstance(row.usage_json, dict) else None
+    cost = estimate_llm_usage_cost(
+        provider_id=row.provider_id,
+        vendor=row.vendor,
+        model=row.model,
+        protocol=row.protocol,
+        usage=usage,
+    )
     return {
         "request_id": row.request_id,
         "source_id": row.source_id,
@@ -73,7 +82,8 @@ def _serialize_log(row: LlmInvocationLog) -> dict[str, Any]:
         "error_code": row.error_code,
         "retryable": row.retryable,
         "http_status": row.http_status,
-        "usage": dict(row.usage_json) if isinstance(row.usage_json, dict) else None,
+        "usage": usage,
+        "estimated_cost_usd": cost.get("estimated_cost_usd"),
         "created_at": row.created_at,
     }
 
@@ -97,6 +107,12 @@ def _build_summary(rows: list[LlmInvocationLog]) -> dict[str, Any]:
         "task_counts": {},
         "model_counts": {},
         "protocol_counts": {},
+        "estimated_cost_usd": 0.0,
+        "input_cost_usd": 0.0,
+        "cached_input_cost_usd": 0.0,
+        "output_cost_usd": 0.0,
+        "pricing_available": True,
+        "unpriced_call_count": 0,
     }
     for row in rows:
         _increment(summary["task_counts"], row.task_name)
@@ -110,11 +126,27 @@ def _build_summary(rows: list[LlmInvocationLog]) -> dict[str, Any]:
             "output_tokens",
             "reasoning_tokens",
             "total_tokens",
-        ):
+            ):
             try:
                 summary[key] += max(int(usage.get(key) or 0), 0)
             except Exception:
                 continue
+        summary.update(
+            merge_llm_cost_summary(
+                summary,
+                estimate=estimate_llm_usage_cost(
+                    provider_id=row.provider_id,
+                    vendor=row.vendor,
+                    model=row.model,
+                    protocol=row.protocol,
+                    usage=usage,
+                ),
+            )
+        )
+    summary["estimated_cost_usd"] = round(float(summary["estimated_cost_usd"]), 6)
+    summary["input_cost_usd"] = round(float(summary["input_cost_usd"]), 6)
+    summary["cached_input_cost_usd"] = round(float(summary["cached_input_cost_usd"]), 6)
+    summary["output_cost_usd"] = round(float(summary["output_cost_usd"]), 6)
     return summary
 
 

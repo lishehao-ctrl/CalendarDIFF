@@ -34,3 +34,4 @@ class ParserOutput:
     parser_name: str = "unknown_parser"
     parser_version: str = "mainline"
     model_hint: str = "unknown_model"
+    metadata: dict = field(default_factory=dict)

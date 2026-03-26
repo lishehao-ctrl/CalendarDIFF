@@ -261,6 +261,12 @@ def _resolve_named_provider_definition(*, provider_id: str) -> LlmProviderDefini
         for value in str(spec.get("FALLBACK_PROVIDER_IDS") or "").split(",")
         if str(value).strip()
     )
+    _validate_named_provider_fallbacks(
+        provider_id=normalized_id,
+        vendor=vendor,
+        fallback_provider_ids=fallback_provider_ids,
+        specs=specs,
+    )
     timeout_seconds = _parse_timeout(
         spec.get("TIMEOUT_SECONDS"),
         default=float(_runtime_defaults["timeout_seconds"]),
@@ -301,6 +307,42 @@ def _resolve_named_provider_definition(*, provider_id: str) -> LlmProviderDefini
         chat_base_url=chat_base_url or None,
         responses_base_url=responses_base_url or None,
     )
+
+
+def _validate_named_provider_fallbacks(
+    *,
+    provider_id: str,
+    vendor: LlmVendorLiteral,
+    fallback_provider_ids: tuple[str, ...],
+    specs: dict[str, dict[str, str]],
+) -> None:
+    for fallback_provider_id in fallback_provider_ids:
+        if fallback_provider_id == provider_id:
+            raise _config_error(
+                code="parse_llm_upstream_error",
+                message=f"LLM provider '{provider_id}' cannot reference itself as a fallback provider",
+                provider_id=provider_id,
+                protocol=None,
+            )
+        fallback_spec = specs.get(fallback_provider_id)
+        if fallback_spec is None:
+            raise _config_error(
+                code="parse_llm_upstream_error",
+                message=f"LLM provider '{provider_id}' references unknown fallback provider '{fallback_provider_id}'",
+                provider_id=provider_id,
+                protocol=None,
+            )
+        fallback_vendor = _parse_vendor(fallback_spec.get("VENDOR"), provider_id=fallback_provider_id)
+        if fallback_vendor != vendor:
+            raise _config_error(
+                code="parse_llm_upstream_error",
+                message=(
+                    f"LLM provider '{provider_id}' cannot use cross-vendor fallback provider "
+                    f"'{fallback_provider_id}'"
+                ),
+                provider_id=provider_id,
+                protocol=None,
+            )
 
 
 def _override_provider_protocol(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import Future
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
@@ -12,6 +13,7 @@ from app.modules.runtime.connectors.calendar_fetcher import fetch_calendar_delta
 from app.modules.runtime.connectors.clients.gmail_client import GmailAPIError
 from app.modules.runtime.connectors.gmail_second_filter import GmailSecondFilterDecision
 from app.modules.runtime.connectors.gmail_fetcher import (
+    _fetch_gmail_message_metadata_rows,
     _known_course_tokens_for_source,
     fetch_gmail_changes,
     matches_gmail_source_filters,
@@ -679,6 +681,51 @@ def test_gmail_fetcher_emits_tail_progress_for_small_remaining_window(monkeypatc
     assert 10 in current_values
     assert 11 in current_values
     assert 12 in current_values
+
+
+def test_gmail_fetcher_metadata_fetch_workers_obey_settings(monkeypatch) -> None:
+    captured: dict[str, int | str] = {}
+
+    class _FakeExecutor:
+        def __init__(self, *, max_workers: int, thread_name_prefix: str):
+            captured["max_workers"] = max_workers
+            captured["thread_name_prefix"] = thread_name_prefix
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def submit(self, fn, *args, **kwargs):
+            future: Future = Future()
+            future.set_result(fn(*args, **kwargs))
+            return future
+
+    monkeypatch.setattr(
+        "app.modules.runtime.connectors.gmail_fetcher.get_settings",
+        lambda: SimpleNamespace(llm_worker_concurrency=12, gmail_fetch_metadata_max_workers=9),
+    )
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher.ThreadPoolExecutor", _FakeExecutor)
+    monkeypatch.setattr("app.modules.runtime.connectors.gmail_fetcher.as_completed", lambda futures: list(futures))
+    monkeypatch.setattr(
+        "app.modules.runtime.connectors.gmail_fetcher._fetch_single_gmail_message_metadata_or_skip",
+        lambda **kwargs: {"message_id": kwargs["message_id"]},
+    )
+
+    rows = _fetch_gmail_message_metadata_rows(
+        client=object(),  # type: ignore[arg-type]
+        access_token="token",
+        message_ids=[f"m{i}" for i in range(12)],
+        emit_progress=None,
+        phase="gmail_message_hydrate",
+        label="Hydrating Gmail metadata",
+        detail_template="Hydrated {current} of {total} emails.",
+    )
+
+    assert len(rows) == 12
+    assert captured["max_workers"] == 9
+    assert captured["thread_name_prefix"] == "gmail-fetch"
 
 
 def test_known_course_tokens_for_source_include_recent_family_mappings(db_session) -> None:

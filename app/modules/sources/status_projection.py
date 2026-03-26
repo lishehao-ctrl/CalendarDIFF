@@ -23,6 +23,7 @@ from app.db.models.review import (
 )
 from app.modules.common.structured_copy import render_structured_text
 from app.modules.llm_gateway.usage_tracking import LLM_USAGE_SUMMARY_KEY, present_llm_usage_summary
+from app.modules.runtime.llm.gmail_parse_summary import GMAIL_PARSE_SUMMARY_KEY, present_gmail_parse_summary
 from app.modules.sources.recovery_projection import build_source_product_phase, build_source_recovery_payload
 from app.modules.sources.source_runtime_state import derive_source_runtime_state
 from app.modules.sources.source_serializers import serialize_source
@@ -72,6 +73,7 @@ def build_sync_request_status_payload(db: Session, *, sync_request: SyncRequest)
         "updated_at": sync_request.updated_at,
         "connector_result": connector_result,
         "llm_usage": _extract_llm_usage_payload(sync_request),
+        "gmail_parse_summary": _extract_gmail_parse_summary_payload(sync_request),
         "elapsed_ms": _compute_elapsed_ms(sync_request=sync_request, apply_log=apply_log),
         "applied": apply_log is not None,
         "applied_at": apply_log.applied_at if apply_log is not None else None,
@@ -792,6 +794,12 @@ def _extract_llm_usage_payload(sync_request: SyncRequest) -> dict | None:
     metadata = sync_request.metadata_json if isinstance(sync_request.metadata_json, dict) else {}
     usage = metadata.get(LLM_USAGE_SUMMARY_KEY)
     return present_llm_usage_summary(usage if isinstance(usage, dict) else None)
+
+
+def _extract_gmail_parse_summary_payload(sync_request: SyncRequest) -> dict | None:
+    metadata = sync_request.metadata_json if isinstance(sync_request.metadata_json, dict) else {}
+    summary = metadata.get(GMAIL_PARSE_SUMMARY_KEY)
+    return present_gmail_parse_summary(summary if isinstance(summary, dict) else None)
 
 
 def _compute_elapsed_ms(*, sync_request: SyncRequest, apply_log: IngestApplyLog | None) -> int | None:

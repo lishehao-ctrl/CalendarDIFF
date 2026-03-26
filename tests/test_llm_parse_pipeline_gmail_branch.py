@@ -4,7 +4,9 @@ from types import SimpleNamespace
 
 from app.modules.runtime.connectors.llm_parsers.contracts import LlmParseError
 from app.db.models.runtime import ConnectorResultStatus
+import app.modules.runtime.llm.gmail_parse_executor as gmail_parse_executor
 from app.modules.runtime.llm import parse_pipeline as pipeline
+from app.modules.runtime.llm.gmail_purpose_cache import GmailPurposeCacheEntry, GmailPurposeFastPathDecision, GMAIL_PURPOSE_CLASSIFIER_VERSION
 
 
 class DummyParserOutput:
@@ -83,6 +85,28 @@ def test_parse_with_llm_processes_gmail_messages_with_controlled_parallelism(mon
     assert status == ConnectorResultStatus.CHANGED
     assert len(records) == 4
     assert sorted(record["payload"]["message_id"] for record in records) == ["m0", "m1", "m2", "m3"]
+
+
+def test_gmail_parse_worker_count_obeys_settings(monkeypatch) -> None:
+    monkeypatch.setattr(
+        gmail_parse_executor,
+        "get_settings",
+        lambda: SimpleNamespace(llm_worker_concurrency=12, gmail_parse_max_workers=9),
+    )
+
+    assert gmail_parse_executor.gmail_parse_worker_count(1) == 1
+    assert gmail_parse_executor.gmail_parse_worker_count(4) == 4
+    assert gmail_parse_executor.gmail_parse_worker_count(20) == 9
+
+
+def test_gmail_parse_worker_count_respects_global_concurrency(monkeypatch) -> None:
+    monkeypatch.setattr(
+        gmail_parse_executor,
+        "get_settings",
+        lambda: SimpleNamespace(llm_worker_concurrency=5, gmail_parse_max_workers=12),
+    )
+
+    assert gmail_parse_executor.gmail_parse_worker_count(20) == 5
 
 
 def test_parse_with_llm_skips_non_retryable_gmail_message_error(monkeypatch) -> None:
@@ -239,3 +263,173 @@ def test_parse_single_gmail_message_stores_non_retryable_skip(monkeypatch) -> No
 
     assert records == []
     assert stored == [("bad", "parse_llm_gmail_schema_invalid")]
+
+
+def test_parse_single_gmail_message_uses_cached_purpose_unknown_without_parser(monkeypatch) -> None:
+    stored_empty: list[list[dict]] = []
+
+    class DummySession:
+        def __enter__(self):
+            return object()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(pipeline, "load_cached_gmail_parse_records", lambda **kwargs: None)
+    monkeypatch.setattr(
+        pipeline,
+        "load_cached_gmail_purpose_mode",
+        lambda **kwargs: GmailPurposeCacheEntry(
+            mode="unknown",
+            evidence="wrapper",
+            reason_code="newsletter_digest",
+            decision_source="llm",
+            provider_id="qwen_us_main",
+            model="qwen3.5-flash",
+            protocol="responses",
+            classifier_version=GMAIL_PURPOSE_CLASSIFIER_VERSION,
+            message_fingerprint="fp-1",
+            hit_type="exact",
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "store_cached_gmail_parse_records",
+        lambda **kwargs: stored_empty.append(kwargs["records"]),
+    )
+    monkeypatch.setattr(pipeline, "increment_parse_metric_counter", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        pipeline,
+        "parse_gmail_payload",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("parser should not run on cached purpose unknown")),
+    )
+
+    records = pipeline._parse_single_gmail_message(
+        session_factory=(lambda: DummySession()),
+        redis_client=object(),  # type: ignore[arg-type]
+        stream_key="llm:parse:stream",
+        source_id=1,
+        provider="gmail",
+        request_id="req-gmail-purpose-cache-unknown",
+        payload_item={"message_id": "cached-unknown"},
+    )
+
+    assert records == []
+    assert stored_empty == [[]]
+
+
+def test_parse_single_gmail_message_uses_cached_purpose_atomic_hint(monkeypatch) -> None:
+    seen_payloads: list[dict] = []
+
+    class DummySession:
+        def __enter__(self):
+            return object()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(pipeline, "load_cached_gmail_parse_records", lambda **kwargs: None)
+    monkeypatch.setattr(
+        pipeline,
+        "load_cached_gmail_purpose_mode",
+        lambda **kwargs: GmailPurposeCacheEntry(
+            mode="atomic",
+            evidence="single homework event",
+            reason_code=None,
+            decision_source="llm",
+            provider_id="qwen_us_main",
+            model="qwen3.5-flash",
+            protocol="responses",
+            classifier_version=GMAIL_PURPOSE_CLASSIFIER_VERSION,
+            message_fingerprint="fp-2",
+            hit_type="content_hash",
+        ),
+    )
+    monkeypatch.setattr(pipeline, "increment_parse_metric_counter", lambda *args, **kwargs: None)
+    monkeypatch.setattr(pipeline, "store_cached_gmail_parse_records", lambda **kwargs: None)
+    monkeypatch.setattr(pipeline, "attach_parser_metadata", lambda *, records, parser_output: records)
+    monkeypatch.setattr(
+        pipeline,
+        "invoke_parser_with_limit",
+        lambda **kwargs: kwargs["parse_call"](),
+    )
+
+    def fake_parse_gmail_payload(*, db, payload, context):  # noqa: ANN001
+        del db, context
+        seen_payloads.append(payload)
+        return DummyParserOutput(
+            [{"record_type": "gmail.message.extracted", "payload": {"message_id": payload["message_id"]}}]
+        )
+
+    monkeypatch.setattr(pipeline, "parse_gmail_payload", fake_parse_gmail_payload)
+
+    records = pipeline._parse_single_gmail_message(
+        session_factory=(lambda: DummySession()),
+        redis_client=object(),  # type: ignore[arg-type]
+        stream_key="llm:parse:stream",
+        source_id=1,
+        provider="gmail",
+        request_id="req-gmail-purpose-cache-atomic",
+        payload_item={"message_id": "cached-atomic"},
+    )
+
+    assert len(records) == 1
+    assert seen_payloads
+    assert seen_payloads[0]["_gmail_purpose_mode_hint"]["mode"] == "atomic"
+    assert seen_payloads[0]["_gmail_purpose_mode_hint"]["decision_source"] == "purpose_cache"
+
+
+def test_parse_single_gmail_message_uses_deterministic_fast_path_unknown(monkeypatch) -> None:
+    stored_purpose: list[str] = []
+    stored_empty: list[list[dict]] = []
+
+    class DummySession:
+        def __enter__(self):
+            return object()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(pipeline, "load_cached_gmail_parse_records", lambda **kwargs: None)
+    monkeypatch.setattr(pipeline, "load_cached_gmail_purpose_mode", lambda **kwargs: None)
+    monkeypatch.setattr(
+        pipeline,
+        "classify_gmail_message_fast_path",
+        lambda **kwargs: GmailPurposeFastPathDecision(
+            mode="unknown",
+            reason_code="newsletter_digest",
+            evidence="digest",
+            classifier_version=GMAIL_PURPOSE_CLASSIFIER_VERSION,
+            message_fingerprint="fp-3",
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "store_cached_gmail_purpose_mode",
+        lambda **kwargs: stored_purpose.append(kwargs["mode"]),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "store_cached_gmail_parse_records",
+        lambda **kwargs: stored_empty.append(kwargs["records"]),
+    )
+    monkeypatch.setattr(pipeline, "increment_parse_metric_counter", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        pipeline,
+        "parse_gmail_payload",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("parser should not run on deterministic fast path")),
+    )
+
+    records = pipeline._parse_single_gmail_message(
+        session_factory=(lambda: DummySession()),
+        redis_client=object(),  # type: ignore[arg-type]
+        stream_key="llm:parse:stream",
+        source_id=1,
+        provider="gmail",
+        request_id="req-gmail-fast-path",
+        payload_item={"message_id": "fast-path"},
+    )
+
+    assert records == []
+    assert stored_purpose == ["unknown"]
+    assert stored_empty == [[]]

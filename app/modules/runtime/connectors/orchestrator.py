@@ -7,6 +7,7 @@ from sqlalchemy import Select, and_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.contracts.events import new_event
 from app.db.models.runtime import IngestJob, IngestJobStatus
 from app.db.models.input import IngestTriggerType, InputSource, SyncRequest, SyncRequestStage, SyncRequestStatus
@@ -20,7 +21,8 @@ OUTBOX_BATCH_SIZE = 200
 
 
 def run_orchestrator_tick(db: Session, *, worker_id: str) -> int:
-    created = _enqueue_due_scheduler_requests(db, worker_id=worker_id)
+    settings = get_settings()
+    created = _enqueue_due_scheduler_requests(db, worker_id=worker_id) if bool(settings.ingest_service_enable_scheduler) else 0
     consumed = _consume_sync_requested_events(db, worker_id=worker_id)
     return created + consumed
 

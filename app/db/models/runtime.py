@@ -59,6 +59,12 @@ class GmailMessageParseCacheStatus(str, Enum):
     NON_RETRYABLE_SKIP = "NON_RETRYABLE_SKIP"
 
 
+class GmailMessagePurposeCacheMode(str, Enum):
+    UNKNOWN = "unknown"
+    ATOMIC = "atomic"
+    DIRECTIVE = "directive"
+
+
 class CalendarComponentParseCacheStatus(str, Enum):
     PARSED = "PARSED"
     EMPTY = "EMPTY"
@@ -270,6 +276,47 @@ class GmailMessageParseCache(Base):
     source: Mapped["InputSource"] = relationship("InputSource")
 
 
+class GmailMessagePurposeCache(Base):
+    __tablename__ = "gmail_message_purpose_cache"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_id",
+            "message_id",
+            "content_hash",
+            "classifier_version",
+            name="uq_gmail_message_purpose_cache_source_message_hash_version",
+        ),
+        Index("ix_gmail_message_purpose_cache_source_hash", "source_id", "content_hash", "classifier_version"),
+        Index("ix_gmail_message_purpose_cache_source_fingerprint", "source_id", "message_fingerprint", "classifier_version", "mode"),
+        Index("ix_gmail_message_purpose_cache_source_updated", "source_id", "updated_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("input_sources.id", ondelete="CASCADE"), nullable=False)
+    message_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    classifier_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    message_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    mode: Mapped[GmailMessagePurposeCacheMode] = mapped_column(
+        SAEnum(GmailMessagePurposeCacheMode, name="gmail_message_purpose_cache_mode", native_enum=False),
+        nullable=False,
+    )
+    evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    decision_source: Mapped[str] = mapped_column(String(32), nullable=False, default="llm", server_default="llm")
+    provider_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    protocol: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    hit_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    source: Mapped["InputSource"] = relationship("InputSource")
+
+
 class CalendarComponentParseCache(Base):
     __tablename__ = "calendar_component_parse_cache"
     __table_args__ = (
@@ -303,6 +350,8 @@ __all__ = [
     "CalendarComponentParseCacheStatus",
     "CalendarComponentParseTask",
     "ConnectorResultStatus",
+    "GmailMessagePurposeCache",
+    "GmailMessagePurposeCacheMode",
     "GmailMessageParseCache",
     "GmailMessageParseCacheStatus",
     "IngestJob",

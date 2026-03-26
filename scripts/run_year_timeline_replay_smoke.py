@@ -25,6 +25,7 @@ from app.db.models.input import IngestTriggerType, SyncRequest
 from app.db.models.review import EventEntity
 from app.db.session import get_session_factory
 from app.modules.llm_gateway.usage_tracking import LLM_USAGE_SUMMARY_KEY
+from app.modules.runtime.llm.gmail_parse_summary import GMAIL_PARSE_SUMMARY_KEY, present_gmail_parse_summary
 
 DEFAULT_MANIFEST = REPO_ROOT / "data" / "synthetic" / "year_timeline_demo" / "year_timeline_manifest.json"
 OUTPUT_ROOT = REPO_ROOT / "output"
@@ -363,6 +364,7 @@ def process_batch(*, client: httpx.Client, state: dict[str, Any], batch: BatchSp
         "gmail_elapsed_ms": extract_sync_elapsed_ms(gmail_status),
         "ics_llm_usage": extract_sync_llm_usage(ics_status),
         "gmail_llm_usage": extract_sync_llm_usage(gmail_status),
+        "gmail_parse_summary": extract_sync_gmail_parse_summary(gmail_status),
     }
 
 
@@ -485,8 +487,10 @@ def build_report(run_dir: Path) -> dict[str, Any]:
     )
     checkpoint_summaries = list(state.get("checkpoint_summaries") or [])
     bootstrap_llm_usage = aggregate_llm_usage_summaries(row.get("llm_usage") for row in bootstrap_results)
+    bootstrap_gmail_parse_summary = aggregate_gmail_parse_summaries(row.get("gmail_parse_summary") for row in bootstrap_results)
     ics_llm_usage = aggregate_llm_usage_summaries(row.get("ics_llm_usage") for row in batch_results)
     gmail_llm_usage = aggregate_llm_usage_summaries(row.get("gmail_llm_usage") for row in batch_results)
+    replay_gmail_parse_summary = aggregate_gmail_parse_summaries(row.get("gmail_parse_summary") for row in batch_results)
     replay_llm_usage = aggregate_llm_usage_summaries([ics_llm_usage, gmail_llm_usage])
     overall_llm_usage = aggregate_llm_usage_summaries([bootstrap_llm_usage, replay_llm_usage])
     report_generated_at = datetime.now(UTC)
@@ -513,6 +517,7 @@ def build_report(run_dir: Path) -> dict[str, Any]:
                 if isinstance(value, (int, float)) and not isinstance(value, bool)
             ),
             "llm_usage": bootstrap_llm_usage,
+            "gmail_parse_summary": bootstrap_gmail_parse_summary,
             "results": bootstrap_results,
         },
         "replay": {
@@ -526,6 +531,7 @@ def build_report(run_dir: Path) -> dict[str, Any]:
                 "ics": ics_llm_usage,
                 "gmail": gmail_llm_usage,
             },
+            "gmail_parse_summary": replay_gmail_parse_summary,
         },
         "completed_batch_count": len(state.get("completed_batches") or []),
         "total_ics_transitions_applied": sum(1 for row in batch_results if row.get("ics_applied")),
@@ -610,6 +616,8 @@ def render_summary(report: dict[str, Any]) -> str:
     replay_llm = llm_usage.get("replay") if isinstance(llm_usage.get("replay"), dict) else {}
     ics_llm = llm_usage.get("ics") if isinstance(llm_usage.get("ics"), dict) else {}
     gmail_llm = llm_usage.get("gmail") if isinstance(llm_usage.get("gmail"), dict) else {}
+    bootstrap_gmail_parse = bootstrap.get("gmail_parse_summary") if isinstance(bootstrap.get("gmail_parse_summary"), dict) else {}
+    replay_gmail_parse = replay.get("gmail_parse_summary") if isinstance(replay.get("gmail_parse_summary"), dict) else {}
     lines = [
         "# Year Timeline Replay Smoke",
         "",
@@ -636,6 +644,9 @@ def render_summary(report: dict[str, Any]) -> str:
                 f"- llm_total_tokens: `{fmt_int(bootstrap_llm.get('total_tokens'))}`",
                 f"- llm_cached_input_tokens: `{fmt_int(bootstrap_llm.get('cached_input_tokens'))}`",
                 f"- llm_cache_creation_input_tokens: `{fmt_int(bootstrap_llm.get('cache_creation_input_tokens'))}`",
+                f"- llm_estimated_cost_usd: `{fmt_usd(bootstrap_llm.get('estimated_cost_usd'))}`",
+                f"- gmail_purpose_cache_hits: `{fmt_int(bootstrap_gmail_parse.get('purpose_cache_hit_count'))}`",
+                f"- gmail_fast_path_unknown: `{fmt_int(bootstrap_gmail_parse.get('deterministic_fast_path_unknown_count'))}`",
                 "",
             ]
         )
@@ -648,6 +659,12 @@ def render_summary(report: dict[str, Any]) -> str:
                 f"- avg_gmail_elapsed_ms: `{fmt_int(replay.get('avg_gmail_elapsed_ms'))}`",
                 f"- llm_calls: `{fmt_int(replay_llm.get('successful_call_count'))}`",
                 f"- llm_total_tokens: `{fmt_int(replay_llm.get('total_tokens'))}`",
+                f"- llm_estimated_cost_usd: `{fmt_usd(replay_llm.get('estimated_cost_usd'))}`",
+                f"- gmail_purpose_calls: `{fmt_int(replay_gmail_parse.get('llm_purpose_classify_call_count'))}`",
+                f"- gmail_purpose_cache_hits: `{fmt_int(replay_gmail_parse.get('purpose_cache_hit_count'))}`",
+                f"- gmail_final_cache_hits: `{fmt_int(replay_gmail_parse.get('final_parse_cache_hit_count'))}`",
+                f"- gmail_fast_path_unknown: `{fmt_int(replay_gmail_parse.get('deterministic_fast_path_unknown_count'))}`",
+                f"- gmail_unknown_ratio: `{fmt_ratio(replay_gmail_parse.get('unknown_ratio'))}`",
                 "",
             ]
         )
@@ -662,11 +679,17 @@ def render_summary(report: dict[str, Any]) -> str:
                 f"- output_tokens: `{fmt_int(overall_llm.get('output_tokens'))}`",
                 f"- reasoning_tokens: `{fmt_int(overall_llm.get('reasoning_tokens'))}`",
                 f"- total_tokens: `{fmt_int(overall_llm.get('total_tokens'))}`",
+                f"- estimated_cost_usd: `{fmt_usd(overall_llm.get('estimated_cost_usd'))}`",
+                f"- input_cost_usd: `{fmt_usd(overall_llm.get('input_cost_usd'))}`",
+                f"- cached_input_cost_usd: `{fmt_usd(overall_llm.get('cached_input_cost_usd'))}`",
+                f"- output_cost_usd: `{fmt_usd(overall_llm.get('output_cost_usd'))}`",
                 f"- cache_hit_ratio: `{fmt_ratio(overall_llm.get('cache_hit_ratio'))}`",
                 f"- avg_latency_ms: `{fmt_int(overall_llm.get('avg_latency_ms'))}`",
                 f"- max_latency_ms: `{fmt_int(overall_llm.get('latency_ms_max'))}`",
                 f"- ICS calls: `{fmt_int(ics_llm.get('successful_call_count'))}`",
                 f"- Gmail calls: `{fmt_int(gmail_llm.get('successful_call_count'))}`",
+                f"- ICS cost usd: `{fmt_usd(ics_llm.get('estimated_cost_usd'))}`",
+                f"- Gmail cost usd: `{fmt_usd(gmail_llm.get('estimated_cost_usd'))}`",
                 "",
             ]
         )
@@ -710,6 +733,17 @@ def extract_sync_llm_usage(status_payload: dict[str, Any]) -> dict[str, Any] | N
     return usage
 
 
+def extract_sync_gmail_parse_summary(status_payload: dict[str, Any]) -> dict[str, Any] | None:
+    direct_summary = status_payload.get("gmail_parse_summary")
+    if isinstance(direct_summary, dict):
+        return present_gmail_parse_summary(direct_summary)
+    metadata = status_payload.get("metadata") if isinstance(status_payload.get("metadata"), dict) else {}
+    summary = metadata.get(GMAIL_PARSE_SUMMARY_KEY)
+    if not isinstance(summary, dict):
+        return None
+    return present_gmail_parse_summary(summary)
+
+
 def extract_sync_elapsed_ms(status_payload: dict[str, Any]) -> int | None:
     created_at_raw = status_payload.get("created_at")
     end_raw = status_payload.get("applied_at") or status_payload.get("updated_at")
@@ -740,6 +774,12 @@ def aggregate_llm_usage_summaries(summaries: Any) -> dict[str, Any]:
         "task_counts": {},
         "cache_hit_ratio": None,
         "avg_latency_ms": None,
+        "estimated_cost_usd": 0.0,
+        "input_cost_usd": 0.0,
+        "cached_input_cost_usd": 0.0,
+        "output_cost_usd": 0.0,
+        "pricing_available": True,
+        "unpriced_call_count": 0,
     }
     iterable = summaries if isinstance(summaries, (list, tuple)) else list(summaries)
     for item in iterable:
@@ -757,6 +797,20 @@ def aggregate_llm_usage_summaries(summaries: Any) -> dict[str, Any]:
             "total_tokens",
         ):
             aggregate[key] += max(int(item.get(key) or 0), 0)
+        for key in (
+            "estimated_cost_usd",
+            "input_cost_usd",
+            "cached_input_cost_usd",
+            "output_cost_usd",
+        ):
+            try:
+                aggregate[key] = round(float(aggregate[key]) + float(item.get(key) or 0), 6)
+            except Exception:
+                continue
+        try:
+            aggregate["unpriced_call_count"] += max(int(item.get("unpriced_call_count") or 0), 0)
+        except Exception:
+            pass
         aggregate["latency_ms_max"] = max(aggregate["latency_ms_max"], max(int(item.get("latency_ms_max") or 0), 0))
         for mapping_key in ("protocols", "models", "task_counts"):
             mapping = item.get(mapping_key)
@@ -773,6 +827,42 @@ def aggregate_llm_usage_summaries(summaries: Any) -> dict[str, Any]:
         aggregate["avg_latency_ms"] = int(aggregate["latency_ms_total"] / aggregate["successful_call_count"])
     if aggregate["input_tokens"] > 0:
         aggregate["cache_hit_ratio"] = round(aggregate["cached_input_tokens"] / aggregate["input_tokens"], 4)
+    aggregate["pricing_available"] = aggregate["unpriced_call_count"] == 0
+    return aggregate
+
+
+def aggregate_gmail_parse_summaries(summaries: Any) -> dict[str, Any]:
+    aggregate = {
+        "message_count": 0,
+        "final_parse_cache_hit_count": 0,
+        "purpose_cache_hit_count": 0,
+        "purpose_cache_hit_unknown_count": 0,
+        "purpose_cache_hit_atomic_count": 0,
+        "purpose_cache_hit_directive_count": 0,
+        "purpose_cache_shared_content_hit_count": 0,
+        "purpose_cache_fingerprint_hit_count": 0,
+        "deterministic_fast_path_unknown_count": 0,
+        "llm_purpose_classify_call_count": 0,
+        "purpose_unknown_count": 0,
+        "purpose_atomic_count": 0,
+        "purpose_directive_count": 0,
+        "unknown_ratio": None,
+    }
+    iterable = summaries if isinstance(summaries, (list, tuple)) else list(summaries)
+    for item in iterable:
+        if not isinstance(item, dict):
+            continue
+        for key in aggregate:
+            if key == "unknown_ratio":
+                continue
+            aggregate[key] += max(int(item.get(key) or 0), 0)
+    total_decisions = (
+        aggregate["purpose_unknown_count"]
+        + aggregate["purpose_atomic_count"]
+        + aggregate["purpose_directive_count"]
+    )
+    if total_decisions > 0:
+        aggregate["unknown_ratio"] = round(aggregate["purpose_unknown_count"] / total_decisions, 4)
     return aggregate
 
 
@@ -797,6 +887,15 @@ def fmt_ratio(value: Any) -> str:
         return "-"
     try:
         return f"{float(value):.2%}"
+    except Exception:
+        return "-"
+
+
+def fmt_usd(value: Any) -> str:
+    if value is None:
+        return "-"
+    try:
+        return f"${float(value):.6f}"
     except Exception:
         return "-"
 
@@ -1053,6 +1152,7 @@ def build_bootstrap_result(*, source: dict[str, Any], status_payload: dict[str, 
             else extract_sync_elapsed_ms(status_payload) if isinstance(status_payload, dict) else None
         ),
         "llm_usage": extract_sync_llm_usage(status_payload) if isinstance(status_payload, dict) else None,
+        "gmail_parse_summary": extract_sync_gmail_parse_summary(status_payload) if isinstance(status_payload, dict) else None,
         "connector_result": status_payload.get("connector_result") if isinstance(status_payload, dict) else None,
         "created_at": status_payload.get("created_at") if isinstance(status_payload, dict) else source.get("created_at"),
         "updated_at": status_payload.get("updated_at") if isinstance(status_payload, dict) else source.get("updated_at"),

@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 import re
+import time
 from datetime import date, datetime, timezone
 from collections.abc import Callable
 from typing import Any, cast
@@ -21,10 +22,12 @@ from app.modules.common.source_monitoring_window import (
 )
 from app.modules.runtime.connectors.connector_types import ConnectorFetchOutcome
 from app.modules.runtime.connectors.gmail_second_filter import (
+    classify_safe_non_target_heuristic,
     run_gmail_second_filter,
     should_enforce_gmail_second_filter,
 )
 from app.modules.runtime.connectors.source_orchestrator import route_gmail_message
+from app.modules.runtime.connectors.gmail_prefilter import classify_gmail_sender_family
 from app.modules.sources.source_secrets import decode_source_secrets
 from app.modules.runtime.connectors.clients.gmail_client import GmailAPIError, GmailClient, GmailHistoryExpiredError
 from sqlalchemy import select
@@ -36,7 +39,6 @@ _DEFAULT_GMAIL_LABEL_IDS = ("INBOX",)
 _GMAIL_FETCH_PROGRESS_BATCH = 10
 _GMAIL_FETCH_TAIL_PROGRESS = 5
 _GMAIL_CONNECTOR_CHUNK_SIZE = 25
-_GMAIL_CONNECTOR_METADATA_MAX_WORKERS = 8
 logger = logging.getLogger(__name__)
 
 
@@ -222,19 +224,13 @@ def fetch_gmail_changes(
             continue
 
         message_payloads.append(
-            {
-                "message_id": metadata.message_id,
-                "thread_id": metadata.thread_id,
-                "subject": metadata.subject,
-                "snippet": metadata.snippet,
-                "body_text": metadata.body_text,
-                "from_header": metadata.from_header,
-                "internal_date": metadata.internal_date,
-                "label_ids": metadata.label_ids,
-                "history_id": latest_history_id,
-                "account_email": profile.email_address,
-                "request_id": request_id,
-            }
+            _build_gmail_parse_message_payload(
+                metadata=metadata,
+                request_id=request_id,
+                history_id=latest_history_id,
+                account_email=profile.email_address,
+                known_course_tokens=known_course_tokens,
+            )
         )
     cursor_patch = {"history_id": latest_history_id}
     if not message_payloads:
@@ -422,19 +418,13 @@ def _bootstrap_gmail_messages(
         ):
             continue
         message_payloads.append(
-            {
-                "message_id": metadata.message_id,
-                "thread_id": metadata.thread_id,
-                "subject": metadata.subject,
-                "snippet": metadata.snippet,
-                "body_text": metadata.body_text,
-                "from_header": metadata.from_header,
-                "internal_date": metadata.internal_date,
-                "label_ids": metadata.label_ids,
-                "history_id": latest_history_id,
-                "account_email": profile.email_address,
-                "request_id": request_id,
-            }
+            _build_gmail_parse_message_payload(
+                metadata=metadata,
+                request_id=request_id,
+                history_id=latest_history_id,
+                account_email=profile.email_address,
+                known_course_tokens=known_course_tokens,
+            )
         )
     if not message_payloads:
         return _no_change(cursor_patch={"history_id": latest_history_id} if latest_history_id else {})
@@ -557,6 +547,19 @@ def _build_gmail_continuation_outcome(
     discovery_detail: str,
 ) -> ConnectorFetchOutcome:
     total_messages = len(message_ids)
+    max_message_ids = max(int(get_settings().gmail_continuation_max_message_ids), 0)
+    if max_message_ids > 0 and total_messages > max_message_ids:
+        logger.warning(
+            "gmail continuation discovery overflow request_id=%s total_messages=%s max_message_ids=%s",
+            request_id,
+            total_messages,
+            max_message_ids,
+        )
+        return _failed(
+            "gmail_continuation_message_limit_exceeded",
+            f"gmail continuation discovered {total_messages} emails, exceeding the configured limit of {max_message_ids}",
+            status=ConnectorResultStatus.FETCH_FAILED,
+        )
     _emit_progress(
         emit_progress,
         phase=discovery_phase,
@@ -623,6 +626,13 @@ def _continue_gmail_connector_fetch(
     matched_messages_raw = continuation_state.get("gmail_matched_messages_buffer")
     matched_messages = list(matched_messages_raw) if isinstance(matched_messages_raw, list) else []
     matched_count = max(int(continuation_state.get("gmail_matched_count") or len(matched_messages)), len(matched_messages))
+    continuation_failure = _validate_gmail_continuation_budget(
+        request_id=request_id,
+        message_ids=message_ids,
+        matched_messages=matched_messages,
+    )
+    if continuation_failure is not None:
+        return continuation_failure
 
     if next_index >= total_messages:
         cursor_patch = {"history_id": latest_history_id} if isinstance(latest_history_id, str) and latest_history_id else {}
@@ -638,6 +648,7 @@ def _continue_gmail_connector_fetch(
 
     end_index = min(next_index + _GMAIL_CONNECTOR_CHUNK_SIZE, total_messages)
     current_ids = message_ids[next_index:end_index]
+    chunk_started = time.monotonic()
     try:
         metadata_rows = _fetch_gmail_message_metadata_rows(
             client=client,
@@ -668,21 +679,37 @@ def _continue_gmail_connector_fetch(
         ):
             continue
         matched_messages.append(
-            {
-                "message_id": metadata.message_id,
-                "thread_id": metadata.thread_id,
-                "subject": metadata.subject,
-                "snippet": metadata.snippet,
-                "body_text": metadata.body_text,
-                "from_header": metadata.from_header,
-                "internal_date": metadata.internal_date,
-                "label_ids": metadata.label_ids,
-                "history_id": latest_history_id,
-                "account_email": account_email,
-                "request_id": request_id,
-            }
+            _build_gmail_parse_message_payload(
+                metadata=metadata,
+                request_id=request_id,
+                history_id=latest_history_id,
+                account_email=account_email,
+                known_course_tokens=known_course_tokens,
+            )
         )
         matched_count += 1
+        continuation_failure = _validate_gmail_continuation_budget(
+            request_id=request_id,
+            message_ids=message_ids,
+            matched_messages=matched_messages,
+        )
+        if continuation_failure is not None:
+            return continuation_failure
+
+    chunk_budget_seconds = max(float(get_settings().gmail_connector_chunk_max_seconds), 0.0)
+    if chunk_budget_seconds > 0 and time.monotonic() - chunk_started > chunk_budget_seconds:
+        logger.warning(
+            "gmail connector chunk budget exceeded request_id=%s next_index=%s end_index=%s chunk_budget_seconds=%s",
+            request_id,
+            next_index,
+            end_index,
+            chunk_budget_seconds,
+        )
+        return _failed(
+            "gmail_connector_chunk_budget_exceeded",
+            f"gmail connector chunk exceeded the configured wall-clock budget of {chunk_budget_seconds:.1f}s",
+            status=ConnectorResultStatus.FETCH_FAILED,
+        )
 
     progress = {
         "phase": "gmail_filter" if end_index >= total_messages else "gmail_message_hydrate",
@@ -743,6 +770,44 @@ def _continue_gmail_connector_fetch(
     )
 
 
+def _validate_gmail_continuation_budget(
+    *,
+    request_id: str,
+    message_ids: list[str],
+    matched_messages: list[dict],
+) -> ConnectorFetchOutcome | None:
+    max_message_ids = max(int(get_settings().gmail_continuation_max_message_ids), 0)
+    if max_message_ids > 0 and len(message_ids) > max_message_ids:
+        logger.warning(
+            "gmail continuation budget exceeded request_id=%s field=gmail_message_ids current=%s max=%s",
+            request_id,
+            len(message_ids),
+            max_message_ids,
+        )
+        return _failed(
+            "gmail_continuation_message_limit_exceeded",
+            f"gmail continuation stored {len(message_ids)} message ids, exceeding the configured limit of {max_message_ids}",
+            status=ConnectorResultStatus.FETCH_FAILED,
+        )
+    max_matched_buffer = max(int(get_settings().gmail_continuation_max_matched_buffer), 0)
+    if max_matched_buffer > 0 and len(matched_messages) > max_matched_buffer:
+        logger.warning(
+            "gmail continuation budget exceeded request_id=%s field=gmail_matched_messages_buffer current=%s max=%s",
+            request_id,
+            len(matched_messages),
+            max_matched_buffer,
+        )
+        return _failed(
+            "gmail_continuation_matched_buffer_limit_exceeded",
+            (
+                f"gmail continuation buffered {len(matched_messages)} matched messages, "
+                f"exceeding the configured limit of {max_matched_buffer}"
+            ),
+            status=ConnectorResultStatus.FETCH_FAILED,
+        )
+    return None
+
+
 def _fetch_gmail_message_metadata_rows(
     *,
     client: GmailClient,
@@ -758,12 +823,13 @@ def _fetch_gmail_message_metadata_rows(
     if not message_ids:
         return []
     settings = get_settings()
+    gmail_fetch_cap = max(1, int(getattr(settings, "gmail_fetch_metadata_max_workers", 1)))
     max_workers = max(
         1,
         min(
             len(message_ids),
             int(getattr(settings, "llm_worker_concurrency", 12)),
-            _GMAIL_CONNECTOR_METADATA_MAX_WORKERS,
+            gmail_fetch_cap,
         ),
     )
     if max_workers <= 1 or len(message_ids) <= 1:
@@ -849,6 +915,76 @@ def _should_emit_gmail_progress(*, current: int, total: int) -> bool:
     if current % _GMAIL_FETCH_PROGRESS_BATCH == 0:
         return True
     return current > total - _GMAIL_FETCH_TAIL_PROGRESS
+
+
+def _build_gmail_parse_message_payload(
+    *,
+    metadata: Any,
+    request_id: str,
+    history_id: str | None,
+    account_email: str,
+    known_course_tokens: set[str] | None,
+) -> dict[str, Any]:
+    from_header = metadata.from_header
+    subject = metadata.subject
+    snippet = metadata.snippet
+    body_text = metadata.body_text
+    label_ids = metadata.label_ids
+    heuristic = classify_safe_non_target_heuristic(
+        from_header=from_header,
+        subject=subject,
+        snippet=snippet,
+        body_text=body_text,
+        known_course_tokens=known_course_tokens,
+    )
+    combined = " ".join(
+        part.lower()
+        for part in (from_header, subject, snippet, body_text)
+        if isinstance(part, str) and part
+    )
+    known_course_signal = any(token and token in combined for token in (known_course_tokens or set()))
+    fast_path_reason_code = _normalize_gmail_fast_path_reason_code(heuristic.reason_code)
+    fast_path_unknown_eligible = (
+        heuristic.risk_band == "safe"
+        and fast_path_reason_code in {
+            "academic_non_target_explicit_no_change",
+            "newsletter_digest",
+            "calendar_wrapper_noise",
+            "student_services_noise",
+            "shipping_subscription_bait",
+            "recruiting_career_internship_bait",
+        }
+        and not known_course_signal
+    )
+    return {
+        "message_id": metadata.message_id,
+        "thread_id": metadata.thread_id,
+        "subject": subject,
+        "snippet": snippet,
+        "body_text": body_text,
+        "from_header": from_header,
+        "internal_date": metadata.internal_date,
+        "label_ids": label_ids,
+        "history_id": history_id,
+        "account_email": account_email,
+        "request_id": request_id,
+        "classification_hints": {
+            "known_course_signal": known_course_signal,
+            "second_filter_reason_code": fast_path_reason_code,
+            "second_filter_risk_band": heuristic.risk_band,
+            "fast_path_unknown_eligible": fast_path_unknown_eligible,
+            "sender_family": classify_gmail_sender_family(from_header=from_header),
+        },
+    }
+
+
+def _normalize_gmail_fast_path_reason_code(reason_code: str | None) -> str | None:
+    normalized = (reason_code or "").strip()
+    if normalized == "jobs":
+        return "recruiting_career_internship_bait"
+    if normalized == "package_subscription":
+        return "shipping_subscription_bait"
+    return normalized or None
 
 
 def _bootstrap_label_ids(config: dict) -> list[str] | None:

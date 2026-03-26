@@ -313,6 +313,22 @@ def test_sync_request_status_exposes_llm_usage_summary_and_elapsed_ms(input_clie
             "task_counts": {"gmail_purpose_mode_classify": 4},
             "last_observed_at": "2026-03-18T00:00:10+00:00",
         },
+        "gmail_parse_summary": {
+            "message_count": 4,
+            "final_parse_cache_hit_count": 1,
+            "purpose_cache_hit_count": 1,
+            "purpose_cache_hit_unknown_count": 1,
+            "purpose_cache_hit_atomic_count": 0,
+            "purpose_cache_hit_directive_count": 0,
+            "purpose_cache_shared_content_hit_count": 0,
+            "purpose_cache_fingerprint_hit_count": 0,
+            "deterministic_fast_path_unknown_count": 1,
+            "llm_purpose_classify_call_count": 2,
+            "purpose_unknown_count": 3,
+            "purpose_atomic_count": 1,
+            "purpose_directive_count": 0,
+            "last_observed_at": "2026-03-18T00:00:10+00:00",
+        },
     }
     row.created_at = datetime(2026, 3, 18, 0, 0, 0, tzinfo=timezone.utc)
     row.updated_at = datetime(2026, 3, 18, 0, 0, 5, tzinfo=timezone.utc)
@@ -328,6 +344,11 @@ def test_sync_request_status_exposes_llm_usage_summary_and_elapsed_ms(input_clie
     assert payload["llm_usage"]["cached_input_tokens"] == 1200
     assert payload["llm_usage"]["cache_hit_ratio"] == 0.4
     assert payload["llm_usage"]["avg_latency_ms"] == 600
+    assert payload["llm_usage"]["pricing_available"] is False
+    assert payload["llm_usage"]["estimated_cost_usd"] == 0.0
+    assert payload["gmail_parse_summary"]["purpose_cache_hit_count"] == 1
+    assert payload["gmail_parse_summary"]["deterministic_fast_path_unknown_count"] == 1
+    assert payload["gmail_parse_summary"]["unknown_ratio"] == 0.75
 
 
 def test_sources_api_prefers_running_sync_over_newer_pending_sync(input_client, db_session, authenticate_client) -> None:

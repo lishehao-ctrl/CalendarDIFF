@@ -140,6 +140,7 @@ class SyncRequestStatusResponse(BaseModel):
     stage_updated_at: datetime | None = None
     connector_result: dict | None = None
     llm_usage: dict | None = None
+    gmail_parse_summary: dict | None = None
     elapsed_ms: int | None = None
     applied: bool = False
     applied_at: datetime | None = None
@@ -166,6 +167,7 @@ class LlmInvocationLogResponse(BaseModel):
     retryable: bool | None = None
     http_status: int | None = None
     usage: dict | None = None
+    estimated_cost_usd: float | None = None
     created_at: datetime
 
 
@@ -180,6 +182,12 @@ class LlmInvocationSummaryResponse(BaseModel):
     output_tokens: int = 0
     reasoning_tokens: int = 0
     total_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+    input_cost_usd: float = 0.0
+    cached_input_cost_usd: float = 0.0
+    output_cost_usd: float = 0.0
+    pricing_available: bool = True
+    unpriced_call_count: int = 0
     task_counts: dict[str, int] = Field(default_factory=dict)
     model_counts: dict[str, int] = Field(default_factory=dict)
     protocol_counts: dict[str, int] = Field(default_factory=dict)
@@ -215,6 +223,7 @@ class SourceObservabilitySyncResponse(BaseModel):
     error_message: str | None = None
     connector_result: dict | None = None
     llm_usage: dict | None = None
+    gmail_parse_summary: dict | None = None
     progress: dict | None = None
 
 
