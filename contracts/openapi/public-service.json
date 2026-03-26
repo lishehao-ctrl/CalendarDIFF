@@ -53,12 +53,22 @@
             "title": "Generated At",
             "type": "string"
           },
+          "language_code": {
+            "title": "Language Code",
+            "type": "string"
+          },
+          "language_resolution_source": {
+            "title": "Language Resolution Source",
+            "type": "string"
+          },
           "recommended_next_action": {
             "$ref": "#/components/schemas/AgentRecommendedActionResponse"
           }
         },
         "required": [
           "generated_at",
+          "language_code",
+          "language_resolution_source",
           "change",
           "recommended_next_action"
         ],
@@ -72,6 +82,18 @@
             "minimum": 1.0,
             "title": "Change Id",
             "type": "integer"
+          },
+          "language_code": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Code"
           }
         },
         "required": [
@@ -146,6 +168,18 @@
             "title": "Change Id",
             "type": "integer"
           },
+          "language_code": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Code"
+          },
           "patch": {
             "$ref": "#/components/schemas/AgentChangeEditCommitPatchRequest"
           }
@@ -181,6 +215,14 @@
             "title": "Generated At",
             "type": "string"
           },
+          "language_code": {
+            "title": "Language Code",
+            "type": "string"
+          },
+          "language_resolution_source": {
+            "title": "Language Resolution Source",
+            "type": "string"
+          },
           "pending_raw_type_suggestions": {
             "items": {
               "$ref": "#/components/schemas/RawTypeSuggestionItemResponse"
@@ -201,6 +243,8 @@
         },
         "required": [
           "generated_at",
+          "language_code",
+          "language_resolution_source",
           "family",
           "recommended_next_action"
         ],
@@ -214,6 +258,18 @@
             "minimum": 1.0,
             "title": "Family Id",
             "type": "integer"
+          },
+          "language_code": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Code"
           },
           "raw_type_id": {
             "minimum": 1.0,
@@ -235,6 +291,18 @@
             "minimum": 1.0,
             "title": "Family Id",
             "type": "integer"
+          },
+          "language_code": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Code"
           },
           "raw_type_id": {
             "minimum": 1.0,
@@ -261,6 +329,18 @@
             "minimum": 1.0,
             "title": "Family Id",
             "type": "integer"
+          },
+          "language_code": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Code"
           }
         },
         "required": [
@@ -313,6 +393,14 @@
               }
             ],
             "title": "Expires At"
+          },
+          "language_code": {
+            "title": "Language Code",
+            "type": "string"
+          },
+          "language_resolution_source": {
+            "title": "Language Resolution Source",
+            "type": "string"
           },
           "lifecycle_code": {
             "title": "Lifecycle Code",
@@ -426,6 +514,8 @@
         },
         "required": [
           "proposal_id",
+          "language_code",
+          "language_resolution_source",
           "owner_user_id",
           "proposal_type",
           "status",
@@ -747,10 +837,20 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "language_code": {
+            "title": "Language Code",
+            "type": "string"
+          },
+          "language_resolution_source": {
+            "title": "Language Resolution Source",
+            "type": "string"
           }
         },
         "required": [
-          "generated_at"
+          "generated_at",
+          "language_code",
+          "language_resolution_source"
         ],
         "title": "AgentRecentActivityResponse",
         "type": "object"
@@ -841,6 +941,14 @@
             "title": "Generated At",
             "type": "string"
           },
+          "language_code": {
+            "title": "Language Code",
+            "type": "string"
+          },
+          "language_resolution_source": {
+            "title": "Language Resolution Source",
+            "type": "string"
+          },
           "observability": {
             "$ref": "#/components/schemas/SourceObservabilityResponse"
           },
@@ -853,6 +961,8 @@
         },
         "required": [
           "generated_at",
+          "language_code",
+          "language_resolution_source",
           "source",
           "observability",
           "recommended_next_action"
@@ -863,6 +973,18 @@
       "AgentSourceRecoveryProposalRequest": {
         "additionalProperties": false,
         "properties": {
+          "language_code": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Code"
+          },
           "source_id": {
             "minimum": 1.0,
             "title": "Source Id",
@@ -896,6 +1018,14 @@
             "title": "Generated At",
             "type": "string"
           },
+          "language_code": {
+            "title": "Language Code",
+            "type": "string"
+          },
+          "language_resolution_source": {
+            "title": "Language Resolution Source",
+            "type": "string"
+          },
           "recommended_next_action": {
             "$ref": "#/components/schemas/AgentRecommendedActionResponse"
           },
@@ -912,6 +1042,8 @@
         },
         "required": [
           "generated_at",
+          "language_code",
+          "language_resolution_source",
           "summary",
           "top_pending_changes",
           "recommended_next_action"
@@ -921,13 +1053,39 @@
       },
       "ApprovalTicketCancelRequest": {
         "additionalProperties": false,
-        "properties": {},
+        "properties": {
+          "language_code": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Code"
+          }
+        },
         "title": "ApprovalTicketCancelRequest",
         "type": "object"
       },
       "ApprovalTicketConfirmRequest": {
         "additionalProperties": false,
-        "properties": {},
+        "properties": {
+          "language_code": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Code"
+          }
+        },
         "title": "ApprovalTicketConfirmRequest",
         "type": "object"
       },
@@ -940,6 +1098,18 @@
             "minLength": 1,
             "title": "Channel",
             "type": "string"
+          },
+          "language_code": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Code"
           },
           "proposal_id": {
             "minimum": 1.0,
@@ -967,6 +1137,10 @@
             "title": "Can Confirm",
             "type": "boolean"
           },
+          "cancel_summary": {
+            "title": "Cancel Summary",
+            "type": "string"
+          },
           "cancel_summary_code": {
             "title": "Cancel Summary Code",
             "type": "string"
@@ -985,6 +1159,10 @@
           },
           "channel": {
             "title": "Channel",
+            "type": "string"
+          },
+          "confirm_summary": {
+            "title": "Confirm Summary",
             "type": "string"
           },
           "confirm_summary_code": {
@@ -1036,6 +1214,14 @@
               }
             ],
             "title": "Expires At"
+          },
+          "language_code": {
+            "title": "Language Code",
+            "type": "string"
+          },
+          "language_resolution_source": {
+            "title": "Language Resolution Source",
+            "type": "string"
           },
           "last_transition_kind": {
             "title": "Last Transition Kind",
@@ -1137,6 +1323,10 @@
             "title": "Ticket Id",
             "type": "string"
           },
+          "transition_message": {
+            "title": "Transition Message",
+            "type": "string"
+          },
           "transition_message_code": {
             "title": "Transition Message Code",
             "type": "string"
@@ -1149,6 +1339,8 @@
         },
         "required": [
           "ticket_id",
+          "language_code",
+          "language_resolution_source",
           "proposal_id",
           "owner_user_id",
           "channel",
@@ -1165,6 +1357,9 @@
           "confirm_summary_code",
           "cancel_summary_code",
           "transition_message_code",
+          "confirm_summary",
+          "cancel_summary",
+          "transition_message",
           "can_confirm",
           "can_cancel",
           "last_transition_kind",
@@ -4819,6 +5014,17 @@
             ],
             "title": "Error Code"
           },
+          "estimated_cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost Usd"
+          },
           "http_status": {
             "anyOf": [
               {
@@ -4983,14 +5189,29 @@
             "title": "Cache Creation Input Tokens",
             "type": "integer"
           },
+          "cached_input_cost_usd": {
+            "default": 0.0,
+            "title": "Cached Input Cost Usd",
+            "type": "number"
+          },
           "cached_input_tokens": {
             "default": 0,
             "title": "Cached Input Tokens",
             "type": "integer"
           },
+          "estimated_cost_usd": {
+            "default": 0.0,
+            "title": "Estimated Cost Usd",
+            "type": "number"
+          },
           "failure_count": {
             "title": "Failure Count",
             "type": "integer"
+          },
+          "input_cost_usd": {
+            "default": 0.0,
+            "title": "Input Cost Usd",
+            "type": "number"
           },
           "input_tokens": {
             "default": 0,
@@ -5004,10 +5225,20 @@
             "title": "Model Counts",
             "type": "object"
           },
+          "output_cost_usd": {
+            "default": 0.0,
+            "title": "Output Cost Usd",
+            "type": "number"
+          },
           "output_tokens": {
             "default": 0,
             "title": "Output Tokens",
             "type": "integer"
+          },
+          "pricing_available": {
+            "default": true,
+            "title": "Pricing Available",
+            "type": "boolean"
           },
           "protocol_counts": {
             "additionalProperties": {
@@ -5039,6 +5270,11 @@
           "total_tokens": {
             "default": 0,
             "title": "Total Tokens",
+            "type": "integer"
+          },
+          "unpriced_call_count": {
+            "default": 0,
+            "title": "Unpriced Call Count",
             "type": "integer"
           }
         },
@@ -6855,6 +7091,18 @@
             ],
             "title": "Error Message"
           },
+          "gmail_parse_summary": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gmail Parse Summary"
+          },
           "llm_usage": {
             "anyOf": [
               {
@@ -7315,6 +7563,18 @@
               }
             ],
             "title": "Error Message"
+          },
+          "gmail_parse_summary": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gmail Parse Summary"
           },
           "idempotency_key": {
             "title": "Idempotency Key",
@@ -7838,6 +8098,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "language_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Language Code"
+            }
+          },
+          {
             "in": "header",
             "name": "X-API-Key",
             "required": false,
@@ -7904,6 +8180,22 @@
               "default": 20,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "language_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Language Code"
             }
           },
           {
@@ -8023,6 +8315,22 @@
             "schema": {
               "title": "Ticket Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "language_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Language Code"
             }
           },
           {
@@ -8220,6 +8528,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "language_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Language Code"
+            }
+          },
+          {
             "in": "header",
             "name": "X-API-Key",
             "required": false,
@@ -8275,6 +8599,22 @@
             "schema": {
               "title": "Family Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "language_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Language Code"
             }
           },
           {
@@ -8336,6 +8676,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "language_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Language Code"
+            }
+          },
+          {
             "in": "header",
             "name": "X-API-Key",
             "required": false,
@@ -8384,6 +8740,22 @@
       "get": {
         "operationId": "get_agent_workspace_context_agent_context_workspace_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "language_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Language Code"
+            }
+          },
           {
             "in": "header",
             "name": "X-API-Key",
@@ -8451,6 +8823,22 @@
               "default": 20,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "language_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Language Code"
             }
           },
           {
@@ -8867,6 +9255,22 @@
             "schema": {
               "title": "Proposal Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "language_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Language Code"
             }
           },
           {
