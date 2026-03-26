@@ -3,9 +3,9 @@
 ## Default base URL
 - Public/backend API: `http://localhost:8200`
 
-## Product lanes
+## Product surfaces
 
-User-facing product lanes should be interpreted as:
+User-facing product surfaces should be interpreted as:
 
 - `Sources`
 - `Changes`
@@ -15,12 +15,16 @@ User-facing product lanes should be interpreted as:
 
 This document is the current public contract. Retired legacy public paths should return `404`.
 
+`Changes` is the single review surface. `initial_review` remains a valid backend review bucket and workflow concept, but it is not a separate public route family.
+
 ## Agent context endpoints
 
 - `GET /agent/context/workspace`
 - `GET /agent/context/changes/{change_id}`
 - `GET /agent/context/sources/{source_id}`
 - `GET /agent/context/families/{family_id}`
+
+All agent context endpoints accept optional `language_code`.
 
 ## Agent proposal endpoints
 
@@ -33,6 +37,8 @@ This document is the current public contract. Retired legacy public paths should
 - `POST /agent/proposals/source-recovery`
 - `GET /agent/proposals/{proposal_id}`
 
+All agent proposal read/write endpoints accept optional `language_code`.
+
 ## Agent approval endpoints
 
 - `GET /agent/activity/recent`
@@ -41,6 +47,8 @@ This document is the current public contract. Retired legacy public paths should
 - `GET /agent/approval-tickets/{ticket_id}`
 - `POST /agent/approval-tickets/{ticket_id}/confirm`
 - `POST /agent/approval-tickets/{ticket_id}/cancel`
+
+All approval ticket reads and transitions accept optional `language_code`.
 
 Current execution scope is intentionally narrow:
 

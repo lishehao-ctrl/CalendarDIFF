@@ -8,11 +8,11 @@ Its job is to:
 1. ingest Canvas ICS and Gmail signals
 2. build a canonical event baseline
 3. surface safe review proposals
-4. keep ongoing replay changes in one daily review lane
+4. keep ongoing replay changes in one daily review workflow
 
 ## Product shape
 
-Current user-facing product lanes:
+Current user-facing product surfaces:
 
 - `Overview`
 - `Sources`
@@ -21,10 +21,10 @@ Current user-facing product lanes:
 - `Manual`
 - `Settings`
 
-Important workflow distinction:
+Important review distinction inside `Changes`:
 
-- `Initial Review` is a temporary baseline-review workspace after first import
-- `Changes` is the normal daily replay-review workspace after baseline is established
+- `Initial Review` remains the baseline review bucket after first import
+- `Changes` remains the single review surface for both baseline and replay work
 
 The intended user flow is:
 
@@ -33,8 +33,8 @@ The intended user flow is:
 3. connect required Canvas ICS
 4. optionally connect Gmail
 5. choose the initial monitoring window
-6. complete `Initial Review`
-7. use `Changes` for day-to-day review
+6. clear baseline items in `Changes`
+7. keep using `Changes` for day-to-day replay review
 
 ## Runtime model
 
