@@ -121,21 +121,24 @@ def test_named_provider_routes_stay_within_same_vendor(monkeypatch) -> None:
     monkeypatch.setenv("INGESTION_LLM_FALLBACK_ENABLED", "true")
     get_settings.cache_clear()
     try:
-        routes = resolve_llm_routes(
-            None,
-            invoke_request=LlmInvokeRequest(
-                task_name="gmail_message_extract",
-                system_prompt="Return JSON object only.",
-                user_payload={"message": {"subject": "hello"}},
-                output_schema_name="AnyObject",
-                output_schema_json={"type": "object"},
-                source_id=1,
-                request_id="req-1",
-                source_provider="gmail",
-            ),
-        )
-        assert [route.profile.vendor for route in routes] == ["openai", "openai"]
-        assert [route.profile.protocol for route in routes] == ["responses", "chat_completions"]
+        try:
+            resolve_llm_routes(
+                None,
+                invoke_request=LlmInvokeRequest(
+                    task_name="gmail_message_extract",
+                    system_prompt="Return JSON object only.",
+                    user_payload={"message": {"subject": "hello"}},
+                    output_schema_name="AnyObject",
+                    output_schema_json={"type": "object"},
+                    source_id=1,
+                    request_id="req-1",
+                    source_provider="gmail",
+                ),
+            )
+        except Exception as exc:
+            assert "cross-vendor fallback provider" in str(exc)
+        else:
+            raise AssertionError("expected cross-vendor fallback config error")
     finally:
         get_settings.cache_clear()
 
@@ -168,6 +171,60 @@ def test_named_provider_routes_include_same_vendor_explicit_fallback_provider(mo
         )
         assert [route.profile.provider_id for route in routes] == ["gemini_main", "gemini_compat"]
         assert [route.profile.protocol for route in routes] == ["gemini_generate_content", "chat_completions"]
+    finally:
+        get_settings.cache_clear()
+
+
+def test_named_provider_definition_rejects_unknown_fallback_provider(monkeypatch) -> None:
+    monkeypatch.setenv("INGESTION_LLM_PROVIDER_ID", "qwen_us_main")
+    monkeypatch.setenv("LLM_PROVIDER_QWEN_US_MAIN_VENDOR", "dashscope_openai")
+    monkeypatch.setenv("LLM_PROVIDER_QWEN_US_MAIN_PROTOCOL", "responses")
+    monkeypatch.setenv("LLM_PROVIDER_QWEN_US_MAIN_MODEL", "qwen3.5-flash")
+    monkeypatch.setenv("LLM_PROVIDER_QWEN_US_MAIN_BASE_URL", "https://dashscope-us.aliyuncs.com/compatible-mode/v1")
+    monkeypatch.setenv("LLM_PROVIDER_QWEN_US_MAIN_RESPONSES_BASE_URL", "https://dashscope-us.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1")
+    monkeypatch.setenv("LLM_PROVIDER_QWEN_US_MAIN_API_KEY", "qwen-key")
+    monkeypatch.setenv("LLM_PROVIDER_QWEN_US_MAIN_FALLBACK_PROVIDER_IDS", "qwen_missing")
+    get_settings.cache_clear()
+    try:
+        try:
+            resolve_llm_profile(None, source_id=None)
+        except Exception as exc:
+            assert "unknown fallback provider" in str(exc)
+        else:
+            raise AssertionError("expected unknown fallback provider config error")
+    finally:
+        get_settings.cache_clear()
+
+
+def test_qwen_mainline_routes_stay_on_dashscope_without_provider_fallback(monkeypatch) -> None:
+    monkeypatch.setenv("INGESTION_LLM_PROVIDER_ID", "qwen_us_main")
+    monkeypatch.setenv("INGESTION_LLM_FALLBACK_ENABLED", "true")
+    monkeypatch.setenv("LLM_PROVIDER_QWEN_US_MAIN_VENDOR", "dashscope_openai")
+    monkeypatch.setenv("LLM_PROVIDER_QWEN_US_MAIN_PROTOCOL", "responses")
+    monkeypatch.setenv("LLM_PROVIDER_QWEN_US_MAIN_MODEL", "qwen3.5-flash")
+    monkeypatch.setenv("LLM_PROVIDER_QWEN_US_MAIN_BASE_URL", "https://dashscope-us.aliyuncs.com/compatible-mode/v1")
+    monkeypatch.setenv("LLM_PROVIDER_QWEN_US_MAIN_RESPONSES_BASE_URL", "https://dashscope-us.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1")
+    monkeypatch.setenv("LLM_PROVIDER_QWEN_US_MAIN_CHAT_BASE_URL", "https://dashscope-us.aliyuncs.com/compatible-mode/v1")
+    monkeypatch.setenv("LLM_PROVIDER_QWEN_US_MAIN_API_KEY", "qwen-key")
+    monkeypatch.setenv("LLM_PROVIDER_QWEN_US_MAIN_FALLBACK_PROVIDER_IDS", "")
+    get_settings.cache_clear()
+    try:
+        routes = resolve_llm_routes(
+            None,
+            invoke_request=LlmInvokeRequest(
+                task_name="gmail_message_extract",
+                system_prompt="Return JSON object only.",
+                user_payload={"message": {"subject": "hello"}},
+                output_schema_name="AnyObject",
+                output_schema_json={"type": "object"},
+                source_id=1,
+                request_id="req-qwen-mainline",
+                source_provider="gmail",
+            ),
+        )
+        assert [route.profile.vendor for route in routes] == ["dashscope_openai", "dashscope_openai"]
+        assert [route.profile.provider_id for route in routes] == ["qwen_us_main", "qwen_us_main"]
+        assert [route.profile.protocol for route in routes] == ["responses", "chat_completions"]
     finally:
         get_settings.cache_clear()
 

@@ -7,6 +7,7 @@ import pytest
 import app.modules.runtime.connectors.llm_parsers.calendar_parser as calendar_parser
 import app.modules.runtime.connectors.llm_parsers.gmail_parser as gmail_parser
 import app.modules.runtime.connectors.llm_parsers.semantic_orchestrator as semantic_orchestrator
+from app.modules.runtime.llm.gmail_purpose_cache import GMAIL_PURPOSE_CLASSIFIER_VERSION
 from app.modules.runtime.apply.payload_contracts import validate_gmail_directive_payload, validate_gmail_payload
 from app.modules.runtime.connectors.llm_parsers.contracts import LlmParseError, ParserContext
 from app.modules.llm_gateway.retry_policy import LLM_FORMAT_MAX_ATTEMPTS
@@ -469,8 +470,9 @@ def test_gmail_extract_reuses_message_cache_prefix_instead_of_previous_response(
     assert classify_request.task_name == "gmail_purpose_mode_classify"
     assert identity_request.task_name == "gmail_atomic_identity_extract"
     assert time_request.task_name == "gmail_atomic_time_resolve"
-    assert classify_request.cache_prefix_payload == {"cache_scope": "gmail_purpose_mode_classify:v2"}
-    assert classify_request.cache_task_prompt is True
+    assert classify_request.cache_prefix_payload == {"cache_scope": GMAIL_PURPOSE_CLASSIFIER_VERSION}
+    assert classify_request.cache_task_prompt is False
+    assert classify_request.session_cache_mode == "disable"
     assert classify_request.user_payload == {
         "purpose": "assignment_or_exam_monitoring",
         "message_context": expected_prefix,

@@ -38,6 +38,7 @@ GMAIL_REVIEW_PREP_TIMEOUT_SECONDS = 1800.0
 GMAIL_REVIEW_PREP_STALL_WINDOW_SECONDS = 600.0
 ICS_REVIEW_PREP_TIMEOUT_SECONDS = 600.0
 ICS_REVIEW_PREP_STALL_WINDOW_SECONDS = 240.0
+WAIT_TIME_EPSILON_SECONDS = 1e-6
 
 
 class RealFlowEvalError(RuntimeError):
@@ -328,7 +329,7 @@ def wait_for_source_flow_progress(
 
     while True:
         now_monotonic = time.monotonic()
-        if now_monotonic >= deadline:
+        if now_monotonic + WAIT_TIME_EPSILON_SECONDS >= deadline:
             if (
                 not grace_extension_used
                 and _sync_request_is_actively_progressing(payload=latest_payload, observability=latest_observability)
@@ -373,7 +374,7 @@ def wait_for_source_flow_progress(
             stalled_since = now_monotonic
             last_progress_observed_at = datetime.now(replay.UTC).isoformat()
 
-        if now_monotonic - stalled_since >= stall_window_seconds:
+        if now_monotonic - stalled_since + WAIT_TIME_EPSILON_SECONDS >= stall_window_seconds:
             raise RealFlowEvalError(
                 json.dumps(
                     _build_stalled_failure_details(

@@ -4,6 +4,7 @@ import os
 from collections.abc import Generator
 from datetime import datetime, timezone
 
+import psycopg
 import pytest
 from alembic import command
 from alembic.config import Config
@@ -17,6 +18,7 @@ from app.core.config import get_settings
 from app.db.models.shared import User
 from app.db.session import reset_engine
 from app.modules.auth.service import AUTH_SESSION_COOKIE_NAME, create_user_session
+from app.modules.common.request_rate_limit import reset_request_rate_limiters
 from app.modules.sources.schemas import InputSourceCreateRequest
 from app.modules.sources.sources_service import create_input_source
 
@@ -36,14 +38,11 @@ def _recreate_postgres_database(database_url: str) -> None:
         return
 
     db_name = parsed.database
-    admin_url = parsed.set(database="postgres")
-    engine = create_engine(admin_url, future=True, isolation_level="AUTOCOMMIT")
-    try:
-        with engine.connect() as conn:
-            conn.execute(text(f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)'))
-            conn.execute(text(f'CREATE DATABASE "{db_name}"'))
-    finally:
-        engine.dispose()
+    admin_dsn = parsed.set(drivername="postgresql", database="postgres").render_as_string(hide_password=False)
+    with psycopg.connect(admin_dsn, autocommit=True) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)')
+            cursor.execute(f'CREATE DATABASE "{db_name}"')
 
 
 def _truncate_all_tables(engine: Engine) -> None:
@@ -118,7 +117,9 @@ def clean_database(request) -> Generator[None, None, None]:
         return
     db_engine = request.getfixturevalue("db_engine")
     _truncate_all_tables(db_engine)
+    reset_request_rate_limiters()
     yield
+    reset_request_rate_limiters()
 
 
 @pytest.fixture()
