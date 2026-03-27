@@ -111,3 +111,91 @@ def test_build_agent_claw_closeout_command_includes_frontend_base(tmp_path: Path
     command = validation.build_agent_claw_closeout_command(run_dir=tmp_path, args=args)
 
     assert command[-2:] == ["--frontend-base", "http://127.0.0.1:3001"]
+
+
+def test_run_year_timeline_replay_allows_more_than_24_status_checks(monkeypatch, tmp_path: Path) -> None:
+    replay_run_dir = tmp_path / "year-timeline-replay"
+    replay_run_dir.mkdir()
+    status_calls = {"count": 0}
+
+    monkeypatch.setattr(validation, "build_stage_env", lambda **kwargs: {"APP_API_KEY": kwargs["app_api_key"]})
+    monkeypatch.setattr(validation, "validate_replay_llm_env", lambda env: None)
+    monkeypatch.setattr(validation, "recreate_postgres_database", lambda database_url: None)
+    monkeypatch.setattr(validation.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(validation.time, "time", lambda: 0.0)
+
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _managed_backend(**kwargs):  # type: ignore[no-untyped-def]
+        yield
+
+    monkeypatch.setattr(validation, "managed_backend", _managed_backend)
+
+    def _run_command(*, command, cwd, env, log_path):  # type: ignore[no-untyped-def]
+        del cwd, env
+        if command[1] == "scripts/run_year_timeline_replay_smoke.py" and command[2] == "start":
+            validation._write_json(
+                replay_run_dir / "state.json",
+                {"finished": False, "awaiting_manual": False, "current_checkpoint_index": 0, "next_global_batch": 1},
+            )
+            Path(log_path).write_text(str(replay_run_dir) + "\n", encoding="utf-8")
+            return {
+                "command": command,
+                "success": True,
+                "returncode": 0,
+                "stdout": str(replay_run_dir) + "\n",
+                "stderr": "",
+                "log_path": str(log_path),
+                "run_dir": str(replay_run_dir),
+            }
+        if command[1] == "scripts/run_year_timeline_replay_smoke.py" and command[2] == "status":
+            status_calls["count"] += 1
+            finished = status_calls["count"] >= 25
+            payload = {
+                "run_id": "year-timeline-replay-test",
+                "finished": finished,
+                "awaiting_manual": False,
+                "current_checkpoint_index": status_calls["count"],
+                "next_global_batch": status_calls["count"] + 1,
+            }
+            validation._write_json(replay_run_dir / "state.json", payload)
+            Path(log_path).write_text(validation.json.dumps(payload), encoding="utf-8")
+            return {
+                "command": command,
+                "success": True,
+                "returncode": 0,
+                "stdout": validation.json.dumps(payload),
+                "stderr": "",
+                "log_path": str(log_path),
+                "run_dir": None,
+            }
+        if command[1] == "scripts/run_year_timeline_replay_smoke.py" and command[2] == "report":
+            report_payload = {"finished": True, "awaiting_manual": False}
+            validation._write_json(replay_run_dir / "report.json", report_payload)
+            Path(log_path).write_text(validation.json.dumps(report_payload), encoding="utf-8")
+            return {
+                "command": command,
+                "success": True,
+                "returncode": 0,
+                "stdout": validation.json.dumps(report_payload),
+                "stderr": "",
+                "log_path": str(log_path),
+                "run_dir": None,
+            }
+        raise AssertionError(command)
+
+    monkeypatch.setattr(validation, "run_command", _run_command)
+
+    result = validation.run_year_timeline_replay(
+        run_dir=tmp_path,
+        database_url="postgresql+psycopg://postgres:postgres@localhost:5432/deadline_diff_replay_eval",
+        redis_url=validation.DEFAULT_REPLAY_REDIS_URL,
+        app_api_key="test-api-key",
+        host="127.0.0.1",
+        port=8212,
+        replay_time_budget_seconds=60,
+    )
+
+    assert result["ok"] is True
+    assert status_calls["count"] == 25

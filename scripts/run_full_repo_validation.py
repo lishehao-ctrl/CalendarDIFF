@@ -33,6 +33,7 @@ DEFAULT_TEST_REDIS_URL = "redis://127.0.0.1:6379/15"
 DEFAULT_STRICT_REDIS_URL = "redis://127.0.0.1:6379/14"
 DEFAULT_REPLAY_REDIS_URL = "redis://127.0.0.1:6379/13"
 DEFAULT_STRICT_EVAL_FRONTEND_BASE = "http://127.0.0.1:3000"
+DEFAULT_REPLAY_TIME_BUDGET_SECONDS = 4 * 60 * 60
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,6 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--strict-eval-db-url", default=DEFAULT_STRICT_EVAL_DB)
     parser.add_argument("--strict-eval-frontend-base", default=DEFAULT_STRICT_EVAL_FRONTEND_BASE)
     parser.add_argument("--replay-db-url", default=DEFAULT_REPLAY_DB)
+    parser.add_argument("--replay-time-budget-seconds", type=int, default=DEFAULT_REPLAY_TIME_BUDGET_SECONDS)
     parser.add_argument("--public-api-host", default="127.0.0.1")
     parser.add_argument("--replay-port", type=int, default=8212)
     parser.add_argument("--strict-eval-port", type=int, default=8210)
@@ -153,6 +155,7 @@ def main() -> None:
         app_api_key=settings.app_api_key,
         host=str(args.public_api_host),
         port=int(args.replay_port),
+        replay_time_budget_seconds=int(args.replay_time_budget_seconds),
     )
     _write_json(run_dir / "replay_summary.json", replay)
 
@@ -267,6 +270,7 @@ def run_year_timeline_replay(
     app_api_key: str,
     host: str,
     port: int,
+    replay_time_budget_seconds: int = DEFAULT_REPLAY_TIME_BUDGET_SECONDS,
 ) -> dict[str, Any]:
     env = build_stage_env(database_url=database_url, redis_url=redis_url, app_api_key=app_api_key)
     env["INGEST_SERVICE_ENABLE_WORKER"] = "true"
@@ -333,7 +337,8 @@ def run_year_timeline_replay(
         replay_run_path = Path(replay_run_dir)
         _write_text(run_dir / "replay_run_dir.txt", str(replay_run_path) + "\n")
         status_checks: list[dict[str, Any]] = []
-        for _ in range(24):
+        started = time.time()
+        while True:
             status = run_command(
                 command=[
                     sys.executable,
@@ -371,6 +376,17 @@ def run_year_timeline_replay(
                 status_checks.append(resume)
             if isinstance(state, dict) and bool(state.get("finished")):
                 break
+            if time.time() - started > replay_time_budget_seconds:
+                return {
+                    "ok": False,
+                    "start": start,
+                    "status_checks": status_checks,
+                    "report": None,
+                    "report_json": None,
+                    "backend_log": str(backend_log),
+                    "replay_run_dir": str(replay_run_path),
+                    "stopped_reason": f"time_budget_exceeded:{replay_time_budget_seconds}",
+                }
             time.sleep(5)
 
         report = run_command(
