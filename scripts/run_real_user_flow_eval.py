@@ -38,6 +38,7 @@ GMAIL_REVIEW_PREP_TIMEOUT_SECONDS = 1800.0
 GMAIL_REVIEW_PREP_STALL_WINDOW_SECONDS = 600.0
 ICS_REVIEW_PREP_TIMEOUT_SECONDS = 600.0
 ICS_REVIEW_PREP_STALL_WINDOW_SECONDS = 240.0
+FLOW_FOUR_PERSIST_TIMEOUT_SECONDS = 15.0
 WAIT_TIME_EPSILON_SECONDS = 1e-6
 
 
@@ -461,6 +462,43 @@ def wait_for_onboarding_ready_with_ics_source(
     )
 
 
+def wait_for_change_persistence(
+    client: httpx.Client,
+    *,
+    change_id: int,
+    expected_review_status: str,
+    expected_edited_event_name: str | None = None,
+    timeout_seconds: float = FLOW_FOUR_PERSIST_TIMEOUT_SECONDS,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    deadline = time.monotonic() + timeout_seconds
+    latest_row: dict[str, Any] | None = None
+    latest_edit_context: dict[str, Any] | None = None
+
+    while time.monotonic() < deadline:
+        latest_row = replay.request_json(client, "GET", f"/changes/{change_id}")
+        if str(latest_row.get("review_status") or "") != expected_review_status:
+            time.sleep(1.0)
+            continue
+
+        if expected_edited_event_name is None:
+            return latest_row, None
+
+        latest_edit_context = replay.request_json(client, "GET", f"/changes/{change_id}/edit-context")
+        editable_event = latest_edit_context.get("editable_event") if isinstance(latest_edit_context.get("editable_event"), dict) else {}
+        if editable_event.get("event_name") == expected_edited_event_name:
+            return latest_row, latest_edit_context
+        time.sleep(1.0)
+
+    raise RealFlowEvalError(
+        "flow 4 persistence timeout "
+        f"change_id={change_id} "
+        f"expected_review_status={expected_review_status} "
+        f"expected_edited_event_name={expected_edited_event_name or '-'} "
+        f"last_review_status={str((latest_row or {}).get('review_status') or '-')} "
+        f"last_edited_event_name={str((((latest_edit_context or {}).get('editable_event') or {}) if isinstance((latest_edit_context or {}).get('editable_event'), dict) else {}).get('event_name') or '-')}"
+    )
+
+
 def _build_progress_marker(
     *,
     payload: dict[str, Any] | None,
@@ -879,18 +917,22 @@ def run_eval(args: argparse.Namespace) -> Path:
           frontend_base=frontend_base,
           run_dir=run_dir,
       )
-        approved_row = replay.request_json(client, "GET", f"/changes/{int(review_targets['approve']['id'])}")
-        rejected_row = replay.request_json(client, "GET", f"/changes/{int(review_targets['reject']['id'])}")
-        edited_row = replay.request_json(client, "GET", f"/changes/{int(review_targets['edit']['id'])}")
-        edited_context = replay.request_json(client, "GET", f"/changes/{int(review_targets['edit']['id'])}/edit-context")
-        if approved_row.get("review_status") != "approved":
-            raise RealFlowEvalError("flow 4 approve action did not persist")
-        if rejected_row.get("review_status") != "rejected":
-            raise RealFlowEvalError("flow 4 reject action did not persist")
-        editable_event = edited_context.get("editable_event") if isinstance(edited_context.get("editable_event"), dict) else {}
-        edited_name_value = editable_event.get("event_name")
-        if edited_row.get("review_status") != "approved" or edited_name_value != edited_name:
-            raise RealFlowEvalError("flow 4 proposal edit + approve did not persist")
+        approved_row, _ = wait_for_change_persistence(
+            client,
+            change_id=int(review_targets["approve"]["id"]),
+            expected_review_status="approved",
+        )
+        rejected_row, _ = wait_for_change_persistence(
+            client,
+            change_id=int(review_targets["reject"]["id"]),
+            expected_review_status="rejected",
+        )
+        edited_row, edited_context = wait_for_change_persistence(
+            client,
+            change_id=int(review_targets["edit"]["id"]),
+            expected_review_status="approved",
+            expected_edited_event_name=edited_name,
+        )
         log_api_event(run_dir, FLOWS[3].flow_id, "review_actions_applied", {"approved": approved_row["id"], "rejected": rejected_row["id"], "edited": edited_row["id"]})
         results.append(
           FlowResult(

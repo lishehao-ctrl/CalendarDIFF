@@ -219,6 +219,71 @@ def test_wait_for_onboarding_ready_with_ics_source_times_out_with_context(monkey
     assert "stage=needs_canvas_ics" in str(excinfo.value)
 
 
+def test_wait_for_change_persistence_polls_until_edited_name_matches(monkeypatch: pytest.MonkeyPatch) -> None:
+    monotonic_values = chain([0.0, 0.0, 1.0, 2.0], repeat(2.0))
+    change_rows = iter(
+        [
+            {"id": 16, "review_status": "pending"},
+            {"id": 16, "review_status": "approved"},
+            {"id": 16, "review_status": "approved"},
+        ]
+    )
+    edit_context_rows = iter(
+        [
+            {"editable_event": {"event_name": "Old Name"}},
+            {"editable_event": {"event_name": "Real Flow Edited c089"}},
+        ]
+    )
+
+    monkeypatch.setattr(real_flow.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(real_flow.time, "sleep", lambda _seconds: None)
+
+    def fake_request_json(_client, method: str, path: str):
+        assert method == "GET"
+        if path == "/changes/16":
+            return next(change_rows)
+        if path == "/changes/16/edit-context":
+            return next(edit_context_rows)
+        raise AssertionError(path)
+
+    monkeypatch.setattr(real_flow.replay, "request_json", fake_request_json)
+
+    row, edit_context = real_flow.wait_for_change_persistence(
+        client=object(),
+        change_id=16,
+        expected_review_status="approved",
+        expected_edited_event_name="Real Flow Edited c089",
+        timeout_seconds=5.0,
+    )
+
+    assert row["review_status"] == "approved"
+    assert edit_context is not None
+    assert edit_context["editable_event"]["event_name"] == "Real Flow Edited c089"
+
+
+def test_wait_for_change_persistence_times_out_with_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    monotonic_values = chain([0.0, 0.0, 5.0, 5.0], repeat(5.0))
+
+    monkeypatch.setattr(real_flow.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(real_flow.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        real_flow.replay,
+        "request_json",
+        lambda _client, method, path: {"id": 16, "review_status": "pending"} if method == "GET" and path == "/changes/16" else {},
+    )
+
+    with pytest.raises(real_flow.RealFlowEvalError) as excinfo:
+        real_flow.wait_for_change_persistence(
+            client=object(),
+            change_id=16,
+            expected_review_status="approved",
+            timeout_seconds=0.1,
+        )
+
+    assert "flow 4 persistence timeout" in str(excinfo.value)
+    assert "last_review_status=pending" in str(excinfo.value)
+
+
 def test_observability_ready_for_flow_requires_stable_visible_state() -> None:
     ready = real_flow._observability_is_ready_for_flow(
         request_id="req-1",
