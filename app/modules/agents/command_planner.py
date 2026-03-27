@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field, ValidationError, model_validator
 from sqlalchemy.orm import Session
 
@@ -133,7 +134,7 @@ def generate_command_plan(
                     "input_language_code": language_context.input_language_code,
                     "language_resolution_source": language_context.resolution_source,
                     "input_text": input_text,
-                    "scope_snapshot": scope_snapshot,
+                    "scope_snapshot": jsonable_encoder(scope_snapshot),
                     "tool_catalog": planner_tool_catalog(),
                 },
                 output_schema_name="AgentWorkspaceCommandPlan",
@@ -184,4 +185,3 @@ def _fallback_command_plan(*, input_text: str, language_code: str) -> dict[str, 
         ),
         "steps": [],
     }
-
