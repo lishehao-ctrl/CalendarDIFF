@@ -6,6 +6,9 @@ from sqlalchemy.orm import Session
 from app.core.security import require_public_api_key
 from app.db.session import get_db
 from app.modules.agents.schemas import (
+    AgentCommandExecuteRequest,
+    AgentCommandPlanRequest,
+    AgentCommandRunResponse,
     AgentChangeEditCommitProposalRequest,
     AgentChangeDecisionProposalRequest,
     AgentChangeContextResponse,
@@ -22,6 +25,14 @@ from app.modules.agents.schemas import (
     ApprovalTicketConfirmRequest,
     ApprovalTicketCreateRequest,
     ApprovalTicketResponse,
+)
+from app.modules.agents.command_service import (
+    AgentCommandInvalidStateError,
+    AgentCommandNotFoundError,
+    AgentCommandValidationError,
+    execute_agent_command_run_for_user,
+    get_agent_command_run_for_user,
+    plan_workspace_command_for_user,
 )
 from app.modules.agents.activity_service import PROPOSAL_STATUS_VALUES, TICKET_STATUS_VALUES
 from app.modules.agents.approval_service import ApprovalTicketError
@@ -242,6 +253,111 @@ def post_agent_label_learning_commit_proposal(
     except AgentProposalInvalidStateError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.detail) from exc
     return AgentProposalResponse.model_validate(proposal)
+
+
+@router.post("/commands/plan", response_model=AgentCommandRunResponse, status_code=status.HTTP_201_CREATED)
+def post_agent_command_plan(
+    payload: AgentCommandPlanRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> AgentCommandRunResponse:
+    enforce_user_mutation_rate_limit(request, user_id=user.id)
+    try:
+        command_run = plan_workspace_command_for_user(
+            db=db,
+            user_id=user.id,
+            input_text=payload.input_text,
+            scope_kind=payload.scope_kind,
+            scope_id=payload.scope_id,
+            language_code=payload.language_code or user.language_code,
+        )
+    except AgentContextNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=exc.detail,
+        ) from exc
+    except AgentCommandValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "agents.commands.invalid_request",
+                "message": str(exc),
+                "message_code": "agents.commands.invalid_request",
+                "message_params": {},
+            },
+        ) from exc
+    return AgentCommandRunResponse.model_validate(command_run)
+
+
+@router.get("/commands/{command_id}", response_model=AgentCommandRunResponse)
+def get_agent_command_run_route(
+    command_id: str,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> AgentCommandRunResponse:
+    command_run = get_agent_command_run_for_user(db=db, user_id=user.id, command_id=command_id)
+    if command_run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "agents.commands.not_found",
+                "message": "Agent command run not found",
+                "message_code": "agents.commands.not_found",
+                "message_params": {},
+            },
+        )
+    return AgentCommandRunResponse.model_validate(command_run)
+
+
+@router.post("/commands/{command_id}/execute", response_model=AgentCommandRunResponse)
+def post_agent_command_execute(
+    command_id: str,
+    payload: AgentCommandExecuteRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    user=Depends(get_onboarded_user_or_409),
+) -> AgentCommandRunResponse:
+    enforce_user_mutation_rate_limit(request, user_id=user.id)
+    try:
+        command_run = execute_agent_command_run_for_user(
+            db=db,
+            user_id=user.id,
+            command_id=command_id,
+            selected_step_ids=payload.selected_step_ids,
+            language_code=payload.language_code or user.language_code,
+        )
+    except AgentCommandNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "agents.commands.not_found",
+                "message": str(exc),
+                "message_code": "agents.commands.not_found",
+                "message_params": {},
+            },
+        ) from exc
+    except AgentCommandInvalidStateError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "agents.commands.invalid_state",
+                "message": str(exc),
+                "message_code": "agents.commands.invalid_state",
+                "message_params": {},
+            },
+        ) from exc
+    except AgentCommandValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "agents.commands.invalid_request",
+                "message": str(exc),
+                "message_code": "agents.commands.invalid_request",
+                "message_params": {},
+            },
+        ) from exc
+    return AgentCommandRunResponse.model_validate(command_run)
 
 
 @router.get("/proposals", response_model=list[AgentProposalResponse])

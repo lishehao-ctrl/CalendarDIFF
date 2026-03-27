@@ -1,5 +1,6 @@
 import { apiGet, apiPost, buildQuery } from "@/lib/api/client";
 import type {
+  AgentCommandRun,
   AgentChangeContext,
   AgentFamilyContext,
   AgentProposal,
@@ -35,6 +36,10 @@ export function approvalTicketCacheKey(ticketId: string) {
 
 export function agentRecentActivityCacheKey(limit = 10) {
   return `agent:activity:recent:${limit}`;
+}
+
+export function agentCommandRunCacheKey(commandId: string) {
+  return `agent:command:${commandId}`;
 }
 
 export async function getAgentWorkspaceContext() {
@@ -107,4 +112,27 @@ export async function confirmApprovalTicket(ticketId: string) {
 
 export async function cancelApprovalTicket(ticketId: string) {
   return apiPost<ApprovalTicket>(`/agent/approval-tickets/${encodeURIComponent(ticketId)}/cancel`, {});
+}
+
+export async function planWorkspaceCommand(payload: {
+  input_text: string;
+  scope_kind?: "workspace" | "change" | "source" | "family";
+  scope_id?: number | null;
+  language_code?: "en" | "zh-CN";
+}) {
+  return apiPost<AgentCommandRun>("/agent/commands/plan", payload);
+}
+
+export async function getWorkspaceCommand(commandId: string) {
+  return apiGet<AgentCommandRun>(`/agent/commands/${encodeURIComponent(commandId)}`);
+}
+
+export async function executeWorkspaceCommand(
+  commandId: string,
+  payload?: {
+    selected_step_ids?: string[];
+    language_code?: "en" | "zh-CN";
+  },
+) {
+  return apiPost<AgentCommandRun>(`/agent/commands/${encodeURIComponent(commandId)}/execute`, payload || {});
 }

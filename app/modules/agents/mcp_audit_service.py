@@ -92,6 +92,7 @@ def summarize_mcp_tool_output(payload: object) -> dict:
     return {
         key: payload.get(key)
         for key in (
+            "command_id",
             "proposal_id",
             "ticket_id",
             "status",

@@ -158,6 +158,9 @@ def test_mcp_server_registers_expected_tools_and_resources() -> None:
     assert "create_family_relink_preview_proposal" in tool_names
     assert "create_family_relink_commit_proposal" in tool_names
     assert "create_label_learning_commit_proposal" in tool_names
+    assert "plan_workspace_command" in tool_names
+    assert "get_workspace_command" in tool_names
+    assert "execute_workspace_command" in tool_names
     assert "list_proposals" in tool_names
     assert "create_approval_ticket" in tool_names
     assert "list_approval_tickets" in tool_names

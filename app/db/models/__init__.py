@@ -3,6 +3,8 @@
 from app.db.models.agents import (
     ApprovalTicket,
     ApprovalTicketStatus,
+    AgentCommandRun,
+    AgentCommandRunStatus,
     AgentProposal,
     AgentProposalStatus,
     AgentProposalType,
@@ -56,6 +58,8 @@ from app.db.models.shared import IntegrationInbox, IntegrationOutbox, OutboxStat
 __all__ = [
     "ApprovalTicket",
     "ApprovalTicketStatus",
+    "AgentCommandRun",
+    "AgentCommandRunStatus",
     "AgentProposal",
     "AgentProposalStatus",
     "AgentProposalType",

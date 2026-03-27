@@ -37,8 +37,14 @@ from app.modules.agents.gateway import (
     list_approval_tickets_for_user,
     list_proposals,
 )
+from app.modules.agents.command_service import (
+    execute_agent_command_run_for_user,
+    get_agent_command_run_for_user,
+    plan_workspace_command_for_user,
+)
 from app.modules.agents.proposal_service import AgentProposalInvalidStateError
 from app.modules.agents.schemas import (
+    AgentCommandRunResponse,
     AgentChangeContextResponse,
     AgentFamilyContextResponse,
     AgentProposalResponse,
@@ -707,6 +713,77 @@ def cancel_approval_ticket_impl(*, ticket_id: str, email: str | None = None, lan
     )
 
 
+def plan_workspace_command_impl(
+    *,
+    input_text: str,
+    scope_kind: str | None = None,
+    scope_id: int | None = None,
+    email: str | None = None,
+    language_code: str | None = None,
+    ctx: Context | None = None,
+) -> dict:
+    return _run_with_user_audited(
+        tool_name="plan_workspace_command",
+        input_payload={"input_text": input_text, "scope_kind": scope_kind, "scope_id": scope_id},
+        email=email,
+        ctx=ctx,
+        mutating=True,
+        fn=lambda db, user: plan_workspace_command_for_user(
+            db=db,
+            user_id=user.id,
+            input_text=input_text,
+            scope_kind=scope_kind,
+            scope_id=scope_id,
+            language_code=language_code,
+        ),
+    )
+
+
+def get_workspace_command_impl(
+    *,
+    command_id: str,
+    email: str | None = None,
+    ctx: Context | None = None,
+) -> dict:
+    def _load(db: Session, user: User) -> dict:
+        payload = get_agent_command_run_for_user(db=db, user_id=user.id, command_id=command_id)
+        if payload is None:
+            raise RuntimeError("Agent command run not found.")
+        return payload
+
+    return _run_with_user_audited(
+        tool_name="get_workspace_command",
+        input_payload={"command_id": command_id},
+        email=email,
+        ctx=ctx,
+        fn=_load,
+    )
+
+
+def execute_workspace_command_impl(
+    *,
+    command_id: str,
+    selected_step_ids: list[str] | None = None,
+    email: str | None = None,
+    language_code: str | None = None,
+    ctx: Context | None = None,
+) -> dict:
+    return _run_with_user_audited(
+        tool_name="execute_workspace_command",
+        input_payload={"command_id": command_id, "selected_step_ids": selected_step_ids or []},
+        email=email,
+        ctx=ctx,
+        mutating=True,
+        fn=lambda db, user: execute_agent_command_run_for_user(
+            db=db,
+            user_id=user.id,
+            command_id=command_id,
+            selected_step_ids=selected_step_ids,
+            language_code=language_code,
+        ),
+    )
+
+
 @mcp.tool(name="get_workspace_context", description=_tool_desc("Get the aggregated CalendarDIFF workspace context for a user.", "获取用户的 CalendarDIFF 工作区聚合上下文。"), structured_output=True)
 def get_workspace_context_tool(email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> AgentWorkspaceContextResponse:
     return AgentWorkspaceContextResponse.model_validate(get_workspace_context_impl(email=email, language_code=language_code, ctx=ctx))
@@ -894,6 +971,53 @@ def confirm_approval_ticket_tool(ticket_id: str, email: str | None = None, langu
 def cancel_approval_ticket_tool(ticket_id: str, email: str | None = None, language_code: str | None = None, ctx: Context | None = None) -> ApprovalTicketResponse:
     return ApprovalTicketResponse.model_validate(
         cancel_approval_ticket_impl(ticket_id=ticket_id, email=email, language_code=language_code, ctx=ctx)
+    )
+
+
+@mcp.tool(name="plan_workspace_command", description=_tool_desc("Plan bounded workspace actions from freeform user input.", "把自然语言输入规划成受限的工作区步骤。"), structured_output=True)
+def plan_workspace_command_tool(
+    input_text: str,
+    scope_kind: str | None = None,
+    scope_id: int | None = None,
+    email: str | None = None,
+    language_code: str | None = None,
+    ctx: Context | None = None,
+) -> AgentCommandRunResponse:
+    return AgentCommandRunResponse.model_validate(
+        plan_workspace_command_impl(
+            input_text=input_text,
+            scope_kind=scope_kind,
+            scope_id=scope_id,
+            email=email,
+            language_code=language_code,
+            ctx=ctx,
+        )
+    )
+
+
+@mcp.tool(name="get_workspace_command", description=_tool_desc("Fetch a planned or executed workspace command run.", "读取一条已规划或已执行的工作区命令。"), structured_output=True)
+def get_workspace_command_tool(command_id: str, email: str | None = None, ctx: Context | None = None) -> AgentCommandRunResponse:
+    return AgentCommandRunResponse.model_validate(
+        get_workspace_command_impl(command_id=command_id, email=email, ctx=ctx)
+    )
+
+
+@mcp.tool(name="execute_workspace_command", description=_tool_desc("Execute selected steps from a planned workspace command.", "执行一条工作区命令中的部分或全部步骤。"), structured_output=True)
+def execute_workspace_command_tool(
+    command_id: str,
+    selected_step_ids: list[str] | None = None,
+    email: str | None = None,
+    language_code: str | None = None,
+    ctx: Context | None = None,
+) -> AgentCommandRunResponse:
+    return AgentCommandRunResponse.model_validate(
+        execute_workspace_command_impl(
+            command_id=command_id,
+            selected_step_ids=selected_step_ids,
+            email=email,
+            language_code=language_code,
+            ctx=ctx,
+        )
     )
 
 

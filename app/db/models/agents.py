@@ -43,6 +43,15 @@ class McpToolInvocationStatus(str, Enum):
     FAILED = "failed"
 
 
+class AgentCommandRunStatus(str, Enum):
+    PLANNED = "planned"
+    CLARIFICATION_REQUIRED = "clarification_required"
+    UNSUPPORTED = "unsupported"
+    EXECUTING = "executing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class AgentProposal(Base):
     __tablename__ = "agent_proposals"
     __table_args__ = (
@@ -198,6 +207,41 @@ class McpToolInvocation(Base):
     user: Mapped["User"] = relationship("User")
     proposal: Mapped["AgentProposal | None"] = relationship("AgentProposal")
     ticket: Mapped["ApprovalTicket | None"] = relationship("ApprovalTicket")
+
+
+class AgentCommandRun(Base):
+    __tablename__ = "agent_command_runs"
+    __table_args__ = (
+        Index("ix_agent_command_runs_user_created", "user_id", "created_at"),
+        Index("ix_agent_command_runs_user_status_updated", "user_id", "status", "updated_at"),
+    )
+
+    command_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    input_text: Mapped[str] = mapped_column(Text, nullable=False)
+    scope_kind: Mapped[str] = mapped_column(String(16), nullable=False, default="workspace", server_default="workspace")
+    scope_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    language_code: Mapped[str] = mapped_column(String(16), nullable=False, default="en", server_default="en")
+    language_resolution_source: Mapped[str] = mapped_column(String(32), nullable=False, default="default", server_default="default")
+    status: Mapped[AgentCommandRunStatus] = mapped_column(
+        SAEnum(AgentCommandRunStatus, name="agent_command_run_status", native_enum=False),
+        nullable=False,
+        default=AgentCommandRunStatus.PLANNED,
+        server_default=AgentCommandRunStatus.PLANNED.value,
+    )
+    status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    plan_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    execution_results_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    user: Mapped["User"] = relationship("User")
 
 
 class ChannelAccountType(str, Enum):

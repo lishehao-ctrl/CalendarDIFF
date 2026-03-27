@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { AgentCommandPanel } from "@/components/agent-command-panel";
 import { AgentDisclosure } from "@/components/agent-step-flow";
 import { AgentRecentActivityCard } from "@/components/agent-recent-activity-card";
 import { Badge } from "@/components/ui/badge";
@@ -131,6 +132,13 @@ export function AgentWorkspacePanel({ basePath = "" }: { basePath?: string }) {
     </Card>
   );
 
+  async function refreshAgentSurfaces() {
+    await Promise.all([
+      context.refresh({ background: Boolean(context.data), force: true }),
+      activity.refresh({ background: Boolean(activity.data), force: true }),
+    ]);
+  }
+
   const pendingChangesCard = (
     <Card className="p-4" data-testid="agent-workspace-top-pending-card">
       <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("agent.brief.topChanges")}</p>
@@ -187,6 +195,7 @@ export function AgentWorkspacePanel({ basePath = "" }: { basePath?: string }) {
     return (
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_360px]">
         <div className="space-y-5">
+          <AgentCommandPanel onRunUpdated={() => void refreshAgentSurfaces()} />
           {nextStepCard}
           {pendingChangesCard}
         </div>
@@ -200,6 +209,7 @@ export function AgentWorkspacePanel({ basePath = "" }: { basePath?: string }) {
   if (isTabletWide) {
     return (
       <div className="space-y-5">
+        <AgentCommandPanel onRunUpdated={() => void refreshAgentSurfaces()} />
         {nextStepCard}
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
           {pendingChangesCard}
@@ -211,6 +221,7 @@ export function AgentWorkspacePanel({ basePath = "" }: { basePath?: string }) {
 
   return (
     <div className="space-y-5">
+      <AgentCommandPanel onRunUpdated={() => void refreshAgentSurfaces()} />
       {nextStepCard}
       {pendingChangesCard}
       {activityCard}

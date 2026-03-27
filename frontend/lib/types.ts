@@ -959,6 +959,56 @@ export type AgentRecentActivityResponse = {
   items: AgentRecentActivityItem[];
 };
 
+export type AgentCommandRunStatus =
+  | "planned"
+  | "clarification_required"
+  | "unsupported"
+  | "executing"
+  | "completed"
+  | "failed";
+
+export type AgentCommandScopeKind = "workspace" | "change" | "source" | "family";
+export type AgentCommandExecutionBoundary = "read_only" | "proposal_or_ticket_chain";
+export type AgentCommandStepExecutionStatus = "pending" | "succeeded" | "failed" | "blocked" | "skipped";
+
+export type AgentCommandStep = {
+  step_id: string;
+  title: string;
+  reason: string;
+  tool_name: string;
+  target_kind: string;
+  args: Record<string, unknown>;
+  depends_on: string[];
+  risk_level: AgentRiskLevel;
+  execution_boundary: AgentCommandExecutionBoundary;
+};
+
+export type AgentCommandExecutionResult = {
+  step_id: string;
+  status: AgentCommandStepExecutionStatus;
+  output_summary: Record<string, unknown>;
+  error_text?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+};
+
+export type AgentCommandRun = {
+  command_id: string;
+  owner_user_id: number;
+  input_text: string;
+  scope_kind: AgentCommandScopeKind;
+  scope_id?: number | null;
+  language_code: "en" | "zh-CN";
+  language_resolution_source: string;
+  status: AgentCommandRunStatus;
+  status_reason?: string | null;
+  plan: AgentCommandStep[];
+  execution_results: AgentCommandExecutionResult[];
+  executed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 
 export type LabelLearningFamilyOption = {
   id: number;

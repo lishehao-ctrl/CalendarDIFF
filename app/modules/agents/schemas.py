@@ -21,6 +21,10 @@ AgentProposalStatusLiteral = Literal["open", "accepted", "rejected", "expired", 
 ApprovalTicketStatusLiteral = Literal["open", "executed", "canceled", "expired", "failed"]
 AgentActivityKindLiteral = Literal["proposal", "ticket"]
 AgentExecutionModeLiteral = Literal["approval_ticket_required", "web_only"]
+AgentCommandRunStatusLiteral = Literal["planned", "clarification_required", "unsupported", "executing", "completed", "failed"]
+AgentCommandScopeKindLiteral = Literal["workspace", "change", "source", "family"]
+AgentCommandExecutionBoundaryLiteral = Literal["read_only", "proposal_or_ticket_chain"]
+AgentCommandStepExecutionStatusLiteral = Literal["pending", "succeeded", "failed", "blocked", "skipped"]
 
 
 class AgentBlockingConditionResponse(BaseModel):
@@ -230,6 +234,70 @@ class ApprovalTicketResponse(BaseModel):
     expires_at: datetime | None = None
     confirmed_at: datetime | None = None
     canceled_at: datetime | None = None
+    executed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AgentCommandPlanRequest(BaseModel):
+    input_text: str = Field(min_length=1, max_length=4000)
+    scope_kind: AgentCommandScopeKindLiteral | None = None
+    scope_id: int | None = Field(default=None, ge=1)
+    language_code: str | None = Field(default=None, max_length=16)
+
+    model_config = {"extra": "forbid"}
+
+    @model_validator(mode="after")
+    def _validate_scope(self) -> "AgentCommandPlanRequest":
+        if self.scope_kind is None and self.scope_id is not None:
+            raise ValueError("scope_kind is required when scope_id is provided")
+        if self.scope_kind in {"change", "source", "family"} and self.scope_id is None:
+            raise ValueError("scope_id is required when scope_kind is change, source, or family")
+        if self.scope_kind == "workspace" and self.scope_id is not None:
+            raise ValueError("scope_id must be empty when scope_kind is workspace")
+        return self
+
+
+class AgentCommandExecuteRequest(BaseModel):
+    selected_step_ids: list[str] | None = Field(default=None, max_length=50)
+    language_code: str | None = Field(default=None, max_length=16)
+
+    model_config = {"extra": "forbid"}
+
+
+class AgentCommandStepResponse(BaseModel):
+    step_id: str
+    title: str
+    reason: str
+    tool_name: str
+    target_kind: str
+    args: dict = Field(default_factory=dict)
+    depends_on: list[str] = Field(default_factory=list)
+    risk_level: AgentRiskLevelLiteral
+    execution_boundary: AgentCommandExecutionBoundaryLiteral
+
+
+class AgentCommandStepExecutionResultResponse(BaseModel):
+    step_id: str
+    status: AgentCommandStepExecutionStatusLiteral
+    output_summary: dict = Field(default_factory=dict)
+    error_text: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class AgentCommandRunResponse(BaseModel):
+    command_id: str
+    owner_user_id: int
+    input_text: str
+    scope_kind: AgentCommandScopeKindLiteral
+    scope_id: int | None = None
+    language_code: str
+    language_resolution_source: str
+    status: AgentCommandRunStatusLiteral
+    status_reason: str | None = None
+    plan: list[AgentCommandStepResponse] = Field(default_factory=list)
+    execution_results: list[AgentCommandStepExecutionResultResponse] = Field(default_factory=list)
     executed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
@@ -526,6 +594,11 @@ __all__ = [
     "AgentRecentActivityItemResponse",
     "AgentRecentActivityResponse",
     "AgentBlockingConditionResponse",
+    "AgentCommandExecuteRequest",
+    "AgentCommandPlanRequest",
+    "AgentCommandRunResponse",
+    "AgentCommandStepExecutionResultResponse",
+    "AgentCommandStepResponse",
     "AgentChangeEditCommitPatchRequest",
     "AgentChangeEditCommitProposalRequest",
     "AgentChangeDecisionProposalRequest",
