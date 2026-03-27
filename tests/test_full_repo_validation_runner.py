@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import pytest
@@ -97,3 +98,16 @@ def test_replay_report_finished_requires_terminal_state() -> None:
     assert validation._replay_report_finished({"finished": False, "awaiting_manual": False}) is False
     assert validation._replay_report_finished({"finished": True, "awaiting_manual": True}) is False
     assert validation._replay_report_finished(None) is False
+
+
+def test_build_agent_claw_closeout_command_includes_frontend_base(tmp_path: Path) -> None:
+    args = argparse.Namespace(
+        strict_eval_db_url="postgresql+psycopg://postgres:postgres@localhost:5432/deadline_diff_agent_claw_eval",
+        strict_eval_frontend_base="http://127.0.0.1:3001",
+        public_api_host="127.0.0.1",
+        strict_eval_port=8210,
+    )
+
+    command = validation.build_agent_claw_closeout_command(run_dir=tmp_path, args=args)
+
+    assert command[-2:] == ["--frontend-base", "http://127.0.0.1:3001"]

@@ -32,17 +32,36 @@ DEFAULT_REPLAY_DB = "postgresql+psycopg://postgres:postgres@localhost:5432/deadl
 DEFAULT_TEST_REDIS_URL = "redis://127.0.0.1:6379/15"
 DEFAULT_STRICT_REDIS_URL = "redis://127.0.0.1:6379/14"
 DEFAULT_REPLAY_REDIS_URL = "redis://127.0.0.1:6379/13"
+DEFAULT_STRICT_EVAL_FRONTEND_BASE = "http://127.0.0.1:3000"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run full local CalendarDIFF repo validation.")
     parser.add_argument("--output-root", default=str(OUTPUT_ROOT))
     parser.add_argument("--strict-eval-db-url", default=DEFAULT_STRICT_EVAL_DB)
+    parser.add_argument("--strict-eval-frontend-base", default=DEFAULT_STRICT_EVAL_FRONTEND_BASE)
     parser.add_argument("--replay-db-url", default=DEFAULT_REPLAY_DB)
     parser.add_argument("--public-api-host", default="127.0.0.1")
     parser.add_argument("--replay-port", type=int, default=8212)
     parser.add_argument("--strict-eval-port", type=int, default=8210)
     return parser.parse_args()
+
+
+def build_agent_claw_closeout_command(*, run_dir: Path, args: argparse.Namespace) -> list[str]:
+    return [
+        sys.executable,
+        "scripts/run_agent_claw_strict_eval.py",
+        "--output-root",
+        str(run_dir / "agent-claw"),
+        "--database-url",
+        str(args.strict_eval_db_url),
+        "--public-api-host",
+        str(args.public_api_host),
+        "--public-api-port",
+        str(args.strict_eval_port),
+        "--frontend-base",
+        str(args.strict_eval_frontend_base),
+    ]
 
 
 def main() -> None:
@@ -98,18 +117,7 @@ def main() -> None:
         app_api_key=settings.app_api_key,
     )
     strict_eval = run_command(
-        command=[
-            sys.executable,
-            "scripts/run_agent_claw_strict_eval.py",
-            "--output-root",
-            str(run_dir / "agent-claw"),
-            "--database-url",
-            str(args.strict_eval_db_url),
-            "--public-api-host",
-            str(args.public_api_host),
-            "--public-api-port",
-            str(args.strict_eval_port),
-        ],
+        command=build_agent_claw_closeout_command(run_dir=run_dir, args=args),
         cwd=REPO_ROOT,
         env=strict_env,
         log_path=run_dir / "agent_claw.log",
