@@ -156,7 +156,10 @@ test("changes_review_resolution__default", async ({ page }) => {
   if (flowContext.edit_path) {
     await page.goto(flowContext.edit_path);
     if (flowContext.edited_event_name) {
-      await page.locator("#review-edit-event-name").fill(flowContext.edited_event_name);
+      const eventNameInput = page.locator("#review-edit-event-name");
+      await eventNameInput.fill(flowContext.edited_event_name);
+      await expect(eventNameInput).toHaveValue(flowContext.edited_event_name);
+      await eventNameInput.blur();
     }
     await page.getByTestId("review-edit-apply-button").click();
     await page.waitForURL(/\/changes/, { timeout: 30_000 });
