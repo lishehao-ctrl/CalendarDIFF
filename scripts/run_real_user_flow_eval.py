@@ -10,7 +10,7 @@ import sys
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -199,7 +199,9 @@ def build_skipped_results(*, reason: str, start_index: int = 0) -> list[FlowResu
 
 def build_lightweight_gmail_monitoring_config(monitoring_config: dict[str, str]) -> dict[str, str]:
     out = dict(monitoring_config)
-    out["monitor_since"] = datetime.now(replay.UTC).date().isoformat()
+    # Keep the Gmail window lightweight without risking a "not started yet"
+    # 409 when the local user timezone trails UTC near midnight.
+    out["monitor_since"] = (datetime.now(replay.UTC).date() - timedelta(days=1)).isoformat()
     out["label_id"] = "INBOX"
     out.pop("label_ids", None)
     return out

@@ -109,7 +109,9 @@ def test_build_lightweight_gmail_monitoring_config_narrows_scope() -> None:
         {"monitor_since": "2025-01-01", "label_id": "COURSE", "label_ids": ["COURSE", "INBOX"]}
     )
 
-    assert config["monitor_since"] == real_flow.datetime.now(real_flow.replay.UTC).date().isoformat()
+    assert config["monitor_since"] == (
+        real_flow.datetime.now(real_flow.replay.UTC).date() - real_flow.timedelta(days=1)
+    ).isoformat()
     assert config["label_id"] == "INBOX"
     assert "label_ids" not in config
 
