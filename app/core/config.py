@@ -60,9 +60,15 @@ class Settings(BaseSettings):
     gmail_purpose_mode_cache_enabled: bool = True
     gmail_purpose_mode_fingerprint_reuse_enabled: bool = True
     calendar_component_parse_cache_enabled: bool = True
-    ingestion_llm_provider_id: str | None = None
-    ingestion_llm_session_cache_enabled: bool = False
-    agent_llm_provider_id: str | None = None
+    llm_base_url: str | None = None
+    llm_responses_base_url: str | None = None
+    llm_api_key: str | None = None
+    llm_model: str | None = None
+    llm_timeout_seconds: float | None = None
+    llm_max_retries: int | None = None
+    llm_max_input_chars: int | None = None
+    llm_extra_body_json: str | None = None
+    ingestion_llm_session_cache_enabled: bool = True
     agent_generation_mode: str = "deterministic"
     llm_price_qwen_us_main_input_per_1m_usd: float | None = None
     llm_price_qwen_us_main_cached_input_per_1m_usd: float | None = None
@@ -72,10 +78,6 @@ class Settings(BaseSettings):
     llm_price_qwen_us_chat_output_per_1m_usd: float | None = None
     llm_request_window_seconds: int = 60
     llm_max_requests_per_window: int = 480
-    ingestion_llm_fallback_enabled: bool = True
-    agent_llm_fallback_enabled: bool = False
-    llm_gateway_max_routes_per_invoke: int = 2
-    llm_gateway_no_fallback_tasks: str = ""
     llm_gateway_trace_persistence_enabled: bool = True
 
     redis_url: str | None = None

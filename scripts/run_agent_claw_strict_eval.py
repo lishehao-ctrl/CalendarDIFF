@@ -310,9 +310,9 @@ def validate_live_llm_env(env: dict[str, str]) -> str | None:
             validate_agent_llm_config()
             settings = get_settings()
             if str(settings.agent_generation_mode or "").strip().lower() != "llm_assisted":
-                return "live LLM provider configured but AGENT_GENERATION_MODE is not llm_assisted"
+                return "live LLM env configured but AGENT_GENERATION_MODE is not llm_assisted"
     except Exception as exc:
-        return f"live LLM provider not configured: {exc}"
+        return f"live LLM env not configured: {exc}"
     return None
 
 

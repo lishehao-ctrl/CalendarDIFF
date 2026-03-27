@@ -16,7 +16,15 @@ def test_oauth_runtime_defaults_fallback_and_deterministic(monkeypatch) -> None:
     monkeypatch.setenv("APP_BASE_URL", "")
     monkeypatch.setenv("PUBLIC_API_BASE_URL", "")
     monkeypatch.delenv("OAUTH_ROUTE_PREFIX", raising=False)
+    monkeypatch.delenv("OAUTH_SESSION_ROUTE_TEMPLATE", raising=False)
+    monkeypatch.delenv("OAUTH_CALLBACK_ROUTE_TEMPLATE", raising=False)
+    monkeypatch.delenv("OAUTH_CALLBACK_REQUIRE_API_KEY", raising=False)
+    monkeypatch.delenv("OAUTH_STATE_TTL_MINUTES", raising=False)
     monkeypatch.delenv("OAUTH_TOKEN_ENCRYPTION_KEY", raising=False)
+    monkeypatch.delenv("GMAIL_OAUTH_SCOPE", raising=False)
+    monkeypatch.delenv("GMAIL_OAUTH_ACCESS_TYPE", raising=False)
+    monkeypatch.delenv("GMAIL_OAUTH_PROMPT", raising=False)
+    monkeypatch.delenv("GMAIL_OAUTH_INCLUDE_GRANTED_SCOPES", raising=False)
     get_settings.cache_clear()
 
     runtime_a = build_oauth_runtime_config()
@@ -28,6 +36,10 @@ def test_oauth_runtime_defaults_fallback_and_deterministic(monkeypatch) -> None:
     assert runtime_a.callback_route_path == "/oauth/callbacks/{provider}"
     assert runtime_a.gmail_redirect_uri == "http://localhost:8200/oauth/callbacks/gmail"
     assert runtime_a.token_encryption_key_source == "APP_SECRET_KEY"
+    assert runtime_a.gmail_scope == "https://www.googleapis.com/auth/gmail.readonly"
+    assert runtime_a.gmail_access_type == "offline"
+    assert runtime_a.gmail_prompt == "consent"
+    assert runtime_a.gmail_include_granted_scopes is True
     get_settings.cache_clear()
 
 

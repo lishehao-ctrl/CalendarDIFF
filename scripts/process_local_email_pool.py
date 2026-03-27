@@ -7,7 +7,6 @@ import random
 import statistics
 import sys
 import time
-from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -148,11 +147,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-id", type=int, default=2, help="Source id used in parser context only.")
     parser.add_argument("--parallel", type=int, default=12, help="How many samples to process concurrently.")
     parser.add_argument(
-        "--provider-id",
-        default=((os.getenv("INGESTION_LLM_PROVIDER_ID") or "").strip() or "qwen_us_main"),
-        help="Named ingestion provider id to use for this run. Defaults to INGESTION_LLM_PROVIDER_ID or qwen_us_main.",
-    )
-    parser.add_argument(
         "--cache-mode",
         choices=["enable", "disable"],
         default="enable",
@@ -192,45 +186,45 @@ def main() -> None:
         return
 
     started_at = datetime.now(timezone.utc)
-    run_dir = OUTPUT_ROOT / f"local-email-pool-{args.provider_id}-{args.cache_mode}-{started_at.strftime('%Y%m%d-%H%M%S-%f')}"
+    model_label = normalize_model_label(get_settings().llm_model)
+    run_dir = OUTPUT_ROOT / f"local-email-pool-{model_label}-{args.cache_mode}-{started_at.strftime('%Y%m%d-%H%M%S-%f')}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
     runs: list[SampleRun] = []
     tasks = [(bucket, row) for bucket in selected_buckets for row in selected_rows[bucket]]
-    with llm_provider_override(args.provider_id):
-        if max(int(args.parallel), 1) <= 1:
-            for bucket, row in tasks:
-                runs.append(
+    if max(int(args.parallel), 1) <= 1:
+        for bucket, row in tasks:
+            runs.append(
                     run_sample(
                         row=row,
                         bucket=bucket,
                         cache_mode=args.cache_mode,
                         source_id=args.source_id,
-                        provider_id=args.provider_id,
+                        model_label=model_label,
                     )
                 )
-        else:
-            with ThreadPoolExecutor(max_workers=max(int(args.parallel), 1), thread_name_prefix="local-email-pool") as pool:
-                future_map = {
-                    pool.submit(
-                        run_sample,
-                        row=row,
-                        bucket=bucket,
-                        cache_mode=args.cache_mode,
-                        source_id=args.source_id,
-                        provider_id=args.provider_id,
-                    ): (bucket, row)
-                    for bucket, row in tasks
-                }
-                for future in as_completed(future_map):
-                    runs.append(future.result())
-            runs.sort(key=lambda item: (selected_buckets.index(item.bucket), item.sample_id))
+    else:
+        with ThreadPoolExecutor(max_workers=max(int(args.parallel), 1), thread_name_prefix="local-email-pool") as pool:
+            future_map = {
+                pool.submit(
+                    run_sample,
+                    row=row,
+                    bucket=bucket,
+                    cache_mode=args.cache_mode,
+                    source_id=args.source_id,
+                    model_label=model_label,
+                ): (bucket, row)
+                for bucket, row in tasks
+            }
+            for future in as_completed(future_map):
+                runs.append(future.result())
+        runs.sort(key=lambda item: (selected_buckets.index(item.bucket), item.sample_id))
 
     report = build_report(
         started_at=started_at,
         source_id=args.source_id,
         seed=args.seed,
-        provider_id=args.provider_id,
+        model=model_label,
         cache_mode=args.cache_mode,
         selected_rows=selected_rows,
         runs=runs,
@@ -328,7 +322,7 @@ def select_rows(
 
 
 
-def run_sample(*, row: dict[str, Any], bucket: str, cache_mode: str, source_id: int, provider_id: str) -> SampleRun:
+def run_sample(*, row: dict[str, Any], bucket: str, cache_mode: str, source_id: int, model_label: str) -> SampleRun:
     stage_usages: list[StageUsage] = []
 
     def observe_invoke(invoke_request, result):  # type: ignore[no-untyped-def]
@@ -374,7 +368,7 @@ def run_sample(*, row: dict[str, Any], bucket: str, cache_mode: str, source_id: 
                 source_id=source_id,
                 provider="gmail",
                 source_kind="email",
-                request_id=f"local-email-pool-{provider_id}-{cache_mode}-{row.get('sample_id')}",
+                request_id=f"local-email-pool-{model_label}-{cache_mode}-{row.get('sample_id')}",
             ),
         )
     except Exception as exc:  # noqa: BLE001
@@ -576,7 +570,7 @@ def build_report(
     started_at: datetime,
     source_id: int,
     seed: int,
-    provider_id: str,
+    model: str,
     cache_mode: str,
     selected_rows: dict[str, list[dict[str, Any]]],
     runs: list[SampleRun],
@@ -592,7 +586,7 @@ def build_report(
         "started_at": started_at.isoformat(),
         "source_id": source_id,
         "seed": seed,
-        "provider_id": provider_id,
+        "model": model,
         "cache_mode": cache_mode,
         "selection": {bucket: [row["sample_id"] for row in rows] for bucket, rows in selected_rows.items()},
         "runs": [asdict(run) for run in runs],
@@ -608,7 +602,7 @@ def render_summary(report: dict[str, Any]) -> str:
         "",
         f"- Started: `{report['started_at']}`",
         f"- Source ID: `{report['source_id']}`",
-        f"- Provider ID: `{report['provider_id']}`",
+        f"- Model: `{report['model']}`",
         f"- Cache mode: `{report['cache_mode']}`",
         f"- Selection: `{json.dumps(report['selection'], ensure_ascii=False)}`",
         "",
@@ -679,19 +673,11 @@ def fmt_num(value: float | None) -> str:
     return f"{value:.1f}"
 
 
-@contextmanager
-def llm_provider_override(provider_id: str):
-    previous_provider_id = os.environ.get("INGESTION_LLM_PROVIDER_ID")
-    os.environ["INGESTION_LLM_PROVIDER_ID"] = provider_id
-    get_settings.cache_clear()
-    try:
-        yield
-    finally:
-        if previous_provider_id is None:
-            os.environ.pop("INGESTION_LLM_PROVIDER_ID", None)
-        else:
-            os.environ["INGESTION_LLM_PROVIDER_ID"] = previous_provider_id
-        get_settings.cache_clear()
+def normalize_model_label(raw_value: str | None) -> str:
+    cleaned = str(raw_value or "").strip()
+    if not cleaned:
+        return "unconfigured-model"
+    return cleaned.replace("/", "-")
 
 
 if __name__ == "__main__":

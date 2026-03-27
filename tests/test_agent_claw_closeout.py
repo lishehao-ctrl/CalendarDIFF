@@ -99,7 +99,7 @@ def test_build_final_report_marks_failure_when_live_llm_env_missing() -> None:
         real_user_flow_summary=None,
         claw_smoke_summary=None,
         db_audit=None,
-        live_llm_error="live LLM provider not configured: AGENT_LLM_PROVIDER_ID is not configured",
+        live_llm_error="live LLM env not configured: LLM_BASE_URL is not configured",
     )
 
     assert report["success"] is False

@@ -452,7 +452,7 @@ def validate_replay_llm_env(env: dict[str, str]) -> str | None:
         with applied_env(env):
             validate_ingestion_llm_config()
     except Exception as exc:
-        return f"live LLM provider not configured: {exc}"
+        return f"live LLM env not configured: {exc}"
     return None
 
 
@@ -773,8 +773,9 @@ def _write_env_summary(path: Path) -> None:
         "DATABASE_URL",
         "TEST_DATABASE_URL",
         "REDIS_URL",
-        "INGESTION_LLM_PROVIDER_ID",
-        "AGENT_LLM_PROVIDER_ID",
+        "LLM_BASE_URL",
+        "LLM_API_KEY",
+        "LLM_MODEL",
     ]
     lines = ["# Env Summary", ""]
     for key in keys:

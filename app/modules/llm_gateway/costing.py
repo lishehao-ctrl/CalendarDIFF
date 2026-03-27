@@ -131,26 +131,28 @@ def _resolve_pricing(
     model: str | None,
     protocol: str | None,
 ) -> _PricingDefinition | None:
-    del protocol
     normalized_provider_id = str(provider_id or "").strip().lower()
     normalized_vendor = str(vendor or "").strip().lower()
     normalized_model = str(model or "").strip().lower()
+    normalized_protocol = str(protocol or "").strip().lower()
     settings = get_settings()
     if normalized_vendor != "dashscope_openai":
         return None
-    if normalized_provider_id == "qwen_us_main" and normalized_model in _QWEN_FLASH_US_MODEL_ALIASES:
-        return _PricingDefinition(
-            pricing_key="dashscope_us:qwen_flash_le_256k",
-            input_per_1m_usd=_resolve_price(settings.llm_price_qwen_us_main_input_per_1m_usd, "0.05"),
-            cached_input_per_1m_usd=_resolve_price(settings.llm_price_qwen_us_main_cached_input_per_1m_usd, "0.01"),
-            output_per_1m_usd=_resolve_price(settings.llm_price_qwen_us_main_output_per_1m_usd, "0.40"),
-        )
-    if normalized_provider_id == "qwen_us_chat" and normalized_model in _QWEN_FLASH_US_MODEL_ALIASES:
+    if normalized_model not in _QWEN_FLASH_US_MODEL_ALIASES:
+        return None
+    if normalized_protocol == "chat_completions" or normalized_provider_id == "qwen_us_chat":
         return _PricingDefinition(
             pricing_key="dashscope_us:qwen_flash_chat_le_256k",
             input_per_1m_usd=_resolve_price(settings.llm_price_qwen_us_chat_input_per_1m_usd, "0.05"),
             cached_input_per_1m_usd=_resolve_price(settings.llm_price_qwen_us_chat_cached_input_per_1m_usd, "0.01"),
             output_per_1m_usd=_resolve_price(settings.llm_price_qwen_us_chat_output_per_1m_usd, "0.40"),
+        )
+    if normalized_protocol in {"", "responses"} or normalized_provider_id in {"qwen_us_main", "env-default"}:
+        return _PricingDefinition(
+            pricing_key="dashscope_us:qwen_flash_le_256k",
+            input_per_1m_usd=_resolve_price(settings.llm_price_qwen_us_main_input_per_1m_usd, "0.05"),
+            cached_input_per_1m_usd=_resolve_price(settings.llm_price_qwen_us_main_cached_input_per_1m_usd, "0.01"),
+            output_per_1m_usd=_resolve_price(settings.llm_price_qwen_us_main_output_per_1m_usd, "0.40"),
         )
     return None
 

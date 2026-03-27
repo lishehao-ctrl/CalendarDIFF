@@ -368,11 +368,9 @@ def _write_env_summary(path: Path) -> None:
     env_map = {k: v for k, v in dotenv_values(REPO_ROOT / ".env").items() if isinstance(k, str)} if (REPO_ROOT / ".env").exists() else {}
     keys = [
         "APP_API_KEY",
-        "INGESTION_LLM_PROVIDER_ID",
-        "AGENT_LLM_PROVIDER_ID",
-        "LLM_PRICE_QWEN_US_MAIN_INPUT_PER_1M_USD",
-        "LLM_PRICE_QWEN_US_MAIN_CACHED_INPUT_PER_1M_USD",
-        "LLM_PRICE_QWEN_US_MAIN_OUTPUT_PER_1M_USD",
+        "LLM_BASE_URL",
+        "LLM_API_KEY",
+        "LLM_MODEL",
     ]
     lines = ["# Live Replay Env Summary", ""]
     for key in keys:
