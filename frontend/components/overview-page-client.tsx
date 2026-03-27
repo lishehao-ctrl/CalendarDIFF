@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, BellDot, GitCompareArrows, Link2, PencilLine } from "lucide-react";
+import { ArrowRight, BellDot, GitCompareArrows, Sparkles } from "lucide-react";
 import { AgentBriefCard } from "@/components/agent-brief-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,13 +20,6 @@ import { useResponsiveTier } from "@/lib/use-responsive-tier";
 import type { ChangeItem, ChangesWorkbenchSummary, OnboardingStatus, SourceRow } from "@/lib/types";
 import { useApiResource } from "@/lib/use-api-resource";
 import { workbenchQueueRowClassName, workbenchSupportPanelClassName } from "@/lib/workbench-styles";
-
-const cardIcons = {
-  "needs-review": GitCompareArrows,
-  "source-posture": BellDot,
-  "naming-drift": Link2,
-  fallbacks: PencilLine,
-} as const;
 
 export default function OverviewPage({
   basePath = "",
@@ -95,8 +88,6 @@ export default function OverviewPage({
   const recentChanges = topPendingChanges.data;
   const sourceAttentionRows = activeSources.data.filter((source) => source.source_recovery?.trust_state && source.source_recovery.trust_state !== "trusted");
   const sourcePostureCard = surface.cards.find((card) => card.key === "source-posture");
-  const familiesCard = surface.cards.find((card) => card.key === "naming-drift");
-  const manualCard = surface.cards.find((card) => card.key === "fallbacks");
   const showReplayList = posturePhase === "monitoring_live";
 
   const changesSummaryCard = (
@@ -177,33 +168,6 @@ export default function OverviewPage({
     </Card>
   ) : null;
 
-  const supportSummaryCards = [familiesCard, manualCard].filter(Boolean).map((card) => {
-    if (!card) return null;
-    const Icon = card.key === "naming-drift" ? Link2 : PencilLine;
-    return (
-      <Card key={card.key} className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-[1rem] bg-[rgba(20,32,44,0.06)] text-ink">
-              <Icon className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{card.eyebrow}</p>
-              <h3 className="mt-1 text-base font-semibold text-ink">{card.title}</h3>
-            </div>
-          </div>
-          <Badge tone={card.tone}>{card.metric}</Badge>
-        </div>
-        <p className="mt-3 text-sm leading-6 text-[#596270]">{card.summary}</p>
-        <div className="mt-3">
-          <Link href={withBasePath(basePath, card.ctaHref)}>
-            <Button size="sm" variant="ghost">{card.ctaLabel}</Button>
-          </Link>
-        </div>
-      </Card>
-    );
-  });
-
   const nextStepCard = (
     <Card className="p-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -233,12 +197,22 @@ export default function OverviewPage({
         </div>
       ) : null}
       <div className="mt-4">
-        <Link href={withBasePath(basePath, surface.hero.ctaHref)}>
-          <Button size="sm">
-            {surface.hero.ctaLabel}
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href={withBasePath(basePath, surface.hero.ctaHref)}>
+            <Button size="sm">
+              {surface.hero.ctaLabel}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </Link>
+          {surface.hero.ctaHref !== "/agent" ? (
+            <Link href={withBasePath(basePath, "/agent")}>
+              <Button size="sm" variant="ghost">
+                {translate("overview.openAssistant")}
+                <Sparkles className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          ) : null}
+        </div>
       </div>
     </Card>
   );
@@ -255,7 +229,6 @@ export default function OverviewPage({
     <div className={isMobile ? "space-y-4" : "grid gap-4 md:grid-cols-2"}>
       {changesSummaryCard}
       {sourceSummaryCard}
-      {supportSummaryCards}
     </div>
   );
 
@@ -270,17 +243,8 @@ export default function OverviewPage({
       ) : null}
 
       {isDesktop ? (
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_340px]">
-          <div className="space-y-5">
-            {nextStepCard}
-            <div className="grid gap-5 xl:items-start xl:grid-cols-[minmax(0,1fr)_320px]">
-              {changesSummaryCard}
-              <div className="space-y-4">
-                {sourceSummaryCard}
-                {supportSummaryCards}
-              </div>
-            </div>
-          </div>
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_340px]">
+          <div className="space-y-5">{nextStepCard}{summaryCardGrid}</div>
           <div className="space-y-4">
             <AgentBriefCard basePath={basePath} />
             {onboardingCard}

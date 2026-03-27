@@ -8,8 +8,6 @@ import {
   CircleAlert,
   GitCompareArrows,
   LayoutDashboard,
-  Link2,
-  Pencil,
   type LucideIcon,
   Menu,
   Settings2,
@@ -46,8 +44,6 @@ const items: ReadonlyArray<{ href: string; labelKey: string; icon: LucideIcon; d
   { href: "/agent", labelKey: "shell.nav.agent.label", icon: Sparkles, descriptionKey: "shell.nav.agent.description" },
   { href: "/sources", labelKey: "shell.nav.sources.label", icon: BellDot, descriptionKey: "shell.nav.sources.description" },
   { href: "/changes", labelKey: "shell.nav.changes.label", icon: GitCompareArrows, descriptionKey: "shell.nav.changes.description" },
-  { href: "/families", labelKey: "shell.nav.families.label", icon: Link2, descriptionKey: "shell.nav.families.description" },
-  { href: "/manual", labelKey: "shell.nav.manual.label", icon: Pencil, descriptionKey: "shell.nav.manual.description" },
   { href: "/settings", labelKey: "shell.nav.settings.label", icon: Settings2, descriptionKey: "shell.nav.settings.description" }
 ] as const;
 

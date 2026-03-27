@@ -436,7 +436,7 @@ def _judge_narrative(
                         "notes",
                     ],
                 },
-                profile_family="agent",
+                profile_family="judge",
                 source_id=None,
                 request_id=None,
                 source_provider=None,

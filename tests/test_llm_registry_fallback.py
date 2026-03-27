@@ -7,6 +7,7 @@ from app.modules.llm_gateway.contracts import LlmInvokeRequest
 from app.modules.llm_gateway.registry import (
     resolve_agent_llm_base_url,
     resolve_agent_llm_profile,
+    resolve_judge_llm_profile,
     resolve_llm_base_url,
     resolve_llm_profile,
 )
@@ -123,6 +124,76 @@ def test_resolve_llm_routes_returns_single_primary_route(monkeypatch) -> None:
         assert len(routes) == 1
         assert routes[0].route_id == "ingestion:env-default:responses:primary"
         assert routes[0].is_fallback is False
+    finally:
+        get_settings.cache_clear()
+
+
+def test_judge_profile_uses_dedicated_judge_env_when_present(monkeypatch) -> None:
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_MODEL", "gpt-5-mini")
+    monkeypatch.setenv("JUDGE_LLM_BASE_URL", "https://judge.example.com/v1")
+    monkeypatch.setenv("JUDGE_LLM_RESPONSES_BASE_URL", "https://judge.example.com/root/responses")
+    monkeypatch.setenv("JUDGE_LLM_API_KEY", "judge-key")
+    monkeypatch.setenv("JUDGE_LLM_MODEL", "judge-model")
+    monkeypatch.setenv("JUDGE_LLM_PROTOCOL", "chat_completions")
+    get_settings.cache_clear()
+    try:
+        profile = resolve_judge_llm_profile()
+        assert profile.provider_id == "judge-env-default"
+        assert profile.protocol == "chat_completions"
+        assert profile.base_url == "https://judge.example.com/v1"
+        assert profile.api_key == "judge-key"
+        assert profile.model == "judge-model"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_judge_profile_falls_back_to_canonical_llm_env_when_unset(monkeypatch) -> None:
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setenv("LLM_RESPONSES_BASE_URL", "")
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_MODEL", "gpt-5-mini")
+    monkeypatch.delenv("JUDGE_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("JUDGE_LLM_RESPONSES_BASE_URL", raising=False)
+    monkeypatch.delenv("JUDGE_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("JUDGE_LLM_MODEL", raising=False)
+    monkeypatch.delenv("JUDGE_LLM_PROTOCOL", raising=False)
+    get_settings.cache_clear()
+    try:
+        profile = resolve_judge_llm_profile()
+        assert profile.provider_id == "env-default"
+        assert profile.protocol == "responses"
+        assert profile.base_url == "https://api.openai.com/v1"
+        assert profile.model == "gpt-5-mini"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_resolve_llm_routes_uses_judge_profile_family(monkeypatch) -> None:
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_MODEL", "gpt-5-mini")
+    monkeypatch.setenv("JUDGE_LLM_BASE_URL", "https://judge.example.com/v1")
+    monkeypatch.setenv("JUDGE_LLM_API_KEY", "judge-key")
+    monkeypatch.setenv("JUDGE_LLM_MODEL", "judge-model")
+    get_settings.cache_clear()
+    try:
+        routes = resolve_llm_routes(
+            None,
+            invoke_request=LlmInvokeRequest(
+                task_name="agent_chain_step_quality_judge",
+                system_prompt="Return JSON object only.",
+                user_payload={"step": "hello"},
+                output_schema_name="AnyObject",
+                output_schema_json={"type": "object"},
+                profile_family="judge",
+                request_id="judge-1",
+            ),
+        )
+        assert len(routes) == 1
+        assert routes[0].route_id == "judge:judge-env-default:responses:primary"
+        assert routes[0].profile.model == "judge-model"
     finally:
         get_settings.cache_clear()
 

@@ -1,0 +1,309 @@
+{
+  "entries": [
+    {
+      "sample_id": "cmd.workspace.review",
+      "kind": "command",
+      "name": "Review workspace",
+      "category": "command_read",
+      "input_text": "Review this workspace and tell me the next step.",
+      "scope_kind": "workspace",
+      "scope_id": null,
+      "execute": true,
+      "expected_command_statuses": ["completed"]
+    },
+    {
+      "sample_id": "cmd.workspace.pending",
+      "kind": "command",
+      "name": "List pending changes",
+      "category": "command_read",
+      "input_text": "List the pending changes in this workspace.",
+      "scope_kind": "workspace",
+      "scope_id": null,
+      "execute": true,
+      "expected_command_statuses": ["completed"]
+    },
+    {
+      "sample_id": "cmd.change.inspect.primary",
+      "kind": "command",
+      "name": "Inspect primary change",
+      "category": "command_read",
+      "input_text": "Inspect this change.",
+      "scope_kind": "change",
+      "scope_id": "${primary_change_id}",
+      "execute": true,
+      "expected_command_statuses": ["completed"]
+    },
+    {
+      "sample_id": "cmd.source.inspect.exec",
+      "kind": "command",
+      "name": "Inspect executable source",
+      "category": "command_read",
+      "input_text": "Inspect this source.",
+      "scope_kind": "source",
+      "scope_id": "${executable_source_id}",
+      "execute": true,
+      "expected_command_statuses": ["completed"]
+    },
+    {
+      "sample_id": "cmd.source.inspect.disconnected",
+      "kind": "command",
+      "name": "Inspect disconnected source",
+      "category": "command_read",
+      "input_text": "Inspect this source.",
+      "scope_kind": "source",
+      "scope_id": "${disconnected_gmail_source_id}",
+      "execute": true,
+      "expected_command_statuses": ["completed"]
+    },
+    {
+      "sample_id": "cmd.family.inspect.target",
+      "kind": "command",
+      "name": "Inspect target family",
+      "category": "command_read",
+      "input_text": "Inspect this family.",
+      "scope_kind": "family",
+      "scope_id": "${family_relink_target_family_id}",
+      "execute": true,
+      "expected_command_statuses": ["completed"]
+    },
+    {
+      "sample_id": "cmd.change.approve.primary",
+      "kind": "command",
+      "name": "Approve primary change",
+      "category": "command_mutation",
+      "input_text": "Approve this change.",
+      "scope_kind": "change",
+      "scope_id": "${primary_change_id}",
+      "execute": true,
+      "expected_command_statuses": ["completed"],
+      "exclusive_group": "mutate_change_primary"
+    },
+    {
+      "sample_id": "cmd.change.edit.repeat",
+      "kind": "command",
+      "name": "Edit repeat change",
+      "category": "command_mutation",
+      "input_text": "Edit this change and move the due date to 2026-03-31.",
+      "scope_kind": "change",
+      "scope_id": "${repeat_change_id}",
+      "execute": true,
+      "expected_command_statuses": ["completed"],
+      "exclusive_group": "mutate_change_repeat"
+    },
+    {
+      "sample_id": "cmd.source.recover.exec",
+      "kind": "command",
+      "name": "Recover executable source",
+      "category": "command_mutation",
+      "input_text": "Recover this source.",
+      "scope_kind": "source",
+      "scope_id": "${executable_source_id}",
+      "execute": true,
+      "expected_command_statuses": ["completed"],
+      "exclusive_group": "mutate_source_exec"
+    },
+    {
+      "sample_id": "cmd.family.preview",
+      "kind": "command",
+      "name": "Preview family relink",
+      "category": "command_mutation",
+      "input_text": "Preview relink raw type ${family_relink_raw_type_id} to family ${family_relink_target_family_id}.",
+      "scope_kind": "family",
+      "scope_id": "${family_relink_target_family_id}",
+      "execute": true,
+      "expected_command_statuses": ["completed"],
+      "exclusive_group": "mutate_family_preview"
+    },
+    {
+      "sample_id": "cmd.family.commit",
+      "kind": "command",
+      "name": "Commit family relink",
+      "category": "command_mutation",
+      "input_text": "Commit relink raw type ${family_relink_raw_type_id} to family ${family_relink_target_family_id}.",
+      "scope_kind": "family",
+      "scope_id": "${family_relink_target_family_id}",
+      "execute": true,
+      "expected_command_statuses": ["completed"],
+      "exclusive_group": "mutate_family_commit"
+    },
+    {
+      "sample_id": "cmd.label.commit",
+      "kind": "command",
+      "name": "Commit label learning",
+      "category": "command_mutation",
+      "input_text": "Add the label from change ${label_learning_change_id} into family ${label_learning_family_id}.",
+      "scope_kind": "change",
+      "scope_id": "${label_learning_change_id}",
+      "execute": true,
+      "expected_command_statuses": ["completed"],
+      "exclusive_group": "mutate_label_commit"
+    },
+    {
+      "sample_id": "ep.workspace.context",
+      "kind": "endpoint",
+      "name": "Workspace context",
+      "category": "endpoint_read",
+      "method": "GET",
+      "path": "/agent/context/workspace",
+      "body": null,
+      "expected_statuses": [200]
+    },
+    {
+      "sample_id": "ep.activity.recent",
+      "kind": "endpoint",
+      "name": "Recent activity",
+      "category": "endpoint_read",
+      "method": "GET",
+      "path": "/agent/activity/recent?limit=10",
+      "body": null,
+      "expected_statuses": [200]
+    },
+    {
+      "sample_id": "ep.change.context.primary",
+      "kind": "endpoint",
+      "name": "Primary change context",
+      "category": "endpoint_read",
+      "method": "GET",
+      "path": "/agent/context/changes/${primary_change_id}",
+      "body": null,
+      "expected_statuses": [200]
+    },
+    {
+      "sample_id": "ep.change.context.missing",
+      "kind": "endpoint",
+      "name": "Missing change context",
+      "category": "endpoint_read",
+      "method": "GET",
+      "path": "/agent/context/changes/${missing_change_id}",
+      "body": null,
+      "expected_statuses": [404]
+    },
+    {
+      "sample_id": "ep.source.context.exec",
+      "kind": "endpoint",
+      "name": "Executable source context",
+      "category": "endpoint_read",
+      "method": "GET",
+      "path": "/agent/context/sources/${executable_source_id}",
+      "body": null,
+      "expected_statuses": [200]
+    },
+    {
+      "sample_id": "ep.source.context.disconnected",
+      "kind": "endpoint",
+      "name": "Disconnected source context",
+      "category": "endpoint_read",
+      "method": "GET",
+      "path": "/agent/context/sources/${disconnected_gmail_source_id}",
+      "body": null,
+      "expected_statuses": [200]
+    },
+    {
+      "sample_id": "ep.family.context.target",
+      "kind": "endpoint",
+      "name": "Target family context",
+      "category": "endpoint_read",
+      "method": "GET",
+      "path": "/agent/context/families/${family_relink_target_family_id}",
+      "body": null,
+      "expected_statuses": [200]
+    },
+    {
+      "sample_id": "ep.proposals.list",
+      "kind": "endpoint",
+      "name": "List proposals",
+      "category": "endpoint_read",
+      "method": "GET",
+      "path": "/agent/proposals?status=all&limit=10",
+      "body": null,
+      "expected_statuses": [200]
+    },
+    {
+      "sample_id": "ep.tickets.list",
+      "kind": "endpoint",
+      "name": "List approval tickets",
+      "category": "endpoint_read",
+      "method": "GET",
+      "path": "/agent/approval-tickets?status=all&limit=10",
+      "body": null,
+      "expected_statuses": [200]
+    },
+    {
+      "sample_id": "ep.change.proposal.primary",
+      "kind": "endpoint",
+      "name": "Create primary change proposal",
+      "category": "endpoint_mutation",
+      "method": "POST",
+      "path": "/agent/proposals/change-decision",
+      "body": {"change_id": "${primary_change_id}"},
+      "expected_statuses": [201],
+      "exclusive_group": "mutate_change_primary"
+    },
+    {
+      "sample_id": "ep.change.edit.repeat",
+      "kind": "endpoint",
+      "name": "Create repeat change edit proposal",
+      "category": "endpoint_mutation",
+      "method": "POST",
+      "path": "/agent/proposals/change-edit-commit",
+      "body": {"change_id": "${repeat_change_id}", "patch": {"due_date": "2026-03-31"}},
+      "expected_statuses": [201],
+      "exclusive_group": "mutate_change_repeat"
+    },
+    {
+      "sample_id": "ep.source.proposal.exec",
+      "kind": "endpoint",
+      "name": "Create executable source recovery proposal",
+      "category": "endpoint_mutation",
+      "method": "POST",
+      "path": "/agent/proposals/source-recovery",
+      "body": {"source_id": "${executable_source_id}"},
+      "expected_statuses": [201],
+      "exclusive_group": "mutate_source_exec"
+    },
+    {
+      "sample_id": "ep.source.proposal.nonexec",
+      "kind": "endpoint",
+      "name": "Create non-executable source recovery proposal",
+      "category": "endpoint_mutation",
+      "method": "POST",
+      "path": "/agent/proposals/source-recovery",
+      "body": {"source_id": "${disconnected_gmail_source_id}"},
+      "expected_statuses": [201],
+      "exclusive_group": "mutate_source_nonexec"
+    },
+    {
+      "sample_id": "ep.family.preview.proposal",
+      "kind": "endpoint",
+      "name": "Create family relink preview proposal",
+      "category": "endpoint_mutation",
+      "method": "POST",
+      "path": "/agent/proposals/family-relink-preview",
+      "body": {"raw_type_id": "${family_relink_raw_type_id}", "family_id": "${family_relink_target_family_id}"},
+      "expected_statuses": [201],
+      "exclusive_group": "mutate_family_preview"
+    },
+    {
+      "sample_id": "ep.family.commit.proposal",
+      "kind": "endpoint",
+      "name": "Create family relink commit proposal",
+      "category": "endpoint_mutation",
+      "method": "POST",
+      "path": "/agent/proposals/family-relink-commit",
+      "body": {"raw_type_id": "${family_relink_raw_type_id}", "family_id": "${family_relink_target_family_id}"},
+      "expected_statuses": [201],
+      "exclusive_group": "mutate_family_commit"
+    },
+    {
+      "sample_id": "ep.label.commit.proposal",
+      "kind": "endpoint",
+      "name": "Create label learning commit proposal",
+      "category": "endpoint_mutation",
+      "method": "POST",
+      "path": "/agent/proposals/label-learning-commit",
+      "body": {"change_id": "${label_learning_change_id}", "family_id": "${label_learning_family_id}"},
+      "expected_statuses": [201],
+      "exclusive_group": "mutate_label_commit"
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArchiveRestore, CalendarSync, ChevronRight, Mailbox, RefreshCw, Trash2 } from "lucide-react";
+import { ArchiveRestore, CalendarSync, ChevronRight, Mailbox, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -10,8 +10,7 @@ import { EmptyState, ErrorState } from "@/components/data-states";
 import { SourceSyncProgress } from "@/components/source-sync-progress";
 import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { WorkbenchLoadingShell } from "@/components/workbench-loading-shell";
-import { startOnboardingGmailOAuth } from "@/lib/api/onboarding";
-import { createOAuthSession, createSyncRequest, deleteSource as deleteSourceRequest, getSyncRequest, listSources, sourceListCacheKey, updateSource } from "@/lib/api/sources";
+import { createSyncRequest, getSyncRequest, listSources, sourceListCacheKey, updateSource } from "@/lib/api/sources";
 import { withBasePath } from "@/lib/demo-mode";
 import { translate } from "@/lib/i18n/runtime";
 import { invalidateSourceCaches } from "@/lib/source-cache";
@@ -20,9 +19,8 @@ import { useResponsiveTier } from "@/lib/use-responsive-tier";
 import { useApiResource } from "@/lib/use-api-resource";
 import { useSourceObservabilityMap } from "@/lib/use-source-observability-map";
 import { workbenchPanelClassName, workbenchStateSurfaceClassName, workbenchSupportPanelClassName } from "@/lib/workbench-styles";
-import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
+import { formatStatusLabel } from "@/lib/presenters";
 import type { SourceObservabilityResponse, SourceRecovery, SourceRow, SyncStatus } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 const oauthQueryKeys = ["oauth_provider", "oauth_status", "source_id", "request_id", "message"] as const;
 
@@ -33,14 +31,6 @@ type Banner = {
 
 function sourceNeedsAttention(source: SourceRow) {
   return Boolean(source.last_error_message) || source.runtime_state === "rebind_pending" || source.config_state === "rebind_pending" || source.oauth_connection_status === "not_connected";
-}
-
-function syncTone(value: string | undefined) {
-  if (!value) return "default";
-  if (["queued", "running", "pending", "rebind_pending"].includes(value)) return "pending";
-  if (["succeeded", "success"].includes(value)) return "approved";
-  if (["failed", "error"].includes(value)) return "error";
-  return "default";
 }
 
 function buildSourceInsight(source: SourceRow) {
@@ -186,19 +176,13 @@ function ConnectedSourceCard({
   observability,
   syncLabel,
   onSync,
-  onDelete,
-  busyDelete,
   basePath,
-  wideActions,
 }: {
   source: SourceRow;
   observability: SourceObservabilityResponse | undefined;
   syncLabel?: string;
   onSync: (sourceId: number) => void;
-  onDelete: (sourceId: number, provider: string) => void;
-  busyDelete: number | null;
   basePath: string;
-  wideActions: boolean;
 }) {
   const recovery = resolveRecovery(source, observability);
   const productPhase = resolveProductPhase(source, observability);
@@ -206,28 +190,27 @@ function ConnectedSourceCard({
   const normalizedSyncLabel = syncLabel?.toLowerCase() || "";
   const showSyncBadge = normalizedSyncLabel !== "" && normalizedSyncLabel !== "idle";
   const detailHref = withBasePath(basePath, `/sources/${source.source_id}`);
-  const ctaClassName = wideActions ? "min-w-[10rem] justify-center" : "w-full justify-center";
   const primaryAction =
     recovery?.next_action === "reconnect_gmail" ? (
-      <Button asChild className={ctaClassName}>
+      <Button asChild className="w-full justify-center sm:w-auto">
         <Link href={sourceSetupHref(basePath, source.provider)}>{translate("sources.reconnectGmail")}</Link>
       </Button>
     ) : recovery?.next_action === "update_ics" ? (
-      <Button asChild className={ctaClassName}>
+      <Button asChild className="w-full justify-center sm:w-auto">
         <Link href={sourceSetupHref(basePath, source.provider)}>{translate("sources.updateCanvas")}</Link>
       </Button>
     ) : recovery?.next_action === "retry_sync" ? (
-      <Button onClick={() => onSync(source.source_id)} className={ctaClassName}>
+      <Button onClick={() => onSync(source.source_id)} className="w-full justify-center sm:w-auto">
         <RefreshCw className="mr-2 h-4 w-4" />
         {recovery.next_action_label || translate("sources.retrySync")}
       </Button>
     ) : productPhase === "needs_initial_review" ? (
-      <Button asChild className={ctaClassName}>
+      <Button asChild className="w-full justify-center sm:w-auto">
         <Link href={withBasePath(basePath, "/changes?bucket=initial_review")}>{translate("sources.openInitialReview")}</Link>
       </Button>
     ) : (
-      <Button asChild className={ctaClassName}>
-        <Link href={detailHref}>{translate("sources.openDetails")}</Link>
+      <Button asChild className="w-full justify-center sm:w-auto">
+        <Link href={detailHref}>{needsAttention ? translate("sources.resolveSource") : translate("sources.manageSource")}</Link>
       </Button>
     );
 
@@ -249,15 +232,8 @@ function ConnectedSourceCard({
               </div>
               <p className="mt-2 text-sm text-[#596270]">{formatSourceSubtitle(source)}</p>
             </div>
-            <div className={cn("flex w-full shrink-0 flex-wrap gap-2", wideActions ? "md:ml-auto md:justify-end" : "")}>
+            <div className="w-full shrink-0 sm:w-auto">
               {primaryAction}
-              <Button asChild variant="ghost" className={wideActions ? "min-w-[9rem] justify-center" : "w-full justify-center"}>
-                <Link href={detailHref}>{translate("sources.openDetails")}</Link>
-              </Button>
-              <Button variant="ghost" className={wideActions ? "min-w-[9rem] justify-center" : "w-full justify-center"} onClick={() => onDelete(source.source_id, source.provider)} disabled={busyDelete === source.source_id}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                {busyDelete === source.source_id ? translate("sources.archiving") : translate("sources.archive")}
-              </Button>
             </div>
           </div>
 
@@ -269,6 +245,7 @@ function ConnectedSourceCard({
           </div>
 
           {showSyncBadge && source.sync_progress ? <SourceSyncProgress className="mt-1" progress={source.sync_progress} /> : null}
+          <p className="mt-3 text-xs text-[#6d7885]">{translate("sources.advancedActionsInDetail")}</p>
         </div>
       </div>
     </Card>
@@ -309,7 +286,7 @@ function ArchivedSourceCard({
 
 export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
   usePageMetadata(translate("sources.heroTitle"), translate("sources.heroSummary"));
-  const { isMobile, isTabletPortrait, isTabletWide, isDesktop } = useResponsiveTier();
+  const { isTabletWide, isDesktop } = useResponsiveTier();
   const active = useApiResource<SourceRow[]>(() => listSources({ status: "active" }), [], null, {
     cacheKey: sourceListCacheKey("active"),
   });
@@ -318,15 +295,12 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
   });
   const [syncState, setSyncState] = useState<Record<number, string>>({});
   const [syncDetails, setSyncDetails] = useState<Record<number, SyncStatus | undefined>>({});
-  const [busyDelete, setBusyDelete] = useState<number | null>(null);
   const [busyReactivate, setBusyReactivate] = useState<number | null>(null);
   const [banner, setBanner] = useState<Banner>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [observabilityRefreshNonce, setObservabilityRefreshNonce] = useState(0);
   const oauthQueryHandled = useRef(false);
   const toolsSheetSide = isDesktop || isTabletWide ? "right" : "bottom";
-  const showWideSupportColumn = isDesktop || isTabletWide;
-  const showBelowSupportCards = isTabletPortrait;
 
   const activeSources = useMemo(
     () =>
@@ -532,33 +506,6 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
     }
   }
 
-  async function archiveSource(sourceId: number, provider: string) {
-    const confirmed = window.confirm(
-      provider === "gmail"
-        ? translate("sources.archiveConfirmGmail")
-        : provider === "ics"
-          ? translate("sources.archiveConfirmCanvas")
-          : translate("sources.archiveConfirmGeneric"),
-    );
-    if (!confirmed) return;
-
-    setBusyDelete(sourceId);
-    setBanner(null);
-    try {
-      await deleteSourceRequest(sourceId);
-      invalidateSourceCaches(sourceId);
-      setBanner({
-        tone: "info",
-        text: provider === "gmail" ? translate("sources.archivedMailbox") : provider === "ics" ? translate("sources.archivedCanvas") : translate("sources.archivedSource"),
-      });
-      await refreshAll({ background: true, force: true, refreshObservability: true });
-    } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("sources.archiveFailed") });
-    } finally {
-      setBusyDelete(null);
-    }
-  }
-
   async function reactivateSource(sourceId: number) {
     setBusyReactivate(sourceId);
     setBanner(null);
@@ -574,79 +521,10 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
     }
   }
 
-  async function startGmailConnect() {
-    const source = activeSources.find((row) => row.provider === "gmail") || archivedSources.find((row) => row.provider === "gmail") || null;
-    setBanner(null);
-    try {
-      const session = source
-        ? await createOAuthSession(source.source_id, { provider: "gmail" })
-        : await startOnboardingGmailOAuth({ label_id: "INBOX", return_to: "sources" });
-      window.location.assign(session.authorization_url);
-    } catch (err) {
-      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("sources.connectGmailFailed") });
-    }
-  }
-
   if ((active.loading && !active.data) || (archived.loading && !archived.data)) return <WorkbenchLoadingShell variant="sources" />;
   if (active.error) return <ErrorState message={active.error} />;
   if (archived.error) return <ErrorState message={archived.error} />;
   if (observabilityMap.error) return <ErrorState message={observabilityMap.error} />;
-
-  const postureCard = (
-    <Card className={workbenchPanelClassName("secondary", "p-4")}>
-      <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.needsAttention")}</p>
-      <h3 className="mt-2 text-base font-semibold text-ink">{translate("sources.currentPostureTitle")}</h3>
-      <div className="mt-4 space-y-3">
-        {attentionSources.length > 0 ? (
-          attentionSources.slice(0, 3).map((source) => (
-            <div key={source.source_id} className={workbenchSupportPanelClassName("default", "p-3")}>
-              <p className="font-medium text-ink">{formatSourceTitle(source)}</p>
-              <p className="mt-1 text-sm text-[#596270]">{resolveRecovery(source, observabilityMap.data[source.source_id])?.impact_summary || source.last_error_message}</p>
-            </div>
-          ))
-        ) : (
-          <p className="text-sm text-[#596270]">{translate("sources.healthy")}</p>
-        )}
-      </div>
-    </Card>
-  );
-
-  const toolsCard = (
-    <Card className={workbenchPanelClassName("secondary", "p-4")}>
-      <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.toolsTitle")}</p>
-      <h3 className="mt-2 text-base font-semibold text-ink">{translate("sources.connectRecoverTitle")}</h3>
-      <p className="mt-2 text-sm leading-6 text-[#596270]">{translate("sources.toolsSummary")}</p>
-      <div className="mt-4 grid gap-3">
-        <ConnectSourceCard
-          provider="Canvas ICS"
-          title={translate("sources.connectCanvas")}
-          detail={translate("sources.connectCanvasDetail")}
-          connected={activeProviders.has("ics")}
-          attention={activeSources.some((source) => source.provider === "ics" && sourceNeedsAttention(source))}
-          href={withBasePath(basePath, "/sources/connect/canvas-ics")}
-          icon={<CalendarSync className="h-5 w-5" />}
-          iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(31,94,255,0.1)] text-cobalt"
-        />
-        <ConnectSourceCard
-          provider="Gmail"
-          title={translate("sources.connectGmail")}
-          detail={translate("sources.connectGmailDetail")}
-          connected={activeProviders.has("gmail")}
-          attention={activeSources.some((source) => source.provider === "gmail" && sourceNeedsAttention(source))}
-          href={withBasePath(basePath, "/sources/connect/gmail")}
-          icon={<Mailbox className="h-5 w-5" />}
-          iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(215,90,45,0.12)] text-ember"
-        />
-      </div>
-      {archivedSources.length > 0 ? (
-        <div className="mt-4">
-          <Button size="sm" variant="ghost" onClick={() => setToolsOpen(true)}>
-            {translate("sources.archivedTitle")}
-          </Button>
-        </div>
-      ) : null}
-    </Card>
-  );
 
   return (
     <div className="space-y-4">
@@ -691,8 +569,45 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
         </Card>
       ) : null}
 
-      <div className={cn("grid gap-5", showWideSupportColumn ? "lg:grid-cols-[minmax(0,1fr)_300px]" : "")}>
-        <div className="space-y-4">
+      <Card className={workbenchPanelClassName("secondary", "p-5")}>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-2xl">
+            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.toolsTitle")}</p>
+            <h3 className="mt-1 text-lg font-semibold text-ink">{translate("sources.connectRecoverTitle")}</h3>
+            <p className="mt-2 text-sm leading-6 text-[#596270]">{translate("sources.toolsSummary")}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="info">{translate("sources.counts.connected", { count: activeSources.length })}</Badge>
+            <Badge tone={attentionSources.length > 0 ? "pending" : "approved"}>
+              {translate("sources.counts.attention", { count: attentionSources.length })}
+            </Badge>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <ConnectSourceCard
+            provider="Canvas ICS"
+            title={translate("sources.connectCanvas")}
+            detail={translate("sources.connectCanvasDetail")}
+            connected={activeProviders.has("ics")}
+            attention={activeSources.some((source) => source.provider === "ics" && sourceNeedsAttention(source))}
+            href={withBasePath(basePath, "/sources/connect/canvas-ics")}
+            icon={<CalendarSync className="h-5 w-5" />}
+            iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(31,94,255,0.1)] text-cobalt"
+          />
+          <ConnectSourceCard
+            provider="Gmail"
+            title={translate("sources.connectGmail")}
+            detail={translate("sources.connectGmailDetail")}
+            connected={activeProviders.has("gmail")}
+            attention={activeSources.some((source) => source.provider === "gmail" && sourceNeedsAttention(source))}
+            href={withBasePath(basePath, "/sources/connect/gmail")}
+            icon={<Mailbox className="h-5 w-5" />}
+            iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(215,90,45,0.12)] text-ember"
+          />
+        </div>
+      </Card>
+
+      <div className="space-y-4">
         <Card className={workbenchPanelClassName("secondary", "animate-surface-enter p-5")}>
           <div className="flex items-start justify-between gap-4">
             <div className="max-w-2xl">
@@ -734,10 +649,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
                           (source.config_state === "rebind_pending" ? "rebind_pending" : undefined)
                         }
                         onSync={triggerSync}
-                        onDelete={archiveSource}
-                        busyDelete={busyDelete}
                         basePath={basePath}
-                        wideActions={isTabletWide || isDesktop}
                       />
                     ))}
                   </div>
@@ -760,10 +672,7 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
                           (source.config_state === "rebind_pending" ? "rebind_pending" : undefined)
                         }
                         onSync={triggerSync}
-                        onDelete={archiveSource}
-                        busyDelete={busyDelete}
                         basePath={basePath}
-                        wideActions={isTabletWide || isDesktop}
                       />
                     ))}
                   </div>
@@ -775,108 +684,45 @@ export function SourcesPanel({ basePath = "" }: { basePath?: string }) {
           {(archivedSources.length > 0 || activeProviders.size < 2) ? (
             <div className="mt-4 text-xs text-[#6d7885]">
               <button type="button" className="font-medium text-cobalt transition hover:text-[#1f4fd6]" onClick={() => setToolsOpen(true)}>
-                {translate("sources.openSourceTools")}
+                {translate("sources.openArchivedSources")}
               </button>
             </div>
           ) : null}
         </Card>
-          {isMobile ? (
-            <Card className={workbenchPanelClassName("secondary", "p-4")}>
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.toolsTitle")}</p>
-              <p className="mt-2 text-sm leading-6 text-[#596270]">
-                {attentionSources.length > 0
-                  ? translate("sources.attentionSummary", { count: attentionSources.length })
-                  : translate("sources.noBlockingReview")}
-              </p>
-              <div className="mt-4">
-                <Button size="sm" variant="ghost" onClick={() => setToolsOpen(true)}>
-                  {translate("sources.openSourceTools")}
-                </Button>
-              </div>
-            </Card>
-          ) : null}
-
-          {showBelowSupportCards ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              {postureCard}
-              {toolsCard}
-            </div>
-          ) : null}
-        </div>
-
-        {showWideSupportColumn ? <div className="space-y-4">{postureCard}{toolsCard}</div> : null}
       </div>
 
       <Sheet open={toolsOpen} onOpenChange={setToolsOpen}>
         <SheetContent side={toolsSheetSide} className="overflow-y-auto">
           <SheetHeader>
             <div>
-              <SheetTitle>{translate("sources.toolsTitle")}</SheetTitle>
-              <SheetDescription>{translate("sources.toolsSummary")}</SheetDescription>
+              <SheetTitle>{translate("sources.archivedTitle")}</SheetTitle>
+              <SheetDescription>{translate("sources.archivedSummary")}</SheetDescription>
             </div>
             <SheetDismissButton />
           </SheetHeader>
 
-          <div className="mt-6 space-y-6">
-            <div className="space-y-3">
+          <div className="mt-6 space-y-3">
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.toolsSection")}</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.archivedEyebrow")}</p>
+                <h3 className="mt-1 text-lg font-semibold text-ink">{translate("sources.archivedTitle")}</h3>
               </div>
-              <div className="grid gap-3">
-                <ConnectSourceCard
-                  provider="Canvas ICS"
-                  title={translate("sources.connectCanvas")}
-                  detail={translate("sources.connectCanvasDetail")}
-                  connected={activeProviders.has("ics")}
-                  attention={activeSources.some((source) => source.provider === "ics" && sourceNeedsAttention(source))}
-                  href={withBasePath(basePath, "/sources/connect/canvas-ics")}
-                  icon={<CalendarSync className="h-5 w-5" />}
-                  iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(31,94,255,0.1)] text-cobalt"
-                />
-                <ConnectSourceCard
-                  provider="Gmail"
-                  title={translate("sources.connectGmail")}
-                  detail={translate("sources.connectGmailDetail")}
-                  connected={activeProviders.has("gmail")}
-                  attention={activeSources.some((source) => source.provider === "gmail" && sourceNeedsAttention(source))}
-                  href={withBasePath(basePath, "/sources/connect/gmail")}
-                  icon={<Mailbox className="h-5 w-5" />}
-                  iconShellClassName="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(215,90,45,0.12)] text-ember"
-                />
-              </div>
-
-              {!activeProviders.has("gmail") ? (
-                <div className="pt-1">
-                  <Button variant="ghost" onClick={() => void startGmailConnect()}>
-                    {translate("sources.connectGmailNow")}
-                  </Button>
-                </div>
-              ) : null}
+              <Badge tone="info">{archivedSources.length}</Badge>
             </div>
 
-            <div className="space-y-3">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("sources.archivedEyebrow")}</p>
-                  <h3 className="mt-1 text-lg font-semibold text-ink">{translate("sources.archivedTitle")}</h3>
-                </div>
-                <Badge tone="info">{archivedSources.length}</Badge>
-              </div>
-
-              {archivedSources.length === 0 ? (
-                <div className={workbenchSupportPanelClassName("quiet", "border-dashed p-5 text-sm text-[#596270]")}>{translate("sources.noArchived")}</div>
-              ) : (
-                archivedSources.map((source) => (
-                  <ArchivedSourceCard
-                    key={source.source_id}
-                    source={source}
-                    onReactivate={reactivateSource}
-                    busyReactivate={busyReactivate}
-                    basePath={basePath}
-                  />
-                ))
-              )}
-            </div>
+            {archivedSources.length === 0 ? (
+              <div className={workbenchSupportPanelClassName("quiet", "border-dashed p-5 text-sm text-[#596270]")}>{translate("sources.noArchived")}</div>
+            ) : (
+              archivedSources.map((source) => (
+                <ArchivedSourceCard
+                  key={source.source_id}
+                  source={source}
+                  onReactivate={reactivateSource}
+                  busyReactivate={busyReactivate}
+                  basePath={basePath}
+                />
+              ))
+            )}
           </div>
         </SheetContent>
       </Sheet>

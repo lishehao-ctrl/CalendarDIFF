@@ -6,7 +6,7 @@ from typing import Literal
 LlmVendorLiteral = Literal["openai", "gemini", "dashscope_openai"]
 LlmProtocolLiteral = Literal["chat_completions", "responses", "gemini_generate_content"]
 SessionCacheModeLiteral = Literal["inherit", "enable", "disable"]
-LlmProfileFamilyLiteral = Literal["ingestion", "agent"]
+LlmProfileFamilyLiteral = Literal["ingestion", "agent", "helper", "judge"]
 LlmStreamEventTypeLiteral = Literal["delta", "completed", "error"]
 
 

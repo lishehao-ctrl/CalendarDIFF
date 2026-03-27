@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarRange, CheckCheck, ChevronDown, ChevronUp, Eye, FileSearch, PencilLine, Sparkles, SquarePen, XCircle } from "lucide-react";
 import { ChangeAgentCard } from "@/components/change-agent-card";
+import { AgentDisclosure } from "@/components/agent-step-flow";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -735,17 +736,12 @@ function DecisionWorkspaceMain({
           {evidenceBody}
         </CompactSection>
       ) : (
-        <Card className="p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">
-                {decisionSupport ? translate("changes.workspace.evidence") : translate("changes.workspace.evidenceFallbackTitle")}
-              </p>
-              <p className="mt-2 text-sm text-[#596270]">{evidenceSummary}</p>
-            </div>
-          </div>
-          <div className="mt-4">{evidenceBody}</div>
-        </Card>
+        <AgentDisclosure title={decisionSupport ? translate("changes.workspace.evidence") : translate("changes.workspace.evidenceFallbackTitle")}>
+          <Card className="p-5">
+            <p className="text-sm text-[#596270]">{evidenceSummary}</p>
+            <div className="mt-4">{evidenceBody}</div>
+          </Card>
+        </AgentDisclosure>
       )}
 
       {compact ? (
@@ -758,15 +754,12 @@ function DecisionWorkspaceMain({
           {canonicalBody}
         </CompactSection>
       ) : (
-        <Card className="p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changes.workspace.canonicalMatch")}</p>
-              <p className="mt-2 text-sm text-[#596270]">{canonicalDisplayLabel(editContext, selected)}</p>
-            </div>
-          </div>
-          <div className="mt-4">{canonicalBody}</div>
-        </Card>
+        <AgentDisclosure title={translate("changes.workspace.canonicalMatch")}>
+          <Card className="p-5">
+            <p className="text-sm text-[#596270]">{canonicalDisplayLabel(editContext, selected)}</p>
+            <div className="mt-4">{canonicalBody}</div>
+          </Card>
+        </AgentDisclosure>
       )}
 
       {compact ? (
@@ -964,7 +957,8 @@ function DecisionWorkspaceRail({
       ) : null}
 
       {labelLearning ? (
-        <Card className="p-5">
+        <AgentDisclosure title={translate("changes.mapping.title")} defaultOpen={compact}>
+          <Card className="p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changes.mapping.title")}</p>
@@ -1033,12 +1027,14 @@ function DecisionWorkspaceRail({
               )}
             </div>
           ) : null}
-        </Card>
+          </Card>
+        </AgentDisclosure>
       ) : null}
 
       <ChangeAgentCard changeId={selected.id} basePath={basePath} />
 
-      <Card className="p-5">
+      <AgentDisclosure title={translate("changes.workspace.technicalDetails")} defaultOpen={compact}>
+        <Card className="p-5">
         <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changes.workspace.technicalDetails")}</p>
         <div className="mt-4 grid gap-3">
           <div className={workbenchSupportPanelClassName("quiet", "p-4 text-sm text-[#314051]")}>
@@ -1072,7 +1068,8 @@ function DecisionWorkspaceRail({
             </Button>
           ) : null}
         </div>
-      </Card>
+        </Card>
+      </AgentDisclosure>
     </div>
   );
 }
@@ -1126,6 +1123,7 @@ export function ChangeItemsPanel({
   );
   const [statusFilter, setStatusFilter] = useState<(typeof statusOptions)[number]>("pending");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
+  const [bulkMode, setBulkMode] = useState(false);
   const [selectedChangeId, setSelectedChangeId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [evidenceView, setEvidenceView] = useState<EvidenceViewMode>("summary");
@@ -1171,9 +1169,9 @@ export function ChangeItemsPanel({
   const rows = useMemo(() => data || [], [data]);
   const groups = useMemo(() => groupChangesByCourse(rows), [rows]);
   const selected = rows.find((row) => row.id === selectedChangeId) || null;
-  const selectedEvidenceAvailability = selected ? getEvidenceAvailability(selected) : { before: false, after: false };
   const selectedIdsSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const allVisibleSelected = rows.length > 0 && rows.every((row) => selectedIdsSet.has(row.id));
+  const showBulkSelection = bulkMode && statusFilter === "pending";
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1208,6 +1206,12 @@ export function ChangeItemsPanel({
       }
     }
   }, [requestedFocusId, rows, selectedChangeId, statusFilter]);
+
+  useEffect(() => {
+    if (!showBulkSelection) {
+      setSelectedIds([]);
+    }
+  }, [showBulkSelection]);
 
   const markViewed = useCallback(
     async (change: ChangeItem) => {
@@ -1540,14 +1544,12 @@ export function ChangeItemsPanel({
               ) : null}
             </div>
             <div className="w-full xl:w-auto">
-              <div className="hidden w-max flex-wrap gap-2 md:flex xl:justify-end">
-                {statusOptions.map((status) => (
-                  <Button key={status} variant={statusFilter === status ? "primary" : "ghost"} size="sm" onClick={() => setStatusFilter(status)}>
-                    {formatStatusLabel(status)}
+              <div className="flex flex-wrap gap-2 md:justify-end">
+                {statusFilter === "pending" ? (
+                  <Button size="sm" variant={bulkMode ? "secondary" : "ghost"} onClick={() => setBulkMode((current) => !current)}>
+                    {bulkMode ? translate("changes.bulkModeOn") : translate("changes.bulkMode")}
                   </Button>
-                ))}
-              </div>
-              <div className="md:hidden">
+                ) : null}
                 <Button size="sm" variant="ghost" onClick={() => setMobileFiltersOpen(true)}>
                   {translate("changes.filters")}
                 </Button>
@@ -1584,24 +1586,38 @@ export function ChangeItemsPanel({
               <Badge tone="info">{reviewBucket === "initial_review" ? translate("changes.initialReviewLane") : translate("changes.laneBadge", { status: formatStatusLabel(statusFilter) })}</Badge>
               <Badge tone="info">{translate("changes.visibleChanges", { count: rows.length })}</Badge>
               <Badge tone="info">{translate("changes.courseGroups", { count: groups.length })}</Badge>
+              {showBulkSelection ? <Badge tone="pending">{translate("changes.selectedCount", { count: selectedIds.length })}</Badge> : null}
             </div>
-            <label className="hidden items-center gap-2 rounded-full border border-line/80 bg-[var(--surface-support)] px-3 py-1.5 text-sm text-[#314051] md:flex">
-              <span className="text-[#6d7885]">{translate("changes.source")}</span>
-              <select
-                aria-label={translate("changes.source")}
-                className="bg-transparent outline-none"
-                value={sourceFilter}
-                onChange={(event) => setSourceFilter(event.target.value)}
-              >
-                <option value="all">{formatStatusLabel("all")}</option>
-                {(sources.data || []).map((source) => (
-                  <option key={source.source_id} value={String(source.source_id)}>
-                    {source.display_name || source.provider || translate("changes.sourceFallback", { id: source.source_id })}
-                  </option>
-                ))}
-              </select>
-            </label>
           </div>
+          {!isMobile ? (
+            <AgentDisclosure title={translate("changes.reviewFiltersTitle")}>
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                <div className="flex flex-wrap gap-2">
+                  {statusOptions.map((status) => (
+                    <Button key={status} variant={statusFilter === status ? "primary" : "ghost"} size="sm" onClick={() => setStatusFilter(status)}>
+                      {formatStatusLabel(status)}
+                    </Button>
+                  ))}
+                </div>
+                <label className="flex items-center gap-2 rounded-full border border-line/80 bg-[var(--surface-support)] px-3 py-1.5 text-sm text-[#314051]">
+                  <span className="text-[#6d7885]">{translate("changes.source")}</span>
+                  <select
+                    aria-label={translate("changes.source")}
+                    className="min-w-0 flex-1 bg-transparent outline-none"
+                    value={sourceFilter}
+                    onChange={(event) => setSourceFilter(event.target.value)}
+                  >
+                    <option value="all">{formatStatusLabel("all")}</option>
+                    {(sources.data || []).map((source) => (
+                      <option key={source.source_id} value={String(source.source_id)}>
+                        {source.display_name || source.provider || translate("changes.sourceFallback", { id: source.source_id })}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </AgentDisclosure>
+          ) : null}
         </div>
       </Card>
 
@@ -1620,10 +1636,10 @@ export function ChangeItemsPanel({
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("changes.inboxEyebrow")}</p>
               <h2 className="mt-1 text-lg font-semibold text-ink">{translate("changes.inboxTitle")}</h2>
             </div>
-            {statusFilter === "pending" ? <Badge tone="pending">{translate("changes.selectedCount", { count: selectedIds.length })}</Badge> : <Badge tone="info">{translate("changes.rowsCount", { count: rows.length })}</Badge>}
+            {showBulkSelection ? <Badge tone="pending">{translate("changes.selectedCount", { count: selectedIds.length })}</Badge> : <Badge tone="info">{translate("changes.rowsCount", { count: rows.length })}</Badge>}
           </div>
 
-      {statusFilter === "pending" && !isMobile ? (
+      {showBulkSelection && !isMobile ? (
             <div className={workbenchSupportPanelClassName("quiet", "mt-4 flex flex-wrap items-center justify-between gap-4 p-4")}>
               <label className="flex items-center gap-3 text-sm text-[#314051]">
                 <Checkbox aria-label={translate("changes.selectVisible")} checked={allVisibleSelected} onChange={(event) => toggleVisibleSelection(event.currentTarget.checked)} />
@@ -1679,7 +1695,7 @@ export function ChangeItemsPanel({
                         checked={selectedIdsSet.has(row.id)}
                         onToggleSelection={(checked) => toggleRowSelection(row.id, checked)}
                         onOpen={() => openChange(row.id)}
-                        showSelection={!isMobile && statusFilter === "pending"}
+                        showSelection={!isMobile && showBulkSelection}
                         compact={!isDesktop}
                         basePath={basePath}
                       />

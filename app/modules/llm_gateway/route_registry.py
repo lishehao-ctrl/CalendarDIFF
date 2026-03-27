@@ -11,6 +11,8 @@ from app.modules.llm_gateway.contracts import (
 )
 from app.modules.llm_gateway.registry import (
     resolve_agent_llm_profile,
+    resolve_helper_llm_profile,
+    resolve_judge_llm_profile,
     resolve_llm_profile,
 )
 
@@ -52,6 +54,16 @@ def _resolve_profile_for_request(
 ) -> ResolvedLlmProfile:
     if invoke_request.profile_family == "agent":
         return resolve_agent_llm_profile(
+            explicit_provider_id=explicit_provider_id,
+            explicit_protocol=explicit_protocol,  # type: ignore[arg-type]
+        )
+    if invoke_request.profile_family == "helper":
+        return resolve_helper_llm_profile(
+            explicit_provider_id=explicit_provider_id,
+            explicit_protocol=explicit_protocol,  # type: ignore[arg-type]
+        )
+    if invoke_request.profile_family == "judge":
+        return resolve_judge_llm_profile(
             explicit_provider_id=explicit_provider_id,
             explicit_protocol=explicit_protocol,  # type: ignore[arg-type]
         )

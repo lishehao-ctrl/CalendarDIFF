@@ -244,6 +244,36 @@ class AgentCommandRun(Base):
     user: Mapped["User"] = relationship("User")
 
 
+class AgentCommandStepTrace(Base):
+    __tablename__ = "agent_command_step_traces"
+    __table_args__ = (
+        Index("ix_agent_command_step_traces_eval_created", "eval_run_id", "created_at"),
+        Index("ix_agent_command_step_traces_command_step", "command_id", "step_id"),
+        Index("ix_agent_command_step_traces_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    eval_run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    operation_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    command_id: Mapped[str | None] = mapped_column(
+        ForeignKey("agent_command_runs.command_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    step_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    tool_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    scope_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    execution_boundary: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    user: Mapped["User"] = relationship("User")
+    command_run: Mapped["AgentCommandRun | None"] = relationship("AgentCommandRun")
+
+
 class ChannelAccountType(str, Enum):
     TELEGRAM = "telegram"
     SLACK = "slack"

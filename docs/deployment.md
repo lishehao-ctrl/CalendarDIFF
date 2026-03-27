@@ -78,6 +78,19 @@ Optional bounded agent-generation settings:
 - `AGENT_GENERATION_MODE=deterministic|llm_assisted`
 - `AGENT_LLM_PROVIDER_ID`
 
+Optional helper-agent settings:
+- `HELPER_LLM_BASE_URL`
+- `HELPER_LLM_RESPONSES_BASE_URL`
+- `HELPER_LLM_API_KEY`
+- `HELPER_LLM_MODEL`
+- `HELPER_LLM_PROTOCOL=responses|chat_completions`
+- `HELPER_AGENT_PARALLELISM=8`
+
+Helper rule:
+- helper calls use the openai-compatible transport only
+- if `HELPER_LLM_*` is unset, helper calls fall back to the canonical main LLM env
+- helper batch fan-out uses independent DB sessions and caps local parallelism with `HELPER_AGENT_PARALLELISM`
+
 Provider routing rule:
 - keep `INGESTION_LLM_PROVIDER_ID` and `AGENT_LLM_PROVIDER_ID` on the intended mainline provider
 - do not point mainline qwen traffic at gemini through provider-level fallback ids

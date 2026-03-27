@@ -19,6 +19,7 @@ DEFAULT_TIMEOUT_SECONDS = 12.0
 DEFAULT_MAX_RETRIES = 1
 DEFAULT_MAX_INPUT_CHARS = 12000
 DEFAULT_PROVIDER_ID = "env-default"
+HELPER_PROVIDER_ID = "helper-env-default"
 
 _runtime_defaults = {
     "timeout_seconds": DEFAULT_TIMEOUT_SECONDS,
@@ -33,6 +34,14 @@ def validate_ingestion_llm_config() -> ResolvedLlmProfile:
 
 def validate_agent_llm_config() -> ResolvedLlmProfile:
     return resolve_agent_llm_profile()
+
+
+def validate_judge_llm_config() -> ResolvedLlmProfile:
+    return resolve_judge_llm_profile()
+
+
+def validate_helper_llm_config() -> ResolvedLlmProfile:
+    return resolve_helper_llm_profile()
 
 
 def set_llm_runtime_defaults(
@@ -102,6 +111,56 @@ def resolve_agent_llm_profile(
     )
 
 
+def resolve_helper_llm_profile(
+    *,
+    explicit_protocol: LlmProtocolLiteral | None = None,
+    explicit_provider_id: str | None = None,
+) -> ResolvedLlmProfile:
+    del explicit_provider_id
+    settings = get_settings()
+    helper_protocol = _resolve_helper_protocol(settings=settings, explicit_protocol=explicit_protocol)
+    if not _helper_llm_env_present(settings=settings):
+        return _build_profile(
+            protocol=helper_protocol,
+            session_cache_enabled=False,
+        )
+    return _build_profile_from_env(
+        provider_id=HELPER_PROVIDER_ID,
+        protocol=helper_protocol,
+        session_cache_enabled=False,
+        base_url=settings.helper_llm_base_url,
+        responses_base_url=settings.helper_llm_responses_base_url,
+        api_key=settings.helper_llm_api_key,
+        model=settings.helper_llm_model,
+        extra_body_json=settings.helper_llm_extra_body_json,
+    )
+
+
+def resolve_judge_llm_profile(
+    *,
+    explicit_protocol: LlmProtocolLiteral | None = None,
+    explicit_provider_id: str | None = None,
+) -> ResolvedLlmProfile:
+    del explicit_provider_id
+    settings = get_settings()
+    judge_protocol = _resolve_judge_protocol(settings=settings, explicit_protocol=explicit_protocol)
+    if not _judge_llm_env_present(settings=settings):
+        return _build_profile(
+            protocol=judge_protocol,
+            session_cache_enabled=False,
+        )
+    return _build_profile_from_env(
+        provider_id="judge-env-default",
+        protocol=judge_protocol,
+        session_cache_enabled=False,
+        base_url=settings.judge_llm_base_url,
+        responses_base_url=settings.judge_llm_responses_base_url,
+        api_key=settings.judge_llm_api_key,
+        model=settings.judge_llm_model,
+        extra_body_json=settings.llm_extra_body_json,
+    )
+
+
 def resolve_llm_base_url(
     *,
     protocol: LlmProtocolLiteral,
@@ -129,35 +188,77 @@ def resolve_agent_llm_base_url(
     return resolve_llm_base_url(protocol=protocol, settings=settings)
 
 
+def resolve_helper_llm_base_url(
+    *,
+    protocol: LlmProtocolLiteral,
+    settings=None,
+    provider_id: str | None = None,
+) -> str:
+    del provider_id
+    current_settings = settings or get_settings()
+    if not _helper_llm_env_present(settings=current_settings):
+        return resolve_llm_base_url(protocol=protocol, settings=current_settings)
+    return _resolve_protocol_base_url(
+        protocol=protocol,
+        base_url=current_settings.helper_llm_base_url,
+        responses_base_url=current_settings.helper_llm_responses_base_url,
+        fallback_base_url=None,
+    )
+
+
 def _build_profile(
     *,
     protocol: LlmProtocolLiteral,
     session_cache_enabled: bool,
 ) -> ResolvedLlmProfile:
     settings = get_settings()
-    base_url = _require_canonical_setting(settings.llm_base_url, "LLM_BASE_URL")
+    return _build_profile_from_env(
+        provider_id=DEFAULT_PROVIDER_ID,
+        protocol=protocol,
+        session_cache_enabled=session_cache_enabled,
+        base_url=settings.llm_base_url,
+        responses_base_url=settings.llm_responses_base_url,
+        api_key=settings.llm_api_key,
+        model=settings.llm_model,
+        extra_body_json=settings.llm_extra_body_json,
+    )
+
+
+def _build_profile_from_env(
+    *,
+    provider_id: str,
+    protocol: LlmProtocolLiteral,
+    session_cache_enabled: bool,
+    base_url: str | None,
+    responses_base_url: str | None,
+    api_key: str | None,
+    model: str | None,
+    extra_body_json: str | None,
+) -> ResolvedLlmProfile:
+    settings = get_settings()
+    canonical_base_url = _require_canonical_setting(base_url, _base_url_env_name(provider_id))
     protocol_base_url = _resolve_protocol_base_url(
         protocol=protocol,
-        base_url=base_url,
-        responses_base_url=settings.llm_responses_base_url,
+        base_url=canonical_base_url,
+        responses_base_url=responses_base_url,
         fallback_base_url=None,
     )
-    api_key = _require_canonical_setting(settings.llm_api_key, "LLM_API_KEY")
-    model = _require_canonical_setting(settings.llm_model, "LLM_MODEL")
-    _validate_protocol(protocol=protocol, base_url=base_url)
-    vendor = _infer_vendor_from_base_url(base_url)
+    canonical_api_key = _require_canonical_setting(api_key, _api_key_env_name(provider_id))
+    canonical_model = _require_canonical_setting(model, _model_env_name(provider_id))
+    _validate_protocol(protocol=protocol, base_url=canonical_base_url, provider_id=provider_id)
+    vendor = _infer_vendor_from_base_url(canonical_base_url)
     return ResolvedLlmProfile(
-        provider_id=DEFAULT_PROVIDER_ID,
+        provider_id=provider_id,
         vendor=vendor,
         protocol=protocol,
         base_url=protocol_base_url,
-        model=model,
-        api_key=api_key,
+        model=canonical_model,
+        api_key=canonical_api_key,
         session_cache_enabled=session_cache_enabled,
         timeout_seconds=_resolve_timeout_seconds(settings),
         max_retries=_resolve_max_retries(settings),
         max_input_chars=_resolve_max_input_chars(settings),
-        extra_body=_resolve_extra_body(settings),
+        extra_body=_resolve_extra_body(base_url=canonical_base_url, extra_body_json=extra_body_json),
         fallback_provider_ids=(),
     )
 
@@ -186,11 +287,10 @@ def _resolve_max_input_chars(settings) -> int:
     return max(int(raw_value), 256)
 
 
-def _resolve_extra_body(settings) -> dict:
-    cleaned = _clean_str(settings.llm_extra_body_json)
+def _resolve_extra_body(*, base_url: str | None, extra_body_json: str | None) -> dict:
+    cleaned = _clean_str(extra_body_json)
     if not cleaned:
-        base_url = _clean_str(settings.llm_base_url)
-        if _infer_vendor_from_base_url(base_url) == "dashscope_openai":
+        if _infer_vendor_from_base_url(_clean_str(base_url)) == "dashscope_openai":
             return {"enable_thinking": False}
         return {}
     try:
@@ -219,16 +319,16 @@ def _infer_vendor_from_base_url(base_url: str) -> LlmVendorLiteral:
     return "openai"
 
 
-def _validate_protocol(*, protocol: LlmProtocolLiteral, base_url: str) -> None:
+def _validate_protocol(*, protocol: LlmProtocolLiteral, base_url: str, provider_id: str) -> None:
     if protocol in {"responses", "chat_completions"}:
         return
     raise _config_error(
         code="parse_llm_upstream_error",
         message=(
-            f"LLM protocol '{protocol}' is not supported by the canonical env-default "
+            f"LLM protocol '{protocol}' is not supported by the configured "
             f"openai-compatible profile for base url '{base_url}'"
         ),
-        provider_id=DEFAULT_PROVIDER_ID,
+        provider_id=provider_id,
         protocol=protocol,
     )
 
@@ -251,6 +351,72 @@ def _clean_str(*values: str | None) -> str:
         if cleaned:
             return cleaned
     return ""
+
+
+def _judge_llm_env_present(*, settings) -> bool:
+    return bool(_clean_str(settings.judge_llm_base_url)) and bool(_clean_str(settings.judge_llm_api_key)) and bool(
+        _clean_str(settings.judge_llm_model)
+    )
+
+
+def _helper_llm_env_present(*, settings) -> bool:
+    return bool(
+        _clean_str(
+            settings.helper_llm_base_url,
+            settings.helper_llm_api_key,
+            settings.helper_llm_model,
+        )
+    )
+
+
+def _resolve_judge_protocol(
+    *,
+    settings,
+    explicit_protocol: LlmProtocolLiteral | None,
+) -> LlmProtocolLiteral:
+    if explicit_protocol is not None:
+        return explicit_protocol
+    normalized = _clean_str(settings.judge_llm_protocol).lower()
+    if normalized in {"responses", "chat_completions"}:
+        return normalized  # type: ignore[return-value]
+    return "responses"
+
+
+def _resolve_helper_protocol(
+    *,
+    settings,
+    explicit_protocol: LlmProtocolLiteral | None,
+) -> LlmProtocolLiteral:
+    if explicit_protocol is not None:
+        return explicit_protocol
+    normalized = _clean_str(settings.helper_llm_protocol).lower()
+    if normalized in {"responses", "chat_completions"}:
+        return normalized  # type: ignore[return-value]
+    return "responses"
+
+
+def _base_url_env_name(provider_id: str) -> str:
+    if provider_id == DEFAULT_PROVIDER_ID:
+        return "LLM_BASE_URL"
+    if provider_id == HELPER_PROVIDER_ID:
+        return "HELPER_LLM_BASE_URL"
+    return "JUDGE_LLM_BASE_URL"
+
+
+def _api_key_env_name(provider_id: str) -> str:
+    if provider_id == DEFAULT_PROVIDER_ID:
+        return "LLM_API_KEY"
+    if provider_id == HELPER_PROVIDER_ID:
+        return "HELPER_LLM_API_KEY"
+    return "JUDGE_LLM_API_KEY"
+
+
+def _model_env_name(provider_id: str) -> str:
+    if provider_id == DEFAULT_PROVIDER_ID:
+        return "LLM_MODEL"
+    if provider_id == HELPER_PROVIDER_ID:
+        return "HELPER_LLM_MODEL"
+    return "JUDGE_LLM_MODEL"
 
 
 def _resolve_protocol_base_url(

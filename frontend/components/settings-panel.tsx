@@ -11,15 +11,17 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetDismissButton, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { EmptyState, ErrorState } from "@/components/data-states";
 import { PanelLoadingPlaceholder } from "@/components/panel-loading-placeholder";
+import { changesSummaryCacheKey, getChangesSummary } from "@/lib/api/changes";
 import { getSettingsProfile, settingsProfileCacheKey, updateSettingsProfile } from "@/lib/api/settings";
 import { getBrowserTimeZone } from "@/lib/browser-timezone";
+import { withBasePath } from "@/lib/demo-mode";
 import { useLocale } from "@/lib/i18n/use-locale";
 import { translate } from "@/lib/i18n/runtime";
 import { formatTimeZoneLabel, listCommonTimeZones, listSupportedTimeZones, searchTimeZones } from "@/lib/timezones";
 import { useResponsiveTier } from "@/lib/use-responsive-tier";
 import { useApiResource } from "@/lib/use-api-resource";
 import { workbenchStateSurfaceClassName, workbenchSupportPanelClassName } from "@/lib/workbench-styles";
-import type { UserProfile } from "@/lib/types";
+import type { ChangesWorkbenchSummary, UserProfile } from "@/lib/types";
 import { WorkbenchLoadingShell } from "@/components/workbench-loading-shell";
 
 const DeferredSettingsMcpAccessCard = dynamic(
@@ -64,11 +66,14 @@ const DeferredSettingsMcpInvocationAuditCard = dynamic(
   },
 );
 
-export function SettingsPanel() {
+export function SettingsPanel({ basePath = "" }: { basePath?: string }) {
   const { locale, setLocale } = useLocale();
   const { isMobile, isTabletWide, isDesktop } = useResponsiveTier();
   const user = useApiResource<UserProfile>(() => getSettingsProfile(), [], null, {
     cacheKey: settingsProfileCacheKey(),
+  });
+  const workbenchSummary = useApiResource<ChangesWorkbenchSummary>(() => getChangesSummary(), [], null, {
+    cacheKey: changesSummaryCacheKey(),
   });
 
   const [form, setForm] = useState({ timezone_name: "" });
@@ -254,6 +259,14 @@ export function SettingsPanel() {
   if (user.error) return <ErrorState message={user.error} />;
   if (!user.data) return <EmptyState title={translate("settings.userNotInitializedTitle")} description={translate("settings.userNotInitializedDescription")} />;
 
+  const governanceMessage = workbenchSummary.data
+    ? workbenchSummary.data.families.pending_raw_type_suggestions > 0
+      ? translate("settings.governance.suggestionsWaiting", { count: workbenchSummary.data.families.pending_raw_type_suggestions })
+      : workbenchSummary.data.manual.active_event_count > 0
+        ? translate("settings.governance.manualActive", { count: workbenchSummary.data.manual.active_event_count })
+        : translate("settings.governance.quiet")
+    : translate("settings.governance.summary");
+
   return (
     <div className="space-y-4">
       {banner ? (
@@ -347,6 +360,54 @@ export function SettingsPanel() {
               <Button asChild size="sm" variant="ghost">
                 <Link href="/terms">{translate("settings.helpTerms")}</Link>
               </Button>
+            </div>
+          </Card>
+
+          <Card className="p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("settings.governance.eyebrow")}</p>
+                <h3 className="mt-2 text-base font-semibold text-ink">{translate("settings.governance.title")}</h3>
+                <p className="mt-2 text-sm leading-6 text-[#596270]">{governanceMessage}</p>
+              </div>
+              {workbenchSummary.data ? (
+                <Badge tone={workbenchSummary.data.families.pending_raw_type_suggestions > 0 ? "pending" : "info"}>
+                  {translate("settings.governance.badge", {
+                    count: String(
+                      workbenchSummary.data.families.pending_raw_type_suggestions +
+                        workbenchSummary.data.manual.active_event_count,
+                    ),
+                  })}
+                </Badge>
+              ) : null}
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className={workbenchSupportPanelClassName("quiet", "p-4")}>
+                <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("settings.governance.familiesTitle")}</p>
+                <p className="mt-2 text-sm font-medium text-ink">
+                  {workbenchSummary.data
+                    ? translate("settings.governance.familiesCount", { count: workbenchSummary.data.families.pending_raw_type_suggestions })
+                    : translate("settings.governance.loading")}
+                </p>
+                <div className="mt-3">
+                  <Button asChild size="sm" variant="ghost">
+                    <Link href={withBasePath(basePath, "/families")}>{translate("settings.governance.openFamilies")}</Link>
+                  </Button>
+                </div>
+              </div>
+              <div className={workbenchSupportPanelClassName("quiet", "p-4")}>
+                <p className="text-xs uppercase tracking-[0.16em] text-[#6d7885]">{translate("settings.governance.manualTitle")}</p>
+                <p className="mt-2 text-sm font-medium text-ink">
+                  {workbenchSummary.data
+                    ? translate("settings.governance.manualCount", { count: workbenchSummary.data.manual.active_event_count })
+                    : translate("settings.governance.loading")}
+                </p>
+                <div className="mt-3">
+                  <Button asChild size="sm" variant="ghost">
+                    <Link href={withBasePath(basePath, "/manual")}>{translate("settings.governance.openManual")}</Link>
+                  </Button>
+                </div>
+              </div>
             </div>
           </Card>
         </div>

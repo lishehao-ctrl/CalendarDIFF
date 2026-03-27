@@ -251,40 +251,23 @@ export function AgentWorkspacePanel({ basePath = "" }: { basePath?: string }) {
         suggestions={commandSuggestions}
         focusRequestToken={focusRequestToken}
         onRunUpdated={() => void refreshAgentSurfaces()}
+        basePath={basePath}
       />
     </div>
   );
 
-  const contextRail = (
-    <div className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-      {nextStepCard}
-      {pendingChangesCard}
-      {activityCard}
-    </div>
-  );
-
-  if (isDesktop) {
-    return (
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.72fr)_360px]">
-        <div>{commandStudio}</div>
-        {contextRail}
-      </div>
-    );
-  }
-
-  if (isTabletWide) {
-    return (
-      <div className="space-y-5">
-        {commandStudio}
-        {contextRail}
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-5">
+      {nextStepCard}
       {commandStudio}
-      {contextRail}
+      <div className={isDesktop || isTabletWide ? "grid gap-4 xl:grid-cols-2" : "space-y-4"}>
+        <AgentDisclosure title={translate("agent.brief.topChanges")}>
+          {pendingChangesCard}
+        </AgentDisclosure>
+        <AgentDisclosure title={translate("agent.activity.title")}>
+          {activityCard}
+        </AgentDisclosure>
+      </div>
     </div>
   );
 }

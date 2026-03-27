@@ -12,9 +12,14 @@ from app.modules.llm_gateway.gateway import invoke_llm_json, invoke_llm_stream
 from app.modules.llm_gateway.registry import (
     llm_runtime_overrides,
     resolve_agent_llm_profile,
+    resolve_helper_llm_base_url,
+    resolve_helper_llm_profile,
+    resolve_judge_llm_profile,
     resolve_llm_profile,
     set_llm_runtime_defaults,
     validate_agent_llm_config,
+    validate_helper_llm_config,
+    validate_judge_llm_config,
     validate_ingestion_llm_config,
 )
 from app.modules.llm_gateway.retry_policy import (
@@ -38,8 +43,13 @@ __all__ = [
     "invoke_llm_stream",
     "invoke_llm_typed",
     "resolve_agent_llm_profile",
+    "resolve_helper_llm_base_url",
+    "resolve_helper_llm_profile",
+    "resolve_judge_llm_profile",
     "resolve_llm_profile",
     "validate_agent_llm_config",
+    "validate_helper_llm_config",
+    "validate_judge_llm_config",
     "validate_ingestion_llm_config",
     "set_llm_runtime_defaults",
     "llm_runtime_overrides",

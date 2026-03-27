@@ -1,8 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Sparkles } from "lucide-react";
-import { planWorkspaceCommand, executeWorkspaceCommand } from "@/lib/api/agents";
+import {
+  cancelApprovalTicket,
+  confirmApprovalTicket,
+  createApprovalTicket,
+  executeWorkspaceCommand,
+  getAgentProposal,
+  getApprovalTicket,
+  planWorkspaceCommand,
+} from "@/lib/api/agents";
 import type { AgentCommandSuggestion } from "@/lib/agent-command-suggestions";
 import {
   commandBoundaryLabel,
@@ -11,21 +20,22 @@ import {
   commandStepStatusLabel,
   commandTargetKindLabel,
   commandToolLabel,
-  executeDisabledReason,
   runGuidanceCopy,
   stepIndexLookup,
   summarizeOutputSummary,
   summarizeStepArgs,
   summarizeStepDependencies,
 } from "@/lib/agent-command-presenters";
-import { Checkbox } from "@/components/ui/checkbox";
+import { ApprovalTicketBar } from "@/components/approval-ticket-bar";
+import { AgentDisclosure } from "@/components/agent-step-flow";
+import { AgentProposalCard } from "@/components/agent-proposal-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { translate } from "@/lib/i18n/runtime";
 import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
-import type { AgentCommandExecutionResult, AgentCommandRun } from "@/lib/types";
+import type { AgentCommandExecutionResult, AgentCommandRun, AgentProposal, ApprovalTicket } from "@/lib/types";
 import { workbenchSupportPanelClassName, workbenchStateSurfaceClassName } from "@/lib/workbench-styles";
 import { cn } from "@/lib/utils";
 
@@ -116,12 +126,100 @@ function CommandEmptyPanel({
   );
 }
 
+function isProposalTool(toolName: string) {
+  return toolName.startsWith("create_") && toolName.endsWith("_proposal");
+}
+
+function isTicketCreationTool(toolName: string) {
+  return toolName === "create_approval_ticket";
+}
+
+function collectExecutionStepIds(steps: AgentCommandRun["plan"], targetStepId: string) {
+  const byId = new Map(steps.map((step) => [step.step_id, step]));
+  const required = new Set<string>();
+
+  function visit(stepId: string) {
+    if (required.has(stepId)) {
+      return;
+    }
+    const step = byId.get(stepId);
+    if (!step) {
+      return;
+    }
+    for (const dep of step.depends_on) {
+      visit(dep);
+    }
+    required.add(stepId);
+  }
+
+  visit(targetStepId);
+  return steps.filter((step) => required.has(step.step_id)).map((step) => step.step_id);
+}
+
+function deriveProposalExecutionIds(steps: AgentCommandRun["plan"]) {
+  const proposalStep = steps.find((step) => isProposalTool(step.tool_name));
+  if (!proposalStep) {
+    return null;
+  }
+  return collectExecutionStepIds(steps, proposalStep.step_id);
+}
+
+function deriveAnalysisExecutionIds(steps: AgentCommandRun["plan"]) {
+  const hasProposalStep = steps.some((step) => isProposalTool(step.tool_name));
+  const hasTicketCreationStep = steps.some((step) => isTicketCreationTool(step.tool_name));
+  if (hasProposalStep || hasTicketCreationStep || steps.length === 0) {
+    return null;
+  }
+  return steps.map((step) => step.step_id);
+}
+
+function latestOutputNumber(run: AgentCommandRun | null, key: string) {
+  if (!run) {
+    return null;
+  }
+  for (const result of [...run.execution_results].reverse()) {
+    const value = result.output_summary?.[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function latestOutputString(run: AgentCommandRun | null, key: string) {
+  if (!run) {
+    return null;
+  }
+  for (const result of [...run.execution_results].reverse()) {
+    const value = result.output_summary?.[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function proposalWebOnlyHref(proposal: AgentProposal, basePath: string) {
+  const normalizedBase = basePath ? basePath.replace(/\/$/, "") : "";
+  if (proposal.target_kind === "change") {
+    return `${normalizedBase}/changes?focus=${proposal.target_id}`;
+  }
+  if (proposal.target_kind === "source") {
+    return `${normalizedBase}/sources/${proposal.target_id}`;
+  }
+  if (proposal.target_kind === "family") {
+    return `${normalizedBase}/families`;
+  }
+  return normalizedBase ? `${normalizedBase}/agent` : "/agent";
+}
+
 type AgentCommandPanelProps = {
   draft: string;
   onDraftChange: (nextValue: string) => void;
   suggestions?: AgentCommandSuggestion[];
   focusRequestToken?: number;
   onRunUpdated?: (run: AgentCommandRun) => void;
+  basePath?: string;
 };
 
 export function AgentCommandPanel({
@@ -130,20 +228,18 @@ export function AgentCommandPanel({
   suggestions = EMPTY_SUGGESTIONS,
   focusRequestToken = 0,
   onRunUpdated,
+  basePath = "",
 }: AgentCommandPanelProps) {
   const [run, setRun] = useState<AgentCommandRun | null>(null);
-  const [busy, setBusy] = useState<"plan" | "execute" | null>(null);
+  const [busy, setBusy] = useState<"proposal" | "analysis" | null>(null);
   const [banner, setBanner] = useState<{ tone: "info" | "error"; text: string } | null>(null);
-  const [selectedStepIds, setSelectedStepIds] = useState<Set<string>>(new Set());
+  const [proposal, setProposal] = useState<AgentProposal | null>(null);
+  const [ticket, setTicket] = useState<ApprovalTicket | null>(null);
+  const [ticketBusy, setTicketBusy] = useState<"create" | "confirm" | "cancel" | "refresh" | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const plannedSteps = useMemo(() => run?.plan || EMPTY_STEPS, [run]);
-  const selectedCount = selectedStepIds.size;
   const stepIndexes = useMemo(() => stepIndexLookup(plannedSteps), [plannedSteps]);
-  const remainingSelectableCount = useMemo(
-    () => plannedSteps.filter((step) => stepResultFor(run, step.step_id)?.status !== "succeeded").length,
-    [plannedSteps, run],
-  );
   const displayResults = useMemo(
     () => (run?.execution_results || []).filter((row) => row.status !== "pending"),
     [run],
@@ -157,35 +253,11 @@ export function AgentCommandPanel({
     [suggestions],
   );
   const guidance = run ? runGuidanceCopy(run.status) : null;
-  const canExecute = Boolean(
-    run &&
-      plannedSteps.length > 0 &&
-      selectedCount > 0 &&
-      busy !== "execute" &&
-      run.status !== "clarification_required" &&
-      run.status !== "unsupported" &&
-      run.status !== "executing",
-  );
-  const canClear = Boolean(run || draft.trim() || banner);
-  const executeHint = useMemo(
-    () =>
-      executeDisabledReason({
-        run,
-        stepCount: plannedSteps.length,
-        remainingCount: remainingSelectableCount,
-        selectedCount,
-        busy,
-      }),
-    [busy, plannedSteps.length, remainingSelectableCount, run, selectedCount],
-  );
-  const selectionSummary = useMemo(
-    () =>
-      translate("agent.command.selectionSummary", {
-        selected: String(selectedCount),
-        remaining: String(remainingSelectableCount),
-      }),
-    [remainingSelectableCount, selectedCount],
-  );
+  const proposalExecutionIds = useMemo(() => deriveProposalExecutionIds(plannedSteps), [plannedSteps]);
+  const analysisExecutionIds = useMemo(() => deriveAnalysisExecutionIds(plannedSteps), [plannedSteps]);
+  const latestProposalId = useMemo(() => latestOutputNumber(run, "proposal_id"), [run]);
+  const latestTicketId = useMemo(() => latestOutputString(run, "ticket_id"), [run]);
+  const canClear = Boolean(run || draft.trim() || banner || proposal || ticket);
 
   useEffect(() => {
     if (!focusRequestToken) {
@@ -195,20 +267,44 @@ export function AgentCommandPanel({
     composerRef.current?.scrollIntoView({ block: "nearest" });
   }, [focusRequestToken]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateArtifacts() {
+      try {
+        const [nextProposal, nextTicket] = await Promise.all([
+          latestProposalId ? getAgentProposal(latestProposalId) : Promise.resolve(null),
+          latestTicketId ? getApprovalTicket(latestTicketId) : Promise.resolve(null),
+        ]);
+        if (cancelled) {
+          return;
+        }
+        if (nextProposal) {
+          setProposal(nextProposal);
+        }
+        if (nextTicket) {
+          setTicket(nextTicket);
+        }
+      } catch {
+        // Keep the simplified assistant resilient even if artifact hydration fails.
+      }
+    }
+
+    if (latestProposalId || latestTicketId) {
+      void hydrateArtifacts();
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [latestProposalId, latestTicketId]);
+
   function focusComposer() {
     composerRef.current?.focus();
     composerRef.current?.scrollIntoView({ block: "nearest" });
   }
 
-  function setRunAndSelection(nextRun: AgentCommandRun) {
+  function setRunState(nextRun: AgentCommandRun) {
     setRun(nextRun);
-    const remaining = nextRun.plan
-      .filter((step) => {
-        const result = stepResultFor(nextRun, step.step_id);
-        return result?.status !== "succeeded";
-      })
-      .map((step) => step.step_id);
-    setSelectedStepIds(new Set(remaining));
     onRunUpdated?.(nextRun);
   }
 
@@ -220,28 +316,58 @@ export function AgentCommandPanel({
 
   function handleClearCurrentRun() {
     setRun(null);
+    setProposal(null);
+    setTicket(null);
     setBanner(null);
-    setSelectedStepIds(new Set());
     onDraftChange("");
     focusComposer();
   }
 
   function handleComposerKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && draft.trim() && busy !== "plan") {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && draft.trim() && busy !== "proposal") {
       event.preventDefault();
-      void handlePlan();
+      void handleGenerateProposal();
     }
   }
 
-  async function handlePlan() {
-    setBusy("plan");
+  async function handleGenerateProposal() {
+    setBusy("proposal");
     setBanner(null);
+    setProposal(null);
+    setTicket(null);
+
     try {
-      const nextRun = await planWorkspaceCommand({
+      const plannedRun = await planWorkspaceCommand({
         input_text: draft,
         scope_kind: "workspace",
       });
-      setRunAndSelection(nextRun);
+      setRunState(plannedRun);
+
+      if (plannedRun.status !== "planned") {
+        setBanner({
+          tone: plannedRun.status === "unsupported" ? "error" : "info",
+          text: plannedRun.status_reason || translate("agent.command.planFailed"),
+        });
+        return;
+      }
+
+      const executionIds = deriveProposalExecutionIds(plannedRun.plan);
+      if (!executionIds?.length) {
+        setBanner({
+          tone: "info",
+          text: translate("agent.command.analysisOnlyDescription"),
+        });
+        return;
+      }
+
+      const executedRun = await executeWorkspaceCommand(plannedRun.command_id, {
+        selected_step_ids: executionIds,
+      });
+      setRunState(executedRun);
+      setBanner({
+        tone: executedRun.status === "failed" ? "error" : "info",
+        text: translate("agent.command.proposalReady"),
+      });
     } catch (err) {
       setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("agent.command.planFailed") });
     } finally {
@@ -249,17 +375,17 @@ export function AgentCommandPanel({
     }
   }
 
-  async function handleExecute() {
-    if (!run) {
+  async function handleRunAnalysis() {
+    if (!run || !analysisExecutionIds?.length) {
       return;
     }
-    setBusy("execute");
+    setBusy("analysis");
     setBanner(null);
     try {
       const nextRun = await executeWorkspaceCommand(run.command_id, {
-        selected_step_ids: Array.from(selectedStepIds),
+        selected_step_ids: analysisExecutionIds,
       });
-      setRunAndSelection(nextRun);
+      setRunState(nextRun);
       setBanner({
         tone: nextRun.status === "failed" ? "error" : "info",
         text: nextRun.status_reason || translate("agent.command.executionUpdated"),
@@ -271,16 +397,68 @@ export function AgentCommandPanel({
     }
   }
 
-  function toggleStep(stepId: string, checked: boolean) {
-    setSelectedStepIds((current) => {
-      const next = new Set(current);
-      if (checked) {
-        next.add(stepId);
-      } else {
-        next.delete(stepId);
-      }
-      return next;
-    });
+  async function handleCreateTicket() {
+    if (!proposal) {
+      return;
+    }
+    setTicketBusy("create");
+    setBanner(null);
+    try {
+      const nextTicket = await createApprovalTicket(proposal.proposal_id, "web");
+      setTicket(nextTicket);
+    } catch (err) {
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("agent.suggestion.notSafeToRunHere") });
+    } finally {
+      setTicketBusy(null);
+    }
+  }
+
+  async function handleConfirmTicket() {
+    if (!ticket) {
+      return;
+    }
+    setTicketBusy("confirm");
+    setBanner(null);
+    try {
+      const nextTicket = await confirmApprovalTicket(ticket.ticket_id);
+      setTicket(nextTicket);
+    } catch (err) {
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("agent.ticket.failed") });
+    } finally {
+      setTicketBusy(null);
+    }
+  }
+
+  async function handleCancelTicket() {
+    if (!ticket) {
+      return;
+    }
+    setTicketBusy("cancel");
+    setBanner(null);
+    try {
+      const nextTicket = await cancelApprovalTicket(ticket.ticket_id);
+      setTicket(nextTicket);
+    } catch (err) {
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("agent.ticket.failed") });
+    } finally {
+      setTicketBusy(null);
+    }
+  }
+
+  async function handleRefreshTicket() {
+    if (!ticket) {
+      return;
+    }
+    setTicketBusy("refresh");
+    setBanner(null);
+    try {
+      const nextTicket = await getApprovalTicket(ticket.ticket_id);
+      setTicket(nextTicket);
+    } catch (err) {
+      setBanner({ tone: "error", text: err instanceof Error ? err.message : translate("agent.suggestion.contextUnavailable") });
+    } finally {
+      setTicketBusy(null);
+    }
   }
 
   return (
@@ -348,44 +526,26 @@ export function AgentCommandPanel({
             />
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => void handlePlan()} disabled={busy === "plan" || !draft.trim()}>
-                  {busy === "plan" ? translate("agent.command.planning") : translate("agent.command.plan")}
+                <Button size="sm" onClick={() => void handleGenerateProposal()} disabled={busy === "proposal" || !draft.trim()}>
+                  {busy === "proposal" ? translate("agent.command.generatingProposal") : translate("agent.command.generateProposal")}
                 </Button>
-                <Button size="sm" variant="soft" onClick={() => void handleExecute()} disabled={!canExecute}>
-                  {busy === "execute"
-                    ? translate("agent.command.executing")
-                    : translate("agent.command.executeSelected", { count: String(selectedCount) })}
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
+                {analysisExecutionIds ? (
+                  <Button size="sm" variant="soft" onClick={() => void handleRunAnalysis()} disabled={busy === "analysis"}>
+                    {busy === "analysis" ? translate("agent.command.runningAnalysis") : translate("agent.command.runAnalysis")}
+                  </Button>
+                ) : null}
               </div>
               <p className="text-xs text-[#6d7885]">{translate("agent.command.shortcutHint")}</p>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[#6d7885]">
-              {run ? <Badge tone="info">{selectionSummary}</Badge> : null}
-              <span>{executeHint}</span>
+              {proposalExecutionIds ? <Badge tone="info">{translate("agent.command.proposalFlowHint")}</Badge> : null}
+              <span>{analysisExecutionIds ? translate("agent.command.analysisOnlyHint") : translate("agent.command.primaryFlowHint")}</span>
             </div>
           </div>
 
           <div className="space-y-4">
-            {staticSuggestions.length > 0 ? (
-              <div className={workbenchSupportPanelClassName("default", "animate-surface-enter animate-surface-delay-2 p-4")}>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("agent.command.examplesTitle")}</p>
-                <p className="mt-2 text-sm leading-6 text-[#596270]">{translate("agent.command.examplesSummary")}</p>
-                <div className="mt-3 space-y-3">
-                  {staticSuggestions.map((suggestion) => (
-                    <SuggestionCard
-                      key={suggestion.id}
-                      suggestion={suggestion}
-                      onClick={() => handleFillPrompt(suggestion.prompt)}
-                      testId={`agent-command-suggestion-${suggestion.id}`}
-                    />
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
             {dynamicSuggestions.length > 0 ? (
-              <div className={workbenchSupportPanelClassName("info", "animate-surface-enter animate-surface-delay-3 p-4")}>
+              <div className={workbenchSupportPanelClassName("info", "animate-surface-enter animate-surface-delay-2 p-4")}>
                 <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("agent.command.contextualSuggestionsTitle")}</p>
                 <p className="mt-2 text-sm leading-6 text-[#596270]">{translate("agent.command.contextualSuggestionsSummary")}</p>
                 <div className="mt-3 space-y-3">
@@ -401,46 +561,102 @@ export function AgentCommandPanel({
                 </div>
               </div>
             ) : null}
+
+            {staticSuggestions.length > 0 ? (
+              <div className={workbenchSupportPanelClassName("default", "animate-surface-enter animate-surface-delay-3 p-4")}>
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("agent.command.examplesTitle")}</p>
+                <p className="mt-2 text-sm leading-6 text-[#596270]">{translate("agent.command.examplesSummary")}</p>
+                <div className="mt-3 space-y-3">
+                  {staticSuggestions.map((suggestion) => (
+                    <SuggestionCard
+                      key={suggestion.id}
+                      suggestion={suggestion}
+                      onClick={() => handleFillPrompt(suggestion.prompt)}
+                      testId={`agent-command-suggestion-${suggestion.id}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
 
-        <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.92fr)]">
-          <div className="space-y-4">
-            {run ? (
-              <div className={workbenchStateSurfaceClassName("neutral", "animate-surface-enter px-4 py-4")} data-testid="agent-command-run-summary">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 max-w-3xl">
-                    <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("agent.command.latestRunEyebrow")}</p>
-                    <p className="mt-2 text-sm font-medium text-ink">{run.input_text}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge tone="info">{commandScopeLabel(run.scope_kind)}</Badge>
-                    <Badge tone={statusTone(run.status)}>{commandRunStatusLabel(run.status)}</Badge>
-                  </div>
+        {proposal ? (
+          <div className="mt-6 animate-surface-enter">
+            <AgentProposalCard
+              title={proposal.summary}
+              proposal={proposal}
+              executable={proposal.execution_mode === "approval_ticket_required" && proposal.can_create_ticket}
+              blockingConditions={[]}
+              onCreateTicket={() => void handleCreateTicket()}
+              creatingTicket={ticketBusy === "create"}
+              eyebrow={translate("agent.flow.proposal")}
+              summaryOnly={Boolean(ticket)}
+              executableMessage={translate("agent.command.proposalReadyDescription")}
+              webOnlyMessage={translate("agent.command.webOnlyProposalDescription")}
+              webOnlyAction={
+                proposal.execution_mode === "web_only" ? (
+                  <Button asChild size="sm" variant="ghost">
+                    <Link href={proposalWebOnlyHref(proposal, basePath)}>{translate("agent.command.openRelatedPage")}</Link>
+                  </Button>
+                ) : undefined
+              }
+            />
+          </div>
+        ) : run?.status === "planned" && !proposalExecutionIds ? (
+          <div className={workbenchStateSurfaceClassName("info", "mt-6 animate-surface-enter px-4 py-4")}>
+            <p className="text-sm font-medium text-ink">{translate("agent.command.analysisOnlyTitle")}</p>
+            <p className="mt-2 text-sm leading-6 text-[#596270]">{translate("agent.command.analysisOnlyDescription")}</p>
+          </div>
+        ) : null}
+
+        {ticket ? (
+          <div className="mt-6 animate-surface-enter">
+            <ApprovalTicketBar
+              ticket={ticket}
+              busy={ticketBusy === "confirm" || ticketBusy === "cancel" || ticketBusy === "refresh" ? ticketBusy : null}
+              onConfirm={() => void handleConfirmTicket()}
+              onCancel={() => void handleCancelTicket()}
+              onRefresh={() => void handleRefreshTicket()}
+            />
+          </div>
+        ) : null}
+
+        {run ? (
+          <div className="mt-6 space-y-4">
+            <div className={workbenchStateSurfaceClassName("neutral", "animate-surface-enter px-4 py-4")} data-testid="agent-command-run-summary">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 max-w-3xl">
+                  <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("agent.command.latestRunEyebrow")}</p>
+                  <p className="mt-2 text-sm font-medium text-ink">{run.input_text}</p>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-3 text-xs text-[#6d7885]">
-                  <span>{translate("agent.command.runMetadata.scope")}: {commandScopeLabel(run.scope_kind)}</span>
-                  <span>{translate("agent.command.runMetadata.createdAt")}: {formatDateTime(run.created_at)}</span>
-                  <span>{translate("agent.command.runMetadata.updatedAt")}: {formatDateTime(run.updated_at)}</span>
-                  {run.executed_at ? <span>{translate("agent.command.runMetadata.executedAt")}: {formatDateTime(run.executed_at)}</span> : null}
+                <div className="flex flex-wrap gap-2">
+                  <Badge tone="info">{commandScopeLabel(run.scope_kind)}</Badge>
+                  <Badge tone={statusTone(run.status)}>{commandRunStatusLabel(run.status)}</Badge>
                 </div>
-                {run.status_reason ? <p className="mt-3 text-sm text-[#596270]">{run.status_reason}</p> : null}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-3 text-xs text-[#6d7885]">
+                <span>{translate("agent.command.runMetadata.scope")}: {commandScopeLabel(run.scope_kind)}</span>
+                <span>{translate("agent.command.runMetadata.createdAt")}: {formatDateTime(run.created_at)}</span>
+                <span>{translate("agent.command.runMetadata.updatedAt")}: {formatDateTime(run.updated_at)}</span>
+                {run.executed_at ? <span>{translate("agent.command.runMetadata.executedAt")}: {formatDateTime(run.executed_at)}</span> : null}
+              </div>
+              {run.status_reason ? <p className="mt-3 text-sm text-[#596270]">{run.status_reason}</p> : null}
+            </div>
+
+            {guidance ? (
+              <div
+                className={workbenchStateSurfaceClassName(run.status === "unsupported" ? "error" : "info", "animate-surface-enter px-4 py-4")}
+                data-testid={`agent-command-guidance-${run.status}`}
+              >
+                <p className="text-sm font-medium text-ink">{guidance.title}</p>
+                <p className="mt-2 text-sm leading-6 text-[#596270]">{guidance.description}</p>
               </div>
             ) : null}
 
-            <div className={workbenchSupportPanelClassName("default", "animate-surface-enter p-4")}>
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("agent.command.planSectionEyebrow")}</p>
-                <h3 className="mt-2 text-base font-semibold text-ink">{translate("agent.command.planSectionTitle")}</h3>
-                <p className="mt-2 text-sm leading-6 text-[#596270]">{translate("agent.command.planSectionSummary")}</p>
-              </div>
-              <div className="mt-4 space-y-3">
-                {!run ? (
-                  <CommandEmptyPanel
-                    title={translate("agent.command.emptyTitle")}
-                    description={translate("agent.command.emptyDescription")}
-                  />
-                ) : plannedSteps.length === 0 ? (
+            <AgentDisclosure title={translate("agent.command.planDetailsTitle")}>
+              <div className="space-y-3">
+                {plannedSteps.length === 0 ? (
                   <CommandEmptyPanel
                     title={translate("agent.command.noStepsTitle")}
                     description={translate("agent.command.noStepsDescription")}
@@ -448,12 +664,10 @@ export function AgentCommandPanel({
                 ) : (
                   plannedSteps.map((step, index) => {
                     const result = stepResultFor(run, step.step_id);
-                    const checked = selectedStepIds.has(step.step_id);
                     const dependencyText = summarizeStepDependencies(step, stepIndexes);
                     const argFacts = summarizeStepArgs(step.args, stepIndexes);
-                    const cardTone = result?.status === "failed" || result?.status === "blocked" ? "error" : checked ? "info" : "quiet";
                     return (
-                      <div key={step.step_id} className={workbenchSupportPanelClassName(cardTone, "interactive-lift p-4")} data-testid={`agent-command-step-${step.step_id}`}>
+                      <div key={step.step_id} className={workbenchSupportPanelClassName(result?.status === "failed" || result?.status === "blocked" ? "error" : "quiet", "p-4")} data-testid={`agent-command-step-${step.step_id}`}>
                         <div className="flex items-start gap-3">
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[rgba(20,32,44,0.06)] text-xs font-semibold text-ink">
                             {index + 1}
@@ -486,41 +700,17 @@ export function AgentCommandPanel({
                               </div>
                             ) : null}
                           </div>
-                          <Checkbox
-                            aria-label={step.title}
-                            checked={checked}
-                            disabled={result?.status === "succeeded" || busy === "execute" || run?.status === "executing"}
-                            onChange={(event) => toggleStep(step.step_id, event.currentTarget.checked)}
-                            className="mt-1"
-                          />
                         </div>
                       </div>
                     );
                   })
                 )}
               </div>
-            </div>
-          </div>
+            </AgentDisclosure>
 
-          <div className="space-y-4">
-            {guidance ? (
-              <div
-                className={workbenchStateSurfaceClassName(run?.status === "unsupported" ? "error" : "info", "animate-surface-enter px-4 py-4")}
-                data-testid={`agent-command-guidance-${run?.status || "none"}`}
-              >
-                <p className="text-sm font-medium text-ink">{guidance.title}</p>
-                <p className="mt-2 text-sm leading-6 text-[#596270]">{guidance.description}</p>
-              </div>
-            ) : null}
-
-            <div className={workbenchSupportPanelClassName("default", "animate-surface-enter p-4")}>
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("agent.command.resultsSectionEyebrow")}</p>
-                <h3 className="mt-2 text-base font-semibold text-ink">{translate("agent.command.resultsSectionTitle")}</h3>
-                <p className="mt-2 text-sm leading-6 text-[#596270]">{translate("agent.command.resultsSectionSummary")}</p>
-              </div>
-              <div className="mt-4 space-y-3">
-                {!run || displayResults.length === 0 ? (
+            <AgentDisclosure title={translate("agent.command.resultsDetailsTitle")}>
+              <div className="space-y-3">
+                {displayResults.length === 0 ? (
                   <CommandEmptyPanel
                     title={translate("agent.command.noResultsTitle")}
                     description={translate("agent.command.noResultsDescription")}
@@ -532,7 +722,7 @@ export function AgentCommandPanel({
                     return (
                       <div
                         key={`result-${result.step_id}`}
-                        className={workbenchSupportPanelClassName(result.status === "failed" || result.status === "blocked" ? "error" : "quiet", "interactive-lift p-4")}
+                        className={workbenchSupportPanelClassName(result.status === "failed" || result.status === "blocked" ? "error" : "quiet", "p-4")}
                         data-testid={`agent-command-result-${result.step_id}`}
                       >
                         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -569,9 +759,9 @@ export function AgentCommandPanel({
                   })
                 )}
               </div>
-            </div>
+            </AgentDisclosure>
           </div>
-        </div>
+        ) : null}
       </div>
     </Card>
   );

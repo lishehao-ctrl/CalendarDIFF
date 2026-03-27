@@ -136,3 +136,25 @@ def test_judge_mode_llm_falls_back_when_invoke_fails(monkeypatch) -> None:
     assert payload["judge_available"] is False
     assert payload["judge_overall_score"] is None
     assert payload["judge_cost"] is None
+
+
+def test_judge_mode_llm_uses_judge_profile_family(monkeypatch) -> None:
+    captured = {}
+
+    def _fake_invoke(*args, **kwargs):  # type: ignore[no-untyped-def]
+        del args
+        captured["profile_family"] = kwargs["invoke_request"].profile_family
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(quality_eval, "invoke_llm_json", _fake_invoke)
+
+    quality_eval._judge_narrative(
+        db=None,
+        judge_mode="llm",
+        payload={},
+        summary="summary",
+        reason="reason",
+        deterministic_flags={"grounding_correct": True},
+    )
+
+    assert captured["profile_family"] == "judge"

@@ -5,7 +5,7 @@ export default function PreviewSettingsPage() {
   return (
     <div className="space-y-4">
       <LocalizedPageIntro eyebrowKey="settingsPage.eyebrow" titleKey="settingsPage.title" summaryKey="settingsPage.summary" />
-      <SettingsPanel />
+      <SettingsPanel basePath="/preview" />
     </div>
   );
 }

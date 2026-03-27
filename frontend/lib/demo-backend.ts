@@ -3,6 +3,7 @@
 import { getRuntimeLocale } from "@/lib/i18n/runtime";
 import type { Locale } from "@/lib/i18n/locales";
 import type {
+  AgentCommandRun,
   AgentBlockingCondition,
   AgentChangeContext,
   AgentProposal,
@@ -59,6 +60,7 @@ type DemoState = {
   mcpTokens: McpAccessToken[];
   agentProposals: AgentProposal[];
   approvalTickets: ApprovalTicket[];
+  commandRuns: AgentCommandRun[];
 };
 
 const nowIso = "2026-03-18T05:20:00.000Z";
@@ -437,6 +439,7 @@ function createInitialDemoState(locale: Locale = demoLocale): DemoState {
     ],
     agentProposals: [],
     approvalTickets: [],
+    commandRuns: [],
   };
 }
 
@@ -1677,6 +1680,160 @@ function nextApprovalTicket(proposal: AgentProposal): ApprovalTicket {
   };
 }
 
+function nextCommandId() {
+  return `demo-command-${Date.now()}`;
+}
+
+function createDemoCommandPlan(inputText: string): AgentCommandRun {
+  const normalized = inputText.trim().toLowerCase();
+  const now = new Date().toISOString();
+
+  const sourceLike = normalized.includes("source") || normalized.includes("来源") || normalized.includes("gmail") || normalized.includes("恢复");
+  const steps: AgentCommandRun["plan"] = sourceLike
+    ? [
+        {
+          step_id: "step_1",
+          title: localized("Prepare a Gmail recovery proposal", "先准备 Gmail 恢复建议"),
+          reason: localized(
+            "The current request looks like a source-recovery task, so the assistant starts by drafting a bounded recovery proposal.",
+            "这条请求更像来源恢复，所以助手会先整理出一条可确认的恢复建议。",
+          ),
+          tool_name: "create_source_recovery_proposal",
+          target_kind: "source",
+          args: { source_id: 2 },
+          depends_on: [],
+          risk_level: "medium" as const,
+          execution_boundary: "proposal_or_ticket_chain",
+        },
+      ]
+    : [
+        {
+          step_id: "step_1",
+          title: localized("Prepare a change decision proposal", "先准备变更处理建议"),
+          reason: localized(
+            "The current request looks like change review, so the assistant starts by drafting a bounded decision proposal for the top pending change.",
+            "这条请求更像变更审核，所以助手会先为当前最重要的待处理变更整理一条可确认的处理建议。",
+          ),
+          tool_name: "create_change_decision_proposal",
+          target_kind: "change",
+          args: { change_id: 401 },
+          depends_on: [],
+          risk_level: "medium" as const,
+          execution_boundary: "proposal_or_ticket_chain",
+        },
+      ];
+
+  const run: AgentCommandRun = {
+    command_id: nextCommandId(),
+    owner_user_id: demoState.user.id,
+    input_text: inputText,
+    scope_kind: "workspace",
+    scope_id: null,
+    language_code: demoState.user.language_code,
+    language_resolution_source: "preview_locale",
+    status: "planned",
+    status_reason: localized(
+      "Proposal path is ready. Review the draft proposal, then create an approval request if you want to execute it.",
+      "建议路径已经准备好了。先看建议内容，如果要执行，再创建审批请求。",
+    ),
+    plan: steps,
+    execution_results: [],
+    executed_at: null,
+    created_at: now,
+    updated_at: now,
+  };
+  demoState.commandRuns = [run, ...demoState.commandRuns.filter((item) => item.command_id !== run.command_id)];
+  return run;
+}
+
+function getDemoCommandRun(commandId: string) {
+  return demoState.commandRuns.find((item) => item.command_id === commandId) || null;
+}
+
+function executeDemoCommandRun(commandId: string, selectedStepIds?: string[]) {
+  const run = getDemoCommandRun(commandId);
+  if (!run) {
+    throw new Error(localized("Command run not found", "未找到这次命令运行"));
+  }
+
+  const allowed = new Set(selectedStepIds?.length ? selectedStepIds : run.plan.map((step) => step.step_id));
+  const nextResults = [...run.execution_results];
+  let latestProposalId: number | null = null;
+
+  for (const step of run.plan) {
+    if (!allowed.has(step.step_id)) {
+      continue;
+    }
+    if (nextResults.some((result) => result.step_id === step.step_id && result.status === "succeeded")) {
+      continue;
+    }
+
+    if (step.tool_name === "create_change_decision_proposal") {
+      const proposal = createDemoChangeProposal(Number(step.args.change_id));
+      latestProposalId = proposal.proposal_id;
+      nextResults.push({
+        step_id: step.step_id,
+        status: "succeeded",
+        output_summary: {
+          proposal_id: proposal.proposal_id,
+          target_kind: proposal.target_kind,
+          target_id: proposal.target_id,
+          status: proposal.status,
+          summary: proposal.summary,
+        },
+        started_at: new Date().toISOString(),
+        finished_at: new Date().toISOString(),
+      });
+      continue;
+    }
+
+    if (step.tool_name === "create_source_recovery_proposal") {
+      const proposal = createDemoSourceProposal(Number(step.args.source_id));
+      latestProposalId = proposal.proposal_id;
+      nextResults.push({
+        step_id: step.step_id,
+        status: "succeeded",
+        output_summary: {
+          proposal_id: proposal.proposal_id,
+          target_kind: proposal.target_kind,
+          target_id: proposal.target_id,
+          status: proposal.status,
+          summary: proposal.summary,
+        },
+        started_at: new Date().toISOString(),
+        finished_at: new Date().toISOString(),
+      });
+      continue;
+    }
+
+    nextResults.push({
+      step_id: step.step_id,
+      status: "blocked",
+      output_summary: {},
+      error_text: localized("This preview command step is not implemented.", "预览模式暂未实现这一步命令。"),
+      started_at: new Date().toISOString(),
+      finished_at: new Date().toISOString(),
+    });
+  }
+
+  const nextRun: AgentCommandRun = {
+    ...run,
+    status: latestProposalId ? "completed" : "failed",
+    status_reason: latestProposalId
+      ? localized(
+          "Proposal ready. Review it below, then create an approval request if you want to execute it.",
+          "建议已经准备好。先在下面查看，如果要执行，再创建审批请求。",
+        )
+      : localized("No executable proposal was produced.", "这次没有生成可执行的建议。"),
+    execution_results: nextResults,
+    executed_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  demoState.commandRuns = [nextRun, ...demoState.commandRuns.filter((item) => item.command_id !== commandId)];
+  return nextRun;
+}
+
 function buildDemoRecentAgentActivity(limit = 8): AgentRecentActivityResponse {
   const items = [
     {
@@ -1884,6 +2041,43 @@ export async function demoBackendFetch<T>(path: string, init?: RequestInit): Pro
   }
   if (pathname === "/agent/context/workspace" && method === "GET") {
     return clone(buildDemoWorkspaceAgentContext()) as T;
+  }
+  if (pathname === "/agent/commands/plan" && method === "POST") {
+    const inputText = typeof body?.input_text === "string" ? body.input_text.trim() : "";
+    if (!inputText) {
+      return clone({
+        command_id: nextCommandId(),
+        owner_user_id: demoState.user.id,
+        input_text: "",
+        scope_kind: "workspace",
+        scope_id: null,
+        language_code: demoState.user.language_code,
+        language_resolution_source: "preview_locale",
+        status: "clarification_required",
+        status_reason: localized("Tell me what you want done first.", "先告诉我你想做什么。"),
+        plan: [],
+        execution_results: [],
+        executed_at: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }) as T;
+    }
+    return clone(createDemoCommandPlan(inputText)) as T;
+  }
+  if (/^\/agent\/commands\/[^/]+$/.test(pathname) && method === "GET") {
+    const commandId = decodeURIComponent(pathname.split("/")[3] || "");
+    const run = getDemoCommandRun(commandId);
+    if (!run) {
+      throw new Error(localized("Command run not found", "未找到这次命令运行"));
+    }
+    return clone(run) as T;
+  }
+  if (/^\/agent\/commands\/[^/]+\/execute$/.test(pathname) && method === "POST") {
+    const commandId = decodeURIComponent(pathname.split("/")[3] || "");
+    const selectedStepIds = Array.isArray(body?.selected_step_ids)
+      ? body.selected_step_ids.map((item: unknown) => String(item))
+      : undefined;
+    return clone(executeDemoCommandRun(commandId, selectedStepIds)) as T;
   }
   if (pathname === "/agent/activity/recent" && method === "GET") {
     const limit = Number(url.searchParams.get("limit") || "8");

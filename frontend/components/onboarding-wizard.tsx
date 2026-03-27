@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarDays, CheckCircle2, Mailbox, RefreshCw } from "lucide-react";
+import { CalendarDays, Mailbox, RefreshCw } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -186,43 +186,32 @@ export function OnboardingWizard() {
     <div className="space-y-5" data-testid="onboarding-wizard">
       <Card className="relative overflow-hidden px-6 py-7 md:px-8 md:py-8">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.16),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(215,90,45,0.14),transparent_28%)]" />
-        <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="max-w-3xl">
-            <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">{translate("onboarding.introEyebrow")}</p>
-            <h1 className="mt-3 text-3xl font-semibold text-ink md:text-4xl">{stageTitle()}</h1>
-            <p className="mt-4 text-sm leading-7 text-[#596270]">
-              {translate("onboarding.heroSummary")}
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Badge tone="pending">{translate("onboarding.onboardingRequired")}</Badge>
-              {data.monitoring_window ? (
-                <Badge tone="default">{translate("onboarding.monitoringFrom", { date: data.monitoring_window.monitor_since })}</Badge>
-              ) : null}
+        <div className="relative max-w-4xl">
+          <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">{translate("onboarding.introEyebrow")}</p>
+          <h1 className="mt-3 text-3xl font-semibold text-ink md:text-4xl">{stageTitle()}</h1>
+          <p className="mt-4 text-sm leading-7 text-[#596270]">
+            {translate("onboarding.heroSummary")}
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Badge tone="pending">{translate("onboarding.onboardingRequired")}</Badge>
+            <Badge tone="info">{translate("onboarding.currentStep", { step: stepIndex + 1, total: stepOrder.length })}</Badge>
+            <Badge tone="default">{translate(stepOrder[stepIndex].title)}</Badge>
+            {data.monitoring_window ? (
+              <Badge tone="default">{translate("onboarding.monitoringFrom", { date: data.monitoring_window.monitor_since })}</Badge>
+            ) : null}
+          </div>
+          <div className="mt-6 max-w-xl space-y-2">
+            <div className="flex items-center justify-between gap-3 text-sm text-[#596270]">
+              <span>{translate("onboarding.progress")}</span>
+              <span>{Math.round(((stepIndex + (data.stage === "ready" ? 1 : 0)) / stepOrder.length) * 100)}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-[rgba(20,32,44,0.08)]">
+              <div
+                className="h-2 rounded-full bg-cobalt transition-all duration-500"
+                style={{ width: `${Math.min(((stepIndex + (data.stage === "ready" ? 1 : 0)) / stepOrder.length) * 100, 100)}%` }}
+              />
             </div>
           </div>
-          <Card className={workbenchPanelClassName("secondary", "relative p-5")}>
-            <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("onboarding.progress")}</p>
-            <div className="mt-4 space-y-3">
-              {stepOrder.map((step, index) => {
-                const active = index === stepIndex;
-                const complete =
-                  (step.id === "canvas" && !!data.canvas_source?.connected) ||
-                  (step.id === "gmail" && (!!data.gmail_source?.connected || data.gmail_skipped || stepIndex > 1)) ||
-                  (step.id === "monitoring" && !!data.monitoring_window && data.stage === "ready");
-                return (
-                  <div key={step.id} className={workbenchSupportPanelClassName("default", "flex items-start gap-3 p-3")}>
-                    <div className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-2xl ${complete ? "bg-[rgba(77,124,15,0.12)] text-moss" : active ? "bg-[rgba(31,94,255,0.12)] text-cobalt" : "bg-[rgba(20,32,44,0.06)] text-[#6d7885]"}`}>
-                      {complete ? <CheckCircle2 className="h-4 w-4" /> : <span className="text-xs font-semibold">{index + 1}</span>}
-                    </div>
-                    <div>
-                      <p className="font-medium text-ink">{translate(step.title)}</p>
-                      <p className="mt-1 text-sm text-[#596270]">{translate(step.description)}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
         </div>
       </Card>
 
@@ -242,7 +231,7 @@ export function OnboardingWizard() {
               </p>
             </div>
           </div>
-          <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_320px]">
+          <div className="mt-6 space-y-4">
             <div className="space-y-3">
               <label className="block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="onboarding-canvas-ics">
                 {translate("onboarding.canvasUrl")}
@@ -260,7 +249,7 @@ export function OnboardingWizard() {
                 {savingCanvas ? translate("onboarding.saveCanvasBusy") : translate("onboarding.saveCanvas")}
               </Button>
             </div>
-            <Card className={workbenchPanelClassName("secondary", "p-5")}>
+            <Card className={workbenchPanelClassName("quiet", "p-5")}>
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("onboarding.canvasUrl")}</p>
               <p className="mt-3 text-base font-medium text-ink">{translate("onboarding.canvasGuideTitle")}</p>
               <p className="mt-2 text-sm leading-6 text-[#596270]">
@@ -292,7 +281,7 @@ export function OnboardingWizard() {
               </p>
             </div>
           </div>
-          <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_320px]">
+          <div className="mt-6 space-y-4">
             <Card className={workbenchPanelClassName("secondary", "p-5")}>
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("onboarding.gmailStepTitle")}</p>
               <p className="mt-3 text-base font-medium text-ink">
@@ -312,7 +301,7 @@ export function OnboardingWizard() {
                 </Button>
               </div>
             </Card>
-            <Card className={workbenchPanelClassName("secondary", "p-5")}>
+            <Card className={workbenchPanelClassName("quiet", "p-5")}>
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("onboarding.optional")}</p>
               <p className="mt-3 text-sm leading-6 text-[#596270]">
                 {translate("onboarding.gmailSkipLaterSummary")}
@@ -339,7 +328,7 @@ export function OnboardingWizard() {
               </p>
             </div>
           </div>
-          <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_320px]">
+          <div className="mt-6 space-y-4">
             <div className="grid gap-4">
               <div>
                 <label className="block text-xs uppercase tracking-[0.18em] text-[#6d7885]" htmlFor="monitor-since">
@@ -363,7 +352,7 @@ export function OnboardingWizard() {
                 ) : null}
               </div>
             </div>
-            <Card className={workbenchPanelClassName("secondary", "p-5")}>
+            <Card className={workbenchPanelClassName("quiet", "p-5")}>
               <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("onboarding.monitoringStepTitle")}</p>
               <div className="mt-4 space-y-3 text-sm text-[#314051]">
                 {(["0", "1", "2"] as const).map((index) => (

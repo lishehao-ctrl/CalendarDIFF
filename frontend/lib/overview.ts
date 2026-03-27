@@ -3,7 +3,7 @@ import { translate } from "@/lib/i18n/runtime";
 import { formatDateTime, sourceDescriptor, summarizeChange } from "@/lib/presenters";
 
 export type OverviewCardVM = {
-  key: "needs-review" | "source-posture" | "naming-drift" | "fallbacks";
+  key: "needs-review" | "source-posture";
   title: string;
   eyebrow: string;
   metric: string;
@@ -38,10 +38,6 @@ function surfaceHref(surface: OverviewHeroVM["ctaHref"] extends never ? never : 
       return "/changes?bucket=initial_review";
     case "changes":
       return "/changes";
-    case "families":
-      return "/families";
-    case "manual":
-      return "/manual";
     default:
       return "/overview";
   }
@@ -179,16 +175,6 @@ export function buildOverviewSurface(params: {
           ? translate("overview.cards.sources.baselineRunning")
           : translate("overview.cards.sources.steadyState");
 
-  const namingSummary = summary.families.pending_raw_type_suggestions > 0
-    ? translate("overview.cards.families.waiting", { count: summary.families.pending_raw_type_suggestions })
-    : summary.families.last_error
-      ? translate("overview.cards.families.needsAttention", { error: summary.families.last_error })
-      : translate("overview.cards.families.quiet");
-
-  const fallbackSummary = summary.manual.active_event_count > 0
-    ? translate("overview.cards.manual.active", { count: summary.manual.active_event_count })
-    : translate("overview.cards.manual.quiet");
-
   return {
     hero: buildHero(summary),
     cards: [
@@ -202,26 +188,6 @@ export function buildOverviewSurface(params: {
         ctaLabel: translate("overview.cards.sources.open"),
         ctaHref: "/sources",
         tone: summary.sources.attention_count > 0 || onboarding.stage !== "ready" ? "pending" : "approved",
-      },
-      {
-        key: "naming-drift",
-        eyebrow: translate("overview.cards.families.eyebrow"),
-        title: translate("overview.cards.families.title"),
-        metric: `${summary.families.pending_raw_type_suggestions}`,
-        summary: namingSummary,
-        ctaLabel: translate("overview.cards.families.open"),
-        ctaHref: "/families",
-        tone: summary.families.pending_raw_type_suggestions > 0 ? "pending" : "info",
-      },
-      {
-        key: "fallbacks",
-        eyebrow: translate("overview.cards.manual.eyebrow"),
-        title: translate("overview.cards.manual.title"),
-        metric: `${summary.manual.active_event_count}`,
-        summary: fallbackSummary,
-        ctaLabel: translate("overview.cards.manual.open"),
-        ctaHref: "/manual",
-        tone: summary.manual.active_event_count > 0 ? "info" : "approved",
       },
     ],
   };
