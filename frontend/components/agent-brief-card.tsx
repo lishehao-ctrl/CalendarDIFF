@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState } from "@/components/data-states";
+import { agentLaneHref } from "@/lib/agent-lane";
 import { agentWorkspaceContextCacheKey, getAgentWorkspaceContext } from "@/lib/api/agents";
 import { withBasePath } from "@/lib/demo-mode";
 import { translate } from "@/lib/i18n/runtime";
@@ -37,16 +38,6 @@ function severityTone(severity: AgentBlockingCondition["severity"]) {
   }
 }
 
-function laneHref(lane: AgentWorkspaceContext["recommended_next_action"]["lane"]) {
-  return {
-    sources: "/sources",
-    initial_review: "/changes?bucket=initial_review",
-    changes: "/changes",
-    families: "/families",
-    manual: "/manual",
-  }[lane];
-}
-
 export function AgentBriefCard({ basePath = "" }: { basePath?: string }) {
   const context = useApiResource<AgentWorkspaceContext>(() => getAgentWorkspaceContext(), [], null, {
     cacheKey: agentWorkspaceContextCacheKey(),
@@ -64,7 +55,7 @@ export function AgentBriefCard({ basePath = "" }: { basePath?: string }) {
     return <EmptyState title={translate("agent.brief.eyebrow")} description={translate("agent.brief.unavailable")} />;
   }
 
-  const recommendedLaneHref = withBasePath(basePath, laneHref(context.data.recommended_next_action.lane));
+  const recommendedLaneHref = withBasePath(basePath, agentLaneHref(context.data.recommended_next_action.lane));
   const sourceBlocker = context.data.blocking_conditions.some((condition) => condition.code.includes("source"));
   const recommendedLane = context.data.recommended_next_action.lane;
 

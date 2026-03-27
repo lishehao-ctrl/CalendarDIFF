@@ -228,6 +228,7 @@ export const en = {
     title: "Deadline review",
     nav: {
       overview: { label: "Overview", description: "What needs attention" },
+      agent: { label: "Assistant", description: "Next steps and recent activity" },
       sources: { label: "Sources", description: "Trust and recovery" },
       changes: { label: "Changes", description: "Daily review" },
       families: { label: "Families", description: "Label governance" },
@@ -240,7 +241,7 @@ export const en = {
     closeNavigation: "Close navigation",
     workspaceStatus: "Workspace status",
     systemReady: "System ready",
-    navigateDescription: "Navigate between Overview, Sources, Changes, Families, Manual, and Settings.",
+    navigateDescription: "Navigate between Overview, Assistant, Sources, Changes, Families, Manual, and Settings.",
     logout: {
       label: "Logout",
       signingOut: "Signing out...",
@@ -1080,6 +1081,11 @@ export const en = {
     eyebrow: "Settings",
     title: "Account and timezone",
     summary: "Manage account details, timezone, language, and MCP access.",
+  },
+  agentPage: {
+    eyebrow: "Assistant",
+    title: "Follow the next best action.",
+    summary: "Start from the recommended lane, review blockers, and keep recent assistant activity in one place.",
   },
   pageHeader: {
     changes: "Changes",

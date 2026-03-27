@@ -43,6 +43,7 @@ type SessionUser = {
 
 const items: ReadonlyArray<{ href: string; labelKey: string; icon: LucideIcon; descriptionKey: string }> = [
   { href: "/", labelKey: "shell.nav.overview.label", icon: LayoutDashboard, descriptionKey: "shell.nav.overview.description" },
+  { href: "/agent", labelKey: "shell.nav.agent.label", icon: Sparkles, descriptionKey: "shell.nav.agent.description" },
   { href: "/sources", labelKey: "shell.nav.sources.label", icon: BellDot, descriptionKey: "shell.nav.sources.description" },
   { href: "/changes", labelKey: "shell.nav.changes.label", icon: GitCompareArrows, descriptionKey: "shell.nav.changes.description" },
   { href: "/families", labelKey: "shell.nav.families.label", icon: Link2, descriptionKey: "shell.nav.families.description" },
@@ -51,6 +52,10 @@ const items: ReadonlyArray<{ href: string; labelKey: string; icon: LucideIcon; d
 ] as const;
 
 const DESKTOP_NAV_COLLAPSED_KEY = "calendardiff.desktop-nav-collapsed";
+
+function isRootLaneHref(href: string) {
+  return href === "/" || href === "/preview";
+}
 
 function animatedTextBlock(collapsed: boolean, maxWidthClass: string) {
   return cn(
@@ -114,7 +119,7 @@ function NavContentWithItems({
         {items.map(({ href, labelKey, icon: Icon, descriptionKey }) => {
           const label = translate(labelKey);
           const description = translate(descriptionKey);
-          const active = href === "/" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+          const active = isRootLaneHref(href) ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link
               key={href}
@@ -251,7 +256,7 @@ export function AppShell({
       return;
     }
 
-    const warmRoutes = [withBasePath(basePath, "/sources"), withBasePath(basePath, "/changes"), withBasePath(basePath, "/settings")];
+    const warmRoutes = [withBasePath(basePath, "/agent"), withBasePath(basePath, "/sources"), withBasePath(basePath, "/changes"), withBasePath(basePath, "/settings")];
     const runWarmup = () => {
       for (const href of warmRoutes) {
         primeRoute(href);

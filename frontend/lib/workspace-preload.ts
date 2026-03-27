@@ -1,6 +1,11 @@
 "use client";
 
-import { agentWorkspaceContextCacheKey, getAgentWorkspaceContext } from "@/lib/api/agents";
+import {
+  agentRecentActivityCacheKey,
+  agentWorkspaceContextCacheKey,
+  getAgentWorkspaceContext,
+  getRecentAgentActivity,
+} from "@/lib/api/agents";
 import { changesListCacheKey, changesSummaryCacheKey, getChangesSummary, listChanges } from "@/lib/api/changes";
 import {
   familiesCoursesCacheKey,
@@ -67,6 +72,20 @@ function preloadOverviewLane() {
   })
     .then((rows) => preloadActiveSourceObservability(rows))
     .catch(() => undefined);
+}
+
+function preloadAgentLane() {
+  void preloadResource({
+    key: agentWorkspaceContextCacheKey(),
+    loader: getAgentWorkspaceContext,
+    staleMs: NAV_STALE_MS,
+  }).catch(() => undefined);
+
+  void preloadResource({
+    key: agentRecentActivityCacheKey(8),
+    loader: () => getRecentAgentActivity(8),
+    staleMs: NAV_STALE_MS,
+  }).catch(() => undefined);
 }
 
 function preloadSourcesLane() {
@@ -189,6 +208,10 @@ export function preloadWorkspaceLane(href: string) {
 
   if (pathname === "/") {
     preloadOverviewLane();
+    return;
+  }
+  if (pathname.startsWith("/agent")) {
+    preloadAgentLane();
     return;
   }
   if (pathname.startsWith("/sources")) {

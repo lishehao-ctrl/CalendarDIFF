@@ -158,7 +158,9 @@ test.describe.serial("locale smoke", () => {
   });
 
   test("preview respects stored locale", async ({ browser }) => {
-    await expectPreviewRouteFromStoredLocale(browser, "/preview", "zh-CN", "接下来做什么");
+    await expectPreviewRouteFromStoredLocale(browser, "/preview", "zh-CN", "现在先做什么");
+    await expectPreviewRouteFromStoredLocale(browser, "/preview/agent", "zh-CN", "先看现在最该处理什么。");
+    await expectPreviewRouteFromStoredLocale(browser, "/preview/agent", "en", "Follow the next best action.");
     await expectPreviewRouteFromStoredLocale(browser, "/preview/changes", "zh-CN", "按课程分组的收件区");
     await expectPreviewRouteFromStoredLocale(browser, "/preview/settings", "zh-CN", "账号与时区", "语言");
     await expectPreviewRouteFromStoredLocale(browser, "/preview/settings", "en", "Account and timezone", "Language");

@@ -13,8 +13,9 @@ const VIEWPORTS = [
 const LOCALES = ["en", "zh-CN"] as const;
 
 const PREVIEW_ROUTES = [
-  { route: "/preview", markers: { en: "What to do next", "zh-CN": "接下来做什么" } },
-  { route: "/preview/sources", markers: { en: "Connected sources", "zh-CN": "当前接入" } },
+  { route: "/preview", markers: { en: "What to do next", "zh-CN": "现在先做什么" } },
+  { route: "/preview/agent", markers: { en: "Follow the next best action.", "zh-CN": "先看现在最该处理什么。" } },
+  { route: "/preview/sources", markers: { en: "Connected sources", "zh-CN": "已接入的来源" } },
   { route: "/preview/sources/1", markers: { en: "Source detail", "zh-CN": "来源详情" } },
   { route: "/preview/changes", markers: { en: "Course-grouped inbox", "zh-CN": "按课程分组的收件区" } },
   { route: "/preview/families", markers: { en: "Keep labels aligned.", "zh-CN": "整理原始标签和标准归类。" } },
