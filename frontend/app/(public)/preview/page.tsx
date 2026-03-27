@@ -1,5 +1,5 @@
-import OverviewPage from "@/components/overview-page-client";
+import { PreviewDemoHomePanel } from "@/components/preview-demo-home-panel";
 
 export default function PreviewDashboardPage() {
-  return <OverviewPage basePath="/preview" />;
+  return <PreviewDemoHomePanel />;
 }

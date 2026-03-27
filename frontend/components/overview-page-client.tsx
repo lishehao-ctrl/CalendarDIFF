@@ -28,7 +28,15 @@ const cardIcons = {
   fallbacks: PencilLine,
 } as const;
 
-export default function OverviewPage({ basePath = "" }: { basePath?: string }) {
+export default function OverviewPage({
+  basePath = "",
+  hidePageIntro = false,
+  suppressPageMetadata = false,
+}: {
+  basePath?: string;
+  hidePageIntro?: boolean;
+  suppressPageMetadata?: boolean;
+}) {
   const { isMobile, isTabletPortrait, isTabletWide, isDesktop } = useResponsiveTier();
   const topPendingParams = {
     review_status: "pending" as const,
@@ -62,7 +70,10 @@ export default function OverviewPage({ basePath = "" }: { basePath?: string }) {
       })
     : null;
 
-  usePageMetadata(surface?.hero.title || translate("shell.nav.overview.label"), surface?.hero.summary || translate("shell.nav.overview.description"));
+  usePageMetadata(
+    suppressPageMetadata ? undefined : surface?.hero.title || translate("shell.nav.overview.label"),
+    suppressPageMetadata ? undefined : surface?.hero.summary || translate("shell.nav.overview.description"),
+  );
 
   if (summary.loading || topPendingChanges.loading || onboarding.loading || activeSources.loading) {
     return <WorkbenchLoadingShell variant="overview" />;
@@ -250,11 +261,13 @@ export default function OverviewPage({ basePath = "" }: { basePath?: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="px-1">
-        <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">{surface.hero.eyebrow}</p>
-        <h1 className="mt-1 text-2xl font-semibold text-ink">{surface.hero.title}</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-[#596270]">{surface.hero.summary}</p>
-      </div>
+      {!hidePageIntro ? (
+        <div className="px-1">
+          <p className="text-xs uppercase tracking-[0.22em] text-[#6d7885]">{surface.hero.eyebrow}</p>
+          <h1 className="mt-1 text-2xl font-semibold text-ink">{surface.hero.title}</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#596270]">{surface.hero.summary}</p>
+        </div>
+      ) : null}
 
       {isDesktop ? (
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_340px]">

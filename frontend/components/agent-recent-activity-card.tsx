@@ -2,11 +2,12 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { EmptyState, ErrorState } from "@/components/data-states";
+import { ErrorState } from "@/components/data-states";
 import { PanelLoadingPlaceholder } from "@/components/panel-loading-placeholder";
 import { translate } from "@/lib/i18n/runtime";
 import { formatDateTime, formatStatusLabel } from "@/lib/presenters";
 import { workbenchSupportPanelClassName } from "@/lib/workbench-styles";
+import { cn } from "@/lib/utils";
 import type { AgentRecentActivityItem } from "@/lib/types";
 
 function itemKindLabel(kind: AgentRecentActivityItem["item_kind"]) {
@@ -26,6 +27,7 @@ type AgentRecentActivityCardProps = {
   statusLabel: string;
   rootTestId: string;
   getItemTestId: (item: AgentRecentActivityItem) => string;
+  className?: string;
 };
 
 export function AgentRecentActivityCard({
@@ -41,6 +43,7 @@ export function AgentRecentActivityCard({
   statusLabel,
   rootTestId,
   getItemTestId,
+  className,
 }: AgentRecentActivityCardProps) {
   if (loading && items.length === 0) {
     return (
@@ -58,14 +61,17 @@ export function AgentRecentActivityCard({
   }
 
   return (
-    <Card className="p-4" data-testid={rootTestId}>
+    <Card className={cn("p-4", className)} data-testid={rootTestId}>
       <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{eyebrow}</p>
       <h3 className="mt-2 text-base font-semibold text-ink">{title}</h3>
       <p className="mt-2 text-sm leading-6 text-[#596270]">{summary}</p>
 
       <div className="mt-4 space-y-3">
         {items.length === 0 ? (
-          <EmptyState title={emptyTitle} description={emptyDescription} />
+          <div className={workbenchSupportPanelClassName("quiet", "p-4")}>
+            <p className="text-sm font-medium text-ink">{emptyTitle}</p>
+            <p className="mt-2 text-sm leading-6 text-[#596270]">{emptyDescription}</p>
+          </div>
         ) : (
           items.map((item) => (
             <div

@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { AgentCommandPanel } from "@/components/agent-command-panel";
 import { AgentDisclosure } from "@/components/agent-step-flow";
 import { AgentRecentActivityCard } from "@/components/agent-recent-activity-card";
+import { buildContextualAgentCommandSuggestions, buildPendingChangePrompt, buildRecommendedActionPrompt, buildSourceBlockerPrompt, buildStaticAgentCommandSuggestions } from "@/lib/agent-command-suggestions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -58,12 +60,29 @@ function activityItemTestId(item: AgentRecentActivityItem) {
 
 export function AgentWorkspacePanel({ basePath = "" }: { basePath?: string }) {
   const { isDesktop, isTabletWide } = useResponsiveTier();
+  const [commandDraft, setCommandDraft] = useState("");
+  const [focusRequestToken, setFocusRequestToken] = useState(0);
   const context = useApiResource<AgentWorkspaceContext>(() => getAgentWorkspaceContext(), [], null, {
     cacheKey: agentWorkspaceContextCacheKey(),
   });
   const activity = useApiResource<AgentRecentActivityResponse>(() => getRecentAgentActivity(8), [], null, {
     cacheKey: agentRecentActivityCacheKey(8),
   });
+
+  function seedCommandPrompt(prompt: string) {
+    setCommandDraft(prompt);
+    setFocusRequestToken((current) => current + 1);
+  }
+
+  const commandSuggestions = useMemo(
+    () => (context.data
+      ? [
+          ...buildStaticAgentCommandSuggestions(),
+          ...buildContextualAgentCommandSuggestions(context.data),
+        ]
+      : buildStaticAgentCommandSuggestions()),
+    [context.data],
+  );
 
   if (context.loading && !context.data) {
     return (
@@ -84,16 +103,30 @@ export function AgentWorkspacePanel({ basePath = "" }: { basePath?: string }) {
     return <EmptyState title={translate("agentPage.title")} description={translate("agent.brief.unavailable")} />;
   }
 
+  const recommendedActionPrompt = buildRecommendedActionPrompt(context.data);
+  const sourceBlockerPrompt = hasSourceBlocker(context.data.blocking_conditions)
+    ? buildSourceBlockerPrompt(context.data.blocking_conditions)
+    : null;
   const recommendedLaneHref = withBasePath(basePath, agentLaneHref(context.data.recommended_next_action.lane));
   const showSourcesCta = hasSourceBlocker(context.data.blocking_conditions) && context.data.recommended_next_action.lane !== "sources";
   const topPendingChanges = context.data.top_pending_changes.slice(0, 4);
 
+  async function refreshAgentSurfaces() {
+    await Promise.all([
+      context.refresh({ background: Boolean(context.data), force: true }),
+      activity.refresh({ background: Boolean(activity.data), force: true }),
+    ]);
+  }
+
   const nextStepCard = (
-    <Card className="p-5" data-testid="agent-workspace-next-step-card">
+    <Card
+      className="animate-surface-enter overflow-hidden border-cobalt/15 bg-[radial-gradient(circle_at_top_left,rgba(31,94,255,0.1),transparent_38%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(246,249,255,0.94))] p-5 shadow-[0_18px_38px_rgba(20,32,44,0.08)]"
+      data-testid="agent-workspace-next-step-card"
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-3xl">
           <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("agent.brief.eyebrow")}</p>
-          <h2 className="mt-2 text-xl font-semibold text-ink">{context.data.recommended_next_action.label}</h2>
+          <h2 className="mt-2 text-lg font-semibold text-ink">{context.data.recommended_next_action.label}</h2>
           <p className="mt-2 text-sm leading-6 text-[#596270]">{context.data.recommended_next_action.reason}</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -108,6 +141,9 @@ export function AgentWorkspacePanel({ basePath = "" }: { basePath?: string }) {
             {translate("agent.brief.openRecommendedLane")}
             <ArrowRight className="ml-2 h-4 w-4" />
           </Link>
+        </Button>
+        <Button size="sm" variant="soft" onClick={() => seedCommandPrompt(recommendedActionPrompt)}>
+          {translate("agent.command.useInAssistant")}
         </Button>
         {showSourcesCta ? (
           <Button asChild size="sm" variant="ghost">
@@ -126,47 +162,62 @@ export function AgentWorkspacePanel({ basePath = "" }: { basePath?: string }) {
                 </Badge>
               ))}
             </div>
+            {sourceBlockerPrompt ? (
+              <div className="mt-3">
+                <Button size="sm" variant="soft" onClick={() => seedCommandPrompt(sourceBlockerPrompt)}>
+                  {translate("agent.command.askAssistantInspectSources")}
+                </Button>
+              </div>
+            ) : null}
           </AgentDisclosure>
         </div>
       ) : null}
     </Card>
   );
 
-  async function refreshAgentSurfaces() {
-    await Promise.all([
-      context.refresh({ background: Boolean(context.data), force: true }),
-      activity.refresh({ background: Boolean(activity.data), force: true }),
-    ]);
-  }
-
   const pendingChangesCard = (
-    <Card className="p-4" data-testid="agent-workspace-top-pending-card">
+    <Card
+      className="animate-surface-enter animate-surface-delay-1 p-4 shadow-[0_12px_28px_rgba(20,32,44,0.05)]"
+      data-testid="agent-workspace-top-pending-card"
+    >
       <p className="text-xs uppercase tracking-[0.18em] text-[#6d7885]">{translate("agent.brief.topChanges")}</p>
       <h3 className="mt-2 text-base font-semibold text-ink">{translate("overview.cards.changes.reviewTitle")}</h3>
       <div className="mt-4 space-y-3">
         {topPendingChanges.length === 0 ? (
-          <EmptyState
-            title={translate("overview.cards.changes.quiet")}
-            description={translate("overview.cards.changes.noReplayWaiting")}
-          />
+          <div className={workbenchSupportPanelClassName("quiet", "p-4")}>
+            <p className="text-sm font-medium text-ink">{translate("overview.cards.changes.quiet")}</p>
+            <p className="mt-2 text-sm leading-6 text-[#596270]">{translate("overview.cards.changes.noReplayWaiting")}</p>
+          </div>
         ) : (
           topPendingChanges.map((change) => {
             const summary = summarizeChange(change);
+            const changePrompt = buildPendingChangePrompt(change);
             return (
-              <Link
+              <div
                 key={change.id}
-                href={withBasePath(basePath, `/changes?focus=${change.id}`)}
                 className={workbenchQueueRowClassName({
-                  className: "flex items-center justify-between px-4 py-3",
+                  className: "animate-list-enter space-y-3 px-4 py-3",
                 })}
                 data-testid={`agent-workspace-top-change-${change.id}`}
               >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-ink">{summary.title}</p>
-                  <p className="mt-1 text-xs text-[#6d7885]">{formatDateTime(change.detected_at)}</p>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-ink">{summary.title}</p>
+                    <p className="mt-1 text-xs text-[#6d7885]">{formatDateTime(change.detected_at)}</p>
+                  </div>
+                  <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-[#6d7885]" />
                 </div>
-                <ArrowRight className="h-4 w-4 text-[#6d7885]" />
-              </Link>
+                <div className="flex flex-wrap gap-2">
+                  <Button asChild size="sm">
+                    <Link href={withBasePath(basePath, `/changes?focus=${change.id}`)}>
+                      {translate("agent.command.openChange")}
+                    </Link>
+                  </Button>
+                  <Button size="sm" variant="soft" onClick={() => seedCommandPrompt(changePrompt)}>
+                    {translate("agent.command.askAssistant")}
+                  </Button>
+                </div>
+              </div>
             );
           })
         )}
@@ -179,29 +230,44 @@ export function AgentWorkspacePanel({ basePath = "" }: { basePath?: string }) {
       items={activity.data?.items || []}
       loading={activity.loading}
       error={activity.error}
-      eyebrow={translate("settings.agentActivity.eyebrow")}
-      title={translate("settings.agentActivity.title")}
-      summary={translate("settings.agentActivity.summary")}
-      emptyTitle={translate("settings.agentActivity.emptyTitle")}
-      emptyDescription={translate("settings.agentActivity.emptyDescription")}
+      eyebrow={translate("agent.activity.eyebrow")}
+      title={translate("agent.activity.title")}
+      summary={translate("agent.activity.summary")}
+      emptyTitle={translate("agent.activity.emptyTitle")}
+      emptyDescription={translate("agent.activity.emptyDescription")}
       occurredAtLabel={translate("settings.agentActivity.occurredAt")}
       statusLabel={translate("settings.agentActivity.status")}
       rootTestId="agent-workspace-activity-card"
       getItemTestId={activityItemTestId}
+      className="animate-surface-enter animate-surface-delay-2 shadow-[0_12px_28px_rgba(20,32,44,0.05)]"
     />
+  );
+
+  const commandStudio = (
+    <div className="animate-surface-enter">
+      <AgentCommandPanel
+        draft={commandDraft}
+        onDraftChange={setCommandDraft}
+        suggestions={commandSuggestions}
+        focusRequestToken={focusRequestToken}
+        onRunUpdated={() => void refreshAgentSurfaces()}
+      />
+    </div>
+  );
+
+  const contextRail = (
+    <div className="space-y-4 xl:sticky xl:top-6 xl:self-start">
+      {nextStepCard}
+      {pendingChangesCard}
+      {activityCard}
+    </div>
   );
 
   if (isDesktop) {
     return (
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_360px]">
-        <div className="space-y-5">
-          <AgentCommandPanel onRunUpdated={() => void refreshAgentSurfaces()} />
-          {nextStepCard}
-          {pendingChangesCard}
-        </div>
-        <div className="space-y-4">
-          {activityCard}
-        </div>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.72fr)_360px]">
+        <div>{commandStudio}</div>
+        {contextRail}
       </div>
     );
   }
@@ -209,22 +275,16 @@ export function AgentWorkspacePanel({ basePath = "" }: { basePath?: string }) {
   if (isTabletWide) {
     return (
       <div className="space-y-5">
-        <AgentCommandPanel onRunUpdated={() => void refreshAgentSurfaces()} />
-        {nextStepCard}
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-          {pendingChangesCard}
-          {activityCard}
-        </div>
+        {commandStudio}
+        {contextRail}
       </div>
     );
   }
 
   return (
     <div className="space-y-5">
-      <AgentCommandPanel onRunUpdated={() => void refreshAgentSurfaces()} />
-      {nextStepCard}
-      {pendingChangesCard}
-      {activityCard}
+      {commandStudio}
+      {contextRail}
     </div>
   );
 }

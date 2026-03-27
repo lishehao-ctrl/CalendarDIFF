@@ -14,7 +14,7 @@ const LOCALES = ["en", "zh-CN"] as const;
 
 const PREVIEW_ROUTES = [
   { route: "/preview", markers: { en: "What to do next", "zh-CN": "现在先做什么" } },
-  { route: "/preview/agent", markers: { en: "Follow the next best action.", "zh-CN": "先看现在最该处理什么。" } },
+  { route: "/preview/agent", markers: { en: "Turn a request into confirmable steps.", "zh-CN": "先把想做的事拆成可确认的步骤。" } },
   { route: "/preview/sources", markers: { en: "Connected sources", "zh-CN": "已接入的来源" } },
   { route: "/preview/sources/1", markers: { en: "Source detail", "zh-CN": "来源详情" } },
   { route: "/preview/changes", markers: { en: "Course-grouped inbox", "zh-CN": "按课程分组的收件区" } },

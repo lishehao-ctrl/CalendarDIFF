@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/app-shell";
+import { PreviewDemoFrame } from "@/components/preview-demo-frame";
 
 const previewSession = {
   user: {
@@ -14,5 +15,9 @@ const previewSession = {
 };
 
 export default function PreviewLayout({ children }: { children: React.ReactNode }) {
-  return <AppShell sessionUser={previewSession.user} basePath="/preview">{children}</AppShell>;
+  return (
+    <AppShell sessionUser={previewSession.user} basePath="/preview">
+      <PreviewDemoFrame>{children}</PreviewDemoFrame>
+    </AppShell>
+  );
 }

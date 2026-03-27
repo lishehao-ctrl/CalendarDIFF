@@ -2,9 +2,9 @@
 
 import { useEffect } from "react";
 
-export function usePageMetadata(title: string, description?: string | null) {
+export function usePageMetadata(title?: string | null, description?: string | null) {
   useEffect(() => {
-    if (typeof document === "undefined") {
+    if (typeof document === "undefined" || !title) {
       return;
     }
 
